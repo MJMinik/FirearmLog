@@ -559,31 +559,15 @@ export function ProgressScreen() {
 export function MoreScreen({ refreshKey, onImported, open }: {
   refreshKey: number; onImported: () => void; open: (v: View) => void;
 }) {
-  const { firearms, loaded } = useData(refreshKey);
+  const { loaded } = useData(refreshKey);
   if (!loaded) return <div className="screen" />;
   return (
     <div className="screen">
       <h1 className="large-title">More</h1>
       <div className="card">
-        <h2>Guns</h2>
-        {firearms.map((f) => (
-          <button className="row-tap" key={f.id} onClick={() => open({ kind: 'gun-detail', id: f.id })}>
-            <span className="label">{f.name}</span>
-            <span className="value">{f.category} · {f.caliber} ›</span>
-          </button>
-        ))}
-        <div style={{ marginTop: 10 }}>
-          <button className="button secondary" onClick={() => open({ kind: 'gun-form' })}>+ Add Gun</button>
-        </div>
-      </div>
-      <div className="card">
-        <h2>Firearms &amp; Gear</h2>
-        <button className="row-tap" onClick={() => open({ kind: 'drills' })}>
-          <span className="label">Drills</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'magazines' })}>
-          <span className="label">Magazines</span>
+        <h2>Data &amp; Gear</h2>
+        <button className="row-tap" onClick={() => open({ kind: 'guns' })}>
+          <span className="label">Guns</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'optics' })}>
@@ -592,6 +576,14 @@ export function MoreScreen({ refreshKey, onImported, open }: {
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'ammo' })}>
           <span className="label">Ammo</span>
+          <span className="value">›</span>
+        </button>
+        <button className="row-tap" onClick={() => open({ kind: 'magazines' })}>
+          <span className="label">Magazines</span>
+          <span className="value">›</span>
+        </button>
+        <button className="row-tap" onClick={() => open({ kind: 'drills' })}>
+          <span className="label">Drills</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'costs' })}>
@@ -619,6 +611,34 @@ export function MoreScreen({ refreshKey, onImported, open }: {
           records — it won't double anything up.
         </p>
         <ImportFlow onImported={onImported} />
+      </div>
+    </div>
+  );
+}
+
+// The Guns list — its own screen now (reached from the "Data & Gear" group on
+// both the desktop sidebar and the phone More tab). Mirrors the GUNS card.
+export function GunsScreen({ refreshKey, onBack, open }: {
+  refreshKey: number; onBack: () => void; open: (v: View) => void;
+}) {
+  const { firearms, loaded } = useData(refreshKey);
+  if (!loaded) return <div className="screen" />;
+  return (
+    <div className="screen">
+      <div className="navbar">
+        <button className="back-btn" onClick={onBack}>‹ Back</button>
+        <span />
+      </div>
+      <h1 className="large-title">Guns</h1>
+      <button className="button" onClick={() => open({ kind: 'gun-form' })}>+ Add Gun</button>
+      <div className="card">
+        {firearms.length === 0 && <p className="report-note">No guns yet. Tap "+ Add Gun" to add your first one.</p>}
+        {firearms.map((f) => (
+          <button className="row-tap" key={f.id} onClick={() => open({ kind: 'gun-detail', id: f.id })}>
+            <span className="label">{f.name}</span>
+            <span className="value">{f.category} · {f.caliber} ›</span>
+          </button>
+        ))}
       </div>
     </div>
   );

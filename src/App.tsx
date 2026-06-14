@@ -3,7 +3,7 @@ import { TabBar } from './ui/TabBar.tsx';
 import type { TabId } from './ui/TabBar.tsx';
 import type { View } from './ui/nav.ts';
 import {
-  HomeScreen, LogScreen, ProgressScreen, MoreScreen
+  HomeScreen, LogScreen, ProgressScreen, MoreScreen, GunsScreen
 } from './ui/screens.tsx';
 import { CompeteScreen, ClassifierForm } from './ui/CompeteScreen.tsx';
 import { MatchDetail, MatchForm } from './ui/MatchScreens.tsx';
@@ -48,7 +48,9 @@ export function App() {
   const openSection = (v: View) => { if (view?.kind !== v.kind) push(v); };
 
   let content;
-  if (view?.kind === 'gun-detail') {
+  if (view?.kind === 'guns') {
+    content = <GunsScreen refreshKey={refreshKey} onBack={back} open={push} />;
+  } else if (view?.kind === 'gun-detail') {
     const v = view;
     content = <GunDetail id={v.id} refreshKey={refreshKey}
       onBack={back}

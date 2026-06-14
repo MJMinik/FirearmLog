@@ -13,11 +13,13 @@ const TABS: { id: TabId; label: string; glyph: string }[] = [
 ];
 
 // Desktop-only direct links to the sections that live under More on the phone.
+// Order + "Data & Gear" grouping per Michael's June 14 layout.
 const SECTIONS: { target: View; label: string; glyph: string; also: View['kind'][] }[] = [
-  { target: { kind: 'drills' }, label: 'Drills', glyph: '🎯', also: ['drill-form'] },
-  { target: { kind: 'magazines' }, label: 'Magazines', glyph: '▤', also: ['magazine-form'] },
+  { target: { kind: 'guns' }, label: 'Guns', glyph: '🔫', also: ['gun-detail', 'gun-form'] },
   { target: { kind: 'optics' }, label: 'Optics', glyph: '🔭', also: ['optic-form'] },
   { target: { kind: 'ammo' }, label: 'Ammo', glyph: '◉', also: ['ammo-form'] },
+  { target: { kind: 'magazines' }, label: 'Magazines', glyph: '▤', also: ['magazine-form'] },
+  { target: { kind: 'drills' }, label: 'Drills', glyph: '🎯', also: ['drill-form'] },
   { target: { kind: 'costs' }, label: 'Costs & Purchases', glyph: '$', also: ['purchase-form'] },
   { target: { kind: 'maintenance' }, label: 'Maintenance', glyph: '🛠', also: [] },
   { target: { kind: 'parts' }, label: 'Spare Parts & Inventory', glyph: '🔩', also: ['part-form'] },
@@ -43,7 +45,7 @@ export function TabBar({ active, onChange, view, onOpen }: {
     >
       <span className="glyph" aria-hidden="true">{t.glyph}</span>
       {t.id === 'more'
-        ? <><span className="label-phone">More</span><span className="label-desk">Guns &amp; Data</span></>
+        ? <><span className="label-phone">More</span><span className="label-desk">Settings &amp; Data</span></>
         : t.label}
     </button>
   );
@@ -52,7 +54,7 @@ export function TabBar({ active, onChange, view, onOpen }: {
     <nav className="tabbar" aria-label="Main">
       <div className="side-title" aria-hidden="true">FirearmLog</div>
       {TABS.map(tabButton)}
-      <div className="nav-group-label" aria-hidden="true">Firearms &amp; Gear</div>
+      <div className="nav-group-label" aria-hidden="true">Data &amp; Gear</div>
       {SECTIONS.map((s) => (
         <button key={s.target.kind} className={`sidebar-only ${sectionOn(s) ? 'active' : ''}`}
           aria-current={sectionOn(s) ? 'page' : undefined}
