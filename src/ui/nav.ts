@@ -22,4 +22,5 @@ export type View =
   | { kind: 'purchase-form'; id?: string }
   | { kind: 'optics' }
   | { kind: 'optic-form'; id?: string; firearmId?: string }
+  | { kind: 'parts' }
   | { kind: 'part-form'; id?: string };

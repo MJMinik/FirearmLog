@@ -17,7 +17,8 @@ import { ReferenceList, ReferenceDetail, ReferenceForm } from './ui/ReferenceScr
 import { MaintenanceOverview, MaintenanceForm } from './ui/MaintenanceScreens.tsx';
 import { AmmoScreen, AmmoForm } from './ui/AmmoScreens.tsx';
 import { CostsScreen, PurchaseForm } from './ui/CostsScreen.tsx';
-import { OpticsScreen, OpticForm, PartForm } from './ui/OpticsScreen.tsx';
+import { OpticsScreen, OpticForm } from './ui/OpticsScreen.tsx';
+import { PartsScreen, PartForm } from './ui/PartsScreen.tsx';
 
 export function App() {
   const [tab, setTabState] = useState<TabId>('home');
@@ -149,18 +150,21 @@ export function App() {
   } else if (view?.kind === 'optics') {
     content = <OpticsScreen refreshKey={refreshKey}
       onBack={back}
-      openOpticForm={(oid) => push({ kind: 'optic-form', id: oid })}
-      openPartForm={(pid) => push({ kind: 'part-form', id: pid })} />;
+      openOpticForm={(oid) => push({ kind: 'optic-form', id: oid })} />;
   } else if (view?.kind === 'optic-form') {
     const v = view;
     content = <OpticForm id={v.id} firearmId={v.firearmId}
       onCancel={back}
       onSaved={() => { refresh(); replace(v.firearmId ? { kind: 'gun-detail', id: v.firearmId } : { kind: 'optics' }); }} />;
+  } else if (view?.kind === 'parts') {
+    content = <PartsScreen refreshKey={refreshKey}
+      onBack={back}
+      openPartForm={(pid) => push({ kind: 'part-form', id: pid })} />;
   } else if (view?.kind === 'part-form') {
     const v = view;
     content = <PartForm id={v.id}
       onCancel={back}
-      onSaved={() => { refresh(); replace({ kind: 'optics' }); }} />;
+      onSaved={() => { refresh(); replace({ kind: 'parts' }); }} />;
   } else if (view?.kind === 'classifier-form') {
     const v = view;
     content = <ClassifierForm id={v.id}

@@ -16,10 +16,11 @@ const TABS: { id: TabId; label: string; glyph: string }[] = [
 const SECTIONS: { target: View; label: string; glyph: string; also: View['kind'][] }[] = [
   { target: { kind: 'drills' }, label: 'Drills', glyph: '🎯', also: ['drill-form'] },
   { target: { kind: 'magazines' }, label: 'Magazines', glyph: '▤', also: ['magazine-form'] },
-  { target: { kind: 'optics' }, label: 'Optics', glyph: '🔭', also: ['optic-form', 'part-form'] },
+  { target: { kind: 'optics' }, label: 'Optics', glyph: '🔭', also: ['optic-form'] },
   { target: { kind: 'ammo' }, label: 'Ammo', glyph: '◉', also: ['ammo-form'] },
   { target: { kind: 'costs' }, label: 'Costs & Purchases', glyph: '$', also: ['purchase-form'] },
   { target: { kind: 'maintenance' }, label: 'Maintenance', glyph: '🛠', also: [] },
+  { target: { kind: 'parts' }, label: 'Spare Parts', glyph: '🔩', also: ['part-form'] },
   { target: { kind: 'references' }, label: 'Reference', glyph: '📖', also: ['reference-detail', 'reference-form'] }
 ];
 
