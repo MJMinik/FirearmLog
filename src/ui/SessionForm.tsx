@@ -233,7 +233,8 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
     const ids = new Set<string>();
     for (const row of drills) {
       const def = drillLib.find((d) => d.name === row.name);
-      if (def?.targetId) ids.add(def.targetId);
+      const tid = def?.targetId;
+      if (tid) ids.add(tid);
     }
     return [...ids].map(targetById).filter((t): t is TargetDef => !!t);
   })();

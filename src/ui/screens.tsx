@@ -605,7 +605,7 @@ export function MoreScreen({ refreshKey, onImported, open }: {
       </div>
       <SyncCard onPulled={onImported} />
       <div className="card">
-        <h2>Settings &amp; Data</h2>
+        <h2>Gear &amp; Data</h2>
         <p className="report-note" style={{ marginBottom: 12 }}>
           Import your Pistol Tracker backup here. Running it again simply re-applies the same
           records — it won't double anything up.

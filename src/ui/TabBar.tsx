@@ -45,7 +45,7 @@ export function TabBar({ active, onChange, view, onOpen }: {
     >
       <span className="glyph" aria-hidden="true">{t.glyph}</span>
       {t.id === 'more'
-        ? <><span className="label-phone">More</span><span className="label-desk">Settings &amp; Data</span></>
+        ? <><span className="label-phone">More</span><span className="label-desk">Gear &amp; Data</span></>
         : t.label}
     </button>
   );

@@ -49,7 +49,7 @@ export function buildDrillReportHtml(
     @media print { body { padding: 0.4in 0.5in; } .close-bar { display: none; } }
   `;
 
-  const metaBits = [date ? formatDayKey(date) : '', location].filter(Boolean).map(escapeHtml).join(' · ');
+  const metaBits = [date ? formatDayKey(date) : '', location ?? ''].filter(Boolean).map(escapeHtml).join(' · ');
 
   const body = items.length === 0
     ? '<p>No drills scheduled yet.</p>'
