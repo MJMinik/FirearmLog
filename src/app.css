@@ -454,3 +454,13 @@ select { max-width: 100%; min-width: 0; }
 .pr-row:last-child { border-bottom: none; }
 .pr-row .label { font-weight: 500; }
 .pr-row .value { color: var(--text-dim); text-align: right; font-size: 15px; flex-shrink: 0; }
+
+/* Goals (Progress tab) */
+.goal-row { display: flex; align-items: flex-start; gap: 8px; min-height: var(--touch-min); padding: 8px 0; border-bottom: 0.5px solid var(--separator); }
+.goal-row:last-child { border-bottom: none; }
+.goal-row .checklist-take { align-items: flex-start; }
+.goal-add { margin-bottom: 4px; }
+
+/* Progress trends filter row */
+.chart-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }
+.chart-filters select { flex: 1; min-width: 90px; }

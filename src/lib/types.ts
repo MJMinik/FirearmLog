@@ -189,11 +189,18 @@ export interface Part extends BaseRecord, Imported {
 }
 
 export interface Goal extends BaseRecord, Imported {
-  [key: string]: unknown;
+  text: string;          // the goal, e.g. "Bill Drill under 2.0s"
+  category: string;      // optional grouping, e.g. "Speed"
+  target: string;        // optional target metric text
+  achieved: boolean;
+  dateSet: string;       // YYYY-MM-DD
+  dateAchieved: string;  // '' until achieved
 }
 
 export interface SkillAssessment extends BaseRecord, Imported {
-  [key: string]: unknown;
+  date: string;                    // YYYY-MM-DD
+  ratings: Record<string, number>; // skill-area key → 1–10
+  notes: string;
 }
 
 export interface MatchStage {

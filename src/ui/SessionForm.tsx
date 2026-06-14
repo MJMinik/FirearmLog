@@ -7,7 +7,7 @@ import type {
   MalfunctionEntry, Media, Session, SessionChecklist
 } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, getSettings, putOne, putSettings } from '../lib/db.ts';
-import { todayKey } from '../lib/dates.ts';
+import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { drillsForContext } from '../lib/drillFilter.ts';
@@ -19,6 +19,7 @@ import {
   type ChecklistCategory, addCustomItem
 } from '../lib/checklist.ts';
 import { buildDrillReportHtml } from '../lib/drillReport.ts';
+import { buildReportHtml, imageDataUrls, type ReportSection } from '../lib/reports.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { SuggestField } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
@@ -244,6 +245,39 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
     openPrintWindow(buildDrillReportHtml(items, { includeScoring, date, location }));
   }
 
+  function printSessionReport() {
+    if (!original) return;
+    const reps = original.type === 'dry_fire';
+    const gunRows = original.guns.map((g) => ({
+      label: firearms.find((f) => f.id === g.firearmId)?.name ?? '—',
+      value: `${g.rounds} ${reps ? 'reps' : 'rds'}`
+    }));
+    const drillRows = original.drills.map((dr) => [
+      dr.name, dr.distance || '—',
+      dr.time != null ? `${dr.time}s` : '—',
+      dr.score != null ? `${dr.score}${dr.maxScore != null ? '/' + dr.maxScore : ''}` : '—'
+    ]);
+    const malfRows = malfs.map((m) => [
+      m.type || '—', firearms.find((f) => f.id === m.firearmId)?.name ?? '—', m.resolution || '', m.notes || ''
+    ]);
+    const photos = imageDataUrls(existingMedia, 'session', original.id);
+    const sections: ReportSection[] = [
+      { heading: 'Session', rows: [
+        { label: 'Date', value: formatDayKey(original.date) },
+        { label: 'Kind', value: KINDS.find((k) => k.value === original.type)?.label ?? original.type },
+        ...(original.location ? [{ label: 'Where', value: original.location }] : []),
+        ...(original.instructor ? [{ label: 'Instructor', value: original.instructor }] : []),
+        ...(original.rangeFee != null ? [{ label: 'Range fee', value: '$' + original.rangeFee.toFixed(2) }] : [])
+      ] },
+      { heading: 'Guns', rows: gunRows },
+      ...(drillRows.length ? [{ heading: 'Drills', table: { headers: ['Drill', 'Distance', 'Time', 'Score'], rows: drillRows } }] : []),
+      ...(malfRows.length ? [{ heading: 'Malfunctions', table: { headers: ['Type', 'Gun', 'Cleared', 'Notes'], rows: malfRows } }] : []),
+      ...(original.notes ? [{ heading: 'Notes', rows: [{ label: '', value: original.notes }] }] : []),
+      ...(photos.length ? [{ heading: 'Photos', images: photos }] : [])
+    ];
+    openPrintWindow(buildReportHtml(`Session — ${formatDayKey(original.date)}`, original.location || '', sections));
+  }
+
   function addPickedDrills() {
     const toAdd = pickable.filter((d) => picked.has(d.id));
     setDrills((prev) => [
@@ -436,6 +470,9 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
 
       {editing && original?.planned && !convert && onConvert && (
         <button className="button" onClick={onConvert}>✓ Convert to Logged Session</button>
+      )}
+      {editing && original && (
+        <button className="button secondary" onClick={printSessionReport}>🖨️ Session Report</button>
       )}
 
       <div className="card">

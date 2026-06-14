@@ -357,8 +357,8 @@ export function importPistolTracker(
       now
     ));
 
-  const goals = carry(old.goals, 'go') as Goal[];
-  const skills = carry(old.skillAssessments, 'sk') as SkillAssessment[];
+  const goals = carry(old.goals, 'go') as unknown as Goal[];
+  const skills = carry(old.skillAssessments, 'sk') as unknown as SkillAssessment[];
   const matches = carry(old.matches, 'mt') as unknown as Match[];
   const classifiers = carry(old.classifiers, 'cl') as unknown as Classifier[];
 

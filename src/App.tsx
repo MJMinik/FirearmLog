@@ -3,8 +3,9 @@ import { TabBar } from './ui/TabBar.tsx';
 import type { TabId } from './ui/TabBar.tsx';
 import type { View } from './ui/nav.ts';
 import {
-  HomeScreen, LogScreen, ProgressScreen, MoreScreen, GunsScreen
+  HomeScreen, LogScreen, MoreScreen, GunsScreen
 } from './ui/screens.tsx';
+import { ProgressScreen } from './ui/ProgressScreen.tsx';
 import { CompeteScreen, ClassifierForm } from './ui/CompeteScreen.tsx';
 import { MatchDetail, MatchForm } from './ui/MatchScreens.tsx';
 import { GunDetail } from './ui/GunDetail.tsx';
@@ -19,6 +20,7 @@ import { AmmoScreen, AmmoForm } from './ui/AmmoScreens.tsx';
 import { CostsScreen, PurchaseForm } from './ui/CostsScreen.tsx';
 import { OpticsScreen, OpticForm } from './ui/OpticsScreen.tsx';
 import { PartsScreen, PartForm } from './ui/PartsScreen.tsx';
+import { ReportsScreen } from './ui/ReportsScreen.tsx';
 
 export function App() {
   const [tab, setTabState] = useState<TabId>('home');
@@ -171,6 +173,8 @@ export function App() {
     content = <PartForm id={v.id}
       onCancel={back}
       onSaved={() => { refresh(); replace({ kind: 'parts' }); }} />;
+  } else if (view?.kind === 'reports') {
+    content = <ReportsScreen refreshKey={refreshKey} onBack={back} />;
   } else if (view?.kind === 'classifier-form') {
     const v = view;
     content = <ClassifierForm id={v.id}
@@ -183,7 +187,7 @@ export function App() {
   } else if (tab === 'compete') {
     content = <CompeteScreen refreshKey={refreshKey} open={push} />;
   } else if (tab === 'progress') {
-    content = <ProgressScreen />;
+    content = <ProgressScreen refreshKey={refreshKey} />;
   } else {
     content = <MoreScreen refreshKey={refreshKey} onImported={refresh} open={push} />;
   }

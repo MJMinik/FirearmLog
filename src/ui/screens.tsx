@@ -79,7 +79,7 @@ function SessionRow({ s, firearms, onTap }: { s: Session; firearms: Firearm[]; o
 
 // ---- Rounds by Month bar chart (SVG, hand-rolled per spec §3.4) ----
 
-function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
+export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
   const max = Math.max(...buckets.map(b => b.total), 1);
   const barW = Math.floor(280 / buckets.length);
   const gap = 4;
@@ -547,14 +547,6 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
   );
 }
 
-export function ProgressScreen() {
-  return (
-    <div className="screen">
-      <h1 className="large-title">Progress</h1>
-      <p className="empty">Trends, personal records, and goals land here in a later build.</p>
-    </div>
-  );
-}
 
 export function MoreScreen({ refreshKey, onImported, open }: {
   refreshKey: number; onImported: () => void; open: (v: View) => void;
@@ -600,6 +592,10 @@ export function MoreScreen({ refreshKey, onImported, open }: {
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'references' })}>
           <span className="label">Reference</span>
+          <span className="value">›</span>
+        </button>
+        <button className="row-tap" onClick={() => open({ kind: 'reports' })}>
+          <span className="label">Reports</span>
           <span className="value">›</span>
         </button>
       </div>

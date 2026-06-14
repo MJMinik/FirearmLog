@@ -24,4 +24,5 @@ export type View =
   | { kind: 'optics' }
   | { kind: 'optic-form'; id?: string; firearmId?: string }
   | { kind: 'parts' }
-  | { kind: 'part-form'; id?: string };
+  | { kind: 'part-form'; id?: string }
+  | { kind: 'reports' };

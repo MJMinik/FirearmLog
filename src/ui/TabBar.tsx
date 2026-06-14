@@ -23,7 +23,8 @@ const SECTIONS: { target: View; label: string; glyph: string; also: View['kind']
   { target: { kind: 'costs' }, label: 'Costs & Purchases', glyph: '$', also: ['purchase-form'] },
   { target: { kind: 'maintenance' }, label: 'Maintenance', glyph: '🛠', also: [] },
   { target: { kind: 'parts' }, label: 'Spare Parts & Inventory', glyph: '🔩', also: ['part-form'] },
-  { target: { kind: 'references' }, label: 'Reference', glyph: '📖', also: ['reference-detail', 'reference-form'] }
+  { target: { kind: 'references' }, label: 'Reference', glyph: '📖', also: ['reference-detail', 'reference-form'] },
+  { target: { kind: 'reports' }, label: 'Reports', glyph: '📊', also: [] }
 ];
 
 export function TabBar({ active, onChange, view, onOpen }: {
