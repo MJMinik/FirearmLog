@@ -203,8 +203,15 @@ export function OpticForm({ id, firearmId, onSaved, onCancel }: {
   }
 
   // Your own past makes/models, most-recent first — the creatable-combobox list.
+  // Models are filtered to the make you've entered, so picking Trijicon only
+  // suggests Trijicon models (and a new maker suggests nothing until you add one).
+  const makeKey = make.trim().toLowerCase();
   const makeSuggestions = recentValues(allOptics.map((o) => ({ date: String(o.updatedAt), value: o.make })));
-  const modelSuggestions = recentValues(allOptics.map((o) => ({ date: String(o.updatedAt), value: o.model })));
+  const modelSuggestions = recentValues(
+    allOptics
+      .filter((o) => makeKey === '' || o.make.trim().toLowerCase() === makeKey)
+      .map((o) => ({ date: String(o.updatedAt), value: o.model }))
+  );
 
   return (
     <div className="screen">

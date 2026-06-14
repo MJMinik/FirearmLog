@@ -429,7 +429,7 @@ export function HomeScreen({ refreshKey, onImported, open }: {
               <h2>Recent Sessions</h2>
               {sessions.filter(s => !s.planned).slice(0, 5).map((s) => (
                 <SessionRow key={s.id} s={s} firearms={firearms}
-                  onTap={() => open({ kind: 'session-detail', id: s.id })} />
+                  onTap={() => open({ kind: 'session-form', id: s.id })} />
               ))}
               {sessions.filter(s => !s.planned).length === 0 && (
                 <p className="report-note">No sessions logged yet.</p>
@@ -529,7 +529,7 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
         <MonthCalendar items={calItems}
           onOpen={(it) => open(it.kind === 'match'
             ? { kind: 'match-detail', id: it.id }
-            : { kind: 'session-detail', id: it.id })} />
+            : { kind: 'session-form', id: it.id })} />
       ) : sessions.length === 0 ? (
         <p className="empty">Nothing logged yet. Tap "Log Session" after your next range trip, or import your Pistol Tracker data from the Home screen.</p>
       ) : shownSessions.length === 0 ? (
@@ -539,7 +539,7 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
           <h2>{shownSessions.length === sessions.length ? 'All Sessions' : 'Matching Sessions'}</h2>
           {shownSessions.map((s) => (
             <SessionRow key={s.id} s={s} firearms={firearms}
-              onTap={() => open({ kind: 'session-detail', id: s.id })} />
+              onTap={() => open({ kind: 'session-form', id: s.id })} />
           ))}
         </div>
       )}
@@ -603,7 +603,7 @@ export function MoreScreen({ refreshKey, onImported, open }: {
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'parts' })}>
-          <span className="label">Spare Parts</span>
+          <span className="label">Spare Parts &amp; Inventory</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'references' })}>

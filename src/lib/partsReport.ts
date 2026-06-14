@@ -1,7 +1,7 @@
 // Spare Parts inventory report (printable). Pure functions — grouping, totals,
 // and the HTML page — so the math/layout can be unit-tested without a DOM.
 // Mirrors the checklist print page's look.
-import type { Firearm, Part } from './types.ts';
+import type { Firearm, Optic, Part } from './types.ts';
 import { formatDayKey } from './dates.ts';
 
 function escapeHtml(s: string): string {
@@ -46,9 +46,17 @@ export function partsTotals(parts: Part[]): { distinct: number; quantity: number
   };
 }
 
-/** Standalone printable HTML page for the Spare Parts report. */
-export function buildPartsReportHtml(opts: { parts: Part[]; firearms: Firearm[]; today: string }): string {
+/** A readable "Make Model" label for an optic, falling back if both are blank. */
+export function opticLabel(o: Optic): string {
+  return [o.make, o.model].filter(Boolean).join(' ').trim() || 'Unnamed optic';
+}
+
+/** Standalone printable HTML page for the Spare Parts & Inventory report. */
+export function buildPartsReportHtml(opts: {
+  parts: Part[]; firearms: Firearm[]; optics?: Optic[]; today: string;
+}): string {
   const { parts, firearms, today } = opts;
+  const optics = opts.optics ?? [];
   const groups = groupParts(parts, firearms);
   const totals = partsTotals(parts);
 
@@ -88,16 +96,36 @@ export function buildPartsReportHtml(opts: { parts: Part[]; firearms: Firearm[];
       </table>
     </div>`).join('');
 
-  const body = parts.length === 0
+  const opticsHtml = optics.length === 0 ? '' : `
+    <div class="grp">
+      <div class="grp-title">🔭 Unassigned Optics (in inventory)</div>
+      <table>
+        <thead><tr><th>Optic</th><th>Dot / reticle</th><th>Zero</th><th>Notes</th></tr></thead>
+        <tbody>
+          ${optics.map((o) => `<tr>
+            <td>${escapeHtml(opticLabel(o))}</td>
+            <td>${escapeHtml(o.dotSize || '—')}</td>
+            <td>${escapeHtml(o.zeroDist || '—')}</td>
+            <td>${escapeHtml(o.notes || '')}</td>
+          </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`;
+
+  const partsHtml = parts.length === 0
     ? '<p>No spare parts logged yet.</p>'
     : `${groupHtml}<div class="totals">${totals.distinct} part${totals.distinct === 1 ? '' : 's'} on hand · ${totals.quantity} item${totals.quantity === 1 ? '' : 's'} total</div>`;
 
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Spare Parts — ${escapeHtml(today)}</title><style>${styles}</style></head>
+  const body = parts.length === 0 && optics.length === 0
+    ? '<p>Nothing in inventory yet.</p>'
+    : `${partsHtml}${opticsHtml}`;
+
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Spare Parts & Inventory — ${escapeHtml(today)}</title><style>${styles}</style></head>
   <body>
     <div class="close-bar"><button class="close-btn" onclick="window.close()">← Close &amp; return to FirearmLog</button></div>
-    <div class="app-label">FirearmLog — Spare Parts Report</div>
+    <div class="app-label">FirearmLog — Spare Parts & Inventory Report</div>
     <div class="header">
-      <h1>Spare Parts Inventory</h1>
+      <h1>Spare Parts &amp; Inventory</h1>
       <div class="meta">${escapeHtml(formatDayKey(today))}</div>
     </div>
     ${body}

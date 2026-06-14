@@ -1,38 +1,46 @@
-// Spare Parts — its own section (split out of the Optics screen, Michael's
-// June 14 request). A simple inventory that can be tied to one firearm or left
-// "Any / Universal", plus a printable Spare Parts report.
+// Spare Parts & Inventory — its own section (split out of the Optics screen,
+// Michael's June 14 request). Spare parts (tied to a gun or "Any / Universal")
+// PLUS any optic not currently mounted on a firearm, which lives here as
+// inventory until you assign it to a gun. Includes a printable report.
 import { useEffect, useState } from 'react';
-import type { Firearm, Part } from '../lib/types.ts';
+import type { Firearm, Optic, Part } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
+import { isBatteryDue } from '../lib/optics.ts';
 import { recentValues } from '../lib/suggest.ts';
-import { buildPartsReportHtml } from '../lib/partsReport.ts';
+import { buildPartsReportHtml, opticLabel } from '../lib/partsReport.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 
-export function PartsScreen({ refreshKey, onBack, openPartForm }: {
-  refreshKey: number; onBack: () => void; openPartForm: (id?: string) => void;
+export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }: {
+  refreshKey: number; onBack: () => void;
+  openPartForm: (id?: string) => void; openOpticForm: (id?: string) => void;
 }) {
   const [parts, setParts] = useState<Part[]>([]);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
+  const [unassignedOptics, setUnassignedOptics] = useState<Optic[]>([]);
   const [problem, setProblem] = useState('');
 
   useEffect(() => {
     let alive = true;
-    void Promise.all([getAll<Part>('parts'), getAll<Firearm>('firearms')]).then(([p, f]) => {
-      if (!alive) return;
-      setParts(p.sort((a, b) => a.name.localeCompare(b.name)));
-      setFirearms(f);
-    });
+    void Promise.all([getAll<Part>('parts'), getAll<Firearm>('firearms'), getAll<Optic>('optics')])
+      .then(([p, f, o]) => {
+        if (!alive) return;
+        setParts(p.sort((a, b) => a.name.localeCompare(b.name)));
+        setFirearms(f);
+        setUnassignedOptics(
+          o.filter((op) => !op.firearmId).sort((a, b) => opticLabel(a).localeCompare(opticLabel(b)))
+        );
+      });
     return () => { alive = false; };
   }, [refreshKey]);
 
   const gunName = (id: string) => firearms.find((f) => f.id === id)?.name;
 
   function printReport() {
-    const html = buildPartsReportHtml({ parts, firearms, today: todayKey() });
+    const html = buildPartsReportHtml({ parts, firearms, optics: unassignedOptics, today: todayKey() });
     const win = window.open('', '_blank');
     if (!win) { setProblem('Pop-ups blocked — please allow pop-ups and try again.'); return; }
     win.document.write(html);
@@ -41,23 +49,26 @@ export function PartsScreen({ refreshKey, onBack, openPartForm }: {
     setTimeout(() => win.print(), 400);
   }
 
+  const empty = parts.length === 0 && unassignedOptics.length === 0;
+
   return (
     <div className="screen">
       <div className="navbar">
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Spare Parts</h1>
+      <h1 className="large-title">Spare Parts &amp; Inventory</h1>
       {problem && <p className="form-problem">{problem}</p>}
 
       <button className="button" onClick={() => openPartForm()}>+ Add Part</button>
-      {parts.length > 0 && (
+      {!empty && (
         <button className="button secondary" style={{ marginTop: 8 }} onClick={printReport}>
-          🖨️ Spare Parts Report
+          🖨️ Spare Parts &amp; Inventory Report
         </button>
       )}
 
       <div className="card">
+        <h2>Spare Parts</h2>
         {parts.length === 0 && (
           <p className="report-note">
             No spare parts logged yet. Track recoil springs, extractors, optic batteries —
@@ -80,6 +91,29 @@ export function PartsScreen({ refreshKey, onBack, openPartForm }: {
           </button>
         ))}
       </div>
+
+      {unassignedOptics.length > 0 && (
+        <div className="card">
+          <h2>Unassigned Optics</h2>
+          <p className="report-note" style={{ marginBottom: 8 }}>
+            Optics not on a gun yet. Tap one to edit it or mount it on a firearm.
+          </p>
+          {unassignedOptics.map((op) => {
+            const due = isBatteryDue(op.batteryLog, new Date());
+            return (
+              <button className="row-tap" key={op.id} onClick={() => openOpticForm(op.id)}>
+                <span className="label">
+                  {opticLabel(op)}
+                  <div className="row-sub">
+                    {[op.dotSize, op.zeroDist].filter(Boolean).join(' · ') || 'Unassigned'}
+                  </div>
+                </span>
+                <span className={`badge ${due ? 'warn-badge' : 'ok'}`}>{due ? 'Battery due' : 'Active'}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

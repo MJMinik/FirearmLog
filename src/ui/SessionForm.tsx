@@ -20,7 +20,7 @@ import {
 } from '../lib/checklist.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { SuggestField } from './SuggestField.tsx';
-import { Sheet } from './Sheet.tsx';
+import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { mediaUrl } from './media.ts';
 
@@ -64,8 +64,10 @@ const fromRow = (r: DrillRow): DrillResult => ({
   notes: r.notes.trim()
 });
 
-export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel }: {
-  id?: string; initialPlanned?: boolean; convert?: boolean; onSaved: (sessionId: string) => void; onCancel: () => void;
+export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, onConvert, onDeleted }: {
+  id?: string; initialPlanned?: boolean; convert?: boolean;
+  onSaved: (sessionId: string) => void; onCancel: () => void;
+  onConvert?: () => void; onDeleted?: () => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Session | null>(null);
@@ -106,6 +108,7 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel }: 
   const [picking, setPicking] = useState(false);
   const [viewing, setViewing] = useState<Media | null>(null);
   const [saving, setSaving] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -367,6 +370,25 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel }: 
     }
   }
 
+  // Delete lives on the edit screen now (the read-only detail screen was
+  // retired). Removes the session, its photos, and its malfunctions; a real
+  // (non-planned) session's ammo goes back on the can. Planned sessions never
+  // moved stock, so nothing to return there.
+  async function reallyDelete() {
+    if (!original) return;
+    if (!original.planned) {
+      const changes = inventoryAfterUsageChange(ammoLib, original.ammoUsage ?? [], []);
+      for (const [ammoId, quantity] of changes) {
+        const can = ammoLib.find((a) => a.id === ammoId);
+        if (can) await putOne('ammunition', stampUpdate({ ...can, quantity }, Date.now()));
+      }
+    }
+    for (const m of existingMedia) await deleteOne('media', m.id);
+    for (const mid of oldMalfIds) await deleteOne('malfunctions', mid);
+    await deleteOne('sessions', original.id);
+    onDeleted?.();
+  }
+
   const visibleExisting = existingMedia.filter((m) => !removedMedia.includes(m.id));
 
   return (
@@ -379,6 +401,10 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel }: 
       </div>
       <h1 className="large-title">{convert ? 'Log Session (from Plan)' : editing ? 'Edit Session' : planned ? 'Plan Session' : 'Log Session'}</h1>
       {problem && <p className="form-problem">{problem}</p>}
+
+      {editing && original?.planned && !convert && onConvert && (
+        <button className="button" onClick={onConvert}>✓ Convert to Logged Session</button>
+      )}
 
       <div className="card">
         <h2>What Kind of Work</h2>
@@ -689,6 +715,21 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel }: 
       <button className="button" disabled={saving} onClick={() => void save()}>
         {saving ? 'Saving…' : convert ? 'Log Session' : editing ? 'Save Changes' : 'Save Session'}
       </button>
+
+      {editing && original && (
+        <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>
+          Delete Session
+        </button>
+      )}
+      {confirming && (
+        <ConfirmSheet
+          title="Delete this session?"
+          message="This removes the session, its photos, and its round counts. Ammo it used goes back on the can. There's no undo."
+          confirmLabel="Delete Session"
+          onConfirm={() => void reallyDelete()}
+          onClose={() => setConfirming(false)}
+        />
+      )}
 
       {viewing && (
         <PhotoSheet media={viewing} allowDelete={false} onClose={() => setViewing(null)}

@@ -72,6 +72,8 @@ export function App() {
     const v = view;
     content = <SessionForm id={v.id} initialPlanned={v.planned} convert={v.convert}
       onCancel={back}
+      onConvert={() => push({ kind: 'session-form', id: v.id, convert: true })}
+      onDeleted={() => { refresh(); setTab('log'); }}
       onSaved={() => { refresh(); setTab('log'); }} />;
   } else if (view?.kind === 'drills') {
     content = <DrillsScreen refreshKey={refreshKey}
@@ -159,7 +161,8 @@ export function App() {
   } else if (view?.kind === 'parts') {
     content = <PartsScreen refreshKey={refreshKey}
       onBack={back}
-      openPartForm={(pid) => push({ kind: 'part-form', id: pid })} />;
+      openPartForm={(pid) => push({ kind: 'part-form', id: pid })}
+      openOpticForm={(oid) => push({ kind: 'optic-form', id: oid })} />;
   } else if (view?.kind === 'part-form') {
     const v = view;
     content = <PartForm id={v.id}

@@ -1,11 +1,17 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Firearm, Part } from '../src/lib/types.ts';
+import type { Firearm, Optic, Part } from '../src/lib/types.ts';
 import { buildPartsReportHtml, groupParts, partsTotals } from '../src/lib/partsReport.ts';
 
 const part = (p: Partial<Part>): Part => ({
   id: 'pt-x', createdAt: 0, updatedAt: 0, firearmId: '', name: 'Part', quantity: 1,
   partNumber: '', datePurchased: '', notes: '', ...p
+});
+
+const optic = (o: Partial<Optic>): Optic => ({
+  id: 'op-x', createdAt: 0, updatedAt: 0, firearmId: '', make: 'Holosun', model: '507C',
+  installDate: '', dotSize: '', zeroDist: '', mountHeight: '', torqueSpec: '',
+  settingsSnapshot: '', batteryLog: [], notes: '', ...o
 });
 
 const gun = (id: string, name: string): Firearm =>
@@ -43,7 +49,7 @@ test('buildPartsReportHtml includes parts, group headings, totals — and escape
     part({ name: 'Cleaning patch', firearmId: '', quantity: 50 })
   ];
   const html = buildPartsReportHtml({ parts, firearms, today: '2026-06-14' });
-  assert.match(html, /Spare Parts Inventory/);
+  assert.match(html, /Spare Parts &amp; Inventory/);
   assert.match(html, /Glock 47/);
   assert.match(html, /Any \/ Universal/);
   assert.match(html, /Recoil &lt;spring&gt;/); // escaped, not raw
@@ -52,7 +58,15 @@ test('buildPartsReportHtml includes parts, group headings, totals — and escape
   assert.match(html, /54 items total/);
 });
 
-test('buildPartsReportHtml handles an empty inventory', () => {
-  const html = buildPartsReportHtml({ parts: [], firearms, today: '2026-06-14' });
-  assert.match(html, /No spare parts logged yet/);
+test('buildPartsReportHtml lists unassigned optics in their own section', () => {
+  const html = buildPartsReportHtml({
+    parts: [], firearms, optics: [optic({ make: 'Trijicon', model: 'RMR HD' })], today: '2026-06-14'
+  });
+  assert.match(html, /Unassigned Optics/);
+  assert.match(html, /Trijicon RMR HD/);
+});
+
+test('buildPartsReportHtml handles a completely empty inventory', () => {
+  const html = buildPartsReportHtml({ parts: [], firearms, optics: [], today: '2026-06-14' });
+  assert.match(html, /Nothing in inventory yet/);
 });
