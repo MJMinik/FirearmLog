@@ -23,6 +23,18 @@ function escapeHtml(s: string): string {
 
 const FIRE_LABEL: Record<string, string> = { live: 'Live fire', dry: 'Dry fire', both: 'Live & dry' };
 
+// Old Pistol Tracker stored scoring as a code; show it in plain language.
+// 'none' maps to '' so no scoring line prints. Anything else (free text the
+// user typed) passes through unchanged.
+const SCORING_LABELS: Record<string, string> = {
+  time: 'Time', score: 'Score', time_score: 'Time / Score', none: ''
+};
+
+export function scoringLabel(scoring: string): string {
+  const key = scoring.trim().toLowerCase();
+  return key in SCORING_LABELS ? SCORING_LABELS[key] : scoring;
+}
+
 /** Printable drill run-sheet. `includeScoring` shows/hides each drill's scoring. */
 export function buildDrillReportHtml(
   items: DrillReportItem[],
@@ -62,7 +74,7 @@ export function buildDrillReportHtml(
           ${d.brief ? `<div class="brief">${escapeHtml(d.brief)}</div>` : ''}
           ${d.full ? `<div class="full">${escapeHtml(d.full)}</div>` : ''}
           ${d.distance ? `<div class="row"><span class="label">Distance:</span> ${escapeHtml(d.distance)}</div>` : ''}
-          ${includeScoring && d.scoring ? `<div class="row"><span class="label">Scoring:</span> ${escapeHtml(d.scoring)}</div>` : ''}
+          ${includeScoring && scoringLabel(d.scoring) ? `<div class="row"><span class="label">Scoring:</span> ${escapeHtml(scoringLabel(d.scoring))}</div>` : ''}
         </div>`;
       }).join('');
 

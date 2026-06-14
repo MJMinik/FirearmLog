@@ -19,7 +19,6 @@ import {
   type ChecklistCategory, addCustomItem
 } from '../lib/checklist.ts';
 import { buildDrillReportHtml } from '../lib/drillReport.ts';
-import { buildTargetsPrintHtml, targetById, type TargetDef } from '../lib/targets.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { SuggestField } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
@@ -228,17 +227,6 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
     openPrintWindow(buildChecklistPrintHtml({ date, location, notes, checklist, custom: customItems, firearms }));
   }
 
-  // Distinct printable targets linked to the drills scheduled on this session.
-  const sessionTargets: TargetDef[] = (() => {
-    const ids = new Set<string>();
-    for (const row of drills) {
-      const def = drillLib.find((d) => d.name === row.name);
-      const tid = def?.targetId;
-      if (tid) ids.add(tid);
-    }
-    return [...ids].map(targetById).filter((t): t is TargetDef => !!t);
-  })();
-
   function printDrills() {
     const items = drills.map((row) => {
       const def = drillLib.find((d) => d.name === row.name);
@@ -254,10 +242,6 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
       };
     });
     openPrintWindow(buildDrillReportHtml(items, { includeScoring, date, location }));
-  }
-
-  function printTargets() {
-    openPrintWindow(buildTargetsPrintHtml(sessionTargets));
   }
 
   function addPickedDrills() {
@@ -662,16 +646,11 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
             <label className="checklist-take" style={{ marginTop: 12 }}>
               <input type="checkbox" checked={includeScoring}
                 onChange={(e) => setIncludeScoring(e.target.checked)} />
-              Include scoring on the Print Drill report
+              Include scoring on the Print Drills report
             </label>
             <button className="button secondary" style={{ marginTop: 8 }} onClick={printDrills}>
-              🖨️ Print Drill
+              🖨️ Print Drills
             </button>
-            {sessionTargets.length > 0 && (
-              <button className="button secondary" style={{ marginTop: 8 }} onClick={printTargets}>
-                🎯 Print Targets
-              </button>
-            )}
           </>
         )}
       </div>

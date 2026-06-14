@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDrillReportHtml, type DrillReportItem } from '../src/lib/drillReport.ts';
+import { buildDrillReportHtml, scoringLabel, type DrillReportItem } from '../src/lib/drillReport.ts';
 
 const item = (o: Partial<DrillReportItem>): DrillReportItem => ({
   name: 'Bill Drill', fire: 'live', gunCategories: ['Pistol'],
@@ -24,6 +24,20 @@ test('includeScoring shows or hides the scoring line', () => {
   const without = buildDrillReportHtml([item({})], { includeScoring: false });
   assert.match(withScore, /Par 2\.0s/);
   assert.doesNotMatch(without, /Par 2\.0s/);
+});
+
+test('scoringLabel humanizes the old codes, hides none, passes free text through', () => {
+  assert.equal(scoringLabel('time_score'), 'Time / Score');
+  assert.equal(scoringLabel('time'), 'Time');
+  assert.equal(scoringLabel('score'), 'Score');
+  assert.equal(scoringLabel('none'), '');
+  assert.equal(scoringLabel('Par 2.0s'), 'Par 2.0s');
+});
+
+test('report shows the humanized scoring code, not the raw value', () => {
+  const html = buildDrillReportHtml([item({ scoring: 'time_score' })], { includeScoring: true });
+  assert.match(html, /Time \/ Score/);
+  assert.doesNotMatch(html, /time_score/);
 });
 
 test('drill report escapes user text and handles an empty list', () => {

@@ -108,8 +108,6 @@ export interface DrillDef extends BaseRecord, Imported {
   scoring: string;
   requiresHolster: boolean;
   tags: string[];
-  /** Optional link to a built-in printable target (src/lib/targets.ts). '' / undefined = none. */
-  targetId?: string;
 }
 
 export interface Ammunition extends BaseRecord, Imported {

@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "node scripts/check-imports.mjs && node --experimental-strip-types --test tests/dates.test.ts tests/stamps.test.ts tests/stats.test.ts tests/drillFilter.test.ts tests/maintenance.test.ts tests/customRef.test.ts tests/competition.test.ts tests/zip.test.ts tests/flog.test.ts tests/pistolTracker.test.ts tests/costing.test.ts tests/suggest.test.ts tests/ammoMerge.test.ts tests/searchFilter.test.ts tests/dashboard.test.ts tests/checklist.test.ts tests/optics.test.ts tests/partsReport.test.ts tests/targets.test.ts tests/drillReport.test.ts",
+    "test": "node scripts/check-imports.mjs && node --experimental-strip-types --test tests/dates.test.ts tests/stamps.test.ts tests/stats.test.ts tests/drillFilter.test.ts tests/maintenance.test.ts tests/customRef.test.ts tests/competition.test.ts tests/zip.test.ts tests/flog.test.ts tests/pistolTracker.test.ts tests/costing.test.ts tests/suggest.test.ts tests/ammoMerge.test.ts tests/searchFilter.test.ts tests/dashboard.test.ts tests/checklist.test.ts tests/optics.test.ts tests/partsReport.test.ts tests/drillReport.test.ts",
     "verify-real": "node --experimental-strip-types scripts/verify-real-import.ts"
   },
   "dependencies": {
