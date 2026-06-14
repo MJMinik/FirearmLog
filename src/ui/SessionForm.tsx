@@ -18,6 +18,8 @@ import {
   normalizeChecklist, normalizeCustomItems, setChecklistMode, setItemPacked, setItemTake,
   type ChecklistCategory, addCustomItem
 } from '../lib/checklist.ts';
+import { buildDrillReportHtml } from '../lib/drillReport.ts';
+import { buildTargetsPrintHtml, targetById, type TargetDef } from '../lib/targets.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { SuggestField } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
@@ -106,6 +108,8 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
   });
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [picking, setPicking] = useState(false);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [includeScoring, setIncludeScoring] = useState(true);
   const [viewing, setViewing] = useState<Media | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -211,14 +215,57 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
     await putSettings<AppSettings>({ checklistCustomItems: next });
   }
 
-  function printChecklist() {
-    const html = buildChecklistPrintHtml({ date, location, notes, checklist, custom: customItems, firearms });
+  function openPrintWindow(html: string) {
     const win = window.open('', '_blank');
     if (!win) { setProblem('Pop-ups blocked — please allow pop-ups and try again.'); return; }
     win.document.write(html);
     win.document.close();
     win.focus();
     setTimeout(() => win.print(), 400);
+  }
+
+  function printChecklist() {
+    openPrintWindow(buildChecklistPrintHtml({ date, location, notes, checklist, custom: customItems, firearms }));
+  }
+
+  // Distinct printable targets linked to the drills scheduled on this session.
+  const sessionTargets: TargetDef[] = (() => {
+    const ids = new Set<string>();
+    for (const row of drills) {
+      const def = drillLib.find((d) => d.name === row.name);
+      if (def?.targetId) ids.add(def.targetId);
+    }
+    return [...ids].map(targetById).filter((t): t is TargetDef => !!t);
+  })();
+
+  function printDrills() {
+    const items = drills.map((row) => {
+      const def = drillLib.find((d) => d.name === row.name);
+      return {
+        name: row.name,
+        fire: def?.fire ?? 'live',
+        gunCategories: def?.gunCategories ?? [],
+        brief: def?.briefDescription ?? '',
+        full: def?.fullDescription ?? '',
+        scoring: def?.scoring ?? '',
+        requiresHolster: def?.requiresHolster ?? false,
+        distance: row.distance
+      };
+    });
+    openPrintWindow(buildDrillReportHtml(items, { includeScoring, date, location }));
+  }
+
+  function printTargets() {
+    openPrintWindow(buildTargetsPrintHtml(sessionTargets));
+  }
+
+  function addPickedDrills() {
+    const toAdd = pickable.filter((d) => picked.has(d.id));
+    setDrills((prev) => [
+      ...prev,
+      ...toAdd.map((d) => ({ name: d.name, distance: '', time: '', score: '', maxScore: '', notes: '' }))
+    ]);
+    setPicking(false);
   }
 
   function checklistSection(cat: ChecklistCategory, title: string, icon: string) {
@@ -607,7 +654,25 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
             </label>
           </div>
         ))}
-        <button className="button secondary" onClick={() => setPicking(true)}>+ Add Drill</button>
+        <button className="button secondary" onClick={() => { setPicked(new Set()); setPicking(true); }}>+ Add Drill</button>
+
+        {drills.length > 0 && (
+          <>
+            <label className="checklist-take" style={{ marginTop: 12 }}>
+              <input type="checkbox" checked={includeScoring}
+                onChange={(e) => setIncludeScoring(e.target.checked)} />
+              Include scoring on the Print Drill report
+            </label>
+            <button className="button secondary" style={{ marginTop: 8 }} onClick={printDrills}>
+              🖨️ Print Drill
+            </button>
+            {sessionTargets.length > 0 && (
+              <button className="button secondary" style={{ marginTop: 8 }} onClick={printTargets}>
+                🎯 Print Targets
+              </button>
+            )}
+          </>
+        )}
       </div>
 
       {!planned && (
@@ -739,22 +804,35 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
           }} />
       )}
       {picking && (
-        <Sheet title="Pick a Drill" onClose={() => setPicking(false)}>
+        <Sheet title="Pick Drills" onClose={() => setPicking(false)}>
           {pickable.length === 0 && (
             <p className="report-note">
               No drills fit this setup yet ({selectedCategories.join(', ') || 'no gun picked'} ·{' '}
               {kind === 'dry_fire' ? 'dry fire' : 'live fire'}).
             </p>
           )}
-          {pickable.map((d) => (
-            <button key={d.id} className="drill-pick-row" onClick={() => {
-              setDrills((prev) => [...prev, { name: d.name, distance: '', time: '', score: '', maxScore: '', notes: '' }]);
-              setPicking(false);
-            }}>
-              <strong>{d.name}</strong>
-              {d.briefDescription && <span>{d.briefDescription}</span>}
+          {pickable.length > 0 && (
+            <p className="report-note">Tap to select one or more, then Add.</p>
+          )}
+          {pickable.map((d) => {
+            const on = picked.has(d.id);
+            return (
+              <button key={d.id} className={`drill-pick-row ${on ? 'on' : ''}`} aria-pressed={on}
+                onClick={() => setPicked((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(d.id)) next.delete(d.id); else next.add(d.id);
+                  return next;
+                })}>
+                <strong>{on ? '☑' : '☐'} {d.name}</strong>
+                {d.briefDescription && <span>{d.briefDescription}</span>}
+              </button>
+            );
+          })}
+          {pickable.length > 0 && (
+            <button className="button" style={{ marginTop: 12 }} disabled={picked.size === 0} onClick={addPickedDrills}>
+              Add{picked.size > 0 ? ` ${picked.size}` : ''} {picked.size === 1 ? 'Drill' : 'Drills'}
             </button>
-          ))}
+          )}
         </Sheet>
       )}
     </div>

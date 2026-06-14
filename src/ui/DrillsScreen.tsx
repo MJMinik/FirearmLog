@@ -6,6 +6,7 @@ import { GUN_CATEGORIES } from '../lib/types.ts';
 import { getAll, getOne, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
+import { STANDARD_TARGETS } from '../lib/targets.ts';
 
 const FIRE_LABEL: Record<DrillDef['fire'], string> = {
   live: 'Live fire', dry: 'Dry fire', both: 'Live & dry'
@@ -58,6 +59,7 @@ export function DrillForm({ id, onSaved, onCancel }: {
   const [full, setFull] = useState('');
   const [scoring, setScoring] = useState('');
   const [holster, setHolster] = useState(false);
+  const [targetId, setTargetId] = useState('');
   const [problem, setProblem] = useState('');
 
   useEffect(() => {
@@ -69,6 +71,7 @@ export function DrillForm({ id, onSaved, onCancel }: {
       setName(d.name); setFire(d.fire); setCats(d.gunCategories);
       setBrief(d.briefDescription); setFull(d.fullDescription);
       setScoring(d.scoring); setHolster(d.requiresHolster);
+      setTargetId(d.targetId ?? '');
     });
     return () => { alive = false; };
   }, [id]);
@@ -83,7 +86,7 @@ export function DrillForm({ id, onSaved, onCancel }: {
     const fields = {
       name: name.trim(), fire, gunCategories: cats,
       briefDescription: brief.trim(), fullDescription: full.trim(),
-      scoring: scoring.trim(), requiresHolster: holster
+      scoring: scoring.trim(), requiresHolster: holster, targetId
     };
     if (original) {
       await putOne('drills', stampUpdate({ ...original, ...fields }, Date.now()));
@@ -135,6 +138,12 @@ export function DrillForm({ id, onSaved, onCancel }: {
         </label>
         <label className="field">Scoring (time, points, pass/fail…)
           <input value={scoring} onChange={(e) => setScoring(e.target.value)} />
+        </label>
+        <label className="field">Printable target
+          <select value={targetId} onChange={(e) => setTargetId(e.target.value)}>
+            <option value="">None</option>
+            {STANDARD_TARGETS.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+          </select>
         </label>
         <div className="row">
           <button className={`gun-toggle ${holster ? 'on' : ''}`} aria-pressed={holster}
