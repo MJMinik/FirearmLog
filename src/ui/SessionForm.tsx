@@ -177,21 +177,20 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel }: 
     [drillLib, selectedCategories, kind]
   );
 
-  function toggleGun(fid: string) {
+  // Guns & Rounds and the Gear Checklist's Firearms list stay in lockstep
+  // (Michael's June 14 request): turning a gun on or off in EITHER place
+  // adds or removes it in the other. Removing also clears its "packed" mark
+  // (setItemTake(..., false) does that). Heads-up: removing a gun this way
+  // drops any rounds already typed for it — that's the two-way behavior asked
+  // for, so removal is intentional, not a slip.
+  function syncGun(fid: string, on: boolean) {
     setRounds((prev) => {
       const next = { ...prev };
-      if (next[fid] !== undefined) delete next[fid];
-      else next[fid] = '';
+      if (on) { if (next[fid] === undefined) next[fid] = ''; }
+      else delete next[fid];
       return next;
     });
-  }
-
-  // Checking "take" for a firearm in the Gear Checklist also selects it in
-  // Guns & Rounds (so it counts toward "Pick at least one gun" and gets a
-  // rounds field). Unchecking "take" leaves Guns & Rounds alone, so any
-  // rounds already entered there aren't lost.
-  function addGunFromChecklist(fid: string) {
-    setRounds((prev) => (prev[fid] !== undefined ? prev : { ...prev, [fid]: '' }));
+    setChecklist((cl) => setItemTake(cl, `f_${fid}`, on));
   }
 
   const checklistProgressInfo = useMemo(
@@ -424,7 +423,8 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel }: 
           const on = rounds[f.id] !== undefined;
           return (
             <div className="row" key={f.id}>
-              <button className={`gun-toggle ${on ? 'on' : ''}`} aria-pressed={on} onClick={() => toggleGun(f.id)}>
+              <button className={`gun-toggle ${on ? 'on' : ''}`} aria-pressed={on}
+                onClick={() => syncGun(f.id, rounds[f.id] === undefined)}>
                 {f.name}
               </button>
               {on && (
@@ -472,10 +472,7 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel }: 
                     <div className="checklist-item" key={f.id}>
                       <label className="checklist-take">
                         <input type="checkbox" checked={!!state.take}
-                          onChange={(e) => {
-                            setChecklist((cl) => setItemTake(cl, itemId, e.target.checked));
-                            if (e.target.checked) addGunFromChecklist(f.id);
-                          }} />
+                          onChange={(e) => syncGun(f.id, e.target.checked)} />
                         {f.name}
                       </label>
                       {state.take && (

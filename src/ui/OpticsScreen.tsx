@@ -8,7 +8,9 @@ import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { isBatteryDue, normalizeBatteryLog } from '../lib/optics.ts';
+import { recentValues } from '../lib/suggest.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
+import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 
 export function OpticsScreen({ refreshKey, onBack, openOpticForm, openPartForm }: {
   refreshKey: number; onBack: () => void;
@@ -40,7 +42,7 @@ export function OpticsScreen({ refreshKey, onBack, openOpticForm, openPartForm }
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Optics &amp; Gear</h1>
+      <h1 className="large-title">Optics</h1>
 
       <button className="button" onClick={() => openOpticForm()}>+ Add Optic</button>
       {optics.length === 0 && (
@@ -153,7 +155,8 @@ function BatteryLogSheet({ optic, onClose, onSaved }: {
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       </label>
       <label className="field">Notes (optional)
-        <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="CR2032, etc." />
+        <input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="CR2032, etc."
+          {...noAutofillProps} name="fl-battery-notes" />
       </label>
       <button className="button" onClick={() => void save()}>Save</button>
     </Sheet>
@@ -165,6 +168,7 @@ export function OpticForm({ id, firearmId, onSaved, onCancel }: {
 }) {
   const [original, setOriginal] = useState<Optic | null>(null);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
+  const [allOptics, setAllOptics] = useState<Optic[]>([]);
   const [firearmIdSel, setFirearmIdSel] = useState('');
   const [make, setMake] = useState('');
   const [model, setModel] = useState('');
@@ -183,6 +187,7 @@ export function OpticForm({ id, firearmId, onSaved, onCancel }: {
     void getAll<Firearm>('firearms').then((f) => {
       if (alive) setFirearms(f.sort((a, b) => a.name.localeCompare(b.name)));
     });
+    void getAll<Optic>('optics').then((o) => { if (alive) setAllOptics(o); });
     if (id !== undefined) {
       void getOne<Optic>('optics', id).then((o) => {
         if (!alive || !o) return;
@@ -221,6 +226,10 @@ export function OpticForm({ id, firearmId, onSaved, onCancel }: {
     onSaved();
   }
 
+  // Your own past makes/models, most-recent first — the creatable-combobox list.
+  const makeSuggestions = recentValues(allOptics.map((o) => ({ date: String(o.updatedAt), value: o.make })));
+  const modelSuggestions = recentValues(allOptics.map((o) => ({ date: String(o.updatedAt), value: o.model })));
+
   return (
     <div className="screen">
       <div className="navbar">
@@ -236,26 +245,28 @@ export function OpticForm({ id, firearmId, onSaved, onCancel }: {
             {firearms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </label>
-        <label className="field">Make
-          <input value={make} onChange={(e) => setMake(e.target.value)} placeholder="Trijicon" />
-        </label>
-        <label className="field">Model
-          <input value={model} onChange={(e) => setModel(e.target.value)} placeholder="RMR Type 2" />
-        </label>
+        <SuggestField label="Make" value={make} onChange={setMake} name="fl-optic-make"
+          suggestions={makeSuggestions} placeholder="Trijicon" />
+        <SuggestField label="Model" value={model} onChange={setModel} name="fl-optic-model"
+          suggestions={modelSuggestions} placeholder="RMR Type 2" />
         <label className="field">Install date
           <input type="date" value={installDate} onChange={(e) => setInstallDate(e.target.value)} />
         </label>
         <label className="field">Dot / reticle size
-          <input value={dotSize} onChange={(e) => setDotSize(e.target.value)} placeholder="3.25 MOA" />
+          <input value={dotSize} onChange={(e) => setDotSize(e.target.value)} placeholder="3.25 MOA"
+            {...noAutofillProps} name="fl-optic-dot" />
         </label>
         <label className="field">Zero distance
-          <input value={zeroDist} onChange={(e) => setZeroDist(e.target.value)} placeholder="25 yards" />
+          <input value={zeroDist} onChange={(e) => setZeroDist(e.target.value)} placeholder="25 yards"
+            {...noAutofillProps} name="fl-optic-zero" />
         </label>
         <label className="field">Mount / co-witness height
-          <input value={mountHeight} onChange={(e) => setMountHeight(e.target.value)} placeholder="Lower 1/3" />
+          <input value={mountHeight} onChange={(e) => setMountHeight(e.target.value)} placeholder="Lower 1/3"
+            {...noAutofillProps} name="fl-optic-mount" />
         </label>
         <label className="field">Torque spec
-          <input value={torqueSpec} onChange={(e) => setTorqueSpec(e.target.value)} placeholder="15 in-lbs" />
+          <input value={torqueSpec} onChange={(e) => setTorqueSpec(e.target.value)} placeholder="15 in-lbs"
+            {...noAutofillProps} name="fl-optic-torque" />
         </label>
         <label className="field">Settings snapshot
           <textarea rows={3} value={settingsSnapshot} onChange={(e) => setSettingsSnapshot(e.target.value)}
@@ -289,6 +300,7 @@ export function PartForm({ id, onSaved, onCancel }: {
 }) {
   const [original, setOriginal] = useState<Part | null>(null);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
+  const [allParts, setAllParts] = useState<Part[]>([]);
   const [firearmIdSel, setFirearmIdSel] = useState('');
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('1');
@@ -303,6 +315,7 @@ export function PartForm({ id, onSaved, onCancel }: {
     void getAll<Firearm>('firearms').then((f) => {
       if (alive) setFirearms(f.sort((a, b) => a.name.localeCompare(b.name)));
     });
+    void getAll<Part>('parts').then((p) => { if (alive) setAllParts(p); });
     if (id !== undefined) {
       void getOne<Part>('parts', id).then((p) => {
         if (!alive || !p) return;
@@ -336,6 +349,9 @@ export function PartForm({ id, onSaved, onCancel }: {
     onSaved();
   }
 
+  // Your own past part names, most-recent first — the creatable-combobox list.
+  const nameSuggestions = recentValues(allParts.map((p) => ({ date: String(p.updatedAt), value: p.name })));
+
   return (
     <div className="screen">
       <div className="navbar">
@@ -345,9 +361,8 @@ export function PartForm({ id, onSaved, onCancel }: {
       <h1 className="large-title">{original ? 'Edit Part' : 'New Part'}</h1>
       {problem && <p className="form-problem">{problem}</p>}
       <div className="card">
-        <label className="field">Part name
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Recoil spring" />
-        </label>
+        <SuggestField label="Part name" value={name} onChange={setName} name="fl-part-name"
+          suggestions={nameSuggestions} placeholder="Recoil spring" />
         <label className="field">Firearm
           <select value={firearmIdSel} onChange={(e) => setFirearmIdSel(e.target.value)}>
             <option value="">Any / Universal</option>
@@ -359,7 +374,8 @@ export function PartForm({ id, onSaved, onCancel }: {
             onChange={(e) => setQuantity(e.target.value)} />
         </label>
         <label className="field">Part number
-          <input value={partNumber} onChange={(e) => setPartNumber(e.target.value)} />
+          <input value={partNumber} onChange={(e) => setPartNumber(e.target.value)}
+            {...noAutofillProps} name="fl-part-number" />
         </label>
         <label className="field">Date purchased
           <input type="date" value={datePurchased} onChange={(e) => setDatePurchased(e.target.value)} />
