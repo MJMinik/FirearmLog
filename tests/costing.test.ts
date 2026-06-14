@@ -122,6 +122,24 @@ test('costTotals: every dollar lands in exactly one bucket', () => {
   assert.equal(t.total, 997);
 });
 
+test('parts: spare-part costs flow into totals and per-gun spend', () => {
+  const parts = [
+    { firearmId: 'fa-1', cost: 40, datePurchased: '2026-05-01' }, // recoil spring for fa-1
+    { firearmId: 'fa-1', cost: 15 },                              // extractor for fa-1
+    { firearmId: '', cost: 25 },                                  // universal — not gun-specific
+    { firearmId: 'fa-2', cost: '12' }                             // string cost tolerated
+  ];
+  const t = costTotals([], [], [], parts);
+  assert.equal(t.parts, 92); // 40 + 15 + 25 + 12
+  assert.equal(t.total, 92);
+
+  const g1 = gunSpend('fa-1', [], [], [], [], parts);
+  assert.equal(g1.parts, 55); // 40 + 15; universal excluded
+  assert.equal(g1.total, 55);
+
+  assert.equal(gunSpend('fa-2', [], [], [], [], parts).parts, 12);
+});
+
 test('matchFee: entryFee wins, old `cost` field honored, junk ignored', () => {
   assert.equal(matchFee({ entryFee: 25, cost: 99 }), 25);
   assert.equal(matchFee({ cost: 30 }), 30);

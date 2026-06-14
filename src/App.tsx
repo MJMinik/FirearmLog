@@ -143,7 +143,8 @@ export function App() {
   } else if (view?.kind === 'costs') {
     content = <CostsScreen refreshKey={refreshKey}
       onBack={back}
-      openForm={(pid) => push({ kind: 'purchase-form', id: pid })} />;
+      openForm={(pid) => push({ kind: 'purchase-form', id: pid })}
+      openPart={(pid) => push({ kind: 'part-form', id: pid })} />;
   } else if (view?.kind === 'purchase-form') {
     const v = view;
     content = <PurchaseForm id={v.id}

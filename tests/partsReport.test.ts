@@ -38,9 +38,9 @@ test('groupParts: a missing firearm falls back to a dash heading', () => {
   assert.equal(groups[0].heading, '—');
 });
 
-test('partsTotals sums distinct records and quantities', () => {
-  const parts = [part({ quantity: 3 }), part({ quantity: 2 }), part({ quantity: 0 })];
-  assert.deepEqual(partsTotals(parts), { distinct: 3, quantity: 5 });
+test('partsTotals sums distinct records, quantities, and cost', () => {
+  const parts = [part({ quantity: 3, cost: 40 }), part({ quantity: 2, cost: 15 }), part({ quantity: 0 })];
+  assert.deepEqual(partsTotals(parts), { distinct: 3, quantity: 5, cost: 55 });
 });
 
 test('buildPartsReportHtml includes parts, group headings, totals — and escapes', () => {

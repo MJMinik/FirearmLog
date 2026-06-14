@@ -38,11 +38,12 @@ export function groupParts(parts: Part[], firearms: Firearm[]): PartsGroup[] {
   return groups;
 }
 
-/** Distinct part records and the sum of their quantities. */
-export function partsTotals(parts: Part[]): { distinct: number; quantity: number } {
+/** Distinct part records, the sum of their quantities, and total spent. */
+export function partsTotals(parts: Part[]): { distinct: number; quantity: number; cost: number } {
   return {
     distinct: parts.length,
-    quantity: parts.reduce((t, p) => t + (Number.isFinite(p.quantity) ? p.quantity : 0), 0)
+    quantity: parts.reduce((t, p) => t + (Number.isFinite(p.quantity) ? p.quantity : 0), 0),
+    cost: parts.reduce((t, p) => t + (typeof p.cost === 'number' && Number.isFinite(p.cost) ? p.cost : 0), 0)
   };
 }
 
@@ -83,11 +84,12 @@ export function buildPartsReportHtml(opts: {
     <div class="grp">
       <div class="grp-title">${escapeHtml(g.heading)}</div>
       <table>
-        <thead><tr><th>Part</th><th class="qty">Qty</th><th>Part #</th><th>Purchased</th><th>Notes</th></tr></thead>
+        <thead><tr><th>Part</th><th class="qty">Qty</th><th class="qty">Cost</th><th>Part #</th><th>Purchased</th><th>Notes</th></tr></thead>
         <tbody>
           ${g.parts.map((p) => `<tr>
             <td>${escapeHtml(p.name)}</td>
             <td class="qty">${Number.isFinite(p.quantity) ? p.quantity : 0}</td>
+            <td class="qty">${typeof p.cost === 'number' && Number.isFinite(p.cost) ? '$' + p.cost.toFixed(2) : '—'}</td>
             <td>${escapeHtml(p.partNumber || '—')}</td>
             <td>${p.datePurchased ? escapeHtml(formatDayKey(p.datePurchased)) : '—'}</td>
             <td>${escapeHtml(p.notes || '')}</td>
@@ -114,7 +116,7 @@ export function buildPartsReportHtml(opts: {
 
   const partsHtml = parts.length === 0
     ? '<p>No spare parts logged yet.</p>'
-    : `${groupHtml}<div class="totals">${totals.distinct} part${totals.distinct === 1 ? '' : 's'} on hand · ${totals.quantity} item${totals.quantity === 1 ? '' : 's'} total</div>`;
+    : `${groupHtml}<div class="totals">${totals.distinct} part${totals.distinct === 1 ? '' : 's'} on hand · ${totals.quantity} item${totals.quantity === 1 ? '' : 's'} total${totals.cost > 0 ? ` · $${totals.cost.toFixed(2)} spent` : ''}</div>`;
 
   const body = parts.length === 0 && optics.length === 0
     ? '<p>Nothing in inventory yet.</p>'

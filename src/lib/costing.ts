@@ -44,6 +44,18 @@ export interface AmmoLike {
   costPerRound: number;
 }
 
+/** A spare part as a cost source: what you paid, and the gun it's tied to (if any). */
+export interface PartCostLike {
+  firearmId?: string;
+  cost?: unknown;
+  datePurchased?: string;
+}
+
+/** Total spent on spare parts. */
+export function partsTotalCost(parts: PartCostLike[]): number {
+  return parts.reduce((t, p) => t + money(p.cost), 0);
+}
+
 const money = (v: unknown): number =>
   typeof v === 'number' && Number.isFinite(v) ? v
     : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v)
@@ -229,6 +241,7 @@ export interface CostTotals {
   ammoBought: number;   // money handed over for ammo (purchases)
   rangeFees: number;    // session fees + purchases categorized "Range Fee"
   matchFees: number;    // match entry fees (single source — spec §12.2)
+  parts: number;        // spare parts (single source — the Part record itself)
   gearAndOther: number; // every remaining purchase category
   total: number;        // each dollar counted exactly once
 }
@@ -236,7 +249,8 @@ export interface CostTotals {
 export function costTotals(
   sessions: CostSessionLike[],
   purchases: CostPurchaseLike[],
-  matches: CostMatchLike[]
+  matches: CostMatchLike[],
+  parts: PartCostLike[] = []
 ): CostTotals {
   let ammoBought = 0, rangeFees = 0, gearAndOther = 0;
   for (const p of purchases) {
@@ -249,9 +263,10 @@ export function costTotals(
     if (!s.planned) rangeFees += money(s.rangeFee);
   }
   const matchFees = matches.reduce((t, m) => t + matchFee(m), 0);
+  const partsCost = partsTotalCost(parts);
   return {
-    ammoBought, rangeFees, matchFees, gearAndOther,
-    total: ammoBought + rangeFees + matchFees + gearAndOther
+    ammoBought, rangeFees, matchFees, parts: partsCost, gearAndOther,
+    total: ammoBought + rangeFees + matchFees + partsCost + gearAndOther
   };
 }
 
@@ -268,18 +283,21 @@ export function roundsFired(sessions: CostSessionLike[], matches: CostMatchLike[
   return total;
 }
 
-export interface GunSpend { ammo: number; rangeFees: number; matchFees: number; total: number }
+export interface GunSpend { ammo: number; rangeFees: number; matchFees: number; parts: number; total: number }
 
 /**
  * What one gun has cost to feed and run: its prorated share of every
- * session's ammo cost and range fee, plus entry fees for matches it shot.
+ * session's ammo cost and range fee, plus entry fees for matches it shot,
+ * plus spare parts tied to this gun. (Universal parts aren't gun-specific, so
+ * they land in the overall totals but not in any one gun's spend.)
  */
 export function gunSpend(
   firearmId: string,
   sessions: CostSessionLike[],
   purchases: CostPurchaseLike[],
   matches: CostMatchLike[],
-  ammo: AmmoLike[]
+  ammo: AmmoLike[],
+  parts: PartCostLike[] = []
 ): GunSpend {
   const fifo = computeFifoCosts(purchases, sessions);
   let ammoCost = 0, rangeFees = 0;
@@ -293,7 +311,13 @@ export function gunSpend(
   const matchFees = matches
     .filter((m) => m.firearmId === firearmId)
     .reduce((t, m) => t + matchFee(m), 0);
-  return { ammo: ammoCost, rangeFees, matchFees, total: ammoCost + rangeFees + matchFees };
+  const partsCost = parts
+    .filter((p) => p.firearmId === firearmId)
+    .reduce((t, p) => t + money(p.cost), 0);
+  return {
+    ammo: ammoCost, rangeFees, matchFees, parts: partsCost,
+    total: ammoCost + rangeFees + matchFees + partsCost
+  };
 }
 
 // ---- Inventory ----

@@ -3,7 +3,7 @@
 // matches (the single-source rule) — purchases cover everything else. Per-gun
 // spend prorates multi-gun sessions by rounds (the old F2 bug, now unit-tested).
 import { useEffect, useState } from 'react';
-import type { Ammunition, Firearm, Match, Purchase, Session } from '../lib/types.ts';
+import type { Ammunition, Firearm, Match, Part, Purchase, Session } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
@@ -22,28 +22,31 @@ const CATEGORIES = [
 const dollars = (n: number): string =>
   '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export function CostsScreen({ refreshKey, onBack, openForm }: {
-  refreshKey: number; onBack: () => void; openForm: (id?: string) => void;
+export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
+  refreshKey: number; onBack: () => void;
+  openForm: (id?: string) => void; openPart: (id?: string) => void;
 }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [ammo, setAmmo] = useState<Ammunition[]>([]);
+  const [parts, setParts] = useState<Part[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
     let alive = true;
     void Promise.all([
       getAll<Session>('sessions'), getAll<Purchase>('purchases'), getAll<Match>('matches'),
-      getAll<Firearm>('firearms'), getAll<Ammunition>('ammunition')
-    ]).then(([s, p, m, f, a]) => {
+      getAll<Firearm>('firearms'), getAll<Ammunition>('ammunition'), getAll<Part>('parts')
+    ]).then(([s, p, m, f, a, pt]) => {
       if (!alive) return;
       setSessions(s);
       setPurchases(p.sort((x, y) => y.date.localeCompare(x.date)));
       setMatches(m);
       setFirearms(f);
       setAmmo(a);
+      setParts(pt);
       setLoaded(true);
     });
     return () => { alive = false; };
@@ -53,8 +56,11 @@ export function CostsScreen({ refreshKey, onBack, openForm }: {
 
   const year = todayKey().slice(0, 4);
   const inYear = <T extends { date: string }>(rows: T[]) => rows.filter((r) => r.date.startsWith(year));
-  const all = costTotals(sessions, purchases, matches);
-  const ytd = costTotals(inYear(sessions), inYear(purchases), inYear(matches));
+  const inYearParts = parts.filter((p) => (p.datePurchased || '').startsWith(year));
+  const costedParts = parts.filter((p) => p.cost != null)
+    .sort((a, b) => (b.datePurchased || '').localeCompare(a.datePurchased || ''));
+  const all = costTotals(sessions, purchases, matches, parts);
+  const ytd = costTotals(inYear(sessions), inYear(purchases), inYear(matches), inYearParts);
   const fired = roundsFired(sessions, matches);
   const allIn = fired > 0 && all.total > 0 ? all.total / fired : null;
 
@@ -64,6 +70,7 @@ export function CostsScreen({ refreshKey, onBack, openForm }: {
       <div className="row"><span className="label">Ammo bought</span><span className="value">{dollars(t.ammoBought)}</span></div>
       <div className="row"><span className="label">Range fees</span><span className="value">{dollars(t.rangeFees)}</span></div>
       <div className="row"><span className="label">Match fees</span><span className="value">{dollars(t.matchFees)}</span></div>
+      <div className="row"><span className="label">Spare parts</span><span className="value">{dollars(t.parts)}</span></div>
       <div className="row"><span className="label">Gear &amp; other</span><span className="value">{dollars(t.gearAndOther)}</span></div>
       <div className="row"><span className="label"><strong>Total</strong></span><span className="value"><strong>{dollars(t.total)}</strong></span></div>
     </div>
@@ -94,7 +101,7 @@ export function CostsScreen({ refreshKey, onBack, openForm }: {
             split sessions are divided by rounds, never counted twice — plus its match fees.
           </p>
           {firearms.map((f) => {
-            const g = gunSpend(f.id, sessions, purchases, matches, ammo);
+            const g = gunSpend(f.id, sessions, purchases, matches, ammo, parts);
             if (g.total === 0) return null;
             return (
               <div className="row" key={f.id}>
@@ -102,7 +109,8 @@ export function CostsScreen({ refreshKey, onBack, openForm }: {
                   <div className="row-sub">
                     {[g.ammo > 0 && `${dollars(g.ammo)} ammo`,
                       g.rangeFees > 0 && `${dollars(g.rangeFees)} range`,
-                      g.matchFees > 0 && `${dollars(g.matchFees)} matches`].filter(Boolean).join(' · ')}
+                      g.matchFees > 0 && `${dollars(g.matchFees)} matches`,
+                      g.parts > 0 && `${dollars(g.parts)} parts`].filter(Boolean).join(' · ')}
                   </div>
                 </span>
                 <span className="value">{dollars(g.total)}</span>
@@ -126,6 +134,29 @@ export function CostsScreen({ refreshKey, onBack, openForm }: {
           </button>
         ))}
       </div>
+      {costedParts.length > 0 && (
+        <div className="card">
+          <h2>Spare Part Costs</h2>
+          <p className="report-note" style={{ marginBottom: 8 }}>
+            From Spare Parts &amp; Inventory. Tap one to edit it there.
+          </p>
+          {costedParts.map((p) => (
+            <button className="row-tap" key={p.id} onClick={() => openPart(p.id)}>
+              <span className="label">
+                {p.name}
+                <div className="row-sub">
+                  {[
+                    p.datePurchased ? formatDayKey(p.datePurchased) : '',
+                    p.firearmId ? (firearms.find((f) => f.id === p.firearmId)?.name ?? '—') : 'Any / Universal',
+                    p.vendor
+                  ].filter(Boolean).join(' · ')}
+                </div>
+              </span>
+              <span className="value">{dollars(p.cost || 0)}</span>
+            </button>
+          ))}
+        </div>
+      )}
       <p className="report-note">
         Range fees you type on a session and entry fees you type on a match are already
         counted — don't add them again here. Use the "Range Fee" category only for fees

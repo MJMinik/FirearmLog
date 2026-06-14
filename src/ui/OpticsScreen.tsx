@@ -33,6 +33,69 @@ export function OpticsScreen({ refreshKey, onBack, openOpticForm }: {
 
   const gunName = (id: string) => firearms.find((f) => f.id === id)?.name;
 
+  const renderOptic = (op: Optic) => {
+    const entries = normalizeBatteryLog(op.batteryLog);
+    const due = isBatteryDue(op.batteryLog, new Date());
+    return (
+      <div className="card" key={op.id}>
+        <h2>{[op.make, op.model].filter(Boolean).join(' ') || 'Unnamed optic'}</h2>
+        <div className="row">
+          <span className="label">Firearm</span>
+          <span className="value">{gunName(op.firearmId) ?? 'Unassigned'}</span>
+        </div>
+        {op.installDate && (
+          <div className="row">
+            <span className="label">Installed</span>
+            <span className="value">{formatDayKey(op.installDate)}</span>
+          </div>
+        )}
+        <div className="row">
+          <span className="label">Battery</span>
+          <span className={`badge ${due ? 'warn-badge' : 'ok'}`}>{due ? 'Battery due' : 'Active'}</span>
+        </div>
+        {op.dotSize && (
+          <div className="row"><span className="label">Dot / reticle size</span><span className="value">{op.dotSize}</span></div>
+        )}
+        {op.zeroDist && (
+          <div className="row"><span className="label">Zero distance</span><span className="value">{op.zeroDist}</span></div>
+        )}
+        {op.mountHeight && (
+          <div className="row"><span className="label">Mount / co-witness height</span><span className="value">{op.mountHeight}</span></div>
+        )}
+        {op.torqueSpec && (
+          <div className="row"><span className="label">Torque spec</span><span className="value">{op.torqueSpec}</span></div>
+        )}
+        {op.settingsSnapshot && <p className="report-note">{op.settingsSnapshot}</p>}
+
+        <h2 style={{ marginTop: 12 }}>Battery Log</h2>
+        {entries.length === 0 && <p className="report-note">No battery changes logged yet.</p>}
+        {entries.slice(0, 3).map((e, i) => (
+          <div className="row" key={i}>
+            <span className="label">{e.notes || 'Battery changed'}</span>
+            <span className="value">{formatDayKey(e.date)}</span>
+          </div>
+        ))}
+        {entries.length > 3 && (
+          <p className="report-note">{entries.length - 3} older entr{entries.length - 3 === 1 ? 'y' : 'ies'} hidden</p>
+        )}
+        <button className="button secondary" style={{ marginTop: 10 }} onClick={() => setLoggingFor(op)}>
+          + Log Battery Change
+        </button>
+
+        {op.notes && <p className="note-text" style={{ marginTop: 10 }}>{op.notes}</p>}
+
+        <button className="button secondary" style={{ marginTop: 10 }} onClick={() => openOpticForm(op.id)}>
+          Edit
+        </button>
+      </div>
+    );
+  };
+
+  // Optics on a gun first; the ones not mounted on anything cluster together
+  // at the bottom under their own heading (Michael's June 14 ask).
+  const assigned = optics.filter((op) => !!gunName(op.firearmId));
+  const unassigned = optics.filter((op) => !gunName(op.firearmId));
+
   return (
     <div className="screen">
       <div className="navbar">
@@ -47,63 +110,12 @@ export function OpticsScreen({ refreshKey, onBack, openOpticForm }: {
           No optics yet. Add a red dot, scope, or other sight to track its install date, zero, and battery.
         </p>
       )}
-      {optics.map((op) => {
-        const entries = normalizeBatteryLog(op.batteryLog);
-        const due = isBatteryDue(op.batteryLog, new Date());
-        return (
-          <div className="card" key={op.id}>
-            <h2>{[op.make, op.model].filter(Boolean).join(' ') || 'Unnamed optic'}</h2>
-            <div className="row">
-              <span className="label">Firearm</span>
-              <span className="value">{gunName(op.firearmId) ?? 'Unassigned'}</span>
-            </div>
-            {op.installDate && (
-              <div className="row">
-                <span className="label">Installed</span>
-                <span className="value">{formatDayKey(op.installDate)}</span>
-              </div>
-            )}
-            <div className="row">
-              <span className="label">Battery</span>
-              <span className={`badge ${due ? 'warn-badge' : 'ok'}`}>{due ? 'Battery due' : 'Active'}</span>
-            </div>
-            {op.dotSize && (
-              <div className="row"><span className="label">Dot / reticle size</span><span className="value">{op.dotSize}</span></div>
-            )}
-            {op.zeroDist && (
-              <div className="row"><span className="label">Zero distance</span><span className="value">{op.zeroDist}</span></div>
-            )}
-            {op.mountHeight && (
-              <div className="row"><span className="label">Mount / co-witness height</span><span className="value">{op.mountHeight}</span></div>
-            )}
-            {op.torqueSpec && (
-              <div className="row"><span className="label">Torque spec</span><span className="value">{op.torqueSpec}</span></div>
-            )}
-            {op.settingsSnapshot && <p className="report-note">{op.settingsSnapshot}</p>}
+      {assigned.map(renderOptic)}
 
-            <h2 style={{ marginTop: 12 }}>Battery Log</h2>
-            {entries.length === 0 && <p className="report-note">No battery changes logged yet.</p>}
-            {entries.slice(0, 3).map((e, i) => (
-              <div className="row" key={i}>
-                <span className="label">{e.notes || 'Battery changed'}</span>
-                <span className="value">{formatDayKey(e.date)}</span>
-              </div>
-            ))}
-            {entries.length > 3 && (
-              <p className="report-note">{entries.length - 3} older entr{entries.length - 3 === 1 ? 'y' : 'ies'} hidden</p>
-            )}
-            <button className="button secondary" style={{ marginTop: 10 }} onClick={() => setLoggingFor(op)}>
-              + Log Battery Change
-            </button>
-
-            {op.notes && <p className="note-text" style={{ marginTop: 10 }}>{op.notes}</p>}
-
-            <button className="button secondary" style={{ marginTop: 10 }} onClick={() => openOpticForm(op.id)}>
-              Edit
-            </button>
-          </div>
-        );
-      })}
+      {unassigned.length > 0 && (
+        <h2 className="large-title" style={{ fontSize: '1.1rem', marginTop: 20 }}>Unassigned Optics</h2>
+      )}
+      {unassigned.map(renderOptic)}
 
       {loggingFor && (
         <BatteryLogSheet optic={loggingFor} onClose={() => setLoggingFor(null)}

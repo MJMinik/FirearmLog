@@ -183,6 +183,9 @@ export interface Part extends BaseRecord, Imported {
   partNumber: string;
   datePurchased: string;
   notes: string;
+  /** What you paid for this part (total). Feeds Costs & Purchases (spec §12). */
+  cost?: number | null;
+  vendor?: string;
 }
 
 export interface Goal extends BaseRecord, Imported {

@@ -83,6 +83,7 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
                 {[
                   p.firearmId ? (gunName(p.firearmId) ?? '—') : 'Any / Universal',
                   p.partNumber,
+                  p.cost != null ? `$${p.cost.toFixed(2)}` : '',
                   p.datePurchased ? formatDayKey(p.datePurchased) : ''
                 ].filter(Boolean).join(' · ')}
               </div>
@@ -128,6 +129,8 @@ export function PartForm({ id, onSaved, onCancel }: {
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('1');
   const [partNumber, setPartNumber] = useState('');
+  const [cost, setCost] = useState('');
+  const [vendor, setVendor] = useState('');
   const [datePurchased, setDatePurchased] = useState('');
   const [notes, setNotes] = useState('');
   const [problem, setProblem] = useState('');
@@ -146,6 +149,8 @@ export function PartForm({ id, onSaved, onCancel }: {
         setFirearmIdSel(p.firearmId);
         setName(p.name); setQuantity(String(p.quantity));
         setPartNumber(p.partNumber); setDatePurchased(p.datePurchased); setNotes(p.notes);
+        setCost(p.cost != null ? String(p.cost) : '');
+        setVendor(p.vendor ?? '');
       });
     }
     return () => { alive = false; };
@@ -155,9 +160,14 @@ export function PartForm({ id, onSaved, onCancel }: {
     if (!name.trim()) { setProblem('Name the part — "Recoil spring", "Extractor", etc.'); return; }
     const qty = Number(quantity);
     if (!Number.isFinite(qty) || qty < 0) { setProblem('Quantity needs to be a plain number.'); return; }
+    const partCost = cost.trim() === '' ? null : Number(cost);
+    if (partCost !== null && (!Number.isFinite(partCost) || partCost < 0)) {
+      setProblem('Cost needs to be a plain number.'); return;
+    }
     const fields = {
       firearmId: firearmIdSel, name: name.trim(), quantity: qty,
-      partNumber: partNumber.trim(), datePurchased, notes: notes.trim()
+      partNumber: partNumber.trim(), datePurchased, notes: notes.trim(),
+      cost: partCost, vendor: vendor.trim()
     };
     if (original) {
       await putOne('parts', stampUpdate({ ...original, ...fields }, Date.now()));
@@ -172,8 +182,9 @@ export function PartForm({ id, onSaved, onCancel }: {
     onSaved();
   }
 
-  // Your own past part names, most-recent first — the creatable-combobox list.
+  // Your own past part names / vendors, most-recent first — creatable combobox.
   const nameSuggestions = recentValues(allParts.map((p) => ({ date: String(p.updatedAt), value: p.name })));
+  const vendorSuggestions = recentValues(allParts.map((p) => ({ date: String(p.updatedAt), value: p.vendor ?? '' })));
 
   return (
     <div className="screen">
@@ -200,9 +211,19 @@ export function PartForm({ id, onSaved, onCancel }: {
           <input value={partNumber} onChange={(e) => setPartNumber(e.target.value)}
             {...noAutofillProps} name="fl-part-number" />
         </label>
+        <label className="field">Cost ($)
+          <input type="number" inputMode="decimal" min="0" step="0.01" value={cost}
+            onChange={(e) => setCost(e.target.value)} placeholder="0.00" />
+        </label>
+        <SuggestField label="Vendor (optional)" value={vendor} onChange={setVendor} name="fl-part-vendor"
+          suggestions={vendorSuggestions} placeholder="Brownells" />
         <label className="field">Date purchased
           <input type="date" value={datePurchased} onChange={(e) => setDatePurchased(e.target.value)} />
         </label>
+        <p className="report-note">
+          A cost here shows up in Costs &amp; Purchases — in the totals, and (if the part's
+          tied to a gun) in that gun's Spend by Gun.
+        </p>
         <label className="field">Notes
           <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
