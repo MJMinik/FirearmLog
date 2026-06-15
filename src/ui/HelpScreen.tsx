@@ -95,7 +95,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Importing match results (PractiScore)',
-      body: 'On Compete, tap "Import from PractiScore," then paste or load a match\'s exported results (or try the built-in sample). The whole field comes in, you tap which competitor is you, preview your result, pick the gun you shot, and add an entry fee if you like. Save makes it a normal match you can edit or delete — nothing is written until you tap Save.',
+      body: 'On Compete, tap "Import…" and choose PractiScore, then paste or load a match\'s exported results (or try the built-in sample). The whole field comes in — search for and tap which competitor is you, preview your result, pick the gun you shot, and add an entry fee if you like. Save makes it a normal match you can edit or delete — nothing is written until you tap Save.',
     },
     {
       title: 'Progress — goals',
@@ -123,7 +123,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Ammo & costs',
-      body: `Ammo (under ${at('Ammo')}) tracks your inventory with first-in-first-out cost basis, so the cost of rounds you shoot is figured from what you actually paid; adding ammo can double as recording a purchase. Costs (under ${at('Costs & Purchases')}) pulls everything together — ammo, range fees, match fees, gear, travel — by category and month, with cost per round and spend by gun. Because a range fee lives on its session and a match fee lives on its match, each fee is stored in exactly one place and counted exactly once.`,
+      body: `Ammo (under ${at('Ammo')}) tracks your inventory with first-in-first-out cost basis, so the cost of rounds you shoot is figured from what you actually paid; when you add ammo you choose whether you're logging a purchase (it lands in Costs) or just counting rounds you already own. Costs (under ${at('Costs & Purchases')}) pulls everything together — ammo, range fees, match fees, gear, travel — by category and month, with cost per round and spend by gun. Because a range fee lives on its session and a match fee lives on its match, each fee is stored in exactly one place and counted exactly once.`,
     },
     {
       title: 'Maintenance & reference',
@@ -139,7 +139,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Setup & importing old data',
-      body: `The first time you open the app it offers to import your Pistol Tracker backup or start fresh, and you can re-run that any time from Help. Re-importing the same file simply re-applies the records — it won't double anything up. After an import, a verification report checks every record and round count came across.`,
+      body: `The first time you open the app it offers to import your Pistol Tracker backup, start fresh, or load sample data to explore — and you can re-run that any time from Help. Re-importing the same file simply re-applies the records — it won't double anything up. After an import, a verification report checks every record and round count came across.`,
     },
     {
       title: 'Your data & privacy',

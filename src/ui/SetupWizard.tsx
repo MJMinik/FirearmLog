@@ -7,7 +7,9 @@
 // code, and no new data-handling code here. Guns are nudged first because optics,
 // ammo, and sessions all attach to a gun.
 import { useEffect, useState } from 'react';
-import { countAll } from '../lib/db.ts';
+import { countAll, restoreSnapshot } from '../lib/db.ts';
+import { parseFlog } from '../lib/flog.ts';
+import { ConfirmSheet } from './Sheet.tsx';
 import { ImportFlow } from './ImportFlow.tsx';
 import { GunForm } from './GunForm.tsx';
 import { OpticForm } from './OpticsScreen.tsx';
@@ -24,6 +26,9 @@ export function SetupWizard({ onFinish, onCancel }: {
   const [adding, setAdding] = useState<Adding>(null);
   const [counts, setCounts] = useState({ guns: 0, optics: 0, ammo: 0, mags: 0 });
   const [bump, setBump] = useState(0);
+  const [demoBusy, setDemoBusy] = useState(false);
+  const [demoErr, setDemoErr] = useState('');
+  const [confirmDemo, setConfirmDemo] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -54,6 +59,23 @@ export function SetupWizard({ onFinish, onCancel }: {
     </button>
   );
 
+  // One-tap sample data for testers — loads the bundled demo file straight from
+  // the app, so there's nothing to download, save, or pick. Uses the same
+  // validated restore path as a normal Pull.
+  async function loadDemo() {
+    setConfirmDemo(false); setDemoErr(''); setDemoBusy(true);
+    try {
+      const res = await fetch(new URL('demo-dataset.bin', document.baseURI));
+      if (!res.ok) throw new Error('not ok');
+      const snap = parseFlog(new Uint8Array(await res.arrayBuffer()));
+      await restoreSnapshot(snap);
+      onFinish();
+    } catch {
+      setDemoBusy(false);
+      setDemoErr('Could not load the sample data — check your connection and try again.');
+    }
+  }
+
   return (
     <div className="screen">
       <div className="navbar">
@@ -82,6 +104,19 @@ export function SetupWizard({ onFinish, onCancel }: {
               Guns, Optics, Ammo, and Magazines screens.
             </p>
             <button className="button secondary" onClick={() => setMode('gear')}>Add my gear</button>
+          </div>
+
+          <div className="card">
+            <h2>Just want to look around?</h2>
+            <p className="report-note" style={{ marginBottom: 12 }}>
+              Load a ready-made sample log — guns, sessions, matches, costs, photos, the works —
+              so you can see everything the app does. You can start fresh any time to clear it.
+            </p>
+            {demoErr && <p className="form-problem">{demoErr}</p>}
+            <button className="button secondary" disabled={demoBusy}
+              onClick={() => (counts.guns > 0 ? setConfirmDemo(true) : void loadDemo())}>
+              {demoBusy ? 'Loading sample data…' : 'See it with sample data'}
+            </button>
           </div>
 
           <button
@@ -124,6 +159,16 @@ export function SetupWizard({ onFinish, onCancel }: {
           </div>
           <button className="button" onClick={onFinish}>Done — go to the app</button>
         </>
+      )}
+
+      {confirmDemo && (
+        <ConfirmSheet
+          title="Load sample data?"
+          message="This replaces what's on this device with a sample log. There's no undo."
+          confirmLabel="Load sample data"
+          onConfirm={() => void loadDemo()}
+          onClose={() => setConfirmDemo(false)}
+        />
       )}
     </div>
   );
