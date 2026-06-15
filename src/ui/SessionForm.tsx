@@ -27,6 +27,7 @@ import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { mediaUrl } from './media.ts';
 import { FormProblem } from './FormProblem.tsx';
+import { pickableGuns } from '../lib/gunStatus.ts';
 
 const KINDS = [
   { value: 'practice', label: 'Live practice' },
@@ -550,7 +551,8 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       <div className="card">
         <h2>Guns &amp; Rounds</h2>
         {firearms.length === 0 && <p className="report-note">No guns yet — add one from the Guns screen.</p>}
-        {firearms.map((f) => {
+        {/* Audit #10: active guns, plus any already on this session (so a since-retired gun still shows on its own record). */}
+        {pickableGuns(firearms, Object.keys(rounds)).map((f) => {
           const on = rounds[f.id] !== undefined;
           return (
             <div className="row" key={f.id}>
@@ -596,7 +598,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             {firearms.length > 0 && (
               <div className="checklist-section">
                 <h3 className="checklist-section-title">🔫 Firearms</h3>
-                {firearms.map((f) => {
+                {pickableGuns(firearms, Object.keys(rounds)).map((f) => {
                   const itemId = `f_${f.id}`;
                   const state = itemState(checklist, itemId);
                   return (

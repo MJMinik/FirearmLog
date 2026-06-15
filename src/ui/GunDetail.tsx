@@ -11,12 +11,15 @@ import { formatDayKey } from '../lib/dates.ts';
 import { mediaUrl } from './media.ts';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { Sheet } from './Sheet.tsx';
+import { GunRemoveSheet } from './GunRemoveSheet.tsx';
+import { gunStatus, isActive, statusBadge } from '../lib/gunStatus.ts';
 
-export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintenance, onOpenReference, onOpenOptic, refreshKey }: {
+export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintenance, onOpenReference, onOpenOptic, onRemoved, refreshKey }: {
   id: string; onEdit: () => void; onBack: () => void;
   onLogMaintenance: () => void; onEditMaintenance: (entryId: string) => void;
   onOpenReference: (refId: string) => void;
   onOpenOptic: (opticId?: string, firearmId?: string) => void;
+  onRemoved: (deleted: boolean) => void;
   refreshKey: number;
 }) {
   const [gun, setGun] = useState<Firearm | null>(null);
@@ -29,6 +32,8 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
   const [viewing, setViewing] = useState<Media | null>(null);
   const [pickingRef, setPickingRef] = useState(false);
   const [localBump, setLocalBump] = useState(0);
+  const [removing, setRemoving] = useState(false);
+  const [hasHistory, setHasHistory] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -52,6 +57,11 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
         sessions: sessions.filter((s) => !s.planned && s.guns.some((x) => x.firearmId === id)).length,
         dryReps: dryRepsForFirearm(id, sessions)
       });
+      // Whether this gun is named on any session or match — gates permanent delete.
+      setHasHistory(
+        sessions.some((s) => s.guns.some((x) => x.firearmId === id)) ||
+        matches.some((m) => m.firearmId === id)
+      );
       setCustomRefs(refs);
       setMaintItems(maintenanceStatus(g, buildRefLookup(refs)(g.referenceId), sessions, maintenance, firearms, new Date()));
       setHistory(maintenance.filter((m) => m.firearmId === id).sort((a, b) => b.date.localeCompare(a.date)));
@@ -88,6 +98,13 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
     setLocalBump((b) => b + 1);
   }
 
+  // Bring a retired / no-longer-owned gun back to active.
+  async function unretire() {
+    if (!gun) return;
+    await putOne('firearms', stampUpdate({ ...gun, status: 'active', statusReason: '', statusDate: '' }, Date.now()));
+    onRemoved(false);
+  }
+
   return (
     <div className="screen">
       <div className="navbar">
@@ -95,6 +112,25 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
         <button className="navbar-action" onClick={onEdit}>Edit</button>
       </div>
       <h1 className="large-title">{gun.name}</h1>
+
+      {!isActive(gun) && (
+        <div className="card" style={{ marginTop: 8 }}>
+          <div className="row">
+            <span className="label">Status
+              <div className="row-sub">
+                {gunStatus(gun) === 'retired'
+                  ? 'Retired — still yours, just benched.'
+                  : `No longer owned${gun.statusReason ? ` — ${gun.statusReason}` : ''}.`}
+                {gun.statusDate ? ` (${formatDayKey(gun.statusDate)})` : ''}
+              </div>
+            </span>
+            <span className={`badge ${gunStatus(gun) === 'retired' ? 'warn-badge' : 'bad'}`}>{statusBadge(gun)}</span>
+          </div>
+          <button className="button secondary" style={{ marginTop: 10 }} onClick={() => void unretire()}>
+            Return to active
+          </button>
+        </div>
+      )}
 
       <div className="stat-grid">
         <div className="stat"><div className="num">{stats.rounds.toLocaleString()}</div><div className="cap">Lifetime rounds (live fire)</div></div>
@@ -219,6 +255,18 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
           <h2>Notes</h2>
           <p className="note-text">{gun.notes}</p>
         </div>
+      )}
+
+      {isActive(gun) && (
+        <button className="button secondary" style={{ marginTop: 16 }} onClick={() => setRemoving(true)}>
+          Retire or remove this gun…
+        </button>
+      )}
+
+      {removing && (
+        <GunRemoveSheet gun={gun} hasHistory={hasHistory}
+          onClose={() => setRemoving(false)}
+          onDone={(deleted) => { setRemoving(false); onRemoved(deleted); }} />
       )}
 
       {viewing && (

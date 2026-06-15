@@ -19,6 +19,7 @@ import { buildReportHtml, type ReportSection } from '../lib/reports.ts';
 import { reportImageUrls } from './reportImages.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
+import { isOwned } from '../lib/gunStatus.ts';
 
 interface Bundle {
   firearms: Firearm[]; sessions: Session[]; matches: Match[]; purchases: Purchase[];
@@ -194,7 +195,9 @@ export function ReportsScreen({ refreshKey, onBack }: { refreshKey: number; onBa
   function insuranceReport() {
     openAsync('Insurance Inventory', `As of ${formatDayKey(todayKey())}`, async () => {
       const sections: ReportSection[] = [];
-      for (const f of d.firearms) {
+      // Audit #10: insurance inventory lists guns you still own (active + retired),
+      // not ones you've sold/lost/etc.
+      for (const f of d.firearms.filter(isOwned)) {
         sections.push({
           heading: f.name,
           rows: [

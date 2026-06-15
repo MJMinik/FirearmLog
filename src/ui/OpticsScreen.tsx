@@ -12,6 +12,7 @@ import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 import { FormProblem } from './FormProblem.tsx';
+import { ownedGuns } from '../lib/gunStatus.ts';
 
 export function OpticsScreen({ refreshKey, onBack, openOpticForm }: {
   refreshKey: number; onBack: () => void;
@@ -246,7 +247,7 @@ export function OpticForm({ id, firearmId, onSaved, onCancel }: {
         <label className="field">Firearm
           <select value={firearmIdSel} onChange={(e) => setFirearmIdSel(e.target.value)}>
             <option value="">Unassigned</option>
-            {firearms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            {ownedGuns(firearms, [firearmIdSel]).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </label>
         <SuggestField label="Make" value={make} onChange={setMake} name="fl-optic-make"

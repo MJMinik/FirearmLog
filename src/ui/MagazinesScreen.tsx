@@ -8,6 +8,7 @@ import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { ConfirmSheet } from './Sheet.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
+import { ownedGuns } from '../lib/gunStatus.ts';
 
 export function MagazinesScreen({ refreshKey, onBack, openForm }: {
   refreshKey: number; onBack: () => void; openForm: (id?: string) => void;
@@ -115,7 +116,7 @@ export function MagazineForm({ id, onSaved, onCancel }: {
           <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="A01" />
         </label>
         <h2>Used With</h2>
-        {firearms.map((f) => {
+        {ownedGuns(firearms, gunIds).map((f) => {
           const on = gunIds.includes(f.id);
           return (
             <div className="row" key={f.id}>

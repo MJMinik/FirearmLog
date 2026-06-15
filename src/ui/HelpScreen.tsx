@@ -115,7 +115,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Guns',
-      body: `Your firearms live under ${at('Guns')}. Each carries its make, model, caliber, category, serial, date acquired, starting round count, recoil-spring interval, photos, and notes. Link a manufacturer Reference to a gun and its maintenance schedule comes along automatically — you can still customize it per gun.`,
+      body: `Your firearms live under ${at('Guns')}. Each carries its make, model, caliber, category, serial, date acquired, starting round count, recoil-spring interval, photos, and notes. Link a manufacturer Reference to a gun and its maintenance schedule comes along automatically — you can still customize it per gun. When a gun leaves the rotation, open it and choose Retire (still yours — kept for insurance, and you can un-retire any time) or "No longer own it" (sold, gifted, lost, stolen, or destroyed). Either way its past sessions and matches keep it on record, and its optic and magazines move to your inventory.`,
     },
     {
       title: 'Optics, magazines & spare parts',

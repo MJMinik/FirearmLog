@@ -77,7 +77,8 @@ export function App() {
       onLogMaintenance={() => push({ kind: 'maint-form', gunId: v.id })}
       onEditMaintenance={(eid) => push({ kind: 'maint-form', gunId: v.id, id: eid })}
       onOpenReference={(rid) => push({ kind: 'reference-detail', id: rid })}
-      onOpenOptic={(oid, fid) => push({ kind: 'optic-form', id: oid, firearmId: fid })} />;
+      onOpenOptic={(oid, fid) => push({ kind: 'optic-form', id: oid, firearmId: fid })}
+      onRemoved={(deleted) => { refresh(); if (deleted) replace({ kind: 'guns' }); }} />;
   } else if (view?.kind === 'gun-form') {
     const v = view;
     content = <GunForm id={v.id}

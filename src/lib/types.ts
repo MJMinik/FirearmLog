@@ -39,6 +39,13 @@ export interface Firearm extends BaseRecord, Imported {
   photoIds: string[]; // Media records
   referenceId: string | null; // linked Reference (spec §9)
   notes: string;
+  // Gun lifecycle (audit #10). Field absent ⇒ 'active' — so existing and imported
+  // guns need no migration. 'retired' = still owned, benched. 'former' = no longer
+  // owned (sold/gifted/lost/stolen/destroyed). Nothing is hard-deleted while it has
+  // history, so past sessions/matches always resolve to a real gun.
+  status?: 'active' | 'retired' | 'former';
+  statusReason?: string; // 'former' only: Sold | Gifted | Lost | Stolen | Destroyed
+  statusDate?: string;   // YYYY-MM-DD the gun was retired / removed
 }
 
 export interface SessionGun {

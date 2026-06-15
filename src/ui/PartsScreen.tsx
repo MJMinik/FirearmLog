@@ -16,6 +16,7 @@ import { InfoTip } from './InfoTip.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
+import { ownedGuns } from '../lib/gunStatus.ts';
 
 export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }: {
   refreshKey: number; onBack: () => void;
@@ -205,7 +206,7 @@ export function PartForm({ id, onSaved, onCancel }: {
         <label className="field">Firearm
           <select value={firearmIdSel} onChange={(e) => setFirearmIdSel(e.target.value)}>
             <option value="">Any / Universal</option>
-            {firearms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            {ownedGuns(firearms, [firearmIdSel]).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </label>
         <label className="field">Quantity

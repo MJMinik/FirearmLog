@@ -11,6 +11,7 @@ import { mediaUrl } from './media.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { FormProblem } from './FormProblem.tsx';
+import { pickableGuns } from '../lib/gunStatus.ts';
 
 export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
   id: string; onEdit: () => void; onBack: () => void; onDeleted: () => void; refreshKey: number;
@@ -181,7 +182,8 @@ export function MatchForm({ id, onSaved, onCancel }: {
       if (!alive) return;
       const sorted = f.sort((a, b) => a.name.localeCompare(b.name));
       setFirearms(sorted);
-      if (!editing && sorted.length > 0) setFirearmId(sorted[0].id);
+      const firstPick = pickableGuns(sorted);
+      if (!editing && firstPick.length > 0) setFirearmId(firstPick[0].id);
       if (id !== undefined) {
         const [m, allMedia] = await Promise.all([getOne<Match>('matches', id), getAll<Media>('media')]);
         if (!alive || !m) return;
@@ -307,7 +309,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
         </div>
         <label className="field">Gun
           <select value={firearmId} onChange={(e) => setFirearmId(e.target.value)}>
-            {firearms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            {pickableGuns(firearms, [firearmId]).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </label>
         <label className="field">Rounds fired (adds to the gun's round count)

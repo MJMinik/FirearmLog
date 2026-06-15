@@ -16,6 +16,7 @@ import { ImportFlow } from './ImportFlow.tsx';
 import { SyncCard } from './SyncCard.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
+import { isActive, isOwned, isFormer, isRetired, statusBadge } from '../lib/gunStatus.ts';
 import { MonthCalendar } from './Calendar.tsx';
 import type { CalItem } from './Calendar.tsx';
 import { LogFilterBar } from './FilterBar.tsx';
@@ -322,7 +323,7 @@ export function HomeScreen({ refreshKey, onImported, open }: {
               </div>
             ) : (
               <div className="stat">
-                <div className="num">{firearms.length}</div>
+                <div className="num">{firearms.filter(isOwned).length}</div>
                 <div className="cap">Guns</div>
               </div>
             )}
@@ -395,7 +396,8 @@ export function HomeScreen({ refreshKey, onImported, open }: {
           <div className="dash-grid">
             <div className="card">
               <h2>Firearm Status</h2>
-              {firearms.map(gun => (
+              {/* Audit #10: Home shows your active guns; retired/former live on the Guns screen. */}
+              {firearms.filter(isActive).map(gun => (
                 <FirearmStatusCard key={gun.id} gun={gun} refLookup={refLookup}
                   sessions={sessions} maintenance={maintenance} firearms={firearms} open={open} />
               ))}
@@ -634,26 +636,43 @@ export function GunsScreen({ refreshKey, onBack, open }: {
 }) {
   const { firearms, loaded } = useData(refreshKey);
   const [q, setQ] = useState('');
+  const [showFormer, setShowFormer] = useState(false);
   if (!loaded) return <div className="screen" />;
-  const shown = firearms.filter((f) => matchesQuery(q, f.name, f.category, f.caliber));
+  // Audit #10: active + retired show by default (with badges); guns you no longer
+  // own hide behind a toggle. Open a gun to retire/remove or bring it back.
+  const anyFormer = firearms.some(isFormer);
+  const shown = firearms.filter((f) =>
+    (showFormer || !isFormer(f)) && matchesQuery(q, f.name, f.category, f.caliber));
   return (
     <div className="screen">
       <div className="navbar">
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Guns <InfoTip title="Guns">Your firearms. Tap one for its details, maintenance, and photos; use + to add a gun.</InfoTip></h1>
+      <h1 className="large-title">Guns <InfoTip title="Guns">Your firearms. Tap one for its details, maintenance, and photos; use + to add a gun. Open a gun to retire it or mark it sold — its history stays.</InfoTip></h1>
       <button className="button" onClick={() => open({ kind: 'gun-form' })}>+ Add Gun</button>
       {firearms.length > 8 && <ListSearch value={q} onChange={setQ} placeholder="Search guns" />}
+      {anyFormer && (
+        <label className="checklist-take" style={{ margin: '8px 0' }}>
+          <input type="checkbox" checked={showFormer} onChange={(e) => setShowFormer(e.target.checked)} />
+          Show guns I no longer own
+        </label>
+      )}
       <div className="card">
         {firearms.length === 0 && <p className="report-note">No guns yet. Tap "+ Add Gun" to add your first one.</p>}
-        {firearms.length > 0 && shown.length === 0 && <p className="report-note">No guns match "{q}".</p>}
-        {shown.map((f) => (
-          <button className="row-tap" key={f.id} onClick={() => open({ kind: 'gun-detail', id: f.id })}>
-            <span className="label">{f.name}</span>
-            <span className="value">{f.category} · {f.caliber} ›</span>
-          </button>
-        ))}
+        {firearms.length > 0 && shown.length === 0 && <p className="report-note">No guns match.</p>}
+        {shown.map((f) => {
+          const badge = statusBadge(f);
+          return (
+            <button className="row-tap" key={f.id} onClick={() => open({ kind: 'gun-detail', id: f.id })}>
+              <span className="label">
+                {f.name}
+                {badge && <span className={`badge ${isRetired(f) ? 'warn-badge' : 'bad'}`} style={{ marginLeft: 6 }}>{badge}</span>}
+              </span>
+              <span className="value">{f.category} · {f.caliber} ›</span>
+            </button>
+          );
+        })}
       </div>
     </div>
   );
