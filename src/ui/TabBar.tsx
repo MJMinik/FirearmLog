@@ -65,6 +65,12 @@ export function TabBar({ active, onChange, view, onOpen }: {
         </button>
       ))}
       <div className="nav-divider" aria-hidden="true" />
+      <button className={`sidebar-only ${view?.kind === 'help' ? 'active' : ''}`}
+        aria-current={view?.kind === 'help' ? 'page' : undefined}
+        onClick={() => onOpen({ kind: 'help' })}>
+        <span className="glyph" aria-hidden="true">❓</span>
+        Help
+      </button>
       {tabButton({ id: 'more', label: 'More', glyph: '⋯' })}
     </nav>
   );

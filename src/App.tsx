@@ -22,6 +22,7 @@ import { OpticsScreen, OpticForm } from './ui/OpticsScreen.tsx';
 import { PartsScreen, PartForm } from './ui/PartsScreen.tsx';
 import { ReportsScreen } from './ui/ReportsScreen.tsx';
 import { PractiScoreImport } from './ui/PractiScoreImport.tsx';
+import { HelpScreen } from './ui/HelpScreen.tsx';
 
 export function App() {
   const [tab, setTabState] = useState<TabId>('home');
@@ -185,6 +186,8 @@ export function App() {
     content = <PractiScoreImport
       onCancel={back}
       onSaved={(mid) => { refresh(); replace({ kind: 'match-detail', id: mid }); }} />;
+  } else if (view?.kind === 'help') {
+    content = <HelpScreen onBack={back} />;
   } else if (tab === 'home') {
     content = <HomeScreen refreshKey={refreshKey} onImported={refresh} open={push} />;
   } else if (tab === 'log') {
