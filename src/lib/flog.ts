@@ -57,7 +57,10 @@ export function parseFlog(bytes: Uint8Array): Snapshot {
 
   let parsed: unknown;
   try {
-    parsed = JSON.parse(new TextDecoder().decode(dataEntry.data));
+    // Audit CR-4: strip dangerous keys from an untrusted file so a malicious
+    // backup can't pollute Object.prototype via __proto__/constructor/prototype.
+    parsed = JSON.parse(new TextDecoder().decode(dataEntry.data), (key, value) =>
+      (key === '__proto__' || key === 'constructor' || key === 'prototype') ? undefined : value);
   } catch {
     throw new Error('This data file looks damaged (the records inside are unreadable).');
   }

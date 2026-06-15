@@ -134,22 +134,8 @@ export async function commitDataSet(
   for (const d of data.drills) dtx0.objectStore('drills').put(d);
   await txDone(dtx0);
 
-  // Re-imports must never duplicate photos: clear out any existing photos
-  // that belong to the records we just (re)wrote, then save the fresh set.
-  const ownerIds = new Set<string>();
-  for (const f of data.firearms) ownerIds.add(f.id);
-  for (const sn of data.sessions) ownerIds.add(sn.id);
-  for (const m of data.matches) ownerIds.add(m.id);
-  const existing = await getAll<Media>('media');
-  for (const m of existing) {
-    if (ownerIds.has(m.ownerId)) {
-      const dtx = db.transaction('media', 'readwrite');
-      dtx.objectStore('media').delete(m.id);
-      await txDone(dtx);
-    }
-  }
-
-  // Photos one at a time, with progress and breathing room for the browser.
+  // Re-imports must never duplicate photos OR lose them mid-write (audit CR-2).
+  // Save the fresh set FIRST (one per transaction — iPhone Safari friendly)…
   const total = data.media.length;
   let done = 0;
   onProgress?.(done, total);
@@ -160,6 +146,21 @@ export async function commitDataSet(
     done += 1;
     onProgress?.(done, total);
     await new Promise((r) => setTimeout(r, 0));
+  }
+  // …then remove superseded photos for the re-written owners (anything on those
+  // owners that isn't in the fresh set). Add-before-delete = never a gap.
+  const newIds = new Set(data.media.map((m) => m.id));
+  const ownerIds = new Set<string>();
+  for (const f of data.firearms) ownerIds.add(f.id);
+  for (const sn of data.sessions) ownerIds.add(sn.id);
+  for (const m of data.matches) ownerIds.add(m.id);
+  const existing = await getAll<Media>('media');
+  for (const m of existing) {
+    if (ownerIds.has(m.ownerId) && !newIds.has(m.id)) {
+      const dtx = db.transaction('media', 'readwrite');
+      dtx.objectStore('media').delete(m.id);
+      await txDone(dtx);
+    }
   }
 }
 
@@ -204,14 +205,55 @@ export async function localLastModified(): Promise<number> {
   return newestStamp(stores, media);
 }
 
-/** Pull: REPLACE everything on this device with the file's contents. */
+/**
+ * Audit CR-5: validate an incoming snapshot's SHAPE before any destructive write,
+ * so a damaged/foreign file is rejected up front and nothing on this device is
+ * touched. Pure (no IndexedDB) so it's unit-tested. Throws a plain-language error.
+ */
+export function validateSnapshotShape(snapshot: Snapshot): void {
+  if (!snapshot || typeof snapshot !== 'object' || typeof snapshot.stores !== 'object' || snapshot.stores === null) {
+    throw new Error('This data file is unreadable. Nothing on this device was changed.');
+  }
+  for (const name of SNAPSHOT_STORES) {
+    const arr = snapshot.stores[name];
+    if (arr === undefined) continue; // a missing store is treated as empty
+    if (!Array.isArray(arr)) {
+      throw new Error(`This data file is damaged (its "${name}" section is malformed). Nothing on this device was changed.`);
+    }
+    const keyProp = name === 'meta' ? 'key' : 'id';
+    for (const r of arr) {
+      if (!r || typeof r !== 'object' || typeof (r as Record<string, unknown>)[keyProp] !== 'string') {
+        throw new Error(`This data file is damaged (a record in "${name}" is missing its ${keyProp}). Nothing on this device was changed.`);
+      }
+    }
+  }
+  if (!Array.isArray(snapshot.media)) {
+    throw new Error('This data file is damaged (its photo list is malformed). Nothing on this device was changed.');
+  }
+  for (const m of snapshot.media) {
+    if (!m || typeof (m as { id?: unknown }).id !== 'string') {
+      throw new Error('This data file is damaged (a photo is missing its id). Nothing on this device was changed.');
+    }
+  }
+}
+
+/**
+ * Pull: REPLACE everything on this device with the file's contents.
+ * Safety (audit CR-1/CR-2/CR-5):
+ *  - validate shape BEFORE any write (a bad file changes nothing);
+ *  - the regular stores clear+rewrite in ONE transaction — IndexedDB rolls the
+ *    whole thing back if any write fails, so old data survives a failed restore;
+ *  - media is written ADD-NEW-THEN-DELETE-STALE (never wiped first), so an
+ *    interruption can leave a few extra photos but can never lose them.
+ */
 export async function restoreSnapshot(
   snapshot: Snapshot,
   onProgress?: (done: number, total: number) => void
 ): Promise<void> {
+  validateSnapshotShape(snapshot);
   const db = await openDb();
 
-  // Wipe and rewrite the regular stores in one transaction — all or nothing.
+  // Regular stores: clear + rewrite atomically (all-or-nothing; rolls back on error).
   const tx = db.transaction([...SNAPSHOT_STORES], 'readwrite');
   for (const name of SNAPSHOT_STORES) {
     const os = tx.objectStore(name);
@@ -220,10 +262,7 @@ export async function restoreSnapshot(
   }
   await txDone(tx);
 
-  // Media: wipe, then one photo per transaction (iPhone Safari friendly).
-  const wipe = db.transaction('media', 'readwrite');
-  wipe.objectStore('media').clear();
-  await txDone(wipe);
+  // Media: add the new set first (one per transaction — iPhone Safari friendly)…
   const total = snapshot.media.length;
   let done = 0;
   onProgress?.(done, total);
@@ -234,5 +273,15 @@ export async function restoreSnapshot(
     done += 1;
     onProgress?.(done, total);
     await new Promise((r) => setTimeout(r, 0));
+  }
+  // …then remove anything that isn't in the new set. The store is never empty.
+  const keepIds = new Set(snapshot.media.map((m) => m.id));
+  const existing = await getAll<Media>('media');
+  for (const m of existing) {
+    if (!keepIds.has(m.id)) {
+      const dtx = db.transaction('media', 'readwrite');
+      dtx.objectStore('media').delete(m.id);
+      await txDone(dtx);
+    }
   }
 }
