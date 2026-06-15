@@ -324,10 +324,10 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     setPicking(false);
   }
 
-  function checklistSection(cat: ChecklistCategory, title: string, icon: string) {
+  function checklistSection(cat: ChecklistCategory, title: string) {
     return (
       <div className="checklist-section">
-        <h3 className="checklist-section-title">{icon} {title}</h3>
+        <h3 className="checklist-section-title">{title}</h3>
         {checklistItemsForCategory(cat, customItems).map((item) => {
           const state = itemState(checklist, item.id);
           return (
@@ -509,7 +509,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         <button className="button" onClick={onConvert}>✓ Convert to Logged Session</button>
       )}
       {editing && original && (
-        <button className="button secondary" onClick={() => void printSessionReport()}>🖨️ Session Report</button>
+        <button className="button secondary" onClick={() => void printSessionReport()}>Session Report</button>
       )}
 
       <div className="card">
@@ -597,7 +597,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
 
             {firearms.length > 0 && (
               <div className="checklist-section">
-                <h3 className="checklist-section-title">🔫 Firearms</h3>
+                <h3 className="checklist-section-title">Firearms</h3>
                 {pickableGuns(firearms, Object.keys(rounds)).map((f) => {
                   const itemId = `f_${f.id}`;
                   const state = itemState(checklist, itemId);
@@ -621,26 +621,26 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               </div>
             )}
 
-            {checklistSection('essentials', 'Range Essentials', '🎯')}
+            {checklistSection('essentials', 'Range Essentials')}
 
             <div className="row">
               <button className={`gun-toggle ${checklist.nightMode ? 'on' : ''}`} aria-pressed={checklist.nightMode}
                 onClick={() => setChecklist((cl) => setChecklistMode(cl, 'night', !cl.nightMode, customItems))}>
-                🔦 Include night-session gear in this checklist
+                Include night-session gear in this checklist
               </button>
             </div>
-            {checklist.nightMode && checklistSection('night', 'Night Session', '🔦')}
+            {checklist.nightMode && checklistSection('night', 'Night Session')}
 
             <div className="row">
               <button className={`gun-toggle ${checklist.tacticalMode ? 'on' : ''}`} aria-pressed={checklist.tacticalMode}
                 onClick={() => setChecklist((cl) => setChecklistMode(cl, 'tactical', !cl.tacticalMode, customItems))}>
-                🪖 Include tactical gear in this checklist
+                Include tactical gear in this checklist
               </button>
             </div>
-            {checklist.tacticalMode && checklistSection('tactical', 'Tactical', '🪖')}
+            {checklist.tacticalMode && checklistSection('tactical', 'Tactical')}
 
             {checklistProgressInfo.toTake > 0 && (
-              <button className="button secondary" onClick={printChecklist}>🖨️ Print Checklist</button>
+              <button className="button secondary" onClick={printChecklist}>Print Checklist</button>
             )}
           </>
         )}
@@ -724,7 +724,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               Include scoring on the Print Drills report
             </label>
             <button className="button secondary" style={{ marginTop: 8 }} onClick={printDrills}>
-              🖨️ Print Drills
+              Print Drills
             </button>
           </>
         )}

@@ -12,6 +12,21 @@
   --warn: #ff9500;
   --tabbar-bg: rgba(249, 249, 249, 0.85);
   --touch-min: 44px; /* HIG minimum tap target (rules T1–T8) */
+
+  /* Audit #D9/#D4: documented type scale in rem (1rem = 16px base) so text honors
+     the user's browser font-size preference and zooms/reflows cleanly. */
+  --fs-caption: 0.75rem;    /* 12 — badges, fine print */
+  --fs-footnote: 0.8125rem; /* 13 — captions, sub-labels, card headers, field labels */
+  --fs-subhead: 0.9375rem;  /* 15 — secondary body / notes */
+  --fs-base: 1rem;          /* 16 — inputs, note text */
+  --fs-body: 1.0625rem;     /* 17 — primary body, rows, buttons */
+  --fs-title3: 1.375rem;    /* 22 — section titles */
+  --fs-stat: 1.75rem;       /* 28 — stat numbers */
+  --fs-large: 2.125rem;     /* 34 — large titles */
+
+  /* Audit #D12: 8-pt spacing scale. */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px;
+  --space-4: 16px; --space-5: 24px; --space-6: 32px;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -70,10 +85,10 @@ input, select, textarea, button { font-size: 16px; font-family: inherit; }
 }
 
 .large-title {
-  font-size: 34px;
+  font-size: var(--fs-large);
   font-weight: 700;
   letter-spacing: 0.37px;
-  margin: 8px 0 16px;
+  margin: var(--space-2) 0 var(--space-4);
 }
 
 .card {
@@ -84,7 +99,7 @@ input, select, textarea, button { font-size: 16px; font-family: inherit; }
 }
 
 .card h2 {
-  font-size: 13px;
+  font-size: var(--fs-footnote);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -111,8 +126,8 @@ input, select, textarea, button { font-size: 16px; font-family: inherit; }
   gap: 12px;
 }
 .stat { background: var(--bg-card); border-radius: 12px; padding: 14px 16px; }
-.stat .num { font-size: 28px; font-weight: 700; }
-.stat .cap { font-size: 13px; color: var(--text-dim); margin-top: 2px; }
+.stat .num { font-size: var(--fs-stat); font-weight: 700; }
+.stat .cap { font-size: var(--fs-footnote); color: var(--text-dim); margin-top: 2px; }
 
 .button {
   display: inline-flex;
@@ -124,7 +139,7 @@ input, select, textarea, button { font-size: 16px; font-family: inherit; }
   border-radius: 12px;
   background: var(--accent);
   color: #fff;
-  font-size: 17px;
+  font-size: var(--fs-body);
   font-weight: 600;
   cursor: pointer;
   width: 100%;
@@ -154,7 +169,7 @@ input, select, textarea, button { font-size: 16px; font-family: inherit; }
 
 /* Audit #D11: badges carry meaning (Due/Soon/Retired/Low) — darken the text against
    the tint so it clears contrast at 12px (was full-hue text on a pale same-hue tint). */
-.badge { font-size: 12px; font-weight: 600; border-radius: 6px; padding: 2px 8px; }
+.badge { font-size: var(--fs-caption); font-weight: 600; border-radius: 6px; padding: 2px 8px; }
 .badge.ok { background: color-mix(in srgb, var(--success) 20%, transparent); color: color-mix(in srgb, var(--success) 45%, black); }
 .badge.bad { background: color-mix(in srgb, var(--danger) 20%, transparent); color: color-mix(in srgb, var(--danger) 60%, black); }
 .badge.info { background: color-mix(in srgb, var(--accent) 18%, transparent); color: color-mix(in srgb, var(--accent) 80%, black); }
@@ -200,7 +215,7 @@ select.category-pick {
 .tabbar button.active { color: var(--accent); }
 .tabbar .glyph { font-size: 22px; line-height: 1; }
 
-.report-note { font-size: 15px; line-height: 1.45; color: var(--text-dim); margin-top: 10px; }
+.report-note { font-size: var(--fs-subhead); line-height: 1.45; color: var(--text-dim); margin-top: 10px; }
 
 /* ---------- M2: navigation bar on pushed screens ---------- */
 .navbar { display: flex; justify-content: space-between; align-items: center; min-height: 44px; }
@@ -211,7 +226,7 @@ select.category-pick {
 .navbar-action { font-weight: 600; }
 
 /* ---------- M2: forms ---------- */
-.field { display: block; font-size: 13px; color: var(--text-dim); margin-bottom: 12px; }
+.field { display: block; font-size: var(--fs-footnote); color: var(--text-dim); margin-bottom: 12px; }
 .field input, .field select, .field textarea {
   display: block; width: 100%; margin-top: 4px; min-height: 44px;
   border: 0.5px solid var(--separator); border-radius: 10px;
@@ -313,18 +328,18 @@ select.category-pick {
 /* ---------- M2: photos, tappable rows, misc ---------- */
 .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
 .photo-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; }
-.note-text { font-size: 16px; line-height: 1.5; white-space: pre-wrap; }
+.note-text { font-size: var(--fs-base); line-height: 1.5; white-space: pre-wrap; }
 .button.danger { background: var(--danger); }
 
 .row-tap {
   width: 100%; background: none; border: none; color: var(--text); text-align: left;
-  font-size: 17px; cursor: pointer; padding: 6px 0; display: flex; align-items: center;
+  font-size: var(--fs-body); cursor: pointer; padding: 6px 0; display: flex; align-items: center;
   justify-content: space-between; gap: 12px; min-height: 44px;
   border-bottom: 0.5px solid var(--separator);
 }
 .row-tap:last-child { border-bottom: none; }
 .row-tap .value { color: var(--text-dim); text-align: right; flex-shrink: 0; }
-.row-sub { font-size: 13px; color: var(--text-dim); font-weight: 400; }
+.row-sub { font-size: var(--fs-footnote); color: var(--text-dim); font-weight: 400; }
 
 /* ---------- M2 slice 2: photo viewer + staged thumbnails ---------- */
 .photo-full {

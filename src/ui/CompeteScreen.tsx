@@ -57,7 +57,7 @@ export function CompeteScreen({ refreshKey, open }: {
       <div style={{ height: 8 }} />
       <button className="button secondary" onClick={() => open({ kind: 'classifier-form' })}>+ Log Classifier</button>
       <div style={{ height: 8 }} />
-      <button className="button secondary" onClick={() => setShowImport(true)}>⬇ Import…</button>
+      <button className="button secondary" onClick={() => setShowImport(true)}>Import…</button>
 
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Classification <InfoTip title="Classification">Your class comes from the average of your best 6 of your last 8 classifier scores in a division. When that average crosses the next band, you move up — C to B and so on.</InfoTip></h2>
@@ -135,11 +135,11 @@ export function CompeteScreen({ refreshKey, open }: {
       {showImport && (
         <Sheet title="Import" onClose={() => setShowImport(false)}>
           <button className="drill-pick-row" onClick={() => { setShowImport(false); open({ kind: 'practiscore-import' }); }}>
-            <strong>⬇ Import from PractiScore</strong>
+            <strong>Import from PractiScore</strong>
             <span>Pull a match's results from a PractiScore export.</span>
           </button>
           <button className="drill-pick-row" onClick={() => { setShowImport(false); open({ kind: 'uspsa-import' }); }}>
-            <strong>⬇ Import USPSA Classifiers</strong>
+            <strong>Import USPSA Classifiers</strong>
             <span>Bring in your classifier scores from USPSA.</span>
           </button>
         </Sheet>

@@ -238,7 +238,7 @@ export function ReportsScreen({ refreshKey, onBack }: { refreshKey: number; onBa
         {reports.map((r) => (
           <button className="row-tap" key={r.label} onClick={r.run}>
             <span className="label">{r.label}<div className="row-sub">{r.desc}</div></span>
-            <span className="value">🖨️</span>
+            <span className="value">›</span>
           </button>
         ))}
       </div>

@@ -68,7 +68,7 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
       <button className="button" onClick={() => openPartForm()}>+ Add Part</button>
       {!empty && (
         <button className="button secondary" style={{ marginTop: 8 }} onClick={printReport}>
-          🖨️ Spare Parts &amp; Inventory Report
+          Spare Parts &amp; Inventory Report
         </button>
       )}
 
