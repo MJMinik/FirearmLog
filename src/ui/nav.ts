@@ -27,4 +27,5 @@ export type View =
   | { kind: 'part-form'; id?: string }
   | { kind: 'reports' }
   | { kind: 'practiscore-import' }
-  | { kind: 'help' };
+  | { kind: 'help' }
+  | { kind: 'setup' };

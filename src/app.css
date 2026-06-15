@@ -468,3 +468,10 @@ select { max-width: 100%; min-width: 0; }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 6px 0 2px; }
 .chart-legend span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-dim); }
 .chart-legend i { width: 11px; height: 11px; border-radius: 2px; display: inline-block; flex: none; }
+
+.guide-sec { border-bottom: 1px solid var(--separator); }
+.guide-sec summary { padding: 12px 2px; cursor: pointer; font-weight: 600; list-style: none; min-height: 44px; display: flex; align-items: center; justify-content: space-between; }
+.guide-sec summary::-webkit-details-marker { display: none; }
+.guide-sec summary::after { content: '⌄'; color: var(--text-dim); margin-left: 8px; }
+.guide-sec[open] summary::after { content: '⌃'; }
+.guide-sec > p { margin-bottom: 8px; }

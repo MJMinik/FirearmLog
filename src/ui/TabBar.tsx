@@ -24,7 +24,8 @@ const SECTIONS: { target: View; label: string; glyph: string; also: View['kind']
   { target: { kind: 'maintenance' }, label: 'Maintenance', glyph: '🛠', also: [] },
   { target: { kind: 'parts' }, label: 'Spare Parts & Inventory', glyph: '🔩', also: ['part-form'] },
   { target: { kind: 'references' }, label: 'Reference', glyph: '📖', also: ['reference-detail', 'reference-form'] },
-  { target: { kind: 'reports' }, label: 'Reports', glyph: '📊', also: [] }
+  { target: { kind: 'reports' }, label: 'Reports', glyph: '📊', also: [] },
+  { target: { kind: 'help' }, label: 'Help & Tour', glyph: '❓', also: ['setup'] }
 ];
 
 export function TabBar({ active, onChange, view, onOpen }: {
