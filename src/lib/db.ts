@@ -75,6 +75,29 @@ export async function deleteOne(store: StoreName, id: string): Promise<void> {
   await txDone(tx);
 }
 
+/**
+ * Audit CR-8: apply a "combine cans" merge ATOMICALLY — the kept can, the
+ * repointed sessions/purchases, the optional new buy, and the deletion of the
+ * merged-away can all land in ONE transaction. A crash can no longer leave
+ * sessions repointed but the old can still present (double-count) or vice versa.
+ */
+export async function applyAmmoMerge(ops: {
+  keptCan: object;
+  sessions: object[];
+  purchases: object[];
+  newPurchase?: object;
+  deleteCanId?: string;
+}): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(['ammunition', 'sessions', 'purchases'], 'readwrite');
+  tx.objectStore('ammunition').put(ops.keptCan);
+  for (const s of ops.sessions) tx.objectStore('sessions').put(s);
+  for (const p of ops.purchases) tx.objectStore('purchases').put(p);
+  if (ops.newPurchase) tx.objectStore('purchases').put(ops.newPurchase);
+  if (ops.deleteCanId) tx.objectStore('ammunition').delete(ops.deleteCanId);
+  await txDone(tx);
+}
+
 export async function countAll(store: StoreName): Promise<number> {
   const db = await openDb();
   const tx = db.transaction(store, 'readonly');

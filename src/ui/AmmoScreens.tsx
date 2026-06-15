@@ -4,7 +4,7 @@
 // Purchases) and falls back to the manually typed figure.
 import { useEffect, useState } from 'react';
 import type { Ammunition, Purchase, Session } from '../lib/types.ts';
-import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
+import { applyAmmoMerge, deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -229,29 +229,47 @@ export function AmmoForm({ id, onSaved, onCancel }: {
     const now = Date.now();
     const merged = combinedCan(other, { quantity: n.qty, costPerRound: n.cpr });
     const extraNotes = notes.trim() && notes.trim() !== other.notes ? notes.trim() : '';
-    await putOne('ammunition', stampUpdate({
+    const keptCan = stampUpdate({
       ...other,
       quantity: merged.quantity + n.pr, // purchased rounds land on the kept can too
       costPerRound: merged.costPerRound,
       notes: [other.notes, extraNotes].filter(Boolean).join(' · ')
-    }, now));
-    await savePurchase(other.id, n.pr, n.pc, now);
+    }, now);
+    const label = ammoLabel({ brand: brand.trim(), caliber: caliber.trim(), grain: grain.trim(), bulletType });
+    const newPurchase = (n.pr > 0 && n.pc > 0)
+      ? stampNew({
+          date: todayKey(), category: 'Ammo Purchase',
+          item: `${n.pr.toLocaleString()} rds ${label}`.trim(),
+          vendor: purchVendor.trim(), cost: n.pc, notes: '',
+          ammoId: other.id, rounds: n.pr, addedToInventory: true
+        }, newId('pu'), now)
+      : undefined;
+    let sessionRecs: object[] = [];
+    let purchaseRecs: object[] = [];
+    let deleteCanId: string | undefined;
     if (original) {
-      // Every session and purchase that pointed at the duplicate now points
-      // at the kept can, so history and FIFO costing survive the merge.
+      // Every session and purchase that pointed at the duplicate now points at
+      // the kept can, so history and FIFO costing survive the merge.
       const [sessions, purchases] = await Promise.all([
         getAll<Session>('sessions'), getAll<Purchase>('purchases')
       ]);
-      for (const change of repointAmmoUsage(sessions, original.id, other.id)) {
-        const s = sessions.find((x) => x.id === change.id);
-        if (s) await putOne('sessions', stampUpdate({ ...s, ammoUsage: change.ammoUsage }, now));
-      }
-      for (const pid of repointPurchaseIds(purchases, original.id)) {
-        const p = purchases.find((x) => x.id === pid);
-        if (p) await putOne('purchases', stampUpdate({ ...p, ammoId: other.id }, now));
-      }
-      await deleteOne('ammunition', original.id);
+      sessionRecs = repointAmmoUsage(sessions, original.id, other.id)
+        .map((change) => {
+          const s = sessions.find((x) => x.id === change.id);
+          return s ? stampUpdate({ ...s, ammoUsage: change.ammoUsage }, now) : null;
+        })
+        .filter((x): x is object => x !== null);
+      purchaseRecs = repointPurchaseIds(purchases, original.id)
+        .map((pid) => {
+          const p = purchases.find((x) => x.id === pid);
+          return p ? stampUpdate({ ...p, ammoId: other.id }, now) : null;
+        })
+        .filter((x): x is object => x !== null);
+      deleteCanId = original.id;
     }
+    // Audit CR-8: the whole merge lands in ONE transaction (can + repointed
+    // sessions/purchases + the buy + deleting the old can) — never half-applied.
+    await applyAmmoMerge({ keptCan, sessions: sessionRecs, purchases: purchaseRecs, newPurchase, deleteCanId });
     onSaved();
   }
 
@@ -397,7 +415,8 @@ export function AmmoForm({ id, onSaved, onCancel }: {
           <p className="report-note" style={{ marginBottom: 12 }}>
             {ammoLabel(dupe)} is already on your shelf with {(dupe.quantity || 0).toLocaleString()} rounds
             on hand. Combine the two into one can? Rounds add together, the cost per round
-            averages out, and {original ? 'every session and purchase that used this can follows along' : 'nothing else changes'}.
+            averages across only the rounds that have a known cost (a can with no cost set
+            won't pull the average toward $0), and {original ? 'every session and purchase that used this can follows along' : 'nothing else changes'}.
           </p>
           <button className="button" onClick={() => { setDupe(null); void combineInto(dupe); }}>
             Combine Into One Can

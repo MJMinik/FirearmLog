@@ -61,6 +61,10 @@ const money = (v: unknown): number =>
     : typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)) ? Number(v)
     : 0;
 
+// Audit CR-9: round a per-round cost to 4dp so float drift never surfaces as
+// "$0.30000000001". (Whole-dollar totals are rounded for display by the UI.)
+const round4 = (n: number): number => Math.round(n * 1e4) / 1e4;
+
 export const isAmmoPurchase = (p: CostPurchaseLike): boolean =>
   p.category.toLowerCase() === 'ammo purchase';
 
@@ -115,9 +119,11 @@ export function computeFifoCosts(
   for (const p of purchases) {
     const link = purchaseAmmoLink(p);
     if (!link) continue;
+    const unitCost = money(p.cost) / link.rounds;
+    if (!Number.isFinite(unitCost)) continue; // audit CR-9: never seed a NaN/Infinity lot
     (lotsBySku[link.ammoId] ??= []).push({
       date: p.date || '', id: p.id,
-      unitCost: money(p.cost) / link.rounds,
+      unitCost,
       remaining: link.rounds
     });
   }
@@ -168,7 +174,7 @@ export function ammoCurrentCostPerRound(
   for (const lot of lots) {
     if (lot.remaining > 0) { cost += lot.remaining * lot.unitCost; rounds += lot.remaining; }
   }
-  return rounds > 0 ? cost / rounds : null;
+  return rounds > 0 ? round4(cost / rounds) : null;
 }
 
 /**
@@ -198,7 +204,7 @@ export function costPerRoundAfterBuy(
     rounds = onHand;
   }
   if (buyRounds > 0 && buyCost > 0) { cost += buyCost; rounds += buyRounds; }
-  return rounds > 0 ? cost / rounds : null;
+  return rounds > 0 ? round4(cost / rounds) : null;
 }
 
 /**
