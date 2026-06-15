@@ -605,6 +605,10 @@ export function MoreScreen({ refreshKey, onImported, open }: {
           <span className="label">Reports</span>
           <span className="value">›</span>
         </button>
+        <button className="row-tap" onClick={() => open({ kind: 'help' })}>
+          <span className="label">Help &amp; Tour</span>
+          <span className="value">›</span>
+        </button>
       </div>
       <SyncCard onPulled={onImported} />
       <div className="card">
@@ -614,13 +618,6 @@ export function MoreScreen({ refreshKey, onImported, open }: {
           records — it won't double anything up.
         </p>
         <ImportFlow onImported={onImported} />
-      </div>
-      <div className="card">
-        <h2>Help</h2>
-        <button className="row-tap" onClick={() => open({ kind: 'help' })}>
-          <span className="label">Help &amp; Tour<div className="row-sub">Take the quick tour, plus tips</div></span>
-          <span className="value">›</span>
-        </button>
       </div>
     </div>
   );
