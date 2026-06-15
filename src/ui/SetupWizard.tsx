@@ -45,12 +45,13 @@ export function SetupWizard({ onFinish, onCancel }: {
   if (adding === 'mag') return <MagazineForm onSaved={afterAdd} onCancel={cancelAdd} />;
 
   const noGuns = counts.guns === 0;
-  const gearRow = (label: string, count: number, add: Adding, primary: boolean) => (
-    <div className="row">
+  // A normal tappable list row (label + count on the left, a compact "+ Add" on
+  // the right) — NOT the full-width .button, which would balloon inside a row.
+  const gearRow = (label: string, count: number, add: Adding, accent: boolean) => (
+    <button className="row-tap" onClick={() => setAdding(add)}>
       <span className="label">{label}<div className="row-sub">{count} added</div></span>
-      <button className={primary ? 'button' : 'button secondary'} style={{ flex: 'none', minWidth: 96 }}
-        onClick={() => setAdding(add)}>+ Add</button>
-    </div>
+      <span className="value" style={accent ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>+ Add ›</span>
+    </button>
   );
 
   return (
@@ -106,9 +107,9 @@ export function SetupWizard({ onFinish, onCancel }: {
                 : 'Add as much or as little as you like. You can always come back to this from Help, or add more from each screen.'}
             </p>
             {gearRow('Guns', counts.guns, 'gun', true)}
-            {gearRow('Optics', counts.optics, 'optic', !noGuns)}
-            {gearRow('Ammo', counts.ammo, 'ammo', !noGuns)}
-            {gearRow('Magazines', counts.mags, 'mag', !noGuns)}
+            {gearRow('Optics', counts.optics, 'optic', false)}
+            {gearRow('Ammo', counts.ammo, 'ammo', false)}
+            {gearRow('Magazines', counts.mags, 'mag', false)}
           </div>
           <button className="button" onClick={onFinish}>Done — go to the app</button>
         </>
