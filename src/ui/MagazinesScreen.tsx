@@ -1,16 +1,20 @@
 // Magazines: carried over from Pistol Tracker, now editable.
 import { useEffect, useState } from 'react';
 import type { Firearm, Magazine } from '../lib/types.ts';
-import { getAll, getOne, putOne } from '../lib/db.ts';
+import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { InfoTip } from './InfoTip.tsx';
+import { FormProblem } from './FormProblem.tsx';
+import { ConfirmSheet } from './Sheet.tsx';
+import { ListSearch, matchesQuery } from './ListSearch.tsx';
 
 export function MagazinesScreen({ refreshKey, onBack, openForm }: {
   refreshKey: number; onBack: () => void; openForm: (id?: string) => void;
 }) {
   const [mags, setMags] = useState<Magazine[]>([]);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
+  const [q, setQ] = useState('');
   useEffect(() => {
     let alive = true;
     void Promise.all([getAll<Magazine>('magazines'), getAll<Firearm>('firearms')]).then(([m, f]) => {
@@ -32,9 +36,10 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
       </div>
       <h1 className="large-title">Magazines <InfoTip title="Magazines">Your magazines, grouped by the guns they fit.</InfoTip></h1>
       <button className="button" onClick={() => openForm()}>+ Add Magazine</button>
+      {mags.length > 8 && <ListSearch value={q} onChange={setQ} placeholder="Search magazines" />}
       <div className="card" style={{ marginTop: 16 }}>
         <h2>All Magazines</h2>
-        {mags.map((m) => (
+        {mags.filter((m) => matchesQuery(q, m.label, gunNames(m.firearmIds))).map((m) => (
           <button className="row-tap" key={m.id} onClick={() => openForm(m.id)}>
             <span className="label">
               {m.label}{m.active ? '' : ' (retired)'}
@@ -59,6 +64,7 @@ export function MagazineForm({ id, onSaved, onCancel }: {
   const [totalRounds, setTotalRounds] = useState('0');
   const [notes, setNotes] = useState('');
   const [problem, setProblem] = useState('');
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -89,6 +95,13 @@ export function MagazineForm({ id, onSaved, onCancel }: {
     onSaved();
   }
 
+  // Audit #10: magazines can be deleted (nothing else references them — sessions
+  // don't link to magazines). "Retire" still exists for mags you want to keep on record.
+  async function reallyDelete() {
+    if (original) await deleteOne('magazines', original.id);
+    onSaved();
+  }
+
   return (
     <div className="screen">
       <div className="navbar">
@@ -96,7 +109,7 @@ export function MagazineForm({ id, onSaved, onCancel }: {
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
       <h1 className="large-title">{original ? 'Edit Magazine' : 'New Magazine'}</h1>
-      {problem && <p className="form-problem">{problem}</p>}
+      <FormProblem problem={problem} />
       <div className="card">
         <label className="field">Label
           <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="A01" />
@@ -128,6 +141,20 @@ export function MagazineForm({ id, onSaved, onCancel }: {
         </label>
       </div>
       <button className="button" onClick={() => void save()}>{original ? 'Save Changes' : 'Add Magazine'}</button>
+      {original && (
+        <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>
+          Delete Magazine
+        </button>
+      )}
+      {confirming && (
+        <ConfirmSheet
+          title="Delete this magazine?"
+          message="It's removed from your gear. Prefer to keep it on record? Turn off &quot;In service&quot; to retire it instead. There's no undo."
+          confirmLabel="Delete Magazine"
+          onConfirm={() => void reallyDelete()}
+          onClose={() => setConfirming(false)}
+        />
+      )}
     </div>
   );
 }

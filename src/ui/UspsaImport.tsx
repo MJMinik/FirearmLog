@@ -3,7 +3,7 @@
 // Classifier record per NEW score (skipping any already in your log) and they
 // feed the existing C->B classification view. Nothing is written until "Import".
 // The parser is pure + tested in src/lib/uspsaClassifier.ts.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Classifier } from '../lib/types.ts';
 import { getAll, putOne } from '../lib/db.ts';
 import { stampNew } from '../lib/stamps.ts';
@@ -11,6 +11,7 @@ import { newId } from '../lib/id.ts';
 import {
   parseUspsaClassifiers, classifierKey, SAMPLE_USPSA_CSV, type UspsaClassifierRow
 } from '../lib/uspsaClassifier.ts';
+import { FormProblem } from './FormProblem.tsx';
 
 export function UspsaImport({ onCancel, onDone }: {
   onCancel: () => void;
@@ -21,6 +22,7 @@ export function UspsaImport({ onCancel, onDone }: {
   const [existingKeys, setExistingKeys] = useState<Set<string>>(new Set());
   const [problem, setProblem] = useState('');
   const [saving, setSaving] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null); // audit #19 — styled file picker
 
   useEffect(() => {
     void (async () => {
@@ -67,7 +69,7 @@ export function UspsaImport({ onCancel, onDone }: {
       </div>
       <h1 className="large-title">Import USPSA Classifiers</h1>
 
-      {problem && <p className="form-problem">{problem}</p>}
+      <FormProblem problem={problem} />
 
       {!parsed && (
         <div className="card">
@@ -80,10 +82,11 @@ export function UspsaImport({ onCancel, onDone }: {
             <textarea rows={8} value={text} placeholder="Paste USPSA classifier scores here…"
               onChange={(e) => setText(e.target.value)} />
           </label>
-          <input type="file" accept=".csv,.txt,text/csv"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then((t) => { setText(t); setProblem(''); }); }} />
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <input ref={fileRef} type="file" accept=".csv,.txt,text/csv" style={{ display: 'none' }}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then((t) => { setText(t); setProblem(''); }); e.target.value = ''; }} />
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <button className="button" style={{ flex: 1 }} disabled={!text.trim()} onClick={readResults}>Read scores</button>
+            <button className="button secondary" style={{ flex: 1 }} onClick={() => fileRef.current?.click()}>Load a file</button>
             <button className="button secondary" style={{ flex: 1 }} onClick={() => { setText(SAMPLE_USPSA_CSV); setProblem(''); }}>Try the sample</button>
           </div>
         </div>

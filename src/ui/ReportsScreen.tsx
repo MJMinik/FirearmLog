@@ -18,6 +18,7 @@ import { buildRefLookup } from '../lib/referenceData.ts';
 import { buildReportHtml, type ReportSection } from '../lib/reports.ts';
 import { reportImageUrls } from './reportImages.ts';
 import { InfoTip } from './InfoTip.tsx';
+import { FormProblem } from './FormProblem.tsx';
 
 interface Bundle {
   firearms: Firearm[]; sessions: Session[]; matches: Match[]; purchases: Purchase[];
@@ -228,7 +229,7 @@ export function ReportsScreen({ refreshKey, onBack }: { refreshKey: number; onBa
         <span />
       </div>
       <h1 className="large-title">Reports <InfoTip title="Reports">Printable summaries — round count, costs, season, malfunctions, maintenance, insurance. Save as PDF.</InfoTip></h1>
-      {problem && <p className="form-problem">{problem}</p>}
+      <FormProblem problem={problem} />
       <p className="report-note">Each opens a printable page — use your browser's "Save as PDF" to keep a copy.</p>
       <div className="card">
         {reports.map((r) => (

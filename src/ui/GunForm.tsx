@@ -5,6 +5,7 @@ import { getAll, getOne, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { suggestReferenceMatch, type ReferenceEntry } from '../lib/referenceData.ts';
+import { FormProblem } from './FormProblem.tsx';
 
 export function GunForm({ id, onSaved, onCancel }: {
   id?: string; onSaved: (gunId: string) => void; onCancel: () => void;
@@ -96,7 +97,7 @@ export function GunForm({ id, onSaved, onCancel }: {
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
       <h1 className="large-title">{editing ? 'Edit Gun' : 'New Gun'}</h1>
-      {problem && <p className="form-problem">{problem}</p>}
+      <FormProblem problem={problem} />
 
       <div className="card">
         <label className="field">Name

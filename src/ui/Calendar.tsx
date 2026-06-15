@@ -6,8 +6,10 @@ import { Sheet } from './Sheet.tsx';
 
 export interface CalItem { kind: 'practice' | 'dry' | 'class' | 'match'; id: string; label: string; sub: string; }
 
-export function MonthCalendar({ items, onOpen }: {
+export function MonthCalendar({ items, onOpen, onEmptyDay }: {
   items: Map<string, CalItem[]>; onOpen: (it: CalItem) => void;
+  /** Audit #9: tapping a day with nothing on it offers to start a session there. */
+  onEmptyDay?: (dateKey: string) => void;
 }) {
   const now = new Date();
   const [year, setYear] = useState(now.getFullYear());
@@ -32,9 +34,11 @@ export function MonthCalendar({ items, onOpen }: {
   }
 
   function tapDay(d: number) {
-    const list = items.get(dayKey(new Date(year, month, d))) ?? [];
+    const key = dayKey(new Date(year, month, d));
+    const list = items.get(key) ?? [];
     if (list.length === 1) onOpen(list[0]);
     else if (list.length > 1) setDaySheet(list);
+    else onEmptyDay?.(key);
   }
 
   return (

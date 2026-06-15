@@ -5,7 +5,7 @@
 // Nothing is written until the final "Save match" — it creates one ordinary
 // Match record (editable/deletable like any other). The parser is pure + tested
 // in src/lib/practiscore.ts; this file is just the screen around it.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Firearm } from '../lib/types.ts';
 import { getAll, putOne } from '../lib/db.ts';
 import { stampNew } from '../lib/stamps.ts';
@@ -15,6 +15,8 @@ import { MATCH_TYPES } from '../lib/competition.ts';
 import {
   parsePractiScore, countInDivision, SAMPLE_PRACTISCORE_CSV, type PsMatch
 } from '../lib/practiscore.ts';
+import { FormProblem } from './FormProblem.tsx';
+import { ListSearch, matchesQuery } from './ListSearch.tsx';
 
 const toNum = (t: string): number | null => (t.trim() === '' ? null : Number(t));
 
@@ -35,6 +37,8 @@ export function PractiScoreImport({ onCancel, onSaved }: {
   const [firearmId, setFirearmId] = useState('');
   const [entryFee, setEntryFee] = useState('');
   const [saving, setSaving] = useState(false);
+  const [psQuery, setPsQuery] = useState(''); // audit #18 — find yourself in a big field
+  const fileRef = useRef<HTMLInputElement>(null); // audit #19 — styled file picker
 
   useEffect(() => { void (async () => setFirearms(await getAll<Firearm>('firearms')))(); }, []);
 
@@ -100,7 +104,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       </div>
       <h1 className="large-title">Import from PractiScore</h1>
 
-      {problem && <p className="form-problem">{problem}</p>}
+      <FormProblem problem={problem} />
 
       {/* Step 1 — paste or load the export */}
       {!parsed && (
@@ -114,10 +118,11 @@ export function PractiScoreImport({ onCancel, onSaved }: {
             <textarea rows={8} value={text} placeholder="Paste PractiScore results here…"
               onChange={(e) => setText(e.target.value)} />
           </label>
-          <input type="file" accept=".csv,.txt,text/csv"
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then((t) => { setText(t); setProblem(''); }); }} />
-          <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
+          <input ref={fileRef} type="file" accept=".csv,.txt,text/csv" style={{ display: 'none' }}
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then((t) => { setText(t); setProblem(''); }); e.target.value = ''; }} />
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <button className="button" style={{ flex: 1 }} disabled={!text.trim()} onClick={readResults}>Read results</button>
+            <button className="button secondary" style={{ flex: 1 }} onClick={() => fileRef.current?.click()}>Load a file</button>
             <button className="button secondary" style={{ flex: 1 }} onClick={() => { setText(SAMPLE_PRACTISCORE_CSV); setProblem(''); }}>Try the sample</button>
           </div>
         </div>
@@ -130,17 +135,23 @@ export function PractiScoreImport({ onCancel, onSaved }: {
           <p className="report-note">
             {parsed.competitors.length} shooters{parsed.date ? ` · ${parsed.date}` : ''}. Which one is you?
           </p>
-          {parsed.competitors.map((c, i) => (
-            <button className="row-tap" key={i} onClick={() => setChosenIdx(i)}>
-              <span className="label">{c.name || '(no name)'}
-                <div className="row-sub">
-                  {[c.division, c.classLetter && `Class ${c.classLetter}`, c.matchPercent != null ? `${c.matchPercent.toFixed(2)}%` : null]
-                    .filter(Boolean).join(' · ')}
-                </div>
-              </span>
-              <span className="value">{c.overallPlace != null ? `#${c.overallPlace}` : ''} ›</span>
-            </button>
-          ))}
+          {/* Audit #18: search by name so you're not scrolling a 200-shooter field. */}
+          {parsed.competitors.length > 8 && (
+            <ListSearch value={psQuery} onChange={setPsQuery} placeholder="Search shooters by name" />
+          )}
+          {parsed.competitors.map((c, i) =>
+            matchesQuery(psQuery, c.name) ? (
+              <button className="row-tap" key={i} onClick={() => setChosenIdx(i)}>
+                <span className="label">{c.name || '(no name)'}
+                  <div className="row-sub">
+                    {[c.division, c.classLetter && `Class ${c.classLetter}`, c.matchPercent != null ? `${c.matchPercent.toFixed(2)}%` : null]
+                      .filter(Boolean).join(' · ')}
+                  </div>
+                </span>
+                <span className="value">{c.overallPlace != null ? `#${c.overallPlace}` : ''} ›</span>
+              </button>
+            ) : null
+          )}
           <button className="button secondary" style={{ marginTop: 10 }} onClick={startOver}>Start over</button>
         </div>
       )}

@@ -14,6 +14,8 @@ import { buildPartsReportHtml, opticLabel } from '../lib/partsReport.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
+import { FormProblem } from './FormProblem.tsx';
+import { ListSearch, matchesQuery } from './ListSearch.tsx';
 
 export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }: {
   refreshKey: number; onBack: () => void;
@@ -23,6 +25,7 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [unassignedOptics, setUnassignedOptics] = useState<Optic[]>([]);
   const [problem, setProblem] = useState('');
+  const [q, setQ] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -59,7 +62,7 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
         <span />
       </div>
       <h1 className="large-title">Spare Parts &amp; Inventory <InfoTip title="Spare Parts & Inventory">Spare parts and spare optics on the shelf. What you buy here feeds Costs.</InfoTip></h1>
-      {problem && <p className="form-problem">{problem}</p>}
+      <FormProblem problem={problem} />
 
       <button className="button" onClick={() => openPartForm()}>+ Add Part</button>
       {!empty && (
@@ -68,6 +71,7 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
         </button>
       )}
 
+      {parts.length > 8 && <ListSearch value={q} onChange={setQ} placeholder="Search parts" />}
       <div className="card">
         <h2>Spare Parts</h2>
         {parts.length === 0 && (
@@ -76,7 +80,7 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
             anything you keep on hand, tied to a gun or universal.
           </p>
         )}
-        {parts.map((p) => (
+        {parts.filter((p) => matchesQuery(q, p.name, p.partNumber, p.vendor, p.firearmId ? (gunName(p.firearmId) ?? '') : '')).map((p) => (
           <button className="row-tap" key={p.id} onClick={() => openPartForm(p.id)}>
             <span className="label">
               {p.name}
@@ -194,7 +198,7 @@ export function PartForm({ id, onSaved, onCancel }: {
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
       <h1 className="large-title">{original ? 'Edit Part' : 'New Part'}</h1>
-      {problem && <p className="form-problem">{problem}</p>}
+      <FormProblem problem={problem} />
       <div className="card">
         <SuggestField label="Part name" value={name} onChange={setName} name="fl-part-name"
           suggestions={nameSuggestions} placeholder="Recoil spring" />

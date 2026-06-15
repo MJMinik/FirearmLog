@@ -153,6 +153,9 @@ export function ProgressScreen({ refreshKey }: { refreshKey: number }) {
 
 function HeatmapCard({ sessions }: { sessions: Session[] }) {
   const [weeks, setWeeks] = useState(26);
+  // Audit #20: tapping a day shows its count here — the SVG <title> only worked
+  // on desktop hover, so on a phone the "press a square" help did nothing.
+  const [selText, setSelText] = useState<string | null>(null);
   const grid = buildHeatmap(sessions, weeks, new Date());
   const cell = 12, gap = 3, rows = 7;
   const w = grid.length * (cell + gap) - gap;
@@ -172,12 +175,16 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
         {grid.map((col, ci) => col.map((c, ri) => (
           <rect key={c.date} x={ci * (cell + gap)} y={ri * (cell + gap)} width={cell} height={cell} rx={2}
             fill={c.level === 0 ? 'var(--separator)' : 'var(--accent)'}
-            opacity={c.level === 0 ? (c.inRange ? 0.4 : 0.12) : opacities[c.level]}>
+            opacity={c.level === 0 ? (c.inRange ? 0.4 : 0.12) : opacities[c.level]}
+            style={{ cursor: 'pointer' }}
+            onClick={() => setSelText(`${formatDayKey(c.date)}: ${c.sessions} session${c.sessions !== 1 ? 's' : ''}, ${c.rounds.toLocaleString()} rounds`)}>
             <title>{`${c.date}: ${c.sessions} session${c.sessions !== 1 ? 's' : ''}, ${c.rounds.toLocaleString()} rounds`}</title>
           </rect>
         )))}
       </svg>
-      <p className="report-note">Each square is a day; darker = more rounds. Last {weeks} weeks.</p>
+      {selText
+        ? <p className="report-note" aria-live="polite">{selText}</p>
+        : <p className="report-note">Each square is a day; darker = more rounds — tap one for that day. Last {weeks} weeks.</p>}
     </div>
   );
 }

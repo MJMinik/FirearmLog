@@ -11,6 +11,7 @@ import { recentValues } from '../lib/suggest.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
+import { FormProblem } from './FormProblem.tsx';
 
 export function OpticsScreen({ refreshKey, onBack, openOpticForm }: {
   refreshKey: number; onBack: () => void;
@@ -20,6 +21,9 @@ export function OpticsScreen({ refreshKey, onBack, openOpticForm }: {
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [loggingFor, setLoggingFor] = useState<Optic | null>(null);
   const [localBump, setLocalBump] = useState(0);
+  // Audit #11: optics collapse to compact rows and expand on tap, instead of
+  // every optic rendering fully expanded into a long wall.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -37,57 +41,61 @@ export function OpticsScreen({ refreshKey, onBack, openOpticForm }: {
   const renderOptic = (op: Optic) => {
     const entries = normalizeBatteryLog(op.batteryLog);
     const due = isBatteryDue(op.batteryLog, new Date());
+    const open = expandedId === op.id;
+    const title = [op.make, op.model].filter(Boolean).join(' ') || 'Unnamed optic';
     return (
       <div className="card" key={op.id}>
-        <h2>{[op.make, op.model].filter(Boolean).join(' ') || 'Unnamed optic'}</h2>
-        <div className="row">
-          <span className="label">Firearm</span>
-          <span className="value">{gunName(op.firearmId) ?? 'Unassigned'}</span>
-        </div>
-        {op.installDate && (
-          <div className="row">
-            <span className="label">Installed</span>
-            <span className="value">{formatDayKey(op.installDate)}</span>
-          </div>
-        )}
-        <div className="row">
-          <span className="label">Battery</span>
-          <span className={`badge ${due ? 'warn-badge' : 'ok'}`}>{due ? 'Battery due' : 'Active'}</span>
-        </div>
-        {op.dotSize && (
-          <div className="row"><span className="label">Dot / reticle size</span><span className="value">{op.dotSize}</span></div>
-        )}
-        {op.zeroDist && (
-          <div className="row"><span className="label">Zero distance</span><span className="value">{op.zeroDist}</span></div>
-        )}
-        {op.mountHeight && (
-          <div className="row"><span className="label">Mount / co-witness height</span><span className="value">{op.mountHeight}</span></div>
-        )}
-        {op.torqueSpec && (
-          <div className="row"><span className="label">Torque spec</span><span className="value">{op.torqueSpec}</span></div>
-        )}
-        {op.settingsSnapshot && <p className="report-note">{op.settingsSnapshot}</p>}
-
-        <h2 style={{ marginTop: 12 }}>Battery Log</h2>
-        {entries.length === 0 && <p className="report-note">No battery changes logged yet.</p>}
-        {entries.slice(0, 3).map((e, i) => (
-          <div className="row" key={i}>
-            <span className="label">{e.notes || 'Battery changed'}</span>
-            <span className="value">{formatDayKey(e.date)}</span>
-          </div>
-        ))}
-        {entries.length > 3 && (
-          <p className="report-note">{entries.length - 3} older entr{entries.length - 3 === 1 ? 'y' : 'ies'} hidden</p>
-        )}
-        <button className="button secondary" style={{ marginTop: 10 }} onClick={() => setLoggingFor(op)}>
-          + Log Battery Change
+        <button className="row-tap" aria-expanded={open}
+          onClick={() => setExpandedId(open ? null : op.id)}>
+          <span className="label">
+            {title}
+            <div className="row-sub">{gunName(op.firearmId) ?? 'Unassigned'}</div>
+          </span>
+          <span className="value">
+            <span className={`badge ${due ? 'warn-badge' : 'ok'}`}>{due ? 'Battery due' : 'Active'}</span>
+            {' '}{open ? '▾' : '›'}
+          </span>
         </button>
 
-        {op.notes && <p className="note-text" style={{ marginTop: 10 }}>{op.notes}</p>}
+        {open && (
+          <>
+            {op.installDate && (
+              <div className="row"><span className="label">Installed</span><span className="value">{formatDayKey(op.installDate)}</span></div>
+            )}
+            {op.dotSize && (
+              <div className="row"><span className="label">Dot / reticle size</span><span className="value">{op.dotSize}</span></div>
+            )}
+            {op.zeroDist && (
+              <div className="row"><span className="label">Zero distance</span><span className="value">{op.zeroDist}</span></div>
+            )}
+            {op.mountHeight && (
+              <div className="row"><span className="label">Mount / co-witness height</span><span className="value">{op.mountHeight}</span></div>
+            )}
+            {op.torqueSpec && (
+              <div className="row"><span className="label">Torque spec</span><span className="value">{op.torqueSpec}</span></div>
+            )}
+            {op.settingsSnapshot && <p className="report-note">{op.settingsSnapshot}</p>}
 
-        <button className="button secondary" style={{ marginTop: 10 }} onClick={() => openOpticForm(op.id)}>
-          Edit
-        </button>
+            <h2 style={{ marginTop: 12 }}>Battery Log</h2>
+            {entries.length === 0 && <p className="report-note">No battery changes logged yet.</p>}
+            {/* Audit #12: the full history shows here now — no more unreachable "older entries hidden". */}
+            {entries.map((e, i) => (
+              <div className="row" key={i}>
+                <span className="label">{e.notes || 'Battery changed'}</span>
+                <span className="value">{formatDayKey(e.date)}</span>
+              </div>
+            ))}
+            <button className="button secondary" style={{ marginTop: 10 }} onClick={() => setLoggingFor(op)}>
+              + Log Battery Change
+            </button>
+
+            {op.notes && <p className="note-text" style={{ marginTop: 10 }}>{op.notes}</p>}
+
+            <button className="button secondary" style={{ marginTop: 10 }} onClick={() => openOpticForm(op.id)}>
+              Edit
+            </button>
+          </>
+        )}
       </div>
     );
   };
@@ -233,7 +241,7 @@ export function OpticForm({ id, firearmId, onSaved, onCancel }: {
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
       <h1 className="large-title">{original ? 'Edit Optic' : 'New Optic'}</h1>
-      {problem && <p className="form-problem">{problem}</p>}
+      <FormProblem problem={problem} />
       <div className="card">
         <label className="field">Firearm
           <select value={firearmIdSel} onChange={(e) => setFirearmIdSel(e.target.value)}>

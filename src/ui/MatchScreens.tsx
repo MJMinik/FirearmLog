@@ -10,6 +10,7 @@ import { DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor } from '../lib/competi
 import { mediaUrl } from './media.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
+import { FormProblem } from './FormProblem.tsx';
 
 export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
   id: string; onEdit: () => void; onBack: () => void; onDeleted: () => void; refreshKey: number;
@@ -278,7 +279,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
         </button>
       </div>
       <h1 className="large-title">{editing ? 'Edit Match' : 'Log Match'}</h1>
-      {problem && <p className="form-problem">{problem}</p>}
+      <FormProblem problem={problem} />
 
       <div className="card">
         <label className="field">Match name

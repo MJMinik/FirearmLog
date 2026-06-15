@@ -12,9 +12,10 @@ import { mediaUrl } from './media.ts';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { Sheet } from './Sheet.tsx';
 
-export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onOpenReference, onOpenOptic, refreshKey }: {
+export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintenance, onOpenReference, onOpenOptic, refreshKey }: {
   id: string; onEdit: () => void; onBack: () => void;
-  onLogMaintenance: () => void; onOpenReference: (refId: string) => void;
+  onLogMaintenance: () => void; onEditMaintenance: (entryId: string) => void;
+  onOpenReference: (refId: string) => void;
   onOpenOptic: (opticId?: string, firearmId?: string) => void;
   refreshKey: number;
 }) {
@@ -123,15 +124,15 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onOpenReferenc
           <>
             <h2 style={{ marginTop: 16 }}>Recent Work</h2>
             {history.slice(0, 5).map((m) => (
-              <div className="row" key={m.id}>
+              <button className="row-tap" key={m.id} onClick={() => onEditMaintenance(m.id)}>
                 <span className="label">
                   {maintLabel(m.type)}
                   {(m.partsReplaced || m.notes) && (
                     <div className="row-sub">{[m.partsReplaced, m.notes].filter(Boolean).join(' · ')}</div>
                   )}
                 </span>
-                <span className="value">{formatDayKey(m.date)}</span>
-              </div>
+                <span className="value">{formatDayKey(m.date)} ›</span>
+              </button>
             ))}
           </>
         )}

@@ -9,8 +9,9 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { DIVISIONS, classificationProgress } from '../lib/competition.ts';
 import { matchFee } from '../lib/costing.ts';
 import type { View } from './nav.ts';
-import { ConfirmSheet } from './Sheet.tsx';
+import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { InfoTip } from './InfoTip.tsx';
+import { FormProblem } from './FormProblem.tsx';
 
 export function CompeteScreen({ refreshKey, open }: {
   refreshKey: number; open: (v: View) => void;
@@ -19,6 +20,9 @@ export function CompeteScreen({ refreshKey, open }: {
   const [classifiers, setClassifiers] = useState<Classifier[]>([]);
   const [division, setDivision] = useState('');
   const [loaded, setLoaded] = useState(false);
+  // Audit #17: the two importers live behind one "Import…" choice so the
+  // classification/season status shows sooner instead of under four buttons.
+  const [showImport, setShowImport] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -53,9 +57,7 @@ export function CompeteScreen({ refreshKey, open }: {
       <div style={{ height: 8 }} />
       <button className="button secondary" onClick={() => open({ kind: 'classifier-form' })}>+ Log Classifier</button>
       <div style={{ height: 8 }} />
-      <button className="button secondary" onClick={() => open({ kind: 'practiscore-import' })}>⬇ Import from PractiScore</button>
-      <div style={{ height: 8 }} />
-      <button className="button secondary" onClick={() => open({ kind: 'uspsa-import' })}>⬇ Import USPSA Classifiers</button>
+      <button className="button secondary" onClick={() => setShowImport(true)}>⬇ Import…</button>
 
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Classification <InfoTip title="Classification">Your class comes from the average of your best 6 of your last 8 classifier scores in a division. When that average crosses the next band, you move up — C to B and so on.</InfoTip></h2>
@@ -129,6 +131,19 @@ export function CompeteScreen({ refreshKey, open }: {
           </button>
         ))}
       </div>
+
+      {showImport && (
+        <Sheet title="Import" onClose={() => setShowImport(false)}>
+          <button className="drill-pick-row" onClick={() => { setShowImport(false); open({ kind: 'practiscore-import' }); }}>
+            <strong>⬇ Import from PractiScore</strong>
+            <span>Pull a match's results from a PractiScore export.</span>
+          </button>
+          <button className="drill-pick-row" onClick={() => { setShowImport(false); open({ kind: 'uspsa-import' }); }}>
+            <strong>⬇ Import USPSA Classifiers</strong>
+            <span>Bring in your classifier scores from USPSA.</span>
+          </button>
+        </Sheet>
+      )}
     </div>
   );
 }
@@ -192,7 +207,7 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
       <h1 className="large-title">{original ? 'Edit Classifier' : 'Log Classifier'}</h1>
-      {problem && <p className="form-problem">{problem}</p>}
+      <FormProblem problem={problem} />
       <div className="card">
         <label className="field">Classifier code
           <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="23-01" />

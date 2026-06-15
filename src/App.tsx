@@ -10,7 +10,6 @@ import { CompeteScreen, ClassifierForm } from './ui/CompeteScreen.tsx';
 import { MatchDetail, MatchForm } from './ui/MatchScreens.tsx';
 import { GunDetail } from './ui/GunDetail.tsx';
 import { GunForm } from './ui/GunForm.tsx';
-import { SessionDetail } from './ui/SessionDetail.tsx';
 import { SessionForm } from './ui/SessionForm.tsx';
 import { DrillsScreen, DrillForm } from './ui/DrillsScreen.tsx';
 import { MagazinesScreen, MagazineForm } from './ui/MagazinesScreen.tsx';
@@ -76,6 +75,7 @@ export function App() {
       onBack={back}
       onEdit={() => push({ kind: 'gun-form', id: v.id })}
       onLogMaintenance={() => push({ kind: 'maint-form', gunId: v.id })}
+      onEditMaintenance={(eid) => push({ kind: 'maint-form', gunId: v.id, id: eid })}
       onOpenReference={(rid) => push({ kind: 'reference-detail', id: rid })}
       onOpenOptic={(oid, fid) => push({ kind: 'optic-form', id: oid, firearmId: fid })} />;
   } else if (view?.kind === 'gun-form') {
@@ -83,16 +83,9 @@ export function App() {
     content = <GunForm id={v.id}
       onCancel={back}
       onSaved={(gid) => { refresh(); replace({ kind: 'gun-detail', id: gid }); }} />;
-  } else if (view?.kind === 'session-detail') {
-    const v = view;
-    content = <SessionDetail id={v.id} refreshKey={refreshKey}
-      onBack={back}
-      onEdit={() => push({ kind: 'session-form', id: v.id })}
-      onConvert={() => push({ kind: 'session-form', id: v.id, convert: true })}
-      onDeleted={() => { refresh(); replace(null); }} />;
   } else if (view?.kind === 'session-form') {
     const v = view;
-    content = <SessionForm id={v.id} initialPlanned={v.planned} convert={v.convert}
+    content = <SessionForm id={v.id} initialPlanned={v.planned} convert={v.convert} initialDate={v.date}
       onCancel={back}
       onConvert={() => push({ kind: 'session-form', id: v.id, convert: true })}
       onDeleted={() => { refresh(); setTab('log'); }}
@@ -139,7 +132,7 @@ export function App() {
       logFor={(gid) => push({ kind: 'maint-form', gunId: gid })} />;
   } else if (view?.kind === 'maint-form') {
     const v = view;
-    content = <MaintenanceForm gunId={v.gunId}
+    content = <MaintenanceForm gunId={v.gunId} id={v.id}
       onCancel={back}
       onSaved={() => { refresh(); replace({ kind: 'gun-detail', id: v.gunId }); }} />;
   } else if (view?.kind === 'match-detail') {

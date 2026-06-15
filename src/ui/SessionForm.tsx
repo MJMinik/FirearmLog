@@ -26,6 +26,7 @@ import { SuggestField } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { mediaUrl } from './media.ts';
+import { FormProblem } from './FormProblem.tsx';
 
 const KINDS = [
   { value: 'practice', label: 'Live practice' },
@@ -67,8 +68,8 @@ const fromRow = (r: DrillRow): DrillResult => ({
   notes: r.notes.trim()
 });
 
-export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, onConvert, onDeleted }: {
-  id?: string; initialPlanned?: boolean; convert?: boolean;
+export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved, onCancel, onConvert, onDeleted }: {
+  id?: string; initialPlanned?: boolean; convert?: boolean; initialDate?: string;
   onSaved: (sessionId: string) => void; onCancel: () => void;
   onConvert?: () => void; onDeleted?: () => void;
 }) {
@@ -81,7 +82,7 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
   const [pastLocations, setPastLocations] = useState<string[]>([]);
 
   const [kind, setKind] = useState('practice');
-  const [date, setDate] = useState(todayKey());
+  const [date, setDate] = useState(initialDate ?? todayKey());
   const [location, setLocation] = useState('');
   const [planned, setPlanned] = useState(!editing && !!initialPlanned);
   const [instructors, setInstructors] = useState<string[]>([]);
@@ -501,7 +502,7 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
         </button>
       </div>
       <h1 className="large-title">{convert ? 'Log Session (from Plan)' : editing ? 'Edit Session' : planned ? 'Plan Session' : 'Log Session'}</h1>
-      {problem && <p className="form-problem">{problem}</p>}
+      <FormProblem problem={problem} />
 
       {editing && original?.planned && !convert && onConvert && (
         <button className="button" onClick={onConvert}>✓ Convert to Logged Session</button>
@@ -799,7 +800,7 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
         ))}
         <button className="button secondary" onClick={() => setMalfs((prev) => [
           ...prev,
-          { firearmId: (selectedGuns[0] ?? firearms[0])?.id ?? '', type: '', resolution: 'Tap-Rack-Bang', notes: '' }
+          { firearmId: (selectedGuns[0] ?? firearms[0])?.id ?? '', type: '', resolution: '', notes: '' }
         ])}>+ Add Malfunction</button>
       </div>
 

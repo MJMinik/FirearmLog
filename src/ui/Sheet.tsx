@@ -40,9 +40,11 @@ export function ConfirmSheet({ title, message, confirmLabel, onConfirm, onClose 
   return (
     <Sheet title={title} onClose={onClose}>
       <p className="report-note" style={{ marginBottom: 14 }}>{message}</p>
-      <button className="button danger" onClick={onConfirm}>{confirmLabel}</button>
+      {/* Audit #1: the safe choice (Cancel) comes first and is the easy default;
+          the destructive action sits below so it isn't the reflex tap. */}
+      <button className="button" onClick={onClose}>Cancel</button>
       <div style={{ height: 8 }} />
-      <button className="button secondary" onClick={onClose}>Cancel</button>
+      <button className="button danger" onClick={onConfirm}>{confirmLabel}</button>
     </Sheet>
   );
 }

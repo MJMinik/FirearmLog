@@ -15,6 +15,7 @@ import { sessionRounds, roundsForFirearm, dryRepsForFirearm } from '../lib/stats
 import { ImportFlow } from './ImportFlow.tsx';
 import { SyncCard } from './SyncCard.tsx';
 import { InfoTip } from './InfoTip.tsx';
+import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { MonthCalendar } from './Calendar.tsx';
 import type { CalItem } from './Calendar.tsx';
 import { LogFilterBar } from './FilterBar.tsx';
@@ -210,7 +211,7 @@ function AlertRow({ alert, onTap, onDismiss, onComplete }: {
         </span>
       </button>
       <button className="alert-dismiss-btn" onClick={() => setShowActions(!showActions)}
-        aria-label="Dismiss options" title="Dismiss or mark complete">···</button>
+        aria-expanded={showActions} aria-label="Dismiss options" title="Dismiss or mark complete">Options ▾</button>
       {showActions && (
         <div className="alert-actions">
           <button onClick={() => { onComplete(); setShowActions(false); }}>Log maintenance</button>
@@ -363,17 +364,21 @@ export function HomeScreen({ refreshKey, onImported, open }: {
                   <span className="badge warn-badge">Low</span>
                 </button>
               ))}
+              {/* Audit #4: training gap now actually does something — tap to plan
+                  your next range trip — so it earns its tappable styling. */}
               {trainingGap !== null && trainingGap >= 14 && (
-                <div className="row-tap" style={{ cursor: 'default' }}>
+                <button className="row-tap" onClick={() => open({ kind: 'session-form', planned: true })}>
                   <span className="label">
                     Training gap: {trainingGap} days since your last session
-                    <div className="row-sub">Time to get to the range!</div>
+                    <div className="row-sub">Time to get to the range — tap to plan a session.</div>
                   </span>
                   <span className="badge warn-badge" style={{ fontSize: 11 }}>Gap</span>
-                </div>
+                </button>
               )}
+              {/* Audit #4: this one is purely informational, so it uses the plain
+                  non-interactive row style (no tap affordance). */}
               {ratingTrend?.dipping && (
-                <div className="row-tap" style={{ cursor: 'default' }}>
+                <div className="row">
                   <span className="label">
                     Fundamentals dipping
                     <div className="row-sub">
@@ -423,11 +428,8 @@ export function HomeScreen({ refreshKey, onImported, open }: {
               {buckets.every(b => b.total === 0)
                 ? <p className="report-note">No rounds logged yet{(chartFilter.category || chartFilter.firearmId) ? ' for this gun.' : '.'}</p>
                 : <RoundsByMonthChart buckets={buckets} />}
-              <div style={{ display: 'flex', gap: 12, marginTop: 8, fontSize: 11, color: 'var(--text-dim)' }}>
-                <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--accent)', marginRight: 4 }} />Live</span>
-                <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--warn)', marginRight: 4 }} />Match</span>
-                <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: 'var(--text-dim)', opacity: 0.4, marginRight: 4 }} />Dry</span>
-              </div>
+              {/* Audit #3: the chart renders its own Live/Match/Dry legend now,
+                  so the duplicate inline legend that used to sit here was removed. */}
             </div>
           </div>
 
@@ -537,7 +539,8 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
         <MonthCalendar items={calItems}
           onOpen={(it) => open(it.kind === 'match'
             ? { kind: 'match-detail', id: it.id }
-            : { kind: 'session-form', id: it.id })} />
+            : { kind: 'session-form', id: it.id })}
+          onEmptyDay={(dk) => open({ kind: 'session-form', date: dk })} />
       ) : sessions.length === 0 ? (
         <p className="empty">Nothing logged yet. Tap "Log Session" after your next range trip, or import your Pistol Tracker data from the Home screen.</p>
       ) : shownSessions.length === 0 ? (
@@ -613,7 +616,7 @@ export function MoreScreen({ refreshKey, onImported, open }: {
       </div>
       <SyncCard onPulled={onImported} />
       <div className="card">
-        <h2>Gear &amp; Data</h2>
+        <h2>Backup &amp; Import</h2>
         <p className="report-note" style={{ marginBottom: 12 }}>
           Import your Pistol Tracker backup here. Running it again simply re-applies the same
           records — it won't double anything up.
@@ -630,7 +633,9 @@ export function GunsScreen({ refreshKey, onBack, open }: {
   refreshKey: number; onBack: () => void; open: (v: View) => void;
 }) {
   const { firearms, loaded } = useData(refreshKey);
+  const [q, setQ] = useState('');
   if (!loaded) return <div className="screen" />;
+  const shown = firearms.filter((f) => matchesQuery(q, f.name, f.category, f.caliber));
   return (
     <div className="screen">
       <div className="navbar">
@@ -639,9 +644,11 @@ export function GunsScreen({ refreshKey, onBack, open }: {
       </div>
       <h1 className="large-title">Guns <InfoTip title="Guns">Your firearms. Tap one for its details, maintenance, and photos; use + to add a gun.</InfoTip></h1>
       <button className="button" onClick={() => open({ kind: 'gun-form' })}>+ Add Gun</button>
+      {firearms.length > 8 && <ListSearch value={q} onChange={setQ} placeholder="Search guns" />}
       <div className="card">
         {firearms.length === 0 && <p className="report-note">No guns yet. Tap "+ Add Gun" to add your first one.</p>}
-        {firearms.map((f) => (
+        {firearms.length > 0 && shown.length === 0 && <p className="report-note">No guns match "{q}".</p>}
+        {shown.map((f) => (
           <button className="row-tap" key={f.id} onClick={() => open({ kind: 'gun-detail', id: f.id })}>
             <span className="label">{f.name}</span>
             <span className="value">{f.category} · {f.caliber} ›</span>

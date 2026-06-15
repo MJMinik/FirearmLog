@@ -3,10 +3,13 @@
 import { useEffect, useState } from 'react';
 import type { DrillDef, GunCategory } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
-import { getAll, getOne, putOne } from '../lib/db.ts';
+import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { InfoTip } from './InfoTip.tsx';
+import { FormProblem } from './FormProblem.tsx';
+import { ConfirmSheet } from './Sheet.tsx';
+import { ListSearch, matchesQuery } from './ListSearch.tsx';
 
 const FIRE_LABEL: Record<DrillDef['fire'], string> = {
   live: 'Live fire', dry: 'Dry fire', both: 'Live & dry'
@@ -16,6 +19,8 @@ export function DrillsScreen({ refreshKey, onBack, openForm }: {
   refreshKey: number; onBack: () => void; openForm: (id?: string) => void;
 }) {
   const [drills, setDrills] = useState<DrillDef[]>([]);
+  const [expanded, setExpanded] = useState<string | null>(null);
+  const [q, setQ] = useState('');
   useEffect(() => {
     let alive = true;
     void getAll<DrillDef>('drills').then((d) => {
@@ -30,19 +35,38 @@ export function DrillsScreen({ refreshKey, onBack, openForm }: {
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Drills <InfoTip title="Drills">Your drill library. Each drill is tagged by gun type and dry/live, so the session picker shows the right ones. Tap "+ Add Drill" to create your own.</InfoTip></h1>
+      <h1 className="large-title">Drills <InfoTip title="Drills">Your drill library. Each drill is tagged by gun type and dry/live, so the session picker shows the right ones. Tap a drill to read how to run it, or "+ Add Drill" to create your own.</InfoTip></h1>
       <button className="button" onClick={() => openForm()}>+ Add Drill</button>
+      {drills.length > 8 && <ListSearch value={q} onChange={setQ} placeholder="Search drills" />}
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Drill Library</h2>
-        {drills.map((d) => (
-          <button className="row-tap" key={d.id} onClick={() => openForm(d.id)}>
-            <span className="label">
-              {d.name}
-              <div className="row-sub">{FIRE_LABEL[d.fire]} · {d.gunCategories.join(', ') || 'Any gun'}</div>
-            </span>
-            <span className="value">›</span>
-          </button>
-        ))}
+        {/* Audit #15: tapping a drill expands to its full how-to (brief + full
+            description + scoring), so you no longer have to open the edit form
+            just to read what a drill is. Edit is a button inside the expansion. */}
+        {drills.filter((d) => matchesQuery(q, d.name, d.briefDescription, d.gunCategories.join(' '))).map((d) => {
+          const open = expanded === d.id;
+          return (
+            <div key={d.id}>
+              <button className="row-tap" aria-expanded={open}
+                onClick={() => setExpanded(open ? null : d.id)}>
+                <span className="label">
+                  {d.name}
+                  <div className="row-sub">{FIRE_LABEL[d.fire]} · {d.gunCategories.join(', ') || 'Any gun'}</div>
+                  {d.briefDescription && <div className="row-sub">{d.briefDescription}</div>}
+                </span>
+                <span className="value">{open ? '▾' : '›'}</span>
+              </button>
+              {open && (
+                <div style={{ padding: '2px 2px 10px' }}>
+                  {d.fullDescription && <p className="note-text">{d.fullDescription}</p>}
+                  {d.scoring && <p className="report-note">Scoring: {d.scoring}</p>}
+                  {d.requiresHolster && <p className="report-note">Needs a holster.</p>}
+                  <button className="button secondary" onClick={() => openForm(d.id)}>Edit Drill</button>
+                </div>
+              )}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -60,6 +84,7 @@ export function DrillForm({ id, onSaved, onCancel }: {
   const [scoring, setScoring] = useState('');
   const [holster, setHolster] = useState(false);
   const [problem, setProblem] = useState('');
+  const [confirming, setConfirming] = useState(false);
 
   useEffect(() => {
     if (id === undefined) return;
@@ -95,6 +120,15 @@ export function DrillForm({ id, onSaved, onCancel }: {
     onSaved();
   }
 
+  // Audit #10: only YOUR custom drills (drx- IDs) can be deleted — the built-in
+  // library drills stay put (and would return on a re-import anyway). Deleting a
+  // drill definition leaves past sessions untouched (they store the drill by name).
+  const isCustom = !!original && original.id.startsWith('drx');
+  async function reallyDelete() {
+    if (original) await deleteOne('drills', original.id);
+    onSaved();
+  }
+
   return (
     <div className="screen">
       <div className="navbar">
@@ -102,7 +136,7 @@ export function DrillForm({ id, onSaved, onCancel }: {
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
       <h1 className="large-title">{original ? 'Edit Drill' : 'New Drill'}</h1>
-      {problem && <p className="form-problem">{problem}</p>}
+      <FormProblem problem={problem} />
 
       <div className="card">
         <label className="field">Name
@@ -145,6 +179,20 @@ export function DrillForm({ id, onSaved, onCancel }: {
         </div>
       </div>
       <button className="button" onClick={() => void save()}>{original ? 'Save Changes' : 'Add Drill'}</button>
+      {isCustom && (
+        <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>
+          Delete Drill
+        </button>
+      )}
+      {confirming && (
+        <ConfirmSheet
+          title="Delete this drill?"
+          message="It's removed from your drill library. Sessions that used it keep their record. There's no undo."
+          confirmLabel="Delete Drill"
+          onConfirm={() => void reallyDelete()}
+          onClose={() => setConfirming(false)}
+        />
+      )}
     </div>
   );
 }

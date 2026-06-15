@@ -3,8 +3,7 @@ export type View =
   | { kind: 'guns' }
   | { kind: 'gun-detail'; id: string }
   | { kind: 'gun-form'; id?: string }
-  | { kind: 'session-detail'; id: string }
-  | { kind: 'session-form'; id?: string; planned?: boolean; convert?: boolean }
+  | { kind: 'session-form'; id?: string; planned?: boolean; convert?: boolean; date?: string }
   | { kind: 'drills' }
   | { kind: 'drill-form'; id?: string }
   | { kind: 'magazines' }
@@ -12,7 +11,7 @@ export type View =
   | { kind: 'references' }
   | { kind: 'reference-detail'; id: string }
   | { kind: 'maintenance' }
-  | { kind: 'maint-form'; gunId: string }
+  | { kind: 'maint-form'; gunId: string; id?: string }
   | { kind: 'reference-form'; id?: string; copyFrom?: string }
   | { kind: 'match-detail'; id: string }
   | { kind: 'match-form'; id?: string }

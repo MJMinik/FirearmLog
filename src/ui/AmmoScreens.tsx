@@ -14,6 +14,8 @@ import { recentValues } from '../lib/suggest.ts';
 import { SuggestField } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { InfoTip } from './InfoTip.tsx';
+import { FormProblem } from './FormProblem.tsx';
+import { ListSearch, matchesQuery } from './ListSearch.tsx';
 
 export const ammoLabel = (a: Pick<Ammunition, 'brand' | 'caliber' | 'grain' | 'bulletType'>): string =>
   [a.brand, a.caliber, a.grain && `${a.grain}gr`, a.bulletType].filter(Boolean).join(' ');
@@ -25,6 +27,7 @@ export function AmmoScreen({ refreshKey, onBack, openForm }: {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [q, setQ] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -46,16 +49,17 @@ export function AmmoScreen({ refreshKey, onBack, openForm }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onBack}>‹ More</button>
+        <button className="back-btn" onClick={onBack}>‹ Back</button>
       </div>
       <h1 className="large-title">Ammo</h1>
       <button className="button" onClick={() => openForm()}>+ Add Ammo</button>
+      {ammo.length > 8 && <ListSearch value={q} onChange={setQ} placeholder="Search ammo" />}
       {ammo.length === 0 ? (
         <p className="empty">No ammo tracked yet. Add a can, then log purchases under Costs &amp; Purchases so FirearmLog can figure your true cost per round.</p>
       ) : (
         <div className="card" style={{ marginTop: 16 }}>
           <h2>On Hand <InfoTip title="On Hand">Rounds you have and what they cost. The cost per round is figured first-in-first-out — oldest purchases counted first — so it reflects what you actually paid for the rounds you're shooting. To add more of the same ammo, add it again with the same brand, caliber, grain, and bullet type — FirearmLog spots the match and offers to combine it into that can, keeping your cost history.</InfoTip></h2>
-          {ammo.map((a) => {
+          {ammo.filter((a) => matchesQuery(q, ammoLabel(a), a.brand, a.caliber, a.bulletType)).map((a) => {
             const inCan = ammoCurrentCostPerRound(a.id, purchases, sessions);
             const perRound = inCan ?? (a.costPerRound > 0 ? a.costPerRound : null);
             return (
@@ -263,7 +267,7 @@ export function AmmoForm({ id, onSaved, onCancel }: {
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
       <h1 className="large-title">{editing ? 'Edit Ammo' : 'Add Ammo'}</h1>
-      {problem && <p className="form-problem">{problem}</p>}
+      <FormProblem problem={problem} />
       <div className="card">
         <SuggestField label="Brand" value={brand} onChange={setBrand}
           suggestions={pastBrands} placeholder="Blazer Brass" />
@@ -302,53 +306,17 @@ export function AmmoForm({ id, onSaved, onCancel }: {
 
       {!editing && (
         <>
+          {/* Audit #14: pick the mode FIRST — logging a purchase vs. just recording
+              ammo you already own — so someone counting their shelf isn't led
+              through purchase fields they don't need. */}
           <div className="card">
-            <h2>The Buy</h2>
-            <label className="field">Rounds purchased
-              <input type="number" inputMode="numeric" min="0" value={purchRounds}
-                onChange={(e) => setPurchRounds(e.target.value)} placeholder="1000" />
-            </label>
-            <label className="field">What you paid, total ($)
-              <input type="number" inputMode="decimal" min="0" step="0.01" value={purchCost}
-                onChange={(e) => setPurchCost(e.target.value)} placeholder="299.99" />
-            </label>
-            <SuggestField label="Vendor (optional)" value={purchVendor} onChange={setPurchVendor}
-              suggestions={pastVendors} placeholder="Primary Arms" />
-            <p className="report-note">
-              One Save does it all: the buy lands under Costs &amp; Purchases, the rounds go
-              on the shelf, and every round you shoot from this can gets priced from your
-              buys, oldest first.
-            </p>
-          </div>
-
-          <div className="card">
-            <h2>On the Shelf After Saving</h2>
-            {match && (
-              <p className="report-note" style={{ marginTop: 0 }}>
-                This is the {ammoLabel(match)} can you already track
-                ({(match.quantity || 0).toLocaleString()} rounds on hand) — Save will
-                offer to put this buy on it.
-              </p>
-            )}
-            <div className="row">
-              <span className="label">Rounds on the shelf</span>
-              <span className="value">{shelfAfter.toLocaleString()}</span>
+            <h2>What are you doing?</h2>
+            <div className="seg" role="radiogroup" aria-label="Ammo entry mode">
+              <button role="radio" aria-checked={!justCounting} className={!justCounting ? 'on' : ''}
+                onClick={() => { setJustCounting(false); setQuantity(''); setCostPerRound(''); }}>Logging a purchase</button>
+              <button role="radio" aria-checked={justCounting} className={justCounting ? 'on' : ''}
+                onClick={() => { setJustCounting(true); setPurchRounds(''); setPurchCost(''); setPurchVendor(''); }}>Just counting what I have</button>
             </div>
-            <div className="row">
-              <span className="label">Average cost per round</span>
-              <span className="value">{costAfter !== null ? `$${costAfter.toFixed(3)}` : '—'}</span>
-            </div>
-            <p className="report-note">
-              These two run themselves from here on — buys add to the shelf, logged
-              sessions subtract, and the cost averages across what's left.
-            </p>
-          </div>
-
-          <div className="card">
-            <button className={`gun-toggle ${justCounting ? 'on' : ''}`} aria-pressed={justCounting}
-              onClick={() => setJustCounting(!justCounting)}>
-              Just counting the shelf — no buy to log
-            </button>
             {justCounting && (
               <>
                 <label className="field" style={{ marginTop: 8 }}>Rounds on the shelf right now
@@ -364,6 +332,50 @@ export function AmmoForm({ id, onSaved, onCancel }: {
                 </p>
               </>
             )}
+          </div>
+
+          {!justCounting && (
+            <div className="card">
+              <h2>The Buy</h2>
+              <label className="field">Rounds purchased
+                <input type="number" inputMode="numeric" min="0" value={purchRounds}
+                  onChange={(e) => setPurchRounds(e.target.value)} placeholder="1000" />
+              </label>
+              <label className="field">What you paid, total ($)
+                <input type="number" inputMode="decimal" min="0" step="0.01" value={purchCost}
+                  onChange={(e) => setPurchCost(e.target.value)} placeholder="299.99" />
+              </label>
+              <SuggestField label="Vendor (optional)" value={purchVendor} onChange={setPurchVendor}
+                suggestions={pastVendors} placeholder="Primary Arms" />
+              <p className="report-note">
+                One Save does it all: the buy lands under Costs &amp; Purchases, the rounds go
+                on the shelf, and every round you shoot from this can gets priced from your
+                buys, oldest first.
+              </p>
+            </div>
+          )}
+
+          <div className="card">
+            <h2>On the Shelf After Saving</h2>
+            {match && (
+              <p className="report-note" style={{ marginTop: 0 }}>
+                This is the {ammoLabel(match)} can you already track
+                ({(match.quantity || 0).toLocaleString()} rounds on hand) — Save will
+                offer to put this on it.
+              </p>
+            )}
+            <div className="row">
+              <span className="label">Rounds on the shelf</span>
+              <span className="value">{shelfAfter.toLocaleString()}</span>
+            </div>
+            <div className="row">
+              <span className="label">Average cost per round</span>
+              <span className="value">{costAfter !== null ? `$${costAfter.toFixed(3)}` : '—'}</span>
+            </div>
+            <p className="report-note">
+              These two run themselves from here on — buys add to the shelf, logged
+              sessions subtract, and the cost averages across what's left.
+            </p>
           </div>
 
           <div className="card">

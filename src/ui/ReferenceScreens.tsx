@@ -12,6 +12,7 @@ import { REFERENCES, getReference, isCustomRefId, toEntry } from '../lib/referen
 import type { Firearm } from '../lib/types.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { InfoTip } from './InfoTip.tsx';
+import { FormProblem } from './FormProblem.tsx';
 
 export function ReferenceList({ refreshKey, onBack, openDetail, openForm }: {
   refreshKey: number; onBack: () => void;
@@ -258,7 +259,7 @@ export function ReferenceForm({ id, copyFrom, onSaved, onCancel }: {
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
       <h1 className="large-title">{original ? 'Edit Guide' : 'New Guide'}</h1>
-      {problem && <p className="form-problem">{problem}</p>}
+      <FormProblem problem={problem} />
 
       <div className="card">
         <label className="field">Guide name

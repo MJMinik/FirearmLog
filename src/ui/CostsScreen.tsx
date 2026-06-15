@@ -14,6 +14,8 @@ import { ammoLabel } from './AmmoScreens.tsx';
 import { SuggestField } from './SuggestField.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { ConfirmSheet } from './Sheet.tsx';
+import { FormProblem } from './FormProblem.tsx';
+import { ListSearch, matchesQuery } from './ListSearch.tsx';
 
 const CATEGORIES = [
   'Ammo Purchase', 'Range Fee', 'Gear / Equipment', 'Service / Repair',
@@ -34,6 +36,7 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
   const [ammo, setAmmo] = useState<Ammunition[]>([]);
   const [parts, setParts] = useState<Part[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [q, setQ] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -80,7 +83,7 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onBack}>‹ More</button>
+        <button className="back-btn" onClick={onBack}>‹ Back</button>
       </div>
       <h1 className="large-title">Costs &amp; Purchases</h1>
       <button className="button" onClick={() => openForm()}>+ Add Purchase</button>
@@ -123,9 +126,10 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
 
       <div className="card">
         <h2>Purchases</h2>
+        {purchases.length > 8 && <ListSearch value={q} onChange={setQ} placeholder="Search purchases" />}
         {purchases.length === 0 ? (
           <p className="report-note">Nothing logged yet. Ammo, gear, classes, travel — put it here and the totals above keep themselves honest.</p>
-        ) : purchases.map((p) => (
+        ) : purchases.filter((p) => matchesQuery(q, p.item, p.category, p.vendor)).map((p) => (
           <button className="row-tap" key={p.id} onClick={() => openForm(p.id)}>
             <span className="label">
               {p.item || p.category}
@@ -282,7 +286,7 @@ export function PurchaseForm({ id, onSaved, onCancel }: {
         </button>
       </div>
       <h1 className="large-title">{editing ? 'Edit Purchase' : 'Add Purchase'}</h1>
-      {problem && <p className="form-problem">{problem}</p>}
+      <FormProblem problem={problem} />
       <div className="card">
         <label className="field">Date
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
