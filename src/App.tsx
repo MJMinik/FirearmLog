@@ -22,6 +22,7 @@ import { OpticsScreen, OpticForm } from './ui/OpticsScreen.tsx';
 import { PartsScreen, PartForm } from './ui/PartsScreen.tsx';
 import { ReportsScreen } from './ui/ReportsScreen.tsx';
 import { PractiScoreImport } from './ui/PractiScoreImport.tsx';
+import { UspsaImport } from './ui/UspsaImport.tsx';
 import { HelpScreen } from './ui/HelpScreen.tsx';
 import { SetupWizard } from './ui/SetupWizard.tsx';
 import { countAll } from './lib/db.ts';
@@ -201,6 +202,10 @@ export function App() {
     content = <PractiScoreImport
       onCancel={back}
       onSaved={(mid) => { refresh(); replace({ kind: 'match-detail', id: mid }); }} />;
+  } else if (view?.kind === 'uspsa-import') {
+    content = <UspsaImport
+      onCancel={back}
+      onDone={() => { refresh(); replace(null); }} />;
   } else if (view?.kind === 'help') {
     content = <HelpScreen onBack={back} open={push} />;
   } else if (view?.kind === 'setup') {

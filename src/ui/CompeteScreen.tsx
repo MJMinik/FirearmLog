@@ -54,6 +54,8 @@ export function CompeteScreen({ refreshKey, open }: {
       <button className="button secondary" onClick={() => open({ kind: 'classifier-form' })}>+ Log Classifier</button>
       <div style={{ height: 8 }} />
       <button className="button secondary" onClick={() => open({ kind: 'practiscore-import' })}>⬇ Import from PractiScore</button>
+      <div style={{ height: 8 }} />
+      <button className="button secondary" onClick={() => open({ kind: 'uspsa-import' })}>⬇ Import USPSA Classifiers</button>
 
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Classification <InfoTip title="Classification">Your class comes from the average of your best 6 of your last 8 classifier scores in a division. When that average crosses the next band, you move up — C to B and so on.</InfoTip></h2>
