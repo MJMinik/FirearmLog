@@ -180,6 +180,27 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
     return [...cats];
   }, [selectedGuns]);
 
+  // Keep each malfunction pinned to a gun that's actually in this session. If a
+  // gun is removed after a malfunction was logged against it, the malfunction
+  // would otherwise keep pointing at the absent gun while the "Which gun"
+  // dropdown silently showed a different one — and that wrong gun is what got
+  // saved (how an Erebus-session malfunction ended up filed under the Eos).
+  // Re-point any stranded malfunction to the first gun still in the session, so
+  // what you see in the dropdown is always what gets saved.
+  useEffect(() => {
+    if (!selectedGuns.length) return;
+    const inSession = new Set(selectedGuns.map((f) => f.id));
+    setMalfs((prev) => {
+      let changed = false;
+      const next = prev.map((m) => {
+        if (inSession.has(m.firearmId)) return m;
+        changed = true;
+        return { ...m, firearmId: selectedGuns[0].id };
+      });
+      return changed ? next : prev;
+    });
+  }, [selectedGuns]);
+
   const pickable = useMemo(
     () => drillsForContext(drillLib, selectedCategories, kind),
     [drillLib, selectedCategories, kind]
