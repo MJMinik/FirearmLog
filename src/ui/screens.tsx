@@ -14,6 +14,7 @@ import { formatDayKey } from '../lib/dates.ts';
 import { sessionRounds, roundsForFirearm, dryRepsForFirearm } from '../lib/stats.ts';
 import { ImportFlow } from './ImportFlow.tsx';
 import { SyncCard } from './SyncCard.tsx';
+import { InfoTip } from './InfoTip.tsx';
 import { MonthCalendar } from './Calendar.tsx';
 import type { CalItem } from './Calendar.tsx';
 import { LogFilterBar } from './FilterBar.tsx';
@@ -513,7 +514,7 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
 
   return (
     <div className="screen">
-      <h1 className="large-title">Log</h1>
+      <h1 className="large-title">Log <InfoTip title="Log">Every session, plus a calendar — tap a day to open it, or start a new session.</InfoTip></h1>
       <p className="report-note" style={{ marginTop: -8, marginBottom: 12 }}>
         Your training record: live practice, dry fire, classes, and planned range
         trips — with rounds, drills, ammo used, malfunctions, photos, and how it felt.
@@ -636,7 +637,7 @@ export function GunsScreen({ refreshKey, onBack, open }: {
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Guns</h1>
+      <h1 className="large-title">Guns <InfoTip title="Guns">Your firearms. Tap one for its details, maintenance, and photos; use + to add a gun.</InfoTip></h1>
       <button className="button" onClick={() => open({ kind: 'gun-form' })}>+ Add Gun</button>
       <div className="card">
         {firearms.length === 0 && <p className="report-note">No guns yet. Tap "+ Add Gun" to add your first one.</p>}

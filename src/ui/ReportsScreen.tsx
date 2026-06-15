@@ -17,6 +17,7 @@ import { maintenanceAlerts } from '../lib/maintenance.ts';
 import { buildRefLookup } from '../lib/referenceData.ts';
 import { buildReportHtml, type ReportSection } from '../lib/reports.ts';
 import { reportImageUrls } from './reportImages.ts';
+import { InfoTip } from './InfoTip.tsx';
 
 interface Bundle {
   firearms: Firearm[]; sessions: Session[]; matches: Match[]; purchases: Purchase[];
@@ -226,7 +227,7 @@ export function ReportsScreen({ refreshKey, onBack }: { refreshKey: number; onBa
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Reports</h1>
+      <h1 className="large-title">Reports <InfoTip title="Reports">Printable summaries — round count, costs, season, malfunctions, maintenance, insurance. Save as PDF.</InfoTip></h1>
       {problem && <p className="form-problem">{problem}</p>}
       <p className="report-note">Each opens a printable page — use your browser's "Save as PDF" to keep a copy.</p>
       <div className="card">

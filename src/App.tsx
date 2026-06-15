@@ -24,7 +24,7 @@ import { ReportsScreen } from './ui/ReportsScreen.tsx';
 import { PractiScoreImport } from './ui/PractiScoreImport.tsx';
 import { HelpScreen } from './ui/HelpScreen.tsx';
 import { SetupWizard } from './ui/SetupWizard.tsx';
-import { countAll, getSettings, putSettings } from './lib/db.ts';
+import { countAll } from './lib/db.ts';
 
 export function App() {
   const [tab, setTabState] = useState<TabId>('home');
@@ -48,16 +48,15 @@ export function App() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  // First run: if the log is empty and setup hasn't been done, open the Setup
-  // Wizard. (Michael already has data, so this won't fire for him — the wizard
-  // is also reachable any time from More → Help & Tour.)
+  // Until there's at least one gun, every open lands on the Setup Wizard — an
+  // empty log has nothing to attach sessions/optics/ammo to. Once a gun exists,
+  // the app opens normally. (Re-presents each open; doesn't hard-trap mid-session.
+  // Won't fire for Michael — he has guns; the wizard is also in Help → Set Up.)
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const settings = await getSettings<{ setupDone?: boolean }>();
-      if (settings?.setupDone) return;
-      const [guns, sessions] = await Promise.all([countAll('firearms'), countAll('sessions')]);
-      if (alive && guns === 0 && sessions === 0) setViewState({ kind: 'setup' });
+      const guns = await countAll('firearms');
+      if (alive && guns === 0) setViewState({ kind: 'setup' });
     })();
     return () => { alive = false; };
   }, []);
@@ -206,7 +205,7 @@ export function App() {
     content = <HelpScreen onBack={back} open={push} />;
   } else if (view?.kind === 'setup') {
     content = <SetupWizard
-      onFinish={() => { void putSettings({ setupDone: true }); refresh(); replace(null); }}
+      onFinish={() => { refresh(); replace(null); }}
       onCancel={back} />;
   } else if (tab === 'home') {
     content = <HomeScreen refreshKey={refreshKey} onImported={refresh} open={push} />;

@@ -11,6 +11,7 @@ import type { ReferenceEntry } from '../lib/referenceData.ts';
 import { REFERENCES, getReference, isCustomRefId, toEntry } from '../lib/referenceData.ts';
 import type { Firearm } from '../lib/types.ts';
 import { ConfirmSheet } from './Sheet.tsx';
+import { InfoTip } from './InfoTip.tsx';
 
 export function ReferenceList({ refreshKey, onBack, openDetail, openForm }: {
   refreshKey: number; onBack: () => void;
@@ -32,7 +33,7 @@ export function ReferenceList({ refreshKey, onBack, openDetail, openForm }: {
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Reference</h1>
+      <h1 className="large-title">Reference <InfoTip title="Reference">Manufacturer care guides. Link one to a gun to set its default maintenance schedule.</InfoTip></h1>
       <p className="report-note" style={{ marginBottom: 12 }}>
         Care guides by manufacturer. Link one to a gun (on the gun's page) and that
         guide's schedule becomes the gun's default.

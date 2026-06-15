@@ -7,6 +7,7 @@ import { newId } from '../lib/id.ts';
 import { stampNew } from '../lib/stamps.ts';
 import { MAINT_TYPES, maintLabel, maintenanceStatus } from '../lib/maintenance.ts';
 import { buildRefLookup } from '../lib/referenceData.ts';
+import { InfoTip } from './InfoTip.tsx';
 
 export function MaintenanceOverview({ refreshKey, onBack, openGun, logFor }: {
   refreshKey: number; onBack: () => void;
@@ -44,7 +45,7 @@ export function MaintenanceOverview({ refreshKey, onBack, openGun, logFor }: {
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Maintenance</h1>
+      <h1 className="large-title">Maintenance <InfoTip title="Maintenance">Cleaning and parts work per gun, against each gun's schedule. Home warns you when something's due.</InfoTip></h1>
       {firearms.map((gun) => {
         const items = maintenanceStatus(gun, lookup(gun.referenceId), sessions, maintenance, firearms, now);
         return (

@@ -6,6 +6,7 @@ import { GUN_CATEGORIES } from '../lib/types.ts';
 import { getAll, getOne, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
+import { InfoTip } from './InfoTip.tsx';
 
 const FIRE_LABEL: Record<DrillDef['fire'], string> = {
   live: 'Live fire', dry: 'Dry fire', both: 'Live & dry'
@@ -29,7 +30,7 @@ export function DrillsScreen({ refreshKey, onBack, openForm }: {
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Drills</h1>
+      <h1 className="large-title">Drills <InfoTip title="Drills">Your drill library. Each drill is tagged by gun type and dry/live, so the session picker shows the right ones.</InfoTip></h1>
       <button className="button" onClick={() => openForm()}>+ Add Drill</button>
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Drill Library</h2>

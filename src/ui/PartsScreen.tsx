@@ -12,6 +12,7 @@ import { isBatteryDue } from '../lib/optics.ts';
 import { recentValues } from '../lib/suggest.ts';
 import { buildPartsReportHtml, opticLabel } from '../lib/partsReport.ts';
 import { ConfirmSheet } from './Sheet.tsx';
+import { InfoTip } from './InfoTip.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 
 export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }: {
@@ -57,7 +58,7 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Spare Parts &amp; Inventory</h1>
+      <h1 className="large-title">Spare Parts &amp; Inventory <InfoTip title="Spare Parts & Inventory">Spare parts and spare optics on the shelf. What you buy here feeds Costs.</InfoTip></h1>
       {problem && <p className="form-problem">{problem}</p>}
 
       <button className="button" onClick={() => openPartForm()}>+ Add Part</button>

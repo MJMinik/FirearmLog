@@ -9,6 +9,7 @@ import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { isBatteryDue, normalizeBatteryLog } from '../lib/optics.ts';
 import { recentValues } from '../lib/suggest.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
+import { InfoTip } from './InfoTip.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 
 export function OpticsScreen({ refreshKey, onBack, openOpticForm }: {
@@ -102,7 +103,7 @@ export function OpticsScreen({ refreshKey, onBack, openOpticForm }: {
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Optics</h1>
+      <h1 className="large-title">Optics <InfoTip title="Optics">Red dots and scopes. Track each optic, attach it to a gun, and its cost feeds Costs.</InfoTip></h1>
 
       <button className="button" onClick={() => openOpticForm()}>+ Add Optic</button>
       {optics.length === 0 && (

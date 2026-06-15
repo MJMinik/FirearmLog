@@ -83,6 +83,17 @@ export function SetupWizard({ onFinish, onCancel }: {
             </p>
             <button className="button secondary" onClick={() => setMode('gear')}>Add my gear</button>
           </div>
+
+          <button
+            onClick={onFinish}
+            style={{
+              display: 'block', margin: '6px auto 0', padding: 12,
+              background: 'none', border: 'none', color: 'var(--accent)',
+              fontSize: 15, cursor: 'pointer',
+            }}
+          >
+            Skip for now — I'm just looking around
+          </button>
         </>
       )}
 

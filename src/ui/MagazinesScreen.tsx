@@ -4,6 +4,7 @@ import type { Firearm, Magazine } from '../lib/types.ts';
 import { getAll, getOne, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
+import { InfoTip } from './InfoTip.tsx';
 
 export function MagazinesScreen({ refreshKey, onBack, openForm }: {
   refreshKey: number; onBack: () => void; openForm: (id?: string) => void;
@@ -29,7 +30,7 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Magazines</h1>
+      <h1 className="large-title">Magazines <InfoTip title="Magazines">Your magazines, grouped by the guns they fit.</InfoTip></h1>
       <button className="button" onClick={() => openForm()}>+ Add Magazine</button>
       <div className="card" style={{ marginTop: 16 }}>
         <h2>All Magazines</h2>
