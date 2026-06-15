@@ -40,6 +40,9 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
       {mags.length > 8 && <ListSearch value={q} onChange={setQ} placeholder="Search magazines" />}
       <div className="card" style={{ marginTop: 16 }}>
         <h2>All Magazines</h2>
+        {mags.length === 0 && <p className="report-note">No magazines yet. Tap "+ Add Magazine" to add one.</p>}
+        {mags.length > 0 && mags.filter((m) => matchesQuery(q, m.label, gunNames(m.firearmIds))).length === 0 &&
+          <p className="report-note">No magazines match your search.</p>}
         {mags.filter((m) => matchesQuery(q, m.label, gunNames(m.firearmIds))).map((m) => (
           <button className="row-tap" key={m.id} onClick={() => openForm(m.id)}>
             <span className="label">

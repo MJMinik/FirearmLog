@@ -87,7 +87,7 @@ export function SetupWizard({ onFinish, onCancel }: {
           <button
             onClick={onFinish}
             style={{
-              display: 'block', margin: '6px auto 0', padding: 12,
+              display: 'block', margin: '6px auto 0', padding: 12, minHeight: 44,
               background: 'none', border: 'none', color: 'var(--accent)',
               fontSize: 15, cursor: 'pointer',
             }}

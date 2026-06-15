@@ -48,6 +48,9 @@ export function MaintenanceOverview({ refreshKey, onBack, openGun, logFor }: {
         <span />
       </div>
       <h1 className="large-title">Maintenance <InfoTip title="Maintenance">Cleaning and parts work per gun, against each gun's schedule. Home warns you when something's due. Want a custom schedule or care steps? Create a guide in the Reference section and link it to the gun.</InfoTip></h1>
+      {ownedGuns(firearms).length === 0 && (
+        <p className="empty">No guns yet — add a gun on the Guns screen to track its maintenance.</p>
+      )}
       {/* Audit #10: maintain guns you still own (active + retired); former guns drop off. */}
       {ownedGuns(firearms).map((gun) => {
         const items = maintenanceStatus(gun, lookup(gun.referenceId), sessions, maintenance, firearms, now);
