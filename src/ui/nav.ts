@@ -25,4 +25,5 @@ export type View =
   | { kind: 'optic-form'; id?: string; firearmId?: string }
   | { kind: 'parts' }
   | { kind: 'part-form'; id?: string }
-  | { kind: 'reports' };
+  | { kind: 'reports' }
+  | { kind: 'practiscore-import' };

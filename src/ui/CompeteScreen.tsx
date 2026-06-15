@@ -51,6 +51,8 @@ export function CompeteScreen({ refreshKey, open }: {
       <button className="button" onClick={() => open({ kind: 'match-form' })}>+ Log Match</button>
       <div style={{ height: 8 }} />
       <button className="button secondary" onClick={() => open({ kind: 'classifier-form' })}>+ Log Classifier</button>
+      <div style={{ height: 8 }} />
+      <button className="button secondary" onClick={() => open({ kind: 'practiscore-import' })}>⬇ Import from PractiScore</button>
 
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Classification</h2>
