@@ -220,7 +220,8 @@ export function App() {
 
   return (
     <>
-      {content}
+      {/* Audit #D5: a <main> landmark for screen readers (the nav landmark is the tab bar). */}
+      <main>{content}</main>
       <TabBar active={tab} onChange={setTab} view={view} onOpen={openSection} />
     </>
   );
