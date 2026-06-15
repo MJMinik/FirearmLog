@@ -54,7 +54,7 @@ export function AmmoScreen({ refreshKey, onBack, openForm }: {
         <p className="empty">No ammo tracked yet. Add a can, then log purchases under Costs &amp; Purchases so FirearmLog can figure your true cost per round.</p>
       ) : (
         <div className="card" style={{ marginTop: 16 }}>
-          <h2>On Hand <InfoTip title="On Hand">Rounds you have and what they cost. The cost per round is figured first-in-first-out — oldest purchases counted first — so it reflects what you actually paid for the rounds you're shooting.</InfoTip></h2>
+          <h2>On Hand <InfoTip title="On Hand">Rounds you have and what they cost. The cost per round is figured first-in-first-out — oldest purchases counted first — so it reflects what you actually paid for the rounds you're shooting. To add more of the same ammo, add it again with the same brand, caliber, grain, and bullet type — FirearmLog spots the match and offers to combine it into that can, keeping your cost history.</InfoTip></h2>
           {ammo.map((a) => {
             const inCan = ammoCurrentCostPerRound(a.id, purchases, sessions);
             const perRound = inCan ?? (a.costPerRound > 0 ? a.costPerRound : null);

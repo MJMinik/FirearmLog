@@ -33,7 +33,7 @@ export function ReferenceList({ refreshKey, onBack, openDetail, openForm }: {
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Reference <InfoTip title="Reference">Manufacturer care guides. Link one to a gun to set its default maintenance schedule.</InfoTip></h1>
+      <h1 className="large-title">Reference <InfoTip title="Reference">Manufacturer care guides. Link one to a gun to set its default maintenance schedule. Don't see your make, or want your own steps and schedule? Tap "+ Create Your Own Guide" and link it to a gun.</InfoTip></h1>
       <p className="report-note" style={{ marginBottom: 12 }}>
         Care guides by manufacturer. Link one to a gun (on the gun's page) and that
         guide's schedule becomes the gun's default.

@@ -30,7 +30,7 @@ export function DrillsScreen({ refreshKey, onBack, openForm }: {
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Drills <InfoTip title="Drills">Your drill library. Each drill is tagged by gun type and dry/live, so the session picker shows the right ones.</InfoTip></h1>
+      <h1 className="large-title">Drills <InfoTip title="Drills">Your drill library. Each drill is tagged by gun type and dry/live, so the session picker shows the right ones. Tap "+ Add Drill" to create your own.</InfoTip></h1>
       <button className="button" onClick={() => openForm()}>+ Add Drill</button>
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Drill Library</h2>
