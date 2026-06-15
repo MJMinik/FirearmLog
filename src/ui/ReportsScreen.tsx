@@ -15,7 +15,8 @@ import { goalStats } from '../lib/goals.ts';
 import { ratePerThousand } from '../lib/trends.ts';
 import { maintenanceAlerts } from '../lib/maintenance.ts';
 import { buildRefLookup } from '../lib/referenceData.ts';
-import { buildReportHtml, imageDataUrls, type ReportSection } from '../lib/reports.ts';
+import { buildReportHtml, type ReportSection } from '../lib/reports.ts';
+import { reportImageUrls } from './reportImages.ts';
 
 interface Bundle {
   firearms: Firearm[]; sessions: Session[]; matches: Match[]; purchases: Purchase[];
@@ -59,6 +60,23 @@ export function ReportsScreen({ refreshKey, onBack }: { refreshKey: number; onBa
     if (!win) { setProblem('Pop-ups blocked — please allow pop-ups and try again.'); return; }
     win.document.write(html); win.document.close(); win.focus();
     setTimeout(() => win.print(), 400);
+  }
+
+  // For reports that embed photos: open the window now (inside the tap, so iOS
+  // doesn't block it as a pop-up), show a "Preparing…" note, then write the real
+  // page once the images have been downscaled.
+  function openAsync(title: string, subtitle: string, build: () => Promise<ReportSection[]>) {
+    const win = window.open('', '_blank');
+    if (!win) { setProblem('Pop-ups blocked — please allow pop-ups and try again.'); return; }
+    win.document.write('<!doctype html><meta charset="utf-8"><body style="font:15px -apple-system,Arial,sans-serif;padding:40px;color:#555">Preparing report…</body>');
+    build().then((sections) => {
+      win.document.open();
+      win.document.write(buildReportHtml(title, subtitle, sections));
+      win.document.close(); win.focus();
+      setTimeout(() => win.print(), 400);
+    }).catch(() => {
+      try { win.document.body.textContent = 'Sorry — could not build this report. Please try again.'; } catch { /* window already closed */ }
+    });
   }
 
   function roundCountReport() {
@@ -172,19 +190,24 @@ export function ReportsScreen({ refreshKey, onBack }: { refreshKey: number; onBa
   }
 
   function insuranceReport() {
-    const sections: ReportSection[] = d.firearms.map((f) => ({
-      heading: f.name,
-      rows: [
-        { label: 'Manufacturer', value: f.manufacturer || '—' },
-        { label: 'Model', value: f.model || '—' },
-        { label: 'Caliber', value: f.caliber || '—' },
-        { label: 'Category', value: f.category },
-        { label: 'Serial number', value: f.serialNumber || '—' },
-        { label: 'Date acquired', value: f.dateAcquired ? formatDayKey(f.dateAcquired) : '—' }
-      ],
-      images: imageDataUrls(d.media, 'firearm', f.id)
-    }));
-    open('Insurance Inventory', `As of ${formatDayKey(todayKey())}`, sections.length ? sections : []);
+    openAsync('Insurance Inventory', `As of ${formatDayKey(todayKey())}`, async () => {
+      const sections: ReportSection[] = [];
+      for (const f of d.firearms) {
+        sections.push({
+          heading: f.name,
+          rows: [
+            { label: 'Manufacturer', value: f.manufacturer || '—' },
+            { label: 'Model', value: f.model || '—' },
+            { label: 'Caliber', value: f.caliber || '—' },
+            { label: 'Category', value: f.category },
+            { label: 'Serial number', value: f.serialNumber || '—' },
+            { label: 'Date acquired', value: f.dateAcquired ? formatDayKey(f.dateAcquired) : '—' }
+          ],
+          images: await reportImageUrls(d.media, 'firearm', f.id)
+        });
+      }
+      return sections;
+    });
   }
 
   const reports: { label: string; run: () => void; desc: string }[] = [

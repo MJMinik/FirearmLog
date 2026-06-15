@@ -464,3 +464,7 @@ select { max-width: 100%; min-width: 0; }
 /* Progress trends filter row */
 .chart-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }
 .chart-filters select { flex: 1; min-width: 90px; }
+
+.chart-legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 6px 0 2px; }
+.chart-legend span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-dim); }
+.chart-legend i { width: 11px; height: 11px; border-radius: 2px; display: inline-block; flex: none; }

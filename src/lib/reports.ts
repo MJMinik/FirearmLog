@@ -3,8 +3,6 @@
 // (costing, stats, competition, dashboard, maintenance) and hands them here.
 // Pure + unit-testable; "Save as PDF" from the print dialog.
 
-import type { Media } from './types.ts';
-
 export interface ReportRow { label: string; value: string }
 export interface ReportTable { headers: string[]; rows: string[][] }
 export interface ReportSection {
@@ -12,19 +10,7 @@ export interface ReportSection {
   note?: string;
   rows?: ReportRow[];
   table?: ReportTable;
-  images?: string[]; // data: URLs
-}
-
-/** Embed image media as base64 data: URLs so they survive into the print window. */
-export function imageDataUrls(media: Media[], ownerType: Media['ownerType'], ownerId: string): string[] {
-  return media
-    .filter((m) => m.ownerType === ownerType && m.ownerId === ownerId && m.kind === 'image')
-    .map((m) => {
-      const bytes = new Uint8Array(m.data);
-      let s = '';
-      for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
-      return `data:${m.mime || 'image/jpeg'};base64,${btoa(s)}`;
-    });
+  images?: string[]; // data: URLs (downscaled — see src/ui/reportImages.ts)
 }
 
 function escapeHtml(s: string): string {

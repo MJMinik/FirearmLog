@@ -92,6 +92,7 @@ export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
   const labelStep = buckets.length > 12 ? Math.ceil(buckets.length / 12) : 1;
 
   return (
+    <>
     <svg viewBox={`0 0 ${w + axisW} ${h + 28}`} width="100%" style={{ display: 'block', marginTop: 8 }}
       role="img" aria-label="Rounds by month bar chart">
       {/* Vertical axis label */}
@@ -134,6 +135,12 @@ export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
         })}
       </g>
     </svg>
+    <div className="chart-legend">
+      <span><i style={{ background: 'var(--accent)' }} />Live rounds</span>
+      <span><i style={{ background: 'var(--warn)' }} />Match rounds</span>
+      <span><i style={{ background: 'var(--text-dim)', opacity: 0.4 }} />Dry-fire reps</span>
+    </div>
+    </>
   );
 }
 

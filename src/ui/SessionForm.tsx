@@ -19,7 +19,8 @@ import {
   type ChecklistCategory, addCustomItem
 } from '../lib/checklist.ts';
 import { buildDrillReportHtml } from '../lib/drillReport.ts';
-import { buildReportHtml, imageDataUrls, type ReportSection } from '../lib/reports.ts';
+import { buildReportHtml, type ReportSection } from '../lib/reports.ts';
+import { reportImageUrls } from './reportImages.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { SuggestField } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
@@ -245,8 +246,15 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
     openPrintWindow(buildDrillReportHtml(items, { includeScoring, date, location }));
   }
 
-  function printSessionReport() {
+  async function printSessionReport() {
     if (!original) return;
+    // Open the window inside the tap (so iOS doesn't block it), show a holding
+    // note, then write the page once photos are downscaled. Full-size target
+    // photos would otherwise crash mobile Safari (same fix as the reports hub).
+    const win = window.open('', '_blank');
+    if (!win) { setProblem('Pop-ups blocked — please allow pop-ups and try again.'); return; }
+    win.document.write('<!doctype html><meta charset="utf-8"><body style="font:15px -apple-system,Arial,sans-serif;padding:40px;color:#555">Preparing report…</body>');
+    try {
     const reps = original.type === 'dry_fire';
     const gunRows = original.guns.map((g) => ({
       label: firearms.find((f) => f.id === g.firearmId)?.name ?? '—',
@@ -260,7 +268,7 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
     const malfRows = malfs.map((m) => [
       m.type || '—', firearms.find((f) => f.id === m.firearmId)?.name ?? '—', m.resolution || '', m.notes || ''
     ]);
-    const photos = imageDataUrls(existingMedia, 'session', original.id);
+    const photos = await reportImageUrls(existingMedia, 'session', original.id);
     const sections: ReportSection[] = [
       { heading: 'Session', rows: [
         { label: 'Date', value: formatDayKey(original.date) },
@@ -275,7 +283,13 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
       ...(original.notes ? [{ heading: 'Notes', rows: [{ label: '', value: original.notes }] }] : []),
       ...(photos.length ? [{ heading: 'Photos', images: photos }] : [])
     ];
-    openPrintWindow(buildReportHtml(`Session — ${formatDayKey(original.date)}`, original.location || '', sections));
+    win.document.open();
+    win.document.write(buildReportHtml(`Session — ${formatDayKey(original.date)}`, original.location || '', sections));
+    win.document.close(); win.focus();
+    setTimeout(() => win.print(), 400);
+    } catch {
+      try { win.document.body.textContent = 'Sorry — could not build this report. Please try again.'; } catch { /* window already closed */ }
+    }
   }
 
   function addPickedDrills() {
@@ -472,7 +486,7 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
         <button className="button" onClick={onConvert}>✓ Convert to Logged Session</button>
       )}
       {editing && original && (
-        <button className="button secondary" onClick={printSessionReport}>🖨️ Session Report</button>
+        <button className="button secondary" onClick={() => void printSessionReport()}>🖨️ Session Report</button>
       )}
 
       <div className="card">
