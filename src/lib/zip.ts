@@ -95,20 +95,27 @@ export function writeZip(entries: ZipEntry[], when: Date = new Date()): Uint8Arr
 export function readZip(bytes: Uint8Array): ZipEntry[] {
   const td = new TextDecoder();
   const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const len = bytes.length;
+  // Audit CR-3: this reads an UNTRUSTED file. Every offset/length from the file
+  // is bounds-checked before use so a corrupt or malicious zip can't drive an
+  // out-of-bounds read or a giant allocation — it just fails with a clear error.
+  const bad = (): never => { throw new Error('This data file looks damaged or is not a FirearmLog data file.'); };
 
   // Find the end-of-central-directory marker, scanning back past any comment.
   let eocd = -1;
-  const lowest = Math.max(0, bytes.length - 22 - 65535);
-  for (let i = bytes.length - 22; i >= lowest; i--) {
+  const lowest = Math.max(0, len - 22 - 65535);
+  for (let i = len - 22; i >= lowest; i--) {
     if (v.getUint32(i, true) === 0x06054b50) { eocd = i; break; }
   }
   if (eocd < 0) throw new Error('Not a FirearmLog data file (no zip directory found).');
 
   const count = v.getUint16(eocd + 10, true);
+  if (count > 100000) bad(); // sanity cap — no real .flog has this many entries
   let p = v.getUint32(eocd + 16, true);
   const entries: ZipEntry[] = [];
 
   for (let n = 0; n < count; n++) {
+    if (p < 0 || p + 46 > len) bad();
     if (v.getUint32(p, true) !== 0x02014b50) throw new Error('This data file looks damaged (directory entry missing).');
     const method = v.getUint16(p + 10, true);
     const crc = v.getUint32(p + 16, true);
@@ -117,12 +124,18 @@ export function readZip(bytes: Uint8Array): ZipEntry[] {
     const extraLen = v.getUint16(p + 30, true);
     const commentLen = v.getUint16(p + 32, true);
     const localOffset = v.getUint32(p + 42, true);
+    if (p + 46 + nameLen > len) bad();
     const name = td.decode(bytes.subarray(p + 46, p + 46 + nameLen));
     if (method !== 0) throw new Error('This data file uses a packing method FirearmLog does not write.');
 
+    // The local header the directory points at must exist and be a real header.
+    if (localOffset < 0 || localOffset + 30 > len) bad();
+    if (v.getUint32(localOffset, true) !== 0x04034b50) bad();
     const lNameLen = v.getUint16(localOffset + 26, true);
     const lExtraLen = v.getUint16(localOffset + 28, true);
     const dataStart = localOffset + 30 + lNameLen + lExtraLen;
+    // compSize must fit inside the file (also blocks a multi-GB slice alloc).
+    if (compSize > len || dataStart < 0 || dataStart + compSize > len) bad();
     const data = bytes.slice(dataStart, dataStart + compSize);
     if (crc32(data) !== crc) throw new Error(`This data file looks damaged (checksum failed on ${name}).`);
 

@@ -67,20 +67,34 @@ function dataUrlToBytes(dataUrl: string): { buffer: ArrayBuffer; mime: string } 
   const m = /^data:([^;,]+);base64,(.*)$/s.exec(dataUrl);
   if (!m) return null;
   const mime = m[1];
-  const binary = atob(m[2]);
-  const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-  return { buffer: bytes.buffer, mime };
+  // Audit CR-6: one malformed base64 photo must not abort the whole migration.
+  try {
+    const binary = atob(m[2]);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+    return { buffer: bytes.buffer, mime };
+  } catch {
+    return null;
+  }
 }
 
 // ---------- Small helpers ----------
+
+// Audit CR-4: never copy these keys from an untrusted backup into stored records
+// (prototype-pollution guard).
+const DANGEROUS_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+function sansDangerous<T extends object>(o: T): T {
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(o)) if (!DANGEROUS_KEYS.has(k)) out[k] = (o as Record<string, unknown>)[k];
+  return out as T;
+}
 
 /** Split an old record into the fields we map and a `legacy` bag of the rest (zero loss). */
 function takeRest(old: OldRecord, mappedKeys: string[]): Record<string, unknown> | undefined {
   const rest: Record<string, unknown> = {};
   let any = false;
   for (const k of Object.keys(old)) {
-    if (!mappedKeys.includes(k)) {
+    if (!mappedKeys.includes(k) && !DANGEROUS_KEYS.has(k)) {
       rest[k] = old[k];
       any = true;
     }
@@ -352,7 +366,7 @@ export function importPistolTracker(
   // Generic carry-over for types FirearmLog formalizes in later milestones.
   const carry = (records: OldRecord[] | undefined, prefix: string) =>
     (records ?? []).map(r => stamp(
-      { ...r, legacy: undefined },
+      { ...sansDangerous(r), legacy: undefined },
       typeof r.id === 'string' && r.id ? String(r.id) : newId(prefix),
       now
     ));
