@@ -13,6 +13,7 @@ import { combinedCan, findSameAmmo, repointAmmoUsage, repointPurchaseIds } from 
 import { recentValues } from '../lib/suggest.ts';
 import { SuggestField } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
+import { InfoTip } from './InfoTip.tsx';
 
 export const ammoLabel = (a: Pick<Ammunition, 'brand' | 'caliber' | 'grain' | 'bulletType'>): string =>
   [a.brand, a.caliber, a.grain && `${a.grain}gr`, a.bulletType].filter(Boolean).join(' ');
@@ -50,10 +51,10 @@ export function AmmoScreen({ refreshKey, onBack, openForm }: {
       <h1 className="large-title">Ammo</h1>
       <button className="button" onClick={() => openForm()}>+ Add Ammo</button>
       {ammo.length === 0 ? (
-        <p className="empty">No ammo tracked yet. Add a can, then log purchases under More → Costs &amp; Purchases so FirearmLog can figure your true cost per round.</p>
+        <p className="empty">No ammo tracked yet. Add a can, then log purchases under Costs &amp; Purchases so FirearmLog can figure your true cost per round.</p>
       ) : (
         <div className="card" style={{ marginTop: 16 }}>
-          <h2>On Hand</h2>
+          <h2>On Hand <InfoTip title="On Hand">Rounds you have and what they cost. The cost per round is figured first-in-first-out — oldest purchases counted first — so it reflects what you actually paid for the rounds you're shooting.</InfoTip></h2>
           {ammo.map((a) => {
             const inCan = ammoCurrentCostPerRound(a.id, purchases, sessions);
             const perRound = inCan ?? (a.costPerRound > 0 ? a.costPerRound : null);

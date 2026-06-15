@@ -468,3 +468,21 @@ select { max-width: 100%; min-width: 0; }
 .chart-legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 6px 0 2px; }
 .chart-legend span { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-dim); }
 .chart-legend i { width: 11px; height: 11px; border-radius: 2px; display: inline-block; flex: none; }
+
+/* Tap-to-reveal inline help (InfoTip). 44px touch target via padding + negative
+   margin so the small glyph doesn't enlarge the heading or row it sits in. */
+.infotip { position: relative; display: inline-flex; align-items: center; vertical-align: middle; }
+.infotip-btn {
+  appearance: none; border: none; background: none; cursor: pointer;
+  color: var(--accent); font-size: 15px; line-height: 1;
+  padding: 14px; margin: -14px -8px; border-radius: 50%;
+}
+.infotip-bubble {
+  position: absolute; top: 100%; left: 0; margin-top: 6px; z-index: 60;
+  width: max-content; max-width: min(280px, 78vw);
+  background: var(--bg-card); color: var(--text);
+  border: 1px solid var(--separator); border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  padding: 10px 12px; font-size: 13px; font-weight: 400; line-height: 1.45;
+  text-align: left; white-space: normal;
+}

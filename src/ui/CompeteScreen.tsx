@@ -10,6 +10,7 @@ import { DIVISIONS, classificationProgress } from '../lib/competition.ts';
 import { matchFee } from '../lib/costing.ts';
 import type { View } from './nav.ts';
 import { ConfirmSheet } from './Sheet.tsx';
+import { InfoTip } from './InfoTip.tsx';
 
 export function CompeteScreen({ refreshKey, open }: {
   refreshKey: number; open: (v: View) => void;
@@ -55,7 +56,7 @@ export function CompeteScreen({ refreshKey, open }: {
       <button className="button secondary" onClick={() => open({ kind: 'practiscore-import' })}>⬇ Import from PractiScore</button>
 
       <div className="card" style={{ marginTop: 16 }}>
-        <h2>Classification</h2>
+        <h2>Classification <InfoTip title="Classification">Your class comes from the average of your best 6 of your last 8 classifier scores in a division. When that average crosses the next band, you move up — C to B and so on.</InfoTip></h2>
         <div className="row">
           <span className="label">Division</span>
           <select className="category-pick" aria-label="Division" value={division}

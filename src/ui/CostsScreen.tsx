@@ -12,6 +12,7 @@ import { costTotals, gunSpend, purchaseAmmoLink, roundsFired } from '../lib/cost
 import { recentValues } from '../lib/suggest.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { SuggestField } from './SuggestField.tsx';
+import { InfoTip } from './InfoTip.tsx';
 import { ConfirmSheet } from './Sheet.tsx';
 
 const CATEGORIES = [
@@ -95,7 +96,7 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
 
       {firearms.length > 0 && (
         <div className="card">
-          <h2>Spend by Gun</h2>
+          <h2>Spend by Gun <InfoTip title="Spend by Gun">Each gun's share of ammo, range fees, match fees, and parts. When a session or match used more than one gun, the cost is split by each gun's actual rounds, so nothing is double-counted.</InfoTip></h2>
           <p className="report-note" style={{ marginBottom: 8 }}>
             Ammo shot up (oldest purchases first) plus each gun's share of range fees —
             split sessions are divided by rounds, never counted twice — plus its match fees.

@@ -20,6 +20,7 @@ import { buildHeatmap } from '../lib/heatmap.ts';
 import { RoundsByMonthChart } from './screens.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
+import { InfoTip } from './InfoTip.tsx';
 
 export function ProgressScreen({ refreshKey }: { refreshKey: number }) {
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -78,7 +79,7 @@ export function ProgressScreen({ refreshKey }: { refreshKey: number }) {
       <h1 className="large-title">Progress</h1>
 
       <div className="card">
-        <h2>Goals</h2>
+        <h2>Goals <InfoTip title="Goals">Set a target like "Bill Drill under 2.0s." Add several in a row, check one off when you hit it, and edit any goal later.</InfoTip></h2>
         {stats.total > 0 && (
           <p className="report-note">{stats.open} open · {stats.achieved} achieved</p>
         )}
@@ -159,7 +160,7 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
   const opacities = [0, 0.3, 0.5, 0.75, 1];
   return (
     <div className="card">
-      <h2>Training Heatmap</h2>
+      <h2>Training Heatmap <InfoTip title="Training Heatmap">Each square is a day — darker means more rounds. Switch between the last 26 or 52 weeks; press a square to see that day's count.</InfoTip></h2>
       <div className="chart-filters">
         <select aria-label="Heatmap weeks" value={weeks} onChange={(e) => setWeeks(Number(e.target.value))}>
           <option value={26}>26 weeks</option>
@@ -199,7 +200,7 @@ function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunct
 
   return (
     <div className="card">
-      <h2>Trends</h2>
+      <h2>Trends <InfoTip title="Trends">Your rounds and reps over the span you pick. "Dry : live" is dry-fire reps per live round; "malfunctions / 1,000" is your stoppage rate. Filter by gun or gun type.</InfoTip></h2>
       <div className="chart-filters">
         <select aria-label="Gun type" value={filter.category ?? ''} disabled={!!filter.firearmId}
           onChange={(e) => setFilter({ category: e.target.value as GunCategory | '', firearmId: '' })}>
@@ -272,7 +273,7 @@ function SkillsCard({ skills, onNew, onEdit }: {
   const history = [...assessmentsByDate(skills)].reverse(); // newest first
   return (
     <div className="card">
-      <h2>Skill Self-Assessment</h2>
+      <h2>Skill Self-Assessment <InfoTip title="Skill Self-Assessment">Rate yourself 1–10 in eight areas now and then. You'll see your latest scores, your average, and how they trend over time.</InfoTip></h2>
       <button className="button secondary" onClick={onNew}>+ New Assessment</button>
       {!latest && (
         <p className="report-note">Rate yourself 1–10 across the 8 areas now and then to see your trend.</p>

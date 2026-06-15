@@ -548,7 +548,7 @@ export function SessionForm({ id, initialPlanned, convert, onSaved, onCancel, on
 
       <div className="card">
         <h2>Guns &amp; Rounds</h2>
-        {firearms.length === 0 && <p className="report-note">No guns yet — add one under More → Guns.</p>}
+        {firearms.length === 0 && <p className="report-note">No guns yet — add one from the Guns screen.</p>}
         {firearms.map((f) => {
           const on = rounds[f.id] !== undefined;
           return (
