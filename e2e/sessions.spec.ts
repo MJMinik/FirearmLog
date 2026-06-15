@@ -30,8 +30,9 @@ test.describe('Sessions', () => {
     // Save via the navbar action (date is prefilled to today).
     await page.locator('.navbar-action').click();
 
-    // We return to the Log list; the new 50-round session is there.
+    // We return to the Log list; the new 50-round session is there
+    // (rounds render as "rds" for live fire, "reps" for dry fire).
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
-    await expect(page.getByText(/50\s*rds/).first()).toBeVisible();
+    await expect(page.getByText(/50\s*(rds|reps)/).first()).toBeVisible();
   });
 });

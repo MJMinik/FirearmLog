@@ -46,7 +46,9 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
     ]).then(([s, p, m, f, a, pt]) => {
       if (!alive) return;
       setSessions(s);
-      setPurchases(p.sort((x, y) => y.date.localeCompare(x.date)));
+      // Date-safe sort: a purchase with a missing date must never crash the
+      // load (a rejected promise here would hang the whole screen forever).
+      setPurchases(p.sort((x, y) => (y.date || '').localeCompare(x.date || '')));
       setMatches(m);
       setFirearms(f);
       setAmmo(a);
@@ -59,7 +61,7 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
   if (!loaded) return <div className="screen" />;
 
   const year = todayKey().slice(0, 4);
-  const inYear = <T extends { date: string }>(rows: T[]) => rows.filter((r) => r.date.startsWith(year));
+  const inYear = <T extends { date: string }>(rows: T[]) => rows.filter((r) => (r.date || '').startsWith(year));
   const inYearParts = parts.filter((p) => (p.datePurchased || '').startsWith(year));
   const costedParts = parts.filter((p) => p.cost != null)
     .sort((a, b) => (b.datePurchased || '').localeCompare(a.datePurchased || ''));
@@ -133,7 +135,7 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
           <button className="row-tap" key={p.id} onClick={() => openForm(p.id)}>
             <span className="label">
               {p.item || p.category}
-              <div className="row-sub">{formatDayKey(p.date)} · {p.category}{p.vendor ? ` · ${p.vendor}` : ''}</div>
+              <div className="row-sub">{p.date ? `${formatDayKey(p.date)} · ` : ''}{p.category}{p.vendor ? ` · ${p.vendor}` : ''}</div>
             </span>
             <span className="value">{dollars(p.cost || 0)}</span>
           </button>

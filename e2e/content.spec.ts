@@ -11,9 +11,9 @@ test.describe('Content from demo data', () => {
 
   test('Compete shows matches and classifiers', async ({ page }) => {
     await gotoTab(page, 'Compete');
-    await expect(page.getByRole('heading', { name: 'Matches' })).toBeVisible();
-    await expect(page.getByRole('heading', { name: 'Classifiers' })).toBeVisible();
-    await expect(page.getByText('Matches shot')).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Matches' }).first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Classifiers' }).first()).toBeVisible();
+    await expect(page.getByText('Matches shot').first()).toBeVisible();
   });
 
   test('Costs computes an all-in cost per round', async ({ page }) => {

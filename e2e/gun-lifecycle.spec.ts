@@ -23,7 +23,8 @@ test('a gun can be retired and brought back to active', async ({ page }) => {
   // Back on detail: it now shows the retired status and a way back.
   const backToActive = page.getByRole('button', { name: 'Return to active' });
   await expect(backToActive).toBeVisible();
-  await expect(page.getByText('Retired', { exact: false })).toBeVisible();
+  // "Retired" appears twice (status line + badge), so scope to the first.
+  await expect(page.getByText('Retired', { exact: false }).first()).toBeVisible();
 
   // Bring it back.
   await backToActive.click();

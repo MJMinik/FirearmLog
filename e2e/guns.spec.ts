@@ -13,8 +13,11 @@ test.describe('Guns', () => {
     expect(await gunRows.count()).toBeGreaterThan(0);
     await gunRows.first().click();
 
-    // A gun detail screen offers the retire/remove action.
-    await expect(page.getByRole('button', { name: 'Retire or remove this gun…' })).toBeVisible();
+    // A gun detail screen loaded: an active gun shows "Retire or remove…",
+    // a retired/former one shows "Return to active". Accept either.
+    const detailAction = page.getByRole('button', { name: 'Retire or remove this gun…' })
+      .or(page.getByRole('button', { name: 'Return to active' }));
+    await expect(detailAction.first()).toBeVisible();
   });
 
   test('adding a gun saves it and opens its detail', async ({ page }) => {
