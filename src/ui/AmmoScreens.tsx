@@ -244,8 +244,8 @@ export function AmmoForm({ id, onSaved, onCancel }: {
           ammoId: other.id, rounds: n.pr, addedToInventory: true
         }, newId('pu'), now)
       : undefined;
-    let sessionRecs: object[] = [];
-    let purchaseRecs: object[] = [];
+    const sessionRecs: object[] = [];
+    const purchaseRecs: object[] = [];
     let deleteCanId: string | undefined;
     if (original) {
       // Every session and purchase that pointed at the duplicate now points at
@@ -253,18 +253,14 @@ export function AmmoForm({ id, onSaved, onCancel }: {
       const [sessions, purchases] = await Promise.all([
         getAll<Session>('sessions'), getAll<Purchase>('purchases')
       ]);
-      sessionRecs = repointAmmoUsage(sessions, original.id, other.id)
-        .map((change) => {
-          const s = sessions.find((x) => x.id === change.id);
-          return s ? stampUpdate({ ...s, ammoUsage: change.ammoUsage }, now) : null;
-        })
-        .filter((x): x is object => x !== null);
-      purchaseRecs = repointPurchaseIds(purchases, original.id)
-        .map((pid) => {
-          const p = purchases.find((x) => x.id === pid);
-          return p ? stampUpdate({ ...p, ammoId: other.id }, now) : null;
-        })
-        .filter((x): x is object => x !== null);
+      for (const change of repointAmmoUsage(sessions, original.id, other.id)) {
+        const s = sessions.find((x) => x.id === change.id);
+        if (s) sessionRecs.push(stampUpdate({ ...s, ammoUsage: change.ammoUsage }, now));
+      }
+      for (const pid of repointPurchaseIds(purchases, original.id)) {
+        const p = purchases.find((x) => x.id === pid);
+        if (p) purchaseRecs.push(stampUpdate({ ...p, ammoId: other.id }, now));
+      }
       deleteCanId = original.id;
     }
     // Audit CR-8: the whole merge lands in ONE transaction (can + repointed
