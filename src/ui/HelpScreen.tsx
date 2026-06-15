@@ -1,14 +1,28 @@
 // Help hub + Quick Tour + Full Tour (M9 — Help & Tour; spec §14, req. 30).
-// The Quick Tour is a short, skippable orientation on the shared Sheet (Esc
-// closes it, aria-modal, like every dialog — §3.5 A1–A5). The Full Tour is the
-// exhaustive, section-by-section guide, built from native <details> so it's
-// keyboard- and screen-reader-friendly with no custom JS. The Setup Wizard is
-// reached from here too (re-runnable, spec §14.3).
-import { useState } from 'react';
+// Both tours present the same way: a stepped, skippable card on the shared Sheet
+// (Esc closes it, aria-modal — §3.5 A1–A5). The Full Tour is exhaustive and
+// comes in TWO versions — phone vs. desktop — because navigation differs (e.g.
+// the gear sections live under "More" on a phone but in the sidebar on a
+// computer). One builder produces both so the prose stays in one place (DRY).
+import { useEffect, useMemo, useState } from 'react';
 import type { View } from './nav.ts';
 import { Sheet } from './Sheet.tsx';
 
 interface TourStep { title: string; body: string }
+
+/** True on the ≥900px desktop layout (matches the sidebar breakpoint). */
+function useIsDesktop(): boolean {
+  const [desk, setDesk] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 900px)').matches
+  );
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 900px)');
+    const onChange = () => setDesk(mq.matches);
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, []);
+  return desk;
+}
 
 const QUICK_TOUR: TourStep[] = [
   {
@@ -32,8 +46,8 @@ const QUICK_TOUR: TourStep[] = [
     body: 'The big picture: rounds over time, your dry-to-live mix, goals you can check off, skill self-ratings, a training heatmap, and your personal records. Filter any of it by gun or date range.',
   },
   {
-    title: 'More — your gear and data',
-    body: 'Guns, optics, ammo, magazines, drills, costs, maintenance, parts, reference guides, reports, and Help all live here. It\'s also where you import your old Pistol Tracker data.',
+    title: 'Your gear and data',
+    body: 'Guns, optics, ammo, magazines, drills, costs, maintenance, parts, reference guides, reports, and Help. On a phone they\'re under the More tab; on a computer they\'re listed down the sidebar. It\'s also where you import your old Pistol Tracker data.',
   },
   {
     title: 'Your data stays yours',
@@ -41,147 +55,107 @@ const QUICK_TOUR: TourStep[] = [
   },
 ];
 
-interface GuideSection { title: string; paras: string[] }
+/**
+ * The exhaustive Full Tour. `isDesktop` switches the navigation wording: gear
+ * sections are reached via "More" on a phone and the sidebar on a computer.
+ */
+function buildFullTour(isDesktop: boolean): TourStep[] {
+  // Where a gear/data section lives, phrased for the current layout.
+  const at = (section: string) =>
+    isDesktop ? `the ${section} section in the sidebar` : `More → ${section}`;
+  // The catch-all screen that holds Sync, import, and Help.
+  const hub = isDesktop ? 'the Gear & Data screen (bottom of the sidebar)' : 'the More tab';
 
-const FULL_TOUR: GuideSection[] = [
-  {
-    title: 'Getting around',
-    paras: [
-      'On a phone, the bar along the bottom has Home, Log, Compete, and Progress, plus More for everything else. On a computer the same items become a sidebar down the left, with the gear-and-data sections listed out so they\'re one click away.',
-      'Tap the search button in the bar to search across sessions, guns, drills, matches, and notes. Almost anything you see — a number, a chart bar, a list row — can be tapped to open the thing behind it.',
-    ],
-  },
-  {
-    title: 'Home',
-    paras: [
-      'Home is your dashboard. Up top are alerts: a gun that\'s due for cleaning, ammo running low, goals you\'re chasing. Tap an alert to jump to it.',
-      'Below that you\'ll find recent sessions, quick stats, and a big Log Session button. The rounds-by-month chart is searchable and tappable — tap a month to see that month\'s sessions.',
-    ],
-  },
-  {
-    title: 'Logging a session',
-    paras: [
-      'From Home or the Log tab, start a session: set the date and place, pick the gun or guns you shot and how many rounds each, and choose live-fire or dry-fire.',
-      'Add as many drills as you like — the drill picker only shows drills that fit the gun type and whether you\'re shooting live or dry. Record times, scores, and notes per drill.',
-      'Log any malfunctions (what happened, which gun, how you cleared it), attach photos or videos (they show as thumbnails), enter a range fee, and add notes. A planned-session checklist helps you pack.',
-      'Sessions are editable forever. Open one and change anything; a malfunction always stays attached to a gun that\'s actually in the session.',
-    ],
-  },
-  {
-    title: 'Drills',
-    paras: [
-      'The drill library lives under More → Drills. Each drill knows which gun types it\'s for and whether it\'s dry-fire, live-fire, or both, which is how the session picker filters them.',
-      'A drill has a short description plus an expandable full description, a scoring type, and a par or max score. You can multi-select drills and print them, and print target references where they apply.',
-    ],
-  },
-  {
-    title: 'Compete — matches',
-    paras: [
-      'The Compete tab holds your matches and classifiers. Log a match with its type (USPSA Level 1/2/3, Section, State, Area, Nationals, IDPA tiers, Steel Challenge, local), division, power factor, gun, finishes, and stage-by-stage results.',
-      'Attach stage videos (handy for GoPro clips) — they show as thumbnails on the match and in reports. The season view rolls up this year\'s matches, average finish, percent trend, and fees.',
-    ],
-  },
-  {
-    title: 'Compete — classifiers & classification',
-    paras: [
-      'Log classifier scores with their code, division, hit factor, and percent. The classification view tracks your current percent and what you need for the next class (your C-toward-B progress), using best-6-of-8 style math.',
-    ],
-  },
-  {
-    title: 'Importing match results (PractiScore)',
-    paras: [
-      'On Compete, tap "Import from PractiScore," then paste or load a match\'s exported results (or try the built-in sample). The whole field comes in, you tap which competitor is you, and you get a preview of your result.',
-      'Pick the gun you shot and add an entry fee if you like, then Save — it becomes a normal match you can edit or delete. Nothing is written until you tap Save.',
-    ],
-  },
-  {
-    title: 'Progress — goals',
-    paras: [
-      'On the Progress tab, the Goals card lets you set targets like "Bill Drill under 2.0s." Add several in a row without leaving the form, check one off when you hit it, and edit or delete any goal later.',
-    ],
-  },
-  {
-    title: 'Progress — skill self-assessment',
-    paras: [
-      'Rate yourself 1–10 across the eight skill areas (Draw, Reload, Splits, Transitions, Accuracy, Movement, Mental Game, Recoil Control). Each dated assessment shows your latest snapshot and average, and a history you can tap into to edit.',
-    ],
-  },
-  {
-    title: 'Progress — trends & filters',
-    paras: [
-      'The Trends card charts your rounds over time and shows tiles for live + match rounds, dry-fire reps, your dry-to-live ratio, and malfunctions per 1,000 rounds. A legend under the chart explains the colors.',
-      'Filter everything by gun type, individual gun, and a 6-, 12-, or 24-month span. Classification by division and personal records show here too.',
-    ],
-  },
-  {
-    title: 'Progress — heatmap & records',
-    paras: [
-      'The training heatmap is a grid of days, darker where you shot more — toggle 26 or 52 weeks, and press a square to see that day\'s count. Personal records list your best result per drill.',
-    ],
-  },
-  {
-    title: 'Guns',
-    paras: [
-      'Under More → Guns, each firearm carries its make, model, caliber, category, serial, date acquired, starting round count, recoil-spring interval, photos, and notes.',
-      'Link a manufacturer Reference to a gun and its maintenance schedule comes along automatically — you can still customize the schedule per gun.',
-    ],
-  },
-  {
-    title: 'Optics, magazines & spare parts',
-    paras: [
-      'Optics, magazines, and spare parts each have their own section under More. Parts and optics you buy feed into Costs, and unassigned optics are grouped so you can see what\'s on the shelf.',
-    ],
-  },
-  {
-    title: 'Ammo & costs',
-    paras: [
-      'Ammo tracks your inventory with first-in-first-out cost basis, so the cost of rounds you shoot is figured from what you actually paid. Adding ammo can double as recording a purchase.',
-      'Costs pulls everything together — ammo, range fees, match fees, gear, travel — by category and month, with cost per round and spend by gun. A match\'s entry fee and a session\'s range fee each live in one place, so nothing is counted twice.',
-    ],
-  },
-  {
-    title: 'Maintenance & reference',
-    paras: [
-      'Log cleaning and parts changes under Maintenance; schedules come from each gun\'s linked Reference or your own custom settings, and Home warns you when something\'s due.',
-      'Reference holds manufacturer care guides (with Atlas-style detail) for popular pistol, rifle, and shotgun makers, and you can add your own.',
-    ],
-  },
-  {
-    title: 'Reports',
-    paras: [
-      'More → Reports has printable reports: round count, costs, competition season, training summary, malfunctions, maintenance history, and an insurance inventory with your guns\' photos. There\'s also a one-session report on each session.',
-      'Each opens a clean printable page — use your browser\'s "Save as PDF" to keep a copy.',
-    ],
-  },
-  {
-    title: 'Sync — phone & desktop',
-    paras: [
-      'Sync moves a single file between your devices through iCloud Drive or the Files app. Push from the device you just used, pull on the other one. The app tells you plainly when one copy is newer.',
-    ],
-  },
-  {
-    title: 'Setup & importing old data',
-    paras: [
-      'The first time you open the app it offers to import your Pistol Tracker backup or start fresh. You can re-run that any time from here in Help — re-importing the same file simply re-applies the records, it won\'t double anything up.',
-      'After an import, a verification report checks that every record and round count came across.',
-    ],
-  },
-  {
-    title: 'Your data & privacy',
-    paras: [
-      'Everything stays on your own devices — there\'s no account, no server, and no subscription. Photos and videos are stored right alongside the records they belong to, and your sync file is yours to keep or move.',
-    ],
-  },
-];
+  return [
+    {
+      title: 'Getting around',
+      body: isDesktop
+        ? 'On a computer, the left sidebar lists Home, Log, Compete, and Progress at the top, then a "Data & Gear" group with every section — Guns, Optics, Ammo, Drills, Costs, and the rest — each one click away. Use the search button to search across sessions, guns, drills, matches, and notes. Almost anything on screen — a number, a chart bar, a list row — can be clicked to open what\'s behind it.'
+        : 'On a phone, the bar along the bottom has Home, Log, Compete, and Progress, plus More for everything else. Use the search button to search across sessions, guns, drills, matches, and notes. Almost anything on screen — a number, a chart bar, a list row — can be tapped to open what\'s behind it.',
+    },
+    {
+      title: 'Home',
+      body: 'Home is your dashboard. Up top are alerts — a gun due for cleaning, ammo running low, goals you\'re chasing — and you can tap any alert to jump to it. Below are recent sessions, quick stats, and a big Log Session button. Tap a month on the rounds chart to see that month\'s sessions.',
+    },
+    {
+      title: 'Logging a session',
+      body: 'Start a session from Home or the Log tab: set the date and place, pick the gun or guns and the rounds for each, and choose live-fire or dry-fire. Add drills (the picker only shows ones that fit the gun and dry/live), record any malfunctions, attach photos or video, and add notes. A range fee you enter here is stored on the session itself and is the single place that fee counts toward Costs — it\'s never entered or counted twice. Sessions stay editable forever.',
+    },
+    {
+      title: 'Drills',
+      body: `The drill library lives under ${at('Drills')}. Each drill knows which gun types it's for and whether it's dry-fire, live-fire, or both — that's how the session picker filters them. A drill has a short and an expandable full description, a scoring type, and a par or max score; you can multi-select drills to print them and print target references where they apply.`,
+    },
+    {
+      title: 'Compete — matches',
+      body: 'The Compete tab holds your matches. Log a match with its type (USPSA Level 1/2/3, Section, State, Area, Nationals, IDPA tiers, Steel Challenge, local), division, power factor, gun, finishes, and stage-by-stage results, plus stage videos. The entry fee you enter is stored on the match itself; the Costs screen reads it straight from there as the single source, so a match fee is never double-counted. The season view rolls up this year\'s matches, average finish, percent trend, and total fees.',
+    },
+    {
+      title: 'Compete — classifiers',
+      body: 'Log classifier scores with their code, division, hit factor, and percent. The classification view tracks your current percent and what you need for the next class — your C-toward-B progress — using best-6-of-8 style math.',
+    },
+    {
+      title: 'Importing match results (PractiScore)',
+      body: 'On Compete, tap "Import from PractiScore," then paste or load a match\'s exported results (or try the built-in sample). The whole field comes in, you tap which competitor is you, preview your result, pick the gun you shot, and add an entry fee if you like. Save makes it a normal match you can edit or delete — nothing is written until you tap Save.',
+    },
+    {
+      title: 'Progress — goals',
+      body: 'On the Progress tab, set targets like "Bill Drill under 2.0s." Add several in a row without leaving the form, check one off when you hit it, and edit or delete any goal later.',
+    },
+    {
+      title: 'Progress — skill self-assessment',
+      body: 'Rate yourself 1–10 across the eight skill areas — Draw, Reload, Splits, Transitions, Accuracy, Movement, Mental Game, Recoil Control. Each dated assessment shows your latest snapshot and average, plus a history you can tap into to edit.',
+    },
+    {
+      title: 'Progress — trends & filters',
+      body: 'Trends charts your rounds over time with a color legend, and shows tiles for live + match rounds, dry-fire reps, your dry-to-live ratio, and malfunctions per 1,000 rounds. Filter everything by gun type, individual gun, and a 6-, 12-, or 24-month span. Classification by division and personal records show here too.',
+    },
+    {
+      title: 'Progress — heatmap & records',
+      body: 'The training heatmap is a grid of days, darker where you shot more — toggle 26 or 52 weeks, and press a square to see that day\'s count. Personal records list your best result per drill.',
+    },
+    {
+      title: 'Guns',
+      body: `Your firearms live under ${at('Guns')}. Each carries its make, model, caliber, category, serial, date acquired, starting round count, recoil-spring interval, photos, and notes. Link a manufacturer Reference to a gun and its maintenance schedule comes along automatically — you can still customize it per gun.`,
+    },
+    {
+      title: 'Optics, magazines & spare parts',
+      body: `Optics, magazines, and spare parts each have their own section — ${at('Optics')}, ${at('Magazines')}, and ${at('Spare Parts & Inventory')}. Parts and optics you buy feed into Costs, and unassigned optics are grouped so you can see what's on the shelf.`,
+    },
+    {
+      title: 'Ammo & costs',
+      body: `Ammo (under ${at('Ammo')}) tracks your inventory with first-in-first-out cost basis, so the cost of rounds you shoot is figured from what you actually paid; adding ammo can double as recording a purchase. Costs (under ${at('Costs & Purchases')}) pulls everything together — ammo, range fees, match fees, gear, travel — by category and month, with cost per round and spend by gun. Because a range fee lives on its session and a match fee lives on its match, each fee is stored in exactly one place and counted exactly once.`,
+    },
+    {
+      title: 'Maintenance & reference',
+      body: `Log cleaning and parts changes under ${at('Maintenance')}; schedules come from each gun's linked Reference or your own settings, and Home warns you when something's due. Reference (under ${at('Reference')}) holds manufacturer care guides for popular pistol, rifle, and shotgun makers, and you can add your own.`,
+    },
+    {
+      title: 'Reports',
+      body: `You'll find printable reports under ${at('Reports')}: round count, costs, competition season, training summary, malfunctions, maintenance history, and an insurance inventory with your guns' photos. There's also a one-session report on each session. Each opens a clean printable page — use your browser's "Save as PDF" to keep a copy.`,
+    },
+    {
+      title: 'Sync — phone & desktop',
+      body: `Sync (on ${hub}) moves a single file between your devices through iCloud Drive or the Files app. Push from the device you just used, pull on the other one. The app tells you plainly when one copy is newer.`,
+    },
+    {
+      title: 'Setup & importing old data',
+      body: `The first time you open the app it offers to import your Pistol Tracker backup or start fresh, and you can re-run that any time from Help. Re-importing the same file simply re-applies the records — it won't double anything up. After an import, a verification report checks every record and round count came across.`,
+    },
+    {
+      title: 'Your data & privacy',
+      body: 'Everything stays on your own devices — no account, no server, no subscription. Photos and videos are stored right alongside the records they belong to, and your sync file is yours to keep or move.',
+    },
+  ];
+}
 
-export function QuickTour({ onClose }: { onClose: () => void }) {
+function TourModal({ steps, onClose }: { steps: TourStep[]; onClose: () => void }) {
   const [i, setI] = useState(0);
-  const step = QUICK_TOUR[i];
-  const last = i === QUICK_TOUR.length - 1;
+  const step = steps[i];
+  const last = i === steps.length - 1;
   return (
     <Sheet title={step.title} onClose={onClose}>
       <p className="report-note" style={{ marginBottom: 14, lineHeight: 1.5 }}>{step.body}</p>
-      <p className="report-note" aria-live="polite">Step {i + 1} of {QUICK_TOUR.length}</p>
+      <p className="report-note" aria-live="polite">Step {i + 1} of {steps.length}</p>
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         {i > 0 && (
           <button className="button secondary" style={{ flex: 1 }} onClick={() => setI(i - 1)}>‹ Back</button>
@@ -191,14 +165,17 @@ export function QuickTour({ onClose }: { onClose: () => void }) {
           : <button className="button" style={{ flex: 1 }} onClick={() => setI(i + 1)}>Next ›</button>}
       </div>
       {!last && (
-        <button className="button secondary" style={{ marginTop: 8 }} onClick={onClose}>Skip the tour</button>
+        <button className="button secondary" style={{ marginTop: 8 }} onClick={onClose}>Close</button>
       )}
     </Sheet>
   );
 }
 
 export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: View) => void }) {
-  const [tour, setTour] = useState(false);
+  const isDesktop = useIsDesktop();
+  const [active, setActive] = useState<null | 'quick' | 'full'>(null);
+  const fullSteps = useMemo(() => buildFullTour(isDesktop), [isDesktop]);
+
   return (
     <div className="screen">
       <div className="navbar">
@@ -208,31 +185,20 @@ export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: Vie
       <h1 className="large-title">Help</h1>
 
       <div className="card">
-        <h2>Quick Tour</h2>
-        <p className="report-note">A {QUICK_TOUR.length}-step walk through the main screens. Stop any time.</p>
-        <button className="button" onClick={() => setTour(true)}>▶ Start Quick Tour</button>
+        <h2>Tours &amp; setup</h2>
+        <p className="report-note" style={{ marginBottom: 10 }}>
+          The Quick Tour is a fast lap around the app. The Full Tour is the complete guide, section by
+          section. Set Up imports your old data or starts you fresh.
+        </p>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button className="button" style={{ flex: 1, minWidth: 100 }} onClick={() => setActive('quick')}>Quick Tour</button>
+          <button className="button" style={{ flex: 1, minWidth: 100 }} onClick={() => setActive('full')}>Full Tour</button>
+          <button className="button secondary" style={{ flex: 1, minWidth: 100 }} onClick={() => open({ kind: 'setup' })}>Set Up</button>
+        </div>
       </div>
 
-      <div className="card">
-        <h2>Set up &amp; import data</h2>
-        <p className="report-note">Import your Pistol Tracker backup, or start fresh. You can re-run this any time.</p>
-        <button className="button secondary" onClick={() => open({ kind: 'setup' })}>Open setup</button>
-      </div>
-
-      <div className="card">
-        <h2>Full Tour — the complete guide</h2>
-        <p className="report-note" style={{ marginBottom: 8 }}>Every part of the app, section by section. Tap a heading to open it.</p>
-        {FULL_TOUR.map((s) => (
-          <details className="guide-sec" key={s.title}>
-            <summary>{s.title}</summary>
-            {s.paras.map((p, i) => (
-              <p className="report-note" key={i} style={{ lineHeight: 1.5, marginTop: 6 }}>{p}</p>
-            ))}
-          </details>
-        ))}
-      </div>
-
-      {tour && <QuickTour onClose={() => setTour(false)} />}
+      {active === 'quick' && <TourModal steps={QUICK_TOUR} onClose={() => setActive(null)} />}
+      {active === 'full' && <TourModal steps={fullSteps} onClose={() => setActive(null)} />}
     </div>
   );
 }
