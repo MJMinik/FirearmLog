@@ -25,6 +25,7 @@ import { UspsaImport } from './ui/UspsaImport.tsx';
 import { HelpScreen } from './ui/HelpScreen.tsx';
 import { SetupWizard } from './ui/SetupWizard.tsx';
 import { countAll } from './lib/db.ts';
+import { ErrorBoundary } from './ui/ErrorBoundary.tsx';
 
 export function App() {
   const [tab, setTabState] = useState<TabId>('home');
@@ -220,8 +221,9 @@ export function App() {
 
   return (
     <>
-      {/* Audit #D5: a <main> landmark for screen readers (the nav landmark is the tab bar). */}
-      <main>{content}</main>
+      {/* Audit #D5: a <main> landmark for screen readers (the nav landmark is the tab bar).
+          Audit CR-17/#D16: an error boundary turns a render crash into a friendly reload. */}
+      <main><ErrorBoundary>{content}</ErrorBoundary></main>
       <TabBar active={tab} onChange={setTab} view={view} onOpen={openSection} />
     </>
   );

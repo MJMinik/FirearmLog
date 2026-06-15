@@ -31,7 +31,12 @@ export function looseNum(s: string | undefined): number | null {
   const t = s.replace(/[%,\s]/g, '');
   if (t === '') return null;
   const v = Number(t);
-  return Number.isFinite(v) ? v : null;
+  if (!Number.isFinite(v)) return null;
+  // Audit CR-10: reject implausible magnitudes (e.g. scientific-notation junk
+  // like "1e308") that are finite but would poison percentages / hit factors /
+  // round counts. Real values here are well under this bound.
+  if (Math.abs(v) > 1e7) return null;
+  return v;
 }
 
 /** Find the first unclaimed header column matching one of the patterns, in order. */
