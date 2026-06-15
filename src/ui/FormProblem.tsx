@@ -8,7 +8,9 @@ import { useEffect, useRef } from 'react';
 export function FormProblem({ problem }: { problem: string }) {
   const ref = useRef<HTMLParagraphElement>(null);
   useEffect(() => {
-    if (problem) ref.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (!problem) return;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    ref.current?.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'center' });
   }, [problem]);
   if (!problem) return null;
   return (

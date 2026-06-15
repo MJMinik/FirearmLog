@@ -2,30 +2,32 @@
 // out as a full sidebar with every section visible — feedback C1, spec §4.2.
 // One component, two layouts via CSS; nothing is built twice.
 import type { View } from './nav.ts';
+import { Icon } from './Icon.tsx';
+import type { IconName } from './Icon.tsx';
 
 export type TabId = 'home' | 'log' | 'compete' | 'progress' | 'more';
 
-const TABS: { id: TabId; label: string; glyph: string }[] = [
-  { id: 'home', label: 'Home', glyph: '⌂' },
-  { id: 'log', label: 'Log', glyph: '☰' },
-  { id: 'compete', label: 'Compete', glyph: '🏆' },
-  { id: 'progress', label: 'Progress', glyph: '📈' }
+const TABS: { id: TabId; label: string; icon: IconName }[] = [
+  { id: 'home', label: 'Home', icon: 'home' },
+  { id: 'log', label: 'Log', icon: 'log' },
+  { id: 'compete', label: 'Compete', icon: 'compete' },
+  { id: 'progress', label: 'Progress', icon: 'progress' }
 ];
 
 // Desktop-only direct links to the sections that live under More on the phone.
 // Order + "Data & Gear" grouping per Michael's June 14 layout.
-const SECTIONS: { target: View; label: string; glyph: string; also: View['kind'][] }[] = [
-  { target: { kind: 'guns' }, label: 'Guns', glyph: '🔫', also: ['gun-detail', 'gun-form'] },
-  { target: { kind: 'optics' }, label: 'Optics', glyph: '🔭', also: ['optic-form'] },
-  { target: { kind: 'ammo' }, label: 'Ammo', glyph: '◉', also: ['ammo-form'] },
-  { target: { kind: 'magazines' }, label: 'Magazines', glyph: '▤', also: ['magazine-form'] },
-  { target: { kind: 'drills' }, label: 'Drills', glyph: '🎯', also: ['drill-form'] },
-  { target: { kind: 'costs' }, label: 'Costs & Purchases', glyph: '$', also: ['purchase-form'] },
-  { target: { kind: 'maintenance' }, label: 'Maintenance', glyph: '🛠', also: [] },
-  { target: { kind: 'parts' }, label: 'Spare Parts & Inventory', glyph: '🔩', also: ['part-form'] },
-  { target: { kind: 'references' }, label: 'Reference', glyph: '📖', also: ['reference-detail', 'reference-form'] },
-  { target: { kind: 'reports' }, label: 'Reports', glyph: '📊', also: [] },
-  { target: { kind: 'help' }, label: 'Help & Tour', glyph: '❓', also: ['setup'] }
+const SECTIONS: { target: View; label: string; icon: IconName; also: View['kind'][] }[] = [
+  { target: { kind: 'guns' }, label: 'Guns', icon: 'gun', also: ['gun-detail', 'gun-form'] },
+  { target: { kind: 'optics' }, label: 'Optics', icon: 'optic', also: ['optic-form'] },
+  { target: { kind: 'ammo' }, label: 'Ammo', icon: 'ammo', also: ['ammo-form'] },
+  { target: { kind: 'magazines' }, label: 'Magazines', icon: 'magazine', also: ['magazine-form'] },
+  { target: { kind: 'drills' }, label: 'Drills', icon: 'drills', also: ['drill-form'] },
+  { target: { kind: 'costs' }, label: 'Costs & Purchases', icon: 'costs', also: ['purchase-form'] },
+  { target: { kind: 'maintenance' }, label: 'Maintenance', icon: 'maintenance', also: [] },
+  { target: { kind: 'parts' }, label: 'Spare Parts & Inventory', icon: 'parts', also: ['part-form'] },
+  { target: { kind: 'references' }, label: 'Reference', icon: 'reference', also: ['reference-detail', 'reference-form'] },
+  { target: { kind: 'reports' }, label: 'Reports', icon: 'reports', also: [] },
+  { target: { kind: 'help' }, label: 'Help & Tour', icon: 'help', also: ['setup'] }
 ];
 
 export function TabBar({ active, onChange, view, onOpen }: {
@@ -38,14 +40,14 @@ export function TabBar({ active, onChange, view, onOpen }: {
   // not whatever tab happens to be underneath it.
   const anySectionOn = SECTIONS.some(sectionOn);
 
-  const tabButton = (t: { id: TabId; label: string; glyph: string }) => (
+  const tabButton = (t: { id: TabId; label: string; icon: IconName }) => (
     <button
       key={t.id}
       className={active === t.id && !anySectionOn ? 'active' : ''}
       aria-current={active === t.id && !anySectionOn ? 'page' : undefined}
       onClick={() => onChange(t.id)}
     >
-      <span className="glyph" aria-hidden="true">{t.glyph}</span>
+      <span className="glyph" aria-hidden="true"><Icon name={t.icon} /></span>
       {t.id === 'more'
         ? <><span className="label-phone">More</span><span className="label-desk">Gear &amp; Data</span></>
         : t.label}
@@ -61,12 +63,12 @@ export function TabBar({ active, onChange, view, onOpen }: {
         <button key={s.target.kind} className={`sidebar-only ${sectionOn(s) ? 'active' : ''}`}
           aria-current={sectionOn(s) ? 'page' : undefined}
           onClick={() => onOpen(s.target)}>
-          <span className="glyph" aria-hidden="true">{s.glyph}</span>
+          <span className="glyph" aria-hidden="true"><Icon name={s.icon} /></span>
           {s.label}
         </button>
       ))}
       <div className="nav-divider" aria-hidden="true" />
-      {tabButton({ id: 'more', label: 'More', glyph: '⋯' })}
+      {tabButton({ id: 'more', label: 'More', icon: 'more' })}
     </nav>
   );
 }
