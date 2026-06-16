@@ -84,7 +84,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Photos, captions & markup',
-      body: 'Any photo or video you add — on a session, match, classifier, or gun — opens with a tap. Give it a caption (it shows under the photo everywhere) and notes. On a photo, tap "Mark Up Photo" to draw labeled circles in different colors — say 1 "Fast Doubles," 2 "Left hand only" — and the labels list underneath. The circles show on the thumbnails too, and they print on your reports. New photos shrink automatically so they don\'t fill up your phone.',
+      body: 'Any photo or video you add — on a session, match, classifier, or gun — opens with a tap. Give it a caption (it shows under the photo everywhere) and notes. On a photo, tap "Mark Up Photo" to draw labeled circles in different colors — say 1 "Bill Drill," 2 "Left hand only" — and the labels list underneath. The circles show on the thumbnails too, and they print on your reports. New photos shrink automatically so they don\'t fill up your phone.',
     },
     {
       title: 'Drills',

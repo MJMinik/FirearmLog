@@ -82,7 +82,7 @@ export function PhotoMarkup({ url, initial, onSave, onClose }: {
       {marks.map((mk, i) => (
         <div key={mk.id} className="markup-row">
           <span className="markup-num" style={{ background: mk.color }}>{i + 1}</span>
-          <input value={mk.label} placeholder="Label (e.g. Fast Doubles)" {...noAutofillProps} name="mark-label"
+          <input value={mk.label} placeholder="Label (e.g. Bill Drill)" {...noAutofillProps} name="mark-label"
             onChange={(e) => setMarks((m) => m.map((x) => (x.id === mk.id ? { ...x, label: e.target.value } : x)))} />
           <button className="thumb-x" style={{ position: 'static' }} aria-label="Remove circle"
             onClick={() => setMarks((m) => m.filter((x) => x.id !== mk.id))}>✕</button>
