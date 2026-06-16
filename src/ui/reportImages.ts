@@ -3,29 +3,34 @@
 // raw as base64 into a print window crashes mobile Safari (out of memory). Here
 // we draw each photo to an offscreen canvas capped at `maxPx` on its long edge
 // and re-encode it as JPEG — a 25 MB photo becomes ~150 KB while staying plenty
-// sharp for a printed page. One bad image is skipped rather than crashing the
-// whole report.
+// sharp for a printed page. Any markup circles are drawn onto the canvas so they
+// print too, and their labels are returned as a legend. One bad image is skipped
+// rather than crashing the whole report.
 //
 // Canvas / Image are browser-only, so this lives in the UI layer — the Node
 // test runner has no DOM. The pure HTML builder stays in src/lib/reports.ts.
 import type { Media } from '../lib/types.ts';
+import type { ReportImage } from '../lib/reports.ts';
 import { fitWithin } from '../lib/imageResize.ts';
 
-/** Print-ready data: URLs for one record's images, downscaled to a safe size. */
+/** Print-ready photos for one record: downscaled (with markup drawn on) + legend. */
 export async function reportImageUrls(
   media: Media[],
   ownerType: Media['ownerType'],
   ownerId: string,
   maxPx = 1400,
   quality = 0.85
-): Promise<string[]> {
+): Promise<ReportImage[]> {
   const mine = media.filter(
     (m) => m.ownerType === ownerType && m.ownerId === ownerId && m.kind === 'image'
   );
-  const out: string[] = [];
+  const out: ReportImage[] = [];
   for (const m of mine) {
     try {
-      out.push(await downscaleOne(m, maxPx, quality));
+      const src = await downscaleOne(m, maxPx, quality);
+      const marks = m.marks ?? [];
+      const legend = marks.length ? marks.map((mk) => mk.label.trim() || '—') : undefined;
+      out.push({ src, legend });
     } catch {
       // A single unreadable image shouldn't sink the whole report.
     }
@@ -53,6 +58,7 @@ function downscaleOne(m: Media, maxPx: number, quality: number): Promise<string>
         ctx.fillStyle = '#fff';
         ctx.fillRect(0, 0, w, h);
         ctx.drawImage(img, 0, 0, w, h);
+        drawMarks(ctx, m, w, h);
         resolve(canvas.toDataURL('image/jpeg', quality));
       } catch (e) {
         reject(e instanceof Error ? e : new Error('downscale failed'));
@@ -65,5 +71,35 @@ function downscaleOne(m: Media, maxPx: number, quality: number): Promise<string>
       reject(new Error('image decode failed'));
     };
     img.src = url;
+  });
+}
+
+/** Draw the labeled circles (numbered badges) onto the report canvas. */
+function drawMarks(ctx: CanvasRenderingContext2D, m: Media, w: number, h: number): void {
+  const marks = m.marks ?? [];
+  const unit = Math.min(w, h);
+  marks.forEach((mk, i) => {
+    const ex = mk.cx * w;
+    const ey = mk.cy * h;
+    const erx = Math.max(2, mk.rx * w);
+    const ery = Math.max(2, mk.ry * h);
+    ctx.lineWidth = Math.max(2, Math.round(unit * 0.008));
+    ctx.strokeStyle = mk.color;
+    ctx.beginPath();
+    ctx.ellipse(ex, ey, erx, ery, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    // Numbered badge at the circle's top-left, matching the on-screen markup.
+    const br = Math.max(9, Math.round(unit * 0.03));
+    const bx = ex - erx;
+    const by = ey - ery;
+    ctx.fillStyle = mk.color;
+    ctx.beginPath();
+    ctx.arc(bx, by, br, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#000';
+    ctx.font = `bold ${Math.round(br * 1.2)}px -apple-system, system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(i + 1), bx, by);
   });
 }

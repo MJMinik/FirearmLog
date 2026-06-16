@@ -5,12 +5,15 @@
 
 export interface ReportRow { label: string; value: string }
 export interface ReportTable { headers: string[]; rows: string[][] }
+/** A report photo: a downscaled data: URL (with any markup circles already drawn
+ *  on it) plus the optional numbered labels for those circles. */
+export interface ReportImage { src: string; legend?: string[] }
 export interface ReportSection {
   heading?: string;
   note?: string;
   rows?: ReportRow[];
   table?: ReportTable;
-  images?: string[]; // data: URLs (downscaled — see src/ui/reportImages.ts)
+  images?: ReportImage[]; // downscaled photos (see src/ui/reportImages.ts)
 }
 
 function escapeHtml(s: string): string {
@@ -34,8 +37,12 @@ function sectionHtml(s: ReportSection): string {
       + '</tbody></table>');
   }
   if (s.images && s.images.length) {
-    parts.push('<div class="imgs">' + s.images.map((src) =>
-      `<img src="${src}" alt="" />`).join('') + '</div>');
+    parts.push('<div class="imgs">' + s.images.map((im) => {
+      const legend = im.legend && im.legend.length
+        ? '<ol class="leg">' + im.legend.map((l) => `<li>${escapeHtml(l)}</li>`).join('') + '</ol>'
+        : '';
+      return `<figure class="imgfig"><img src="${im.src}" alt="" />${legend}</figure>`;
+    }).join('') + '</div>');
   }
   parts.push('</div>');
   return parts.join('');
@@ -58,8 +65,11 @@ export function buildReportHtml(title: string, subtitle: string, sections: Repor
     table { width: 100%; border-collapse: collapse; }
     th, td { text-align: left; font-size: 10pt; padding: 6px 8px; border-bottom: 1px solid #ddd; vertical-align: top; }
     th { font-size: 8.5pt; text-transform: uppercase; letter-spacing: .5px; color: #666; border-bottom: 1.5px solid #888; }
-    .imgs { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
-    .imgs img { width: 160px; height: 160px; object-fit: cover; border: 1px solid #ccc; border-radius: 4px; }
+    .imgs { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 6px; align-items: flex-start; }
+    .imgfig { margin: 0; width: 240px; }
+    .imgs img { width: 240px; height: auto; max-height: 320px; object-fit: contain; border: 1px solid #ccc; border-radius: 4px; }
+    .leg { margin: 4px 0 0; padding-left: 18px; font-size: 10pt; }
+    .leg li { margin: 1px 0; }
     .close-bar { margin-bottom: 16px; }
     .close-btn { font-family: inherit; font-size: 11pt; padding: 10px 16px; border-radius: 8px; border: 1px solid #888; background: #f2f2f2; color: #111; cursor: pointer; }
     @media print { body { padding: 0.4in 0.5in; } .close-bar { display: none; } }

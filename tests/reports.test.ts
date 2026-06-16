@@ -16,8 +16,9 @@ test('buildReportHtml renders title, subtitle, rows and a table; escapes text', 
 });
 
 test('buildReportHtml embeds images and handles empty sections', () => {
-  const withImg = buildReportHtml('Insurance', '', [{ heading: 'Photos', images: ['data:image/png;base64,AAAA'] }]);
+  const withImg = buildReportHtml('Insurance', '', [{ heading: 'Photos', images: [{ src: 'data:image/png;base64,AAAA', legend: ['1 — fast doubles'] }] }]);
   assert.match(withImg, /<img src="data:image\/png;base64,AAAA"/);
+  assert.match(withImg, /fast doubles/);
   assert.match(buildReportHtml('Empty', '', []), /Nothing to report yet/);
 });
 
