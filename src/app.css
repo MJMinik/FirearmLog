@@ -310,7 +310,7 @@ select.category-pick {
 }
 .sheet {
   background: var(--bg-card); width: 100%; max-width: 720px;
-  border-radius: 16px 16px 0 0; max-height: 75dvh; overflow: auto;
+  border-radius: 16px 16px 0 0; max-height: 90dvh; overflow: auto;
   padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
 }
 .sheet-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
@@ -373,6 +373,10 @@ select.category-pick {
 .markup-row input { flex: 1; }
 .markup-legend { margin: 8px 0 0; padding-left: 22px; }
 .markup-legend li { margin: 2px 0; }
+/* A grid thumbnail that shows the drawn circles (no labels). The image keeps its
+   natural aspect so the % positioned circles line up. */
+.mark-thumb { position: relative; display: block; }
+.photo-grid .mark-thumb img { width: 100%; height: auto; aspect-ratio: auto; object-fit: contain; border-radius: 10px; }
 
 .thumb-x {
   position: absolute; top: 4px; right: 4px; width: 28px; height: 28px;

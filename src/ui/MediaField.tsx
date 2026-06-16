@@ -10,8 +10,8 @@ import type { Media } from '../lib/types.ts';
 import { getAll, putOne, deleteOne } from '../lib/db.ts';
 import { stampNew } from '../lib/stamps.ts';
 import { newId } from '../lib/id.ts';
-import { mediaUrl } from './media.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
+import { MarkThumb } from './MarkThumb.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { NewPhotoSheet } from './NewPhotoSheet.tsx';
 import type { StagedFile } from './NewPhotoSheet.tsx';
@@ -94,9 +94,7 @@ export function MediaField({
           {visible.map((m) => (
             <div className="thumb-wrap" key={m.id}>
               <button className="thumb-tap" onClick={() => setViewing(m)} aria-label={`Open ${m.name}`}>
-                {m.kind === 'video'
-                  ? <video src={mediaUrl(m)} preload="metadata" muted playsInline />
-                  : <img src={mediaUrl(m)} alt={m.name} loading="lazy" />}
+                <MarkThumb media={m} />
               </button>
               <button className="thumb-x" aria-label={`Remove ${m.name}`}
                 onClick={() => setRemovedMedia((p) => [...p, m.id])}>✕</button>

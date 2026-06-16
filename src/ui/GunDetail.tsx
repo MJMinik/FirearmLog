@@ -9,7 +9,7 @@ import { maintLabel, maintenanceStatus } from '../lib/maintenance.ts';
 import { isBatteryDue } from '../lib/optics.ts';
 import { buildRefLookup, referencesForCategory, toEntry } from '../lib/referenceData.ts';
 import { formatDayKey } from '../lib/dates.ts';
-import { mediaUrl } from './media.ts';
+import { MarkThumb } from './MarkThumb.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { Sheet } from './Sheet.tsx';
 import { GunRemoveSheet } from './GunRemoveSheet.tsx';
@@ -239,9 +239,7 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
               {photos.map((m) => (
                 <div className="thumb-wrap" key={m.id}>
                   <button className="thumb-tap" onClick={() => setViewing(m)} aria-label={m.name}>
-                    {m.kind === 'video'
-                      ? <video src={mediaUrl(m)} preload="metadata" muted playsInline />
-                      : <img src={mediaUrl(m)} alt={m.name} loading="lazy" />}
+                    <MarkThumb media={m} />
                   </button>
                   <span className="thumb-caption">{m.name}</span>
                 </div>

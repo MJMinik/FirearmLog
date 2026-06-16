@@ -7,7 +7,7 @@ import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor } from '../lib/competition.ts';
-import { mediaUrl } from './media.ts';
+import { MarkThumb } from './MarkThumb.tsx';
 import { ConfirmSheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { MediaField, commitMedia } from './MediaField.tsx';
@@ -113,9 +113,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
             {videos.map((m) => (
               <div className="thumb-wrap" key={m.id}>
                 <button className="thumb-tap" onClick={() => setViewing(m)} aria-label={m.name}>
-                  {m.kind === 'video'
-                    ? <video src={mediaUrl(m)} preload="metadata" muted playsInline />
-                    : <img src={mediaUrl(m)} alt={m.name} loading="lazy" />}
+                  <MarkThumb media={m} />
                 </button>
                 <span className="thumb-caption">{m.name}</span>
               </div>
