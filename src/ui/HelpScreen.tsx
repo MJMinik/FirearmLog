@@ -9,7 +9,7 @@ import type { View } from './nav.ts';
 import { Sheet } from './Sheet.tsx';
 import { APP_VERSION } from '../version.ts';
 
-interface TourStep { title: string; body: string }
+interface TourStep { title: string; body: string; view?: View }
 
 /** True on the ≥900px desktop layout (matches the sidebar breakpoint). */
 function useIsDesktop(): boolean {
@@ -36,10 +36,12 @@ const QUICK_TOUR: TourStep[] = [
   },
   {
     title: 'Log',
+    view: { kind: 'session-form' },
     body: 'Every range trip and dry-fire session, plus a calendar — tap a day to open it. Logging a session: pick the gun(s), add drills, rounds, any malfunctions, photos or video, and notes. Tap any photo to caption it or draw labeled circles on it. You can edit anything later, forever.',
   },
   {
     title: 'Compete',
+    view: { kind: 'match-form' },
     body: 'Matches and classifiers, your classification progress, and the season view. You can type a match in by hand or pull the results straight from a PractiScore export.',
   },
   {
@@ -48,6 +50,7 @@ const QUICK_TOUR: TourStep[] = [
   },
   {
     title: 'Your gear and data',
+    view: { kind: 'guns' },
     body: 'Guns, optics, ammo, magazines, drills, costs, maintenance, parts, reference guides, reports, and Help. On a phone they\'re under the More tab; on a computer they\'re listed down the sidebar. It\'s also where you import your old Pistol Tracker data.',
   },
   {
@@ -80,6 +83,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Logging a session',
+      view: { kind: 'session-form' },
       body: 'Start a session from Home or the Log tab: set the date and place, pick the gun or guns and the rounds for each, and choose live-fire or dry-fire. Add drills (the picker only shows ones that fit the gun and dry/live), record any malfunctions, attach photos or video, and add notes. A range fee you enter here is stored on the session itself and is the single place that fee counts toward Costs — it\'s never entered or counted twice. Sessions stay editable forever.',
     },
     {
@@ -88,18 +92,22 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Drills',
+      view: { kind: 'drills' },
       body: `The drill library lives under ${at('Drills')}. Each drill knows which gun types it's for and whether it's dry-fire, live-fire, or both — that's how the session picker filters them. A drill has a short and an expandable full description, a scoring type, and a par or max score; you can multi-select drills to print them and print target references where they apply.`,
     },
     {
       title: 'Compete — matches',
+      view: { kind: 'match-form' },
       body: 'The Compete tab holds your matches. Log a match with its type (USPSA Level 1/2/3, Section, State, Area, Nationals, IDPA tiers, Steel Challenge, local), division, power factor, gun, finishes, and stage-by-stage results, plus stage videos. The entry fee you enter is stored on the match itself; the Costs screen reads it straight from there as the single source, so a match fee is never double-counted. The season view rolls up this year\'s matches, average finish, percent trend, and total fees.',
     },
     {
       title: 'Compete — classifiers',
+      view: { kind: 'classifier-form' },
       body: 'Log classifier scores with their code, division, hit factor, and percent. You can attach photos and videos to a classifier too — handy if you film your run. The classification view tracks your current percent and what you need for the next class — your C-toward-B progress — using best-6-of-8 style math.',
     },
     {
       title: 'Importing match results (PractiScore)',
+      view: { kind: 'practiscore-import' },
       body: 'On Compete, tap "Import…" and choose PractiScore, then paste or load a match\'s exported results (or try the built-in sample). The whole field comes in — search for and tap which competitor is you, preview your result, pick the gun you shot, and add an entry fee if you like. Save makes it a normal match you can edit or delete — nothing is written until you tap Save.',
     },
     {
@@ -120,22 +128,27 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Guns',
+      view: { kind: 'guns' },
       body: `Your firearms live under ${at('Guns')}. Each carries its make, model, caliber, category, serial, date acquired, starting round count, recoil-spring interval, photos, and notes. Link a manufacturer Reference to a gun and its maintenance schedule comes along automatically — you can still customize it per gun. When a gun leaves the rotation, open it and choose Retire (still yours — kept for insurance, and you can un-retire any time) or "No longer own it" (sold, gifted, lost, stolen, or destroyed). Either way its past sessions and matches keep it on record, and its optic and magazines move to your inventory.`,
     },
     {
       title: 'Optics, magazines & spare parts',
+      view: { kind: 'optics' },
       body: `Optics, magazines, and spare parts each have their own section — ${at('Optics')}, ${at('Magazines')}, and ${at('Spare Parts & Inventory')}. Parts and optics you buy feed into Costs, and unassigned optics are grouped so you can see what's on the shelf.`,
     },
     {
       title: 'Ammo & costs',
+      view: { kind: 'ammo' },
       body: `Ammo (under ${at('Ammo')}) tracks your inventory with first-in-first-out cost basis, so the cost of rounds you shoot is figured from what you actually paid; when you add ammo you choose whether you're logging a purchase (it lands in Costs) or just counting rounds you already own. Costs (under ${at('Costs & Purchases')}) pulls everything together — ammo, range fees, match fees, gear, travel — by category and month, with cost per round and spend by gun. Because a range fee lives on its session and a match fee lives on its match, each fee is stored in exactly one place and counted exactly once.`,
     },
     {
       title: 'Maintenance & reference',
+      view: { kind: 'maintenance' },
       body: `Log cleaning and parts changes under ${at('Maintenance')}; schedules come from each gun's linked Reference or your own settings, and Home warns you when something's due. Reference (under ${at('Reference')}) holds manufacturer care guides for popular pistol, rifle, and shotgun makers, and you can add your own.`,
     },
     {
       title: 'Reports',
+      view: { kind: 'reports' },
       body: `You'll find printable reports under ${at('Reports')}: round count, costs, competition season, training summary, malfunctions, maintenance history, and an insurance inventory with your guns' photos. There's also a one-session report on each session. Each opens a clean printable page — use your browser's "Save as PDF" to keep a copy.`,
     },
     {
@@ -144,6 +157,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Setup & importing old data',
+      view: { kind: 'setup' },
       body: `The first time you open the app it offers to import your Pistol Tracker backup, start fresh, or load sample data to explore — and you can re-run that any time from Help. Re-importing the same file simply re-applies the records — it won't double anything up. After an import, a verification report checks every record and round count came across.`,
     },
     {
@@ -153,13 +167,17 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
   ];
 }
 
-function TourModal({ steps, onClose }: { steps: TourStep[]; onClose: () => void }) {
+function TourModal({ steps, onClose, onGo }: { steps: TourStep[]; onClose: () => void; onGo: (v: View) => void }) {
   const [i, setI] = useState(0);
   const step = steps[i];
+  const view = step.view;
   const last = i === steps.length - 1;
   return (
     <Sheet title={step.title} onClose={onClose}>
       <p className="report-note" style={{ marginBottom: 14, lineHeight: 1.5 }}>{step.body}</p>
+      {view && (
+        <button className="button secondary" style={{ marginBottom: 10 }} onClick={() => onGo(view)}>Take me there</button>
+      )}
       <p className="report-note" aria-live="polite">Step {i + 1} of {steps.length}</p>
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
         {i > 0 && (
@@ -216,8 +234,8 @@ export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: Vie
         FirearmLog v{APP_VERSION}
       </p>
 
-      {active === 'quick' && <TourModal steps={QUICK_TOUR} onClose={() => setActive(null)} />}
-      {active === 'full' && <TourModal steps={fullSteps} onClose={() => setActive(null)} />}
+      {active === 'quick' && <TourModal steps={QUICK_TOUR} onClose={() => setActive(null)} onGo={(v) => { setActive(null); open(v); }} />}
+      {active === 'full' && <TourModal steps={fullSteps} onClose={() => setActive(null)} onGo={(v) => { setActive(null); open(v); }} />}
     </div>
   );
 }
