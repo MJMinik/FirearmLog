@@ -1,13 +1,12 @@
 // Log or edit a session (spec §8.1): kind, date, guns with per-gun rounds,
 // multiple drills via the context-aware picker, photos/videos, malfunctions,
 // ratings, fee, notes. Removals are STAGED — cancel really cancels (rule F3).
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import type {
   Ammunition, AppSettings, ChecklistCustomItems, DrillDef, DrillResult, Firearm, GunCategory,
   MalfunctionEntry, Media, Session, SessionChecklist
 } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, getSettings, putOne, putSettings } from '../lib/db.ts';
-import { prepareUploadBytes } from './shrinkImage.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -25,10 +24,8 @@ import { reportImageUrls } from './reportImages.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { SuggestField } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
-import { PhotoSheet } from './PhotoSheet.tsx';
-import { NewPhotoSheet } from './NewPhotoSheet.tsx';
-import type { Mark } from '../lib/types.ts';
-import { mediaUrl } from './media.ts';
+import { MediaField, commitMedia } from './MediaField.tsx';
+import type { StagedFile } from './MediaField.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
 
@@ -54,7 +51,6 @@ interface DrillRow {
 }
 interface MalfRow { firearmId: string; type: string; resolution: string; notes: string; }
 interface AmmoRow { ammoId: string; rounds: string; }
-interface NewFile { file: File; url: string; kind: 'image' | 'video'; name?: string; notes?: string; marks?: Mark[]; }
 
 const toRow = (d: DrillResult): DrillRow => ({
   name: d.name, distance: d.distance,
@@ -98,8 +94,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const [oldMalfIds, setOldMalfIds] = useState<string[]>([]);
   const [existingMedia, setExistingMedia] = useState<Media[]>([]);
   const [removedMedia, setRemovedMedia] = useState<string[]>([]);
-  const [newFiles, setNewFiles] = useState<NewFile[]>([]);
-  const [editingNew, setEditingNew] = useState<number | null>(null);
+  const [newFiles, setNewFiles] = useState<StagedFile[]>([]);
   const [ratings, setRatings] = useState<Record<string, string>>(
     editing ? { focus: '', fundamentals: '', satisfaction: '' } : { focus: '5', fundamentals: '5', satisfaction: '5' }
   );
@@ -117,11 +112,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const [picking, setPicking] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [includeScoring, setIncludeScoring] = useState(true);
-  const [viewing, setViewing] = useState<Media | null>(null);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState('');
-  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -372,18 +365,6 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     );
   }
 
-  function filesPicked(list: FileList | null) {
-    if (!list) return;
-    const added: NewFile[] = [];
-    for (const file of Array.from(list)) {
-      added.push({
-        file,
-        url: URL.createObjectURL(file),
-        kind: file.type.startsWith('video') ? 'video' : 'image'
-      });
-    }
-    setNewFiles((prev) => [...prev, ...added]);
-  }
 
   async function save() {
     if (saving) return;
@@ -449,19 +430,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       }
 
       // Staged photo/video changes commit only now (rule F3).
-      for (const mid of removedMedia) await deleteOne('media', mid);
-      let seq = existingMedia.length;
-      for (const nf of newFiles) {
-        seq += 1;
-        const { data: buf, mime } = await prepareUploadBytes(nf.file);
-        await putOne('media', stampNew({
-          ownerType: 'session' as const, ownerId: sid,
-          kind: nf.kind, name: nf.name?.trim() || `${nf.kind === 'video' ? 'Video' : 'Photo'} ${seq} — ${date}`,
-          annotations: nf.notes ? nf.notes.split('\n').map((s) => s.trim()).filter(Boolean) : [],
-          marks: nf.marks ?? [],
-          mime, data: buf
-        }, newId('md'), now));
-      }
+      await commitMedia('session', sid, newFiles, removedMedia, existingMedia.length);
 
       // Malfunctions: rewrite this session's set.
       for (const mid of oldMalfIds) await deleteOne('malfunctions', mid);
@@ -498,7 +467,6 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     onDeleted?.();
   }
 
-  const visibleExisting = existingMedia.filter((m) => !removedMedia.includes(m.id));
 
   return (
     <div className="screen">
@@ -738,41 +706,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
 
       {!planned && (
       <>
-      <div className="card">
-        <h2>Targets, Photos &amp; Videos</h2>
-        {(visibleExisting.length > 0 || newFiles.length > 0) && (
-          <div className="photo-grid" style={{ marginBottom: 12 }}>
-            {visibleExisting.map((m) => (
-              <div className="thumb-wrap" key={m.id}>
-                <button className="thumb-tap" onClick={() => setViewing(m)} aria-label={`Open ${m.name}`}>
-                  {m.kind === 'video'
-                    ? <video src={mediaUrl(m)} preload="metadata" muted playsInline />
-                    : <img src={mediaUrl(m)} alt={m.name} loading="lazy" />}
-                </button>
-                <button className="thumb-x" aria-label={`Remove ${m.name}`}
-                  onClick={() => setRemovedMedia((prev) => [...prev, m.id])}>✕</button>
-                <span className="thumb-caption">{m.name}</span>
-              </div>
-            ))}
-            {newFiles.map((nf, i) => (
-              <div className="thumb-wrap" key={nf.url}>
-                <button className="thumb-tap" onClick={() => setEditingNew(i)} aria-label="Name this new file">
-                  {nf.kind === 'video'
-                    ? <video src={nf.url} preload="metadata" muted playsInline />
-                    : <img src={nf.url} alt="New photo" />}
-                </button>
-                <button className="thumb-x" aria-label="Remove new file"
-                  onClick={() => setNewFiles((prev) => prev.filter((_, x) => x !== i))}>✕</button>
-                <span className="thumb-caption">{nf.name || 'Tap to name'}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        <input ref={fileRef} type="file" accept="image/*,video/*" multiple style={{ display: 'none' }}
-          onChange={(e) => { filesPicked(e.target.files); e.target.value = ''; }} />
-        <button className="button secondary" onClick={() => fileRef.current?.click()}>+ Add Photos or Videos</button>
-        <p className="report-note">Tap a photo to name it or jot notes. Removals only happen when you Save — Cancel really cancels.</p>
-      </div>
+      <MediaField heading="Targets, Photos & Videos" addLabel="+ Add Photos or Videos"
+        ownerType="session" ownerId={original?.id ?? ''}
+        existingMedia={existingMedia} setExistingMedia={setExistingMedia}
+        removedMedia={removedMedia} setRemovedMedia={setRemovedMedia}
+        newFiles={newFiles} setNewFiles={setNewFiles} />
 
       <div className="card">
         <h2>Malfunctions</h2>
@@ -861,20 +799,6 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         />
       )}
 
-      {viewing && (
-        <PhotoSheet media={viewing} allowDelete={false} onClose={() => setViewing(null)}
-          onChanged={async () => {
-            const allMedia = await getAll<Media>('media');
-            setExistingMedia(allMedia.filter((m) => m.ownerType === 'session' && m.ownerId === (original?.id ?? '')));
-          }} />
-      )}
-      {editingNew !== null && newFiles[editingNew] && (
-        <NewPhotoSheet
-          file={newFiles[editingNew]}
-          onSave={(nm, nt, mk) => setNewFiles((prev) => prev.map((f, x) => (x === editingNew ? { ...f, name: nm, notes: nt, marks: mk } : f)))}
-          onClose={() => setEditingNew(null)}
-        />
-      )}
       {picking && (
         <Sheet title="Pick Drills" onClose={() => setPicking(false)}>
           {pickable.length === 0 && (

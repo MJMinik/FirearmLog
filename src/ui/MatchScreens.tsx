@@ -1,9 +1,8 @@
 // Match logging (spec §11): the full match record with stage-by-stage entry,
 // auto hit factors, stage videos, entry fee, and PractiScore link.
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Firearm, Match, MatchStage, Media, Mark } from '../lib/types.ts';
+import { useEffect, useMemo, useState } from 'react';
+import type { Firearm, Match, MatchStage, Media } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
-import { prepareUploadBytes } from './shrinkImage.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -11,7 +10,8 @@ import { DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor } from '../lib/competi
 import { mediaUrl } from './media.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
-import { NewPhotoSheet } from './NewPhotoSheet.tsx';
+import { MediaField, commitMedia } from './MediaField.tsx';
+import type { StagedFile } from './MediaField.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
@@ -149,7 +149,6 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
 }
 
 interface StageRow { points: string; time: string; percent: string; notes: string; }
-interface NewFile { file: File; url: string; kind: 'image' | 'video'; name?: string; notes?: string; marks?: Mark[]; }
 
 export function MatchForm({ id, onSaved, onCancel }: {
   id?: string; onSaved: (matchId: string) => void; onCancel: () => void;
@@ -172,15 +171,12 @@ export function MatchForm({ id, onSaved, onCancel }: {
   const [stages, setStages] = useState<StageRow[]>([]);
   const [existingMedia, setExistingMedia] = useState<Media[]>([]);
   const [removedMedia, setRemovedMedia] = useState<string[]>([]);
-  const [newFiles, setNewFiles] = useState<NewFile[]>([]);
-  const [editingNew, setEditingNew] = useState<number | null>(null);
+  const [newFiles, setNewFiles] = useState<StagedFile[]>([]);
   const [entryFee, setEntryFee] = useState('');
   const [psUrl, setPsUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState('');
-  const [viewingForm, setViewingForm] = useState<Media | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -225,17 +221,6 @@ export function MatchForm({ id, onSaved, onCancel }: {
     percent: num(st.percent), notes: st.notes.trim()
   })), [stages]);
 
-  function filesPicked(list: FileList | null) {
-    if (!list) return;
-    // Read the files EAGERLY here — the onChange clears the input right after
-    // this call, which empties the live FileList. Building the array inside the
-    // setState updater (which React runs later) would capture an empty list.
-    const added = Array.from(list).map((file) => ({
-      file, url: URL.createObjectURL(file),
-      kind: file.type.startsWith('video') ? 'video' as const : 'image' as const
-    }));
-    setNewFiles((prev) => [...prev, ...added]);
-  }
 
   async function save() {
     if (saving) return;
@@ -264,26 +249,13 @@ export function MatchForm({ id, onSaved, onCancel }: {
       } else {
         await putOne('matches', stampNew(fields, mid, now));
       }
-      for (const rid of removedMedia) await deleteOne('media', rid);
-      let seq = existingMedia.length;
-      for (const nf of newFiles) {
-        seq += 1;
-        const { data: buf, mime } = await prepareUploadBytes(nf.file);
-        await putOne('media', stampNew({
-          ownerType: 'match' as const, ownerId: mid, kind: nf.kind,
-          name: nf.name?.trim() || `${nf.kind === 'video' ? 'Stage video' : 'Photo'} ${seq} — ${date}`,
-          annotations: nf.notes ? nf.notes.split('\n').map((s) => s.trim()).filter(Boolean) : [],
-          marks: nf.marks ?? [],
-          mime, data: buf
-        }, newId('md'), now));
-      }
+      await commitMedia('match', mid, newFiles, removedMedia, existingMedia.length);
       onSaved(mid);
     } finally {
       setSaving(false);
     }
   }
 
-  const visibleExisting = existingMedia.filter((m) => !removedMedia.includes(m.id));
 
   return (
     <div className="screen">
@@ -392,41 +364,11 @@ export function MatchForm({ id, onSaved, onCancel }: {
         </button>
       </div>
 
-      <div className="card">
-        <h2>Stage Videos &amp; Photos</h2>
-        {(visibleExisting.length > 0 || newFiles.length > 0) && (
-          <div className="photo-grid" style={{ marginBottom: 12 }}>
-            {visibleExisting.map((m) => (
-              <div className="thumb-wrap" key={m.id}>
-                <button className="thumb-tap" onClick={() => setViewingForm(m)} aria-label={`Open ${m.name}`}>
-                  {m.kind === 'video'
-                    ? <video src={mediaUrl(m)} preload="metadata" muted playsInline />
-                    : <img src={mediaUrl(m)} alt={m.name} loading="lazy" />}
-                </button>
-                <button className="thumb-x" aria-label={`Remove ${m.name}`}
-                  onClick={() => setRemovedMedia((p) => [...p, m.id])}>✕</button>
-                <span className="thumb-caption">{m.name}</span>
-              </div>
-            ))}
-            {newFiles.map((nf, i) => (
-              <div className="thumb-wrap" key={nf.url}>
-                <button className="thumb-tap" onClick={() => setEditingNew(i)} aria-label="Name this new file">
-                  {nf.kind === 'video'
-                    ? <video src={nf.url} preload="metadata" muted playsInline />
-                    : <img src={nf.url} alt="New file" />}
-                </button>
-                <button className="thumb-x" aria-label="Remove new file"
-                  onClick={() => setNewFiles((p) => p.filter((_, x) => x !== i))}>✕</button>
-                <span className="thumb-caption">{nf.name || 'Tap to name'}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        <input ref={fileRef} type="file" accept="image/*,video/*" multiple style={{ display: 'none' }}
-          onChange={(e) => { filesPicked(e.target.files); e.target.value = ''; }} />
-        <button className="button secondary" onClick={() => fileRef.current?.click()}>+ Add Videos or Photos</button>
-        <p className="report-note">Removals only happen when you Save — Cancel really cancels.</p>
-      </div>
+      <MediaField heading="Stage Videos & Photos" addLabel="+ Add Videos or Photos"
+        ownerType="match" ownerId={original?.id ?? ''}
+        existingMedia={existingMedia} setExistingMedia={setExistingMedia}
+        removedMedia={removedMedia} setRemovedMedia={setRemovedMedia}
+        newFiles={newFiles} setNewFiles={setNewFiles} />
 
       <div className="card">
         <h2>Wrap-Up</h2>
@@ -445,20 +387,6 @@ export function MatchForm({ id, onSaved, onCancel }: {
         {saving ? 'Saving…' : editing ? 'Save Changes' : 'Save Match'}
       </button>
 
-      {viewingForm && (
-        <PhotoSheet media={viewingForm} allowDelete={false} onClose={() => setViewingForm(null)}
-          onChanged={async () => {
-            const allMedia = await getAll<Media>('media');
-            setExistingMedia(allMedia.filter((x) => x.ownerType === 'match' && x.ownerId === (original?.id ?? '')));
-          }} />
-      )}
-      {editingNew !== null && newFiles[editingNew] && (
-        <NewPhotoSheet
-          file={newFiles[editingNew]}
-          onSave={(nm, nt, mk) => setNewFiles((p) => p.map((f, x) => (x === editingNew ? { ...f, name: nm, notes: nt, marks: mk } : f)))}
-          onClose={() => setEditingNew(null)}
-        />
-      )}
     </div>
   );
 }

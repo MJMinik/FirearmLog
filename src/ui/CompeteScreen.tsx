@@ -1,7 +1,7 @@
 // The Compete tab (spec §11): matches, classifiers, classification progress,
 // and the season at a glance.
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Classifier, Match, Media, Mark } from '../lib/types.ts';
+import { useEffect, useMemo, useState } from 'react';
+import type { Classifier, Match, Media } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
@@ -12,13 +12,9 @@ import type { View } from './nav.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
-import { PhotoSheet } from './PhotoSheet.tsx';
-import { NewPhotoSheet } from './NewPhotoSheet.tsx';
-import { mediaUrl } from './media.ts';
-import { prepareUploadBytes } from './shrinkImage.ts';
+import { MediaField, commitMedia } from './MediaField.tsx';
+import type { StagedFile } from './MediaField.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
-
-interface ClassifierFile { file: File; url: string; kind: 'image' | 'video'; name?: string; notes?: string; marks?: Mark[]; }
 
 export function CompeteScreen({ refreshKey, open }: {
   refreshKey: number; open: (v: View) => void;
@@ -170,10 +166,7 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
   const [problem, setProblem] = useState('');
   const [existingMedia, setExistingMedia] = useState<Media[]>([]);
   const [removedMedia, setRemovedMedia] = useState<string[]>([]);
-  const [newFiles, setNewFiles] = useState<ClassifierFile[]>([]);
-  const [editingNew, setEditingNew] = useState<number | null>(null);
-  const [viewing, setViewing] = useState<Media | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
+  const [newFiles, setNewFiles] = useState<StagedFile[]>([]);
 
   useEffect(() => {
     if (id === undefined) return;
@@ -192,17 +185,6 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
     return () => { alive = false; };
   }, [id]);
 
-  function filesPicked(list: FileList | null) {
-    if (!list) return;
-    // Read the files EAGERLY (see the same note in MatchScreens): the onChange
-    // clears the input right after, emptying the live FileList, so building the
-    // array inside the setState updater would capture nothing.
-    const added = Array.from(list).map((file) => ({
-      file, url: URL.createObjectURL(file),
-      kind: file.type.startsWith('video') ? 'video' as const : 'image' as const
-    }));
-    setNewFiles((prev) => [...prev, ...added]);
-  }
 
   async function save() {
     if (!code.trim()) { setProblem('Enter the classifier code (like 23-01).'); return; }
@@ -223,19 +205,7 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
       await putOne('classifiers', stampNew(fields, cid, now));
     }
     // Photos/videos (staged until Save, like sessions and matches).
-    for (const mid of removedMedia) await deleteOne('media', mid);
-    let seq = existingMedia.length;
-    for (const nf of newFiles) {
-      seq += 1;
-      const { data: buf, mime } = await prepareUploadBytes(nf.file);
-      await putOne('media', stampNew({
-        ownerType: 'classifier' as const, ownerId: cid, kind: nf.kind,
-        name: nf.name?.trim() || `${nf.kind === 'video' ? 'Video' : 'Photo'} ${seq}`,
-        annotations: nf.notes ? nf.notes.split('\n').map((s) => s.trim()).filter(Boolean) : [],
-        marks: nf.marks ?? [],
-        mime, data: buf
-      }, newId('md'), now));
-    }
+    await commitMedia('classifier', cid, newFiles, removedMedia, existingMedia.length);
     onSaved();
   }
 
@@ -244,7 +214,6 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
     onSaved();
   }
 
-  const visibleExisting = existingMedia.filter((m) => !removedMedia.includes(m.id));
 
   return (
     <div className="screen">
@@ -280,41 +249,11 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
           <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
       </div>
-      <div className="card">
-        <h2>Photos &amp; Videos</h2>
-        {(visibleExisting.length > 0 || newFiles.length > 0) && (
-          <div className="photo-grid" style={{ marginBottom: 12 }}>
-            {visibleExisting.map((m) => (
-              <div className="thumb-wrap" key={m.id}>
-                <button className="thumb-tap" onClick={() => setViewing(m)} aria-label={`Open ${m.name}`}>
-                  {m.kind === 'video'
-                    ? <video src={mediaUrl(m)} preload="metadata" muted playsInline />
-                    : <img src={mediaUrl(m)} alt={m.name} loading="lazy" />}
-                </button>
-                <button className="thumb-x" aria-label={`Remove ${m.name}`}
-                  onClick={() => setRemovedMedia((p) => [...p, m.id])}>✕</button>
-                <span className="thumb-caption">{m.name}</span>
-              </div>
-            ))}
-            {newFiles.map((nf, i) => (
-              <div className="thumb-wrap" key={nf.url}>
-                <button className="thumb-tap" onClick={() => setEditingNew(i)} aria-label="Name this new file">
-                  {nf.kind === 'video'
-                    ? <video src={nf.url} preload="metadata" muted playsInline />
-                    : <img src={nf.url} alt="New file" />}
-                </button>
-                <button className="thumb-x" aria-label="Remove new file"
-                  onClick={() => setNewFiles((p) => p.filter((_, x) => x !== i))}>✕</button>
-                <span className="thumb-caption">{nf.name || 'Tap to name'}</span>
-              </div>
-            ))}
-          </div>
-        )}
-        <input ref={fileRef} type="file" accept="image/*,video/*" multiple style={{ display: 'none' }}
-          onChange={(e) => { filesPicked(e.target.files); e.target.value = ''; }} />
-        <button className="button secondary" onClick={() => fileRef.current?.click()}>+ Add Photos or Videos</button>
-        <p className="report-note">Removals only happen when you Save — Cancel really cancels.</p>
-      </div>
+      <MediaField heading="Photos & Videos" addLabel="+ Add Photos or Videos"
+        ownerType="classifier" ownerId={original?.id ?? ''}
+        existingMedia={existingMedia} setExistingMedia={setExistingMedia}
+        removedMedia={removedMedia} setRemovedMedia={setRemovedMedia}
+        newFiles={newFiles} setNewFiles={setNewFiles} />
       <button className="button" onClick={() => void save()}>{original ? 'Save Changes' : 'Save Classifier'}</button>
       {original && (
         <>
@@ -328,20 +267,6 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
           confirmLabel="Delete Classifier"
           onConfirm={() => void reallyDelete()}
           onClose={() => setConfirming(false)} />
-      )}
-      {viewing && (
-        <PhotoSheet media={viewing} onClose={() => setViewing(null)}
-          onChanged={async () => {
-            const all = await getAll<Media>('media');
-            setExistingMedia(all.filter((m) => m.ownerType === 'classifier' && m.ownerId === (original?.id ?? '')));
-          }} />
-      )}
-      {editingNew !== null && newFiles[editingNew] && (
-        <NewPhotoSheet
-          file={newFiles[editingNew]}
-          onSave={(nm, nt, mk) => setNewFiles((p) => p.map((f, x) => (x === editingNew ? { ...f, name: nm, notes: nt, marks: mk } : f)))}
-          onClose={() => setEditingNew(null)}
-        />
       )}
     </div>
   );
