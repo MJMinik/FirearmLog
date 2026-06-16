@@ -27,6 +27,7 @@ import { SuggestField } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { NewPhotoSheet } from './NewPhotoSheet.tsx';
+import type { Mark } from '../lib/types.ts';
 import { mediaUrl } from './media.ts';
 import { FormProblem } from './FormProblem.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
@@ -53,7 +54,7 @@ interface DrillRow {
 }
 interface MalfRow { firearmId: string; type: string; resolution: string; notes: string; }
 interface AmmoRow { ammoId: string; rounds: string; }
-interface NewFile { file: File; url: string; kind: 'image' | 'video'; name?: string; notes?: string; }
+interface NewFile { file: File; url: string; kind: 'image' | 'video'; name?: string; notes?: string; marks?: Mark[]; }
 
 const toRow = (d: DrillResult): DrillRow => ({
   name: d.name, distance: d.distance,
@@ -457,6 +458,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           ownerType: 'session' as const, ownerId: sid,
           kind: nf.kind, name: nf.name?.trim() || `${nf.kind === 'video' ? 'Video' : 'Photo'} ${seq} — ${date}`,
           annotations: nf.notes ? nf.notes.split('\n').map((s) => s.trim()).filter(Boolean) : [],
+          marks: nf.marks ?? [],
           mime, data: buf
         }, newId('md'), now));
       }
@@ -869,7 +871,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       {editingNew !== null && newFiles[editingNew] && (
         <NewPhotoSheet
           file={newFiles[editingNew]}
-          onSave={(nm, nt) => setNewFiles((prev) => prev.map((f, x) => (x === editingNew ? { ...f, name: nm, notes: nt } : f)))}
+          onSave={(nm, nt, mk) => setNewFiles((prev) => prev.map((f, x) => (x === editingNew ? { ...f, name: nm, notes: nt, marks: mk } : f)))}
           onClose={() => setEditingNew(null)}
         />
       )}

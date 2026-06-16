@@ -6,6 +6,9 @@
 import { useState } from 'react';
 import { Sheet } from './Sheet.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
+import { PhotoMarkup } from './PhotoMarkup.tsx';
+import { MarkedImage } from './MarkedImage.tsx';
+import type { Mark } from '../lib/types.ts';
 
 /** A picked-but-not-yet-saved file held in a form's draft state. */
 export interface StagedFile {
@@ -14,21 +17,29 @@ export interface StagedFile {
   kind: 'image' | 'video';
   name?: string;
   notes?: string;
+  marks?: Mark[];
 }
 
 export function NewPhotoSheet({ file, onSave, onClose }: {
   file: StagedFile;
-  onSave: (name: string, notes: string) => void;
+  onSave: (name: string, notes: string, marks: Mark[]) => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState(file.name ?? '');
   const [notes, setNotes] = useState(file.notes ?? '');
+  const [marks, setMarks] = useState<Mark[]>(file.marks ?? []);
+  const [marking, setMarking] = useState(false);
   const label = file.kind === 'video' ? 'Video' : 'Photo';
   return (
     <Sheet title={label} onClose={onClose}>
       {file.kind === 'video'
         ? <video className="photo-full" src={file.url} controls playsInline preload="metadata" />
-        : <img className="photo-full" src={file.url} alt={name || `New ${label.toLowerCase()}`} />}
+        : <MarkedImage url={file.url} alt={name || `New ${label.toLowerCase()}`} marks={marks} />}
+      {file.kind === 'image' && (
+        <button className="button secondary" style={{ marginTop: 8 }} onClick={() => setMarking(true)}>
+          {marks.length ? 'Edit Markup' : 'Mark Up Photo'}
+        </button>
+      )}
       <label className="field">Caption
         <input value={name} onChange={(e) => setName(e.target.value)}
           {...noAutofillProps} name="photo-title" />
@@ -36,7 +47,10 @@ export function NewPhotoSheet({ file, onSave, onClose }: {
       <label className="field">Notes
         <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </label>
-      <button className="button" onClick={() => { onSave(name, notes); onClose(); }}>Done</button>
+      <button className="button" onClick={() => { onSave(name, notes, marks); onClose(); }}>Done</button>
+      {marking && (
+        <PhotoMarkup url={file.url} initial={marks} onSave={setMarks} onClose={() => setMarking(false)} />
+      )}
     </Sheet>
   );
 }

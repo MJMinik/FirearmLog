@@ -1,7 +1,7 @@
 // The Compete tab (spec §11): matches, classifiers, classification progress,
 // and the season at a glance.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Classifier, Match, Media } from '../lib/types.ts';
+import type { Classifier, Match, Media, Mark } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
@@ -18,7 +18,7 @@ import { mediaUrl } from './media.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
 import { noAutofillProps } from './SuggestField.tsx';
 
-interface ClassifierFile { file: File; url: string; kind: 'image' | 'video'; name?: string; notes?: string; }
+interface ClassifierFile { file: File; url: string; kind: 'image' | 'video'; name?: string; notes?: string; marks?: Mark[]; }
 
 export function CompeteScreen({ refreshKey, open }: {
   refreshKey: number; open: (v: View) => void;
@@ -232,6 +232,7 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
         ownerType: 'classifier' as const, ownerId: cid, kind: nf.kind,
         name: nf.name?.trim() || `${nf.kind === 'video' ? 'Video' : 'Photo'} ${seq}`,
         annotations: nf.notes ? nf.notes.split('\n').map((s) => s.trim()).filter(Boolean) : [],
+        marks: nf.marks ?? [],
         mime, data: buf
       }, newId('md'), now));
     }
@@ -338,7 +339,7 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
       {editingNew !== null && newFiles[editingNew] && (
         <NewPhotoSheet
           file={newFiles[editingNew]}
-          onSave={(nm, nt) => setNewFiles((p) => p.map((f, x) => (x === editingNew ? { ...f, name: nm, notes: nt } : f)))}
+          onSave={(nm, nt, mk) => setNewFiles((p) => p.map((f, x) => (x === editingNew ? { ...f, name: nm, notes: nt, marks: mk } : f)))}
           onClose={() => setEditingNew(null)}
         />
       )}

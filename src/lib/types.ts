@@ -268,6 +268,20 @@ export interface Media extends BaseRecord {
   mime: string;
   /** Raw image/video bytes. ArrayBuffer (not Blob) — iPhone Safari saves these reliably. */
   data: ArrayBuffer;
+  /** Drawn circle markups on the image (optional). Coordinates are 0..1 of the image. */
+  marks?: Mark[];
+}
+
+/** A labeled circle drawn on a photo. Position/size are fractions (0..1) of the
+ *  image, so they scale to any display size and stay put. */
+export interface Mark {
+  id: string;
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+  color: string;
+  label: string;
 }
 
 /** Old-app trash items, carried over so nothing is lost (Q7). */

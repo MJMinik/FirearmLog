@@ -1,7 +1,7 @@
 // Match logging (spec §11): the full match record with stage-by-stage entry,
 // auto hit factors, stage videos, entry fee, and PractiScore link.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { Firearm, Match, MatchStage, Media } from '../lib/types.ts';
+import type { Firearm, Match, MatchStage, Media, Mark } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
@@ -149,7 +149,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
 }
 
 interface StageRow { points: string; time: string; percent: string; notes: string; }
-interface NewFile { file: File; url: string; kind: 'image' | 'video'; name?: string; notes?: string; }
+interface NewFile { file: File; url: string; kind: 'image' | 'video'; name?: string; notes?: string; marks?: Mark[]; }
 
 export function MatchForm({ id, onSaved, onCancel }: {
   id?: string; onSaved: (matchId: string) => void; onCancel: () => void;
@@ -273,6 +273,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
           ownerType: 'match' as const, ownerId: mid, kind: nf.kind,
           name: nf.name?.trim() || `${nf.kind === 'video' ? 'Stage video' : 'Photo'} ${seq} — ${date}`,
           annotations: nf.notes ? nf.notes.split('\n').map((s) => s.trim()).filter(Boolean) : [],
+          marks: nf.marks ?? [],
           mime, data: buf
         }, newId('md'), now));
       }
@@ -454,7 +455,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
       {editingNew !== null && newFiles[editingNew] && (
         <NewPhotoSheet
           file={newFiles[editingNew]}
-          onSave={(nm, nt) => setNewFiles((p) => p.map((f, x) => (x === editingNew ? { ...f, name: nm, notes: nt } : f)))}
+          onSave={(nm, nt, mk) => setNewFiles((p) => p.map((f, x) => (x === editingNew ? { ...f, name: nm, notes: nt, marks: mk } : f)))}
           onClose={() => setEditingNew(null)}
         />
       )}

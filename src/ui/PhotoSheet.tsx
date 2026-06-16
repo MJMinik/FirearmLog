@@ -1,12 +1,14 @@
 // Tap any photo/video to see it big, rename it, jot notes on it, or delete it
 // (req. 29: every image is namable and annotatable).
 import { useState } from 'react';
-import type { Media } from '../lib/types.ts';
+import type { Media, Mark } from '../lib/types.ts';
 import { deleteOne, putOne } from '../lib/db.ts';
 import { stampUpdate } from '../lib/stamps.ts';
 import { mediaUrl } from './media.ts';
 import { noAutofillProps } from './SuggestField.tsx';
 import { Sheet, ConfirmSheet } from './Sheet.tsx';
+import { PhotoMarkup } from './PhotoMarkup.tsx';
+import { MarkedImage } from './MarkedImage.tsx';
 
 export function PhotoSheet({ media, onClose, onChanged, allowDelete = true }: {
   media: Media;
@@ -18,12 +20,16 @@ export function PhotoSheet({ media, onClose, onChanged, allowDelete = true }: {
   const [name, setName] = useState(media.name);
   const [annotations, setAnnotations] = useState(media.annotations.join('\n'));
   const [confirming, setConfirming] = useState(false);
+  const [marks, setMarks] = useState<Mark[]>(media.marks ?? []);
+  const [marking, setMarking] = useState(false);
+  const url = mediaUrl(media);
 
   async function save() {
     const updated = stampUpdate({
       ...media,
       name: name.trim() || media.name,
-      annotations: annotations.split('\n').map((a) => a.trim()).filter(Boolean)
+      annotations: annotations.split('\n').map((a) => a.trim()).filter(Boolean),
+      marks
     }, Date.now());
     await putOne('media', updated);
     onChanged();
@@ -39,9 +45,14 @@ export function PhotoSheet({ media, onClose, onChanged, allowDelete = true }: {
   return (
     <Sheet title={media.kind === 'video' ? 'Video' : 'Photo'} onClose={onClose}>
       {media.kind === 'video' ? (
-        <video className="photo-full" src={mediaUrl(media)} controls playsInline preload="metadata" />
+        <video className="photo-full" src={url} controls playsInline preload="metadata" />
       ) : (
-        <img className="photo-full" src={mediaUrl(media)} alt={media.name} />
+        <MarkedImage url={url} alt={media.name} marks={marks} />
+      )}
+      {media.kind === 'image' && (
+        <button className="button secondary" style={{ marginTop: 8 }} onClick={() => setMarking(true)}>
+          {marks.length ? 'Edit Markup' : 'Mark Up Photo'}
+        </button>
       )}
       <label className="field">Caption
         <input value={name} onChange={(e) => setName(e.target.value)}
@@ -67,6 +78,9 @@ export function PhotoSheet({ media, onClose, onChanged, allowDelete = true }: {
           onConfirm={() => void reallyDelete()}
           onClose={() => setConfirming(false)}
         />
+      )}
+      {marking && (
+        <PhotoMarkup url={url} initial={marks} onSave={setMarks} onClose={() => setMarking(false)} />
       )}
     </Sheet>
   );

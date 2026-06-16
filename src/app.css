@@ -354,6 +354,24 @@ select.category-pick {
   display: block; margin-top: 4px; font-size: 0.8rem; color: var(--text-dim);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; text-align: center;
 }
+/* ---------- Photo markup (drawn labeled circles) ---------- */
+.markup-canvas { position: relative; width: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
+.markup-canvas img { width: 100%; height: auto; display: block; border-radius: 10px; }
+.markup-circle { position: absolute; border: 3px solid; border-radius: 50%; box-sizing: border-box; pointer-events: none; }
+.markup-num {
+  position: absolute; top: -10px; left: -10px; min-width: 20px; height: 20px; padding: 0 4px;
+  border-radius: 10px; color: #000; font-size: 12px; font-weight: 700; line-height: 20px; text-align: center;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.35);
+}
+.markup-colors { display: flex; gap: 10px; margin-bottom: 10px; }
+.markup-swatch { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--border); cursor: pointer; }
+.markup-swatch.on { box-shadow: 0 0 0 3px var(--accent); }
+.markup-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.markup-row .markup-num { position: static; }
+.markup-row input { flex: 1; }
+.markup-legend { margin: 8px 0 0; padding-left: 22px; }
+.markup-legend li { margin: 2px 0; }
+
 .thumb-x {
   position: absolute; top: 4px; right: 4px; width: 28px; height: 28px;
   border-radius: 50%; border: none; background: rgba(0, 0, 0, 0.65); color: #fff;
