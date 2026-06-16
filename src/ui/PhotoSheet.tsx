@@ -43,7 +43,7 @@ export function PhotoSheet({ media, onClose, onChanged, allowDelete = true }: {
       ) : (
         <img className="photo-full" src={mediaUrl(media)} alt={media.name} />
       )}
-      <label className="field">Name
+      <label className="field">Caption
         <input value={name} onChange={(e) => setName(e.target.value)}
           {...noAutofillProps} name="photo-title" />
       </label>

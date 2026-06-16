@@ -29,7 +29,7 @@ export function NewPhotoSheet({ file, onSave, onClose }: {
       {file.kind === 'video'
         ? <video className="photo-full" src={file.url} controls playsInline preload="metadata" />
         : <img className="photo-full" src={file.url} alt={name || `New ${label.toLowerCase()}`} />}
-      <label className="field">Name
+      <label className="field">Caption
         <input value={name} onChange={(e) => setName(e.target.value)}
           {...noAutofillProps} name="photo-title" />
       </label>
