@@ -7,6 +7,7 @@ import type {
   MalfunctionEntry, Media, Session, SessionChecklist
 } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, getSettings, putOne, putSettings } from '../lib/db.ts';
+import { prepareUploadBytes } from './shrinkImage.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -449,11 +450,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       let seq = existingMedia.length;
       for (const nf of newFiles) {
         seq += 1;
-        const buf = await nf.file.arrayBuffer();
+        const { data: buf, mime } = await prepareUploadBytes(nf.file);
         await putOne('media', stampNew({
           ownerType: 'session' as const, ownerId: sid,
           kind: nf.kind, name: `${nf.kind === 'video' ? 'Video' : 'Photo'} ${seq} — ${date}`,
-          annotations: [], mime: nf.file.type || 'application/octet-stream', data: buf
+          annotations: [], mime, data: buf
         }, newId('md'), now));
       }
 

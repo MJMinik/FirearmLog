@@ -1,6 +1,6 @@
 // FirearmLog service worker — keeps the app working offline.
 // Bump CACHE_VERSION on each release so users get fresh files.
-const CACHE_VERSION = 'firearmlog-v9';
+const CACHE_VERSION = 'firearmlog-v10';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();

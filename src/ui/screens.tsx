@@ -14,6 +14,7 @@ import { formatDayKey } from '../lib/dates.ts';
 import { sessionRounds, roundsForFirearm, dryRepsForFirearm } from '../lib/stats.ts';
 import { ImportFlow } from './ImportFlow.tsx';
 import { SyncCard } from './SyncCard.tsx';
+import { PhotoCleanupCard } from './PhotoCleanupCard.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { isActive, isOwned, isFormer, isRetired, statusBadge } from '../lib/gunStatus.ts';
@@ -617,6 +618,7 @@ export function MoreScreen({ refreshKey, onImported, open }: {
         </button>
       </div>
       <SyncCard onPulled={onImported} />
+      <PhotoCleanupCard />
       <div className="card">
         <h2>Backup &amp; Import</h2>
         <p className="report-note" style={{ marginBottom: 12 }}>

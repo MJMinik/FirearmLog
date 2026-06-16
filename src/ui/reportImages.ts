@@ -9,6 +9,7 @@
 // Canvas / Image are browser-only, so this lives in the UI layer — the Node
 // test runner has no DOM. The pure HTML builder stays in src/lib/reports.ts.
 import type { Media } from '../lib/types.ts';
+import { fitWithin } from '../lib/imageResize.ts';
 
 /** Print-ready data: URLs for one record's images, downscaled to a safe size. */
 export async function reportImageUrls(
@@ -39,10 +40,7 @@ function downscaleOne(m: Media, maxPx: number, quality: number): Promise<string>
     const img = new Image();
     img.onload = () => {
       try {
-        const longEdge = Math.max(img.width, img.height) || 1;
-        const scale = Math.min(1, maxPx / longEdge);
-        const w = Math.max(1, Math.round(img.width * scale));
-        const h = Math.max(1, Math.round(img.height * scale));
+        const { w, h } = fitWithin(img.width, img.height, maxPx);
         const canvas = document.createElement('canvas');
         canvas.width = w;
         canvas.height = h;

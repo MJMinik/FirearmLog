@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { View } from './nav.ts';
 import { Sheet } from './Sheet.tsx';
+import { APP_VERSION } from '../version.ts';
 
 interface TourStep { title: string; body: string }
 
@@ -196,6 +197,20 @@ export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: Vie
           <button className="button secondary" style={{ flex: 1, minWidth: 100 }} onClick={() => open({ kind: 'setup' })}>Set Up</button>
         </div>
       </div>
+
+      <div className="card">
+        <h2>Keep a backup</h2>
+        <p className="report-note">
+          Your log lives only on your own devices — there's no account and no cloud copy. So your
+          data is as safe as your backups: every so often, and before you switch phones or update,
+          use <strong>Push to File</strong> (in {isDesktop ? 'Gear & Data' : 'the More tab'}) to save a
+          copy to iCloud Drive or Files. That file is your safety net.
+        </p>
+      </div>
+
+      <p className="report-note" style={{ textAlign: 'center', marginTop: 24, opacity: 0.7 }}>
+        FirearmLog v{APP_VERSION}
+      </p>
 
       {active === 'quick' && <TourModal steps={QUICK_TOUR} onClose={() => setActive(null)} />}
       {active === 'full' && <TourModal steps={fullSteps} onClose={() => setActive(null)} />}

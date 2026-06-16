@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Firearm, MaintenanceEntry, Match, Media, Optic, Reference, Session } from '../lib/types.ts';
 import { getAll, getOne, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
+import { prepareUploadBytes } from './shrinkImage.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { dryRepsForFirearm, roundsForFirearm } from '../lib/stats.ts';
 import { maintLabel, maintenanceStatus } from '../lib/maintenance.ts';
@@ -80,12 +81,12 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
     let seq = photos.length;
     for (const file of Array.from(list)) {
       seq += 1;
-      const buf = await file.arrayBuffer();
+      const { data: buf, mime } = await prepareUploadBytes(file);
       await putOne('media', stampNew({
         ownerType: 'firearm' as const, ownerId: id,
         kind: file.type.startsWith('video') ? 'video' as const : 'image' as const,
         name: `${gun.name} — photo ${seq}`,
-        annotations: [], mime: file.type || 'application/octet-stream', data: buf
+        annotations: [], mime, data: buf
       }, newId('md'), now));
     }
     setLocalBump((b) => b + 1);

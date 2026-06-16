@@ -1,0 +1,12 @@
+{
+  "appId": "com.mjminik.firearmlog",
+  "appName": "FirearmLog",
+  "webDir": "dist",
+  "backgroundColor": "#f2f2f7",
+  "ios": {
+    "contentInset": "always"
+  },
+  "android": {
+    "backgroundColor": "#f2f2f7"
+  }
+}

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { Firearm, Match, MatchStage, Media } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
+import { prepareUploadBytes } from './shrinkImage.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -257,11 +258,11 @@ export function MatchForm({ id, onSaved, onCancel }: {
       let seq = existingMedia.length;
       for (const nf of newFiles) {
         seq += 1;
-        const buf = await nf.file.arrayBuffer();
+        const { data: buf, mime } = await prepareUploadBytes(nf.file);
         await putOne('media', stampNew({
           ownerType: 'match' as const, ownerId: mid, kind: nf.kind,
           name: `${nf.kind === 'video' ? 'Stage video' : 'Photo'} ${seq} — ${date}`,
-          annotations: [], mime: nf.file.type || 'application/octet-stream', data: buf
+          annotations: [], mime, data: buf
         }, newId('md'), now));
       }
       onSaved(mid);
