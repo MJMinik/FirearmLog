@@ -237,11 +237,14 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
             <p className="report-note" style={{ marginBottom: 8 }}>Tap one to name it, jot notes, or remove it.</p>
             <div className="photo-grid" style={{ marginBottom: 12 }}>
               {photos.map((m) => (
-                <button className="thumb-tap" key={m.id} onClick={() => setViewing(m)} aria-label={m.name}>
-                  {m.kind === 'video'
-                    ? <video src={mediaUrl(m)} preload="metadata" muted playsInline />
-                    : <img src={mediaUrl(m)} alt={m.name} loading="lazy" />}
-                </button>
+                <div className="thumb-wrap" key={m.id}>
+                  <button className="thumb-tap" onClick={() => setViewing(m)} aria-label={m.name}>
+                    {m.kind === 'video'
+                      ? <video src={mediaUrl(m)} preload="metadata" muted playsInline />
+                      : <img src={mediaUrl(m)} alt={m.name} loading="lazy" />}
+                  </button>
+                  <span className="thumb-caption">{m.name}</span>
+                </div>
               ))}
             </div>
           </>

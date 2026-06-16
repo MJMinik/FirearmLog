@@ -26,6 +26,7 @@ import { ammoLabel } from './AmmoScreens.tsx';
 import { SuggestField } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
+import { NewPhotoSheet } from './NewPhotoSheet.tsx';
 import { mediaUrl } from './media.ts';
 import { FormProblem } from './FormProblem.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
@@ -52,7 +53,7 @@ interface DrillRow {
 }
 interface MalfRow { firearmId: string; type: string; resolution: string; notes: string; }
 interface AmmoRow { ammoId: string; rounds: string; }
-interface NewFile { file: File; url: string; kind: 'image' | 'video'; }
+interface NewFile { file: File; url: string; kind: 'image' | 'video'; name?: string; notes?: string; }
 
 const toRow = (d: DrillResult): DrillRow => ({
   name: d.name, distance: d.distance,
@@ -97,6 +98,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const [existingMedia, setExistingMedia] = useState<Media[]>([]);
   const [removedMedia, setRemovedMedia] = useState<string[]>([]);
   const [newFiles, setNewFiles] = useState<NewFile[]>([]);
+  const [editingNew, setEditingNew] = useState<number | null>(null);
   const [ratings, setRatings] = useState<Record<string, string>>(
     editing ? { focus: '', fundamentals: '', satisfaction: '' } : { focus: '5', fundamentals: '5', satisfaction: '5' }
   );
@@ -453,8 +455,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         const { data: buf, mime } = await prepareUploadBytes(nf.file);
         await putOne('media', stampNew({
           ownerType: 'session' as const, ownerId: sid,
-          kind: nf.kind, name: `${nf.kind === 'video' ? 'Video' : 'Photo'} ${seq} — ${date}`,
-          annotations: [], mime, data: buf
+          kind: nf.kind, name: nf.name?.trim() || `${nf.kind === 'video' ? 'Video' : 'Photo'} ${seq} — ${date}`,
+          annotations: nf.notes ? nf.notes.split('\n').map((s) => s.trim()).filter(Boolean) : [],
+          mime, data: buf
         }, newId('md'), now));
       }
 
@@ -746,15 +749,19 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                 </button>
                 <button className="thumb-x" aria-label={`Remove ${m.name}`}
                   onClick={() => setRemovedMedia((prev) => [...prev, m.id])}>✕</button>
+                <span className="thumb-caption">{m.name}</span>
               </div>
             ))}
             {newFiles.map((nf, i) => (
               <div className="thumb-wrap" key={nf.url}>
-                {nf.kind === 'video'
-                  ? <video src={nf.url} preload="metadata" muted playsInline />
-                  : <img src={nf.url} alt="New photo" />}
+                <button className="thumb-tap" onClick={() => setEditingNew(i)} aria-label="Name this new file">
+                  {nf.kind === 'video'
+                    ? <video src={nf.url} preload="metadata" muted playsInline />
+                    : <img src={nf.url} alt="New photo" />}
+                </button>
                 <button className="thumb-x" aria-label="Remove new file"
                   onClick={() => setNewFiles((prev) => prev.filter((_, x) => x !== i))}>✕</button>
+                <span className="thumb-caption">{nf.name || 'Tap to name'}</span>
               </div>
             ))}
           </div>
@@ -858,6 +865,13 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             const allMedia = await getAll<Media>('media');
             setExistingMedia(allMedia.filter((m) => m.ownerType === 'session' && m.ownerId === (original?.id ?? '')));
           }} />
+      )}
+      {editingNew !== null && newFiles[editingNew] && (
+        <NewPhotoSheet
+          file={newFiles[editingNew]}
+          onSave={(nm, nt) => setNewFiles((prev) => prev.map((f, x) => (x === editingNew ? { ...f, name: nm, notes: nt } : f)))}
+          onClose={() => setEditingNew(null)}
+        />
       )}
       {picking && (
         <Sheet title="Pick Drills" onClose={() => setPicking(false)}>

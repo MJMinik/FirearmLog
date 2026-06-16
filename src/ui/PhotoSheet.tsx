@@ -43,9 +43,10 @@ export function PhotoSheet({ media, onClose, onChanged, allowDelete = true }: {
         <img className="photo-full" src={mediaUrl(media)} alt={media.name} />
       )}
       <label className="field">Name
-        <input value={name} onChange={(e) => setName(e.target.value)} />
+        <input value={name} onChange={(e) => setName(e.target.value)}
+          autoComplete="off" autoCorrect="off" autoCapitalize="words" />
       </label>
-      <label className="field">Notes on this {media.kind === 'video' ? 'video' : 'photo'} (one per line)
+      <label className="field">Notes
         <textarea rows={3} value={annotations} onChange={(e) => setAnnotations(e.target.value)} />
       </label>
       <button className="button" onClick={() => void save()}>Save</button>

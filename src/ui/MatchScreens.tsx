@@ -11,6 +11,7 @@ import { DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor } from '../lib/competi
 import { mediaUrl } from './media.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
+import { NewPhotoSheet } from './NewPhotoSheet.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
 
@@ -109,11 +110,14 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
           <p className="report-note" style={{ marginBottom: 8 }}>Tap one to name it, jot notes, or remove it.</p>
           <div className="photo-grid">
             {videos.map((m) => (
-              <button className="thumb-tap" key={m.id} onClick={() => setViewing(m)} aria-label={m.name}>
-                {m.kind === 'video'
-                  ? <video src={mediaUrl(m)} preload="metadata" muted playsInline />
-                  : <img src={mediaUrl(m)} alt={m.name} loading="lazy" />}
-              </button>
+              <div className="thumb-wrap" key={m.id}>
+                <button className="thumb-tap" onClick={() => setViewing(m)} aria-label={m.name}>
+                  {m.kind === 'video'
+                    ? <video src={mediaUrl(m)} preload="metadata" muted playsInline />
+                    : <img src={mediaUrl(m)} alt={m.name} loading="lazy" />}
+                </button>
+                <span className="thumb-caption">{m.name}</span>
+              </div>
             ))}
           </div>
         </div>
@@ -144,7 +148,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
 }
 
 interface StageRow { points: string; time: string; percent: string; notes: string; }
-interface NewFile { file: File; url: string; kind: 'image' | 'video'; }
+interface NewFile { file: File; url: string; kind: 'image' | 'video'; name?: string; notes?: string; }
 
 export function MatchForm({ id, onSaved, onCancel }: {
   id?: string; onSaved: (matchId: string) => void; onCancel: () => void;
@@ -168,6 +172,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
   const [existingMedia, setExistingMedia] = useState<Media[]>([]);
   const [removedMedia, setRemovedMedia] = useState<string[]>([]);
   const [newFiles, setNewFiles] = useState<NewFile[]>([]);
+  const [editingNew, setEditingNew] = useState<number | null>(null);
   const [entryFee, setEntryFee] = useState('');
   const [psUrl, setPsUrl] = useState('');
   const [notes, setNotes] = useState('');
@@ -261,8 +266,9 @@ export function MatchForm({ id, onSaved, onCancel }: {
         const { data: buf, mime } = await prepareUploadBytes(nf.file);
         await putOne('media', stampNew({
           ownerType: 'match' as const, ownerId: mid, kind: nf.kind,
-          name: `${nf.kind === 'video' ? 'Stage video' : 'Photo'} ${seq} — ${date}`,
-          annotations: [], mime, data: buf
+          name: nf.name?.trim() || `${nf.kind === 'video' ? 'Stage video' : 'Photo'} ${seq} — ${date}`,
+          annotations: nf.notes ? nf.notes.split('\n').map((s) => s.trim()).filter(Boolean) : [],
+          mime, data: buf
         }, newId('md'), now));
       }
       onSaved(mid);
@@ -286,7 +292,8 @@ export function MatchForm({ id, onSaved, onCancel }: {
 
       <div className="card">
         <label className="field">Match name
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="June Club Match" />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="June Club Match"
+            autoComplete="off" autoCorrect="off" autoCapitalize="words" />
         </label>
         <label className="field">Date
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -392,15 +399,19 @@ export function MatchForm({ id, onSaved, onCancel }: {
                 </button>
                 <button className="thumb-x" aria-label={`Remove ${m.name}`}
                   onClick={() => setRemovedMedia((p) => [...p, m.id])}>✕</button>
+                <span className="thumb-caption">{m.name}</span>
               </div>
             ))}
             {newFiles.map((nf, i) => (
               <div className="thumb-wrap" key={nf.url}>
-                {nf.kind === 'video'
-                  ? <video src={nf.url} preload="metadata" muted playsInline />
-                  : <img src={nf.url} alt="New file" />}
+                <button className="thumb-tap" onClick={() => setEditingNew(i)} aria-label="Name this new file">
+                  {nf.kind === 'video'
+                    ? <video src={nf.url} preload="metadata" muted playsInline />
+                    : <img src={nf.url} alt="New file" />}
+                </button>
                 <button className="thumb-x" aria-label="Remove new file"
                   onClick={() => setNewFiles((p) => p.filter((_, x) => x !== i))}>✕</button>
+                <span className="thumb-caption">{nf.name || 'Tap to name'}</span>
               </div>
             ))}
           </div>
@@ -434,6 +445,13 @@ export function MatchForm({ id, onSaved, onCancel }: {
             const allMedia = await getAll<Media>('media');
             setExistingMedia(allMedia.filter((x) => x.ownerType === 'match' && x.ownerId === (original?.id ?? '')));
           }} />
+      )}
+      {editingNew !== null && newFiles[editingNew] && (
+        <NewPhotoSheet
+          file={newFiles[editingNew]}
+          onSave={(nm, nt) => setNewFiles((p) => p.map((f, x) => (x === editingNew ? { ...f, name: nm, notes: nt } : f)))}
+          onClose={() => setEditingNew(null)}
+        />
       )}
     </div>
   );

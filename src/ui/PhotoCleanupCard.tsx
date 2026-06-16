@@ -10,12 +10,17 @@
 //    already-small photo is skipped because the re-encode isn't smaller).
 //  - Processed one at a time so a phone never holds many decoded images at once.
 //  - The user is told to Push to File (back up) first, and must confirm.
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { Media } from '../lib/types.ts';
 import { getAll, putOne } from '../lib/db.ts';
 import { stampUpdate } from '../lib/stamps.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
 import { ConfirmSheet } from './Sheet.tsx';
+
+// Photos this big almost certainly haven't been shrunk yet (a 1600px JPEG is
+// well under this). Used to decide whether there's anything to free up — so the
+// card only appears when it has a job to do (e.g. after importing old data).
+const OVERSIZE_BYTES = 1_200_000;
 
 type Stage =
   | { name: 'idle'; message?: string }
@@ -25,6 +30,19 @@ type Stage =
 
 export function PhotoCleanupCard() {
   const [stage, setStage] = useState<Stage>({ name: 'idle' });
+  const [hasOversized, setHasOversized] = useState(false);
+
+  // On open, check whether any stored photo is still full-size. If none, the
+  // card hides itself — there's nothing to free up.
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const all = await getAll<Media>('media');
+      const oversized = all.some((m) => m.kind === 'image' && m.data.byteLength > OVERSIZE_BYTES);
+      if (alive) setHasOversized(oversized);
+    })();
+    return () => { alive = false; };
+  }, []);
 
   async function run() {
     setStage({ name: 'working', done: 0, total: 0 });
@@ -52,6 +70,9 @@ export function PhotoCleanupCard() {
       });
     }
   }
+
+  // Nothing to free up (and not mid-run / not showing a result): hide the card.
+  if (stage.name === 'idle' && !hasOversized) return null;
 
   return (
     <div className="card">

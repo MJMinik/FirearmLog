@@ -260,7 +260,7 @@ export interface Reference extends BaseRecord {
 
 /** Every image/video has a name and annotations — spec §5.15, req. 29. */
 export interface Media extends BaseRecord {
-  ownerType: 'firearm' | 'session' | 'match' | 'drill' | 'maintenance';
+  ownerType: 'firearm' | 'session' | 'match' | 'drill' | 'maintenance' | 'classifier';
   ownerId: string;
   kind: 'image' | 'video';
   name: string;
