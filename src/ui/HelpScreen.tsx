@@ -36,7 +36,7 @@ const QUICK_TOUR: TourStep[] = [
   },
   {
     title: 'Log',
-    body: 'Every range trip and dry-fire session, plus a calendar — tap a day to open it. Logging a session: pick the gun(s), add drills, rounds, any malfunctions, photos or video, and notes. You can edit anything later, forever.',
+    body: 'Every range trip and dry-fire session, plus a calendar — tap a day to open it. Logging a session: pick the gun(s), add drills, rounds, any malfunctions, photos or video, and notes. Tap any photo to caption it or draw labeled circles on it. You can edit anything later, forever.',
   },
   {
     title: 'Compete',
@@ -83,6 +83,10 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
       body: 'Start a session from Home or the Log tab: set the date and place, pick the gun or guns and the rounds for each, and choose live-fire or dry-fire. Add drills (the picker only shows ones that fit the gun and dry/live), record any malfunctions, attach photos or video, and add notes. A range fee you enter here is stored on the session itself and is the single place that fee counts toward Costs — it\'s never entered or counted twice. Sessions stay editable forever.',
     },
     {
+      title: 'Photos, captions & markup',
+      body: 'Any photo or video you add — on a session, match, classifier, or gun — opens with a tap. Give it a caption (it shows under the photo everywhere) and notes. On a photo, tap "Mark Up Photo" to draw labeled circles in different colors — say 1 "Fast Doubles," 2 "Left hand only" — and the labels list underneath. The circles show on the thumbnails too, and they print on your reports. New photos shrink automatically so they don\'t fill up your phone.',
+    },
+    {
       title: 'Drills',
       body: `The drill library lives under ${at('Drills')}. Each drill knows which gun types it's for and whether it's dry-fire, live-fire, or both — that's how the session picker filters them. A drill has a short and an expandable full description, a scoring type, and a par or max score; you can multi-select drills to print them and print target references where they apply.`,
     },
@@ -92,7 +96,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Compete — classifiers',
-      body: 'Log classifier scores with their code, division, hit factor, and percent. The classification view tracks your current percent and what you need for the next class — your C-toward-B progress — using best-6-of-8 style math.',
+      body: 'Log classifier scores with their code, division, hit factor, and percent. You can attach photos and videos to a classifier too — handy if you film your run. The classification view tracks your current percent and what you need for the next class — your C-toward-B progress — using best-6-of-8 style math.',
     },
     {
       title: 'Importing match results (PractiScore)',
@@ -136,7 +140,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Sync — phone & desktop',
-      body: `Sync (on ${hub}) moves a single file between your devices through iCloud Drive or the Files app. Push from the device you just used, pull on the other one. The app tells you plainly when one copy is newer.`,
+      body: `Sync (on ${hub}) moves a single file between your devices through iCloud Drive or the Files app. Push from the device you just used, pull on the other one. The app tells you plainly when one copy is newer. On that same screen, Free Up Space appears when older full-size photos are taking up room — tap it to shrink them.`,
     },
     {
       title: 'Setup & importing old data',
