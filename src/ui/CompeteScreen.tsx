@@ -194,10 +194,14 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
 
   function filesPicked(list: FileList | null) {
     if (!list) return;
-    setNewFiles((prev) => [...prev, ...Array.from(list).map((file) => ({
+    // Read the files EAGERLY (see the same note in MatchScreens): the onChange
+    // clears the input right after, emptying the live FileList, so building the
+    // array inside the setState updater would capture nothing.
+    const added = Array.from(list).map((file) => ({
       file, url: URL.createObjectURL(file),
       kind: file.type.startsWith('video') ? 'video' as const : 'image' as const
-    }))]);
+    }));
+    setNewFiles((prev) => [...prev, ...added]);
   }
 
   async function save() {
