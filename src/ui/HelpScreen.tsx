@@ -208,7 +208,7 @@ export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: Vie
         </p>
       </div>
 
-      <p className="report-note" style={{ textAlign: 'center', marginTop: 24, opacity: 0.7 }}>
+      <p className="report-note" style={{ textAlign: 'center', marginTop: 24 }}>
         FirearmLog v{APP_VERSION}
       </p>
 
