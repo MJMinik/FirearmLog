@@ -355,8 +355,10 @@ select.category-pick {
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; text-align: center;
 }
 /* ---------- Photo markup (drawn labeled circles) ---------- */
-.markup-canvas { position: relative; width: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
-.markup-canvas img { width: 100%; height: auto; display: block; border-radius: 10px; }
+/* Shrink-wrap the image (inline-block) so the % positioned circles line up, and
+   cap the height like .photo-full so the caption/markup/notes stay on screen. */
+.markup-canvas { position: relative; display: inline-block; max-width: 100%; touch-action: none; user-select: none; -webkit-user-select: none; }
+.markup-canvas img { display: block; max-width: 100%; max-height: 45dvh; width: auto; height: auto; border-radius: 10px; }
 .markup-circle { position: absolute; border: 3px solid; border-radius: 50%; box-sizing: border-box; pointer-events: none; }
 .markup-num {
   position: absolute; top: -10px; left: -10px; min-width: 20px; height: 20px; padding: 0 4px;
