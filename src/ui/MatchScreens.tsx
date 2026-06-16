@@ -12,6 +12,7 @@ import { mediaUrl } from './media.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { NewPhotoSheet } from './NewPhotoSheet.tsx';
+import { noAutofillProps } from './SuggestField.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
 
@@ -293,7 +294,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
       <div className="card">
         <label className="field">Match name
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="June Club Match"
-            autoComplete="off" autoCorrect="off" autoCapitalize="words" />
+            {...noAutofillProps} name="match-title" />
         </label>
         <label className="field">Date
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />

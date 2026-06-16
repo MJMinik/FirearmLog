@@ -16,6 +16,7 @@ import { PhotoSheet } from './PhotoSheet.tsx';
 import { NewPhotoSheet } from './NewPhotoSheet.tsx';
 import { mediaUrl } from './media.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
+import { noAutofillProps } from './SuggestField.tsx';
 
 interface ClassifierFile { file: File; url: string; kind: 'image' | 'video'; name?: string; notes?: string; }
 
@@ -253,7 +254,8 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
           <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="23-01" />
         </label>
         <label className="field">Name (optional)
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Down the Middle" />
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Down the Middle"
+            {...noAutofillProps} name="classifier-title" />
         </label>
         <label className="field">Date
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />

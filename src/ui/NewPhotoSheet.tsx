@@ -5,6 +5,7 @@
 // media so the experience is identical (DRY).
 import { useState } from 'react';
 import { Sheet } from './Sheet.tsx';
+import { noAutofillProps } from './SuggestField.tsx';
 
 /** A picked-but-not-yet-saved file held in a form's draft state. */
 export interface StagedFile {
@@ -30,7 +31,7 @@ export function NewPhotoSheet({ file, onSave, onClose }: {
         : <img className="photo-full" src={file.url} alt={name || `New ${label.toLowerCase()}`} />}
       <label className="field">Name
         <input value={name} onChange={(e) => setName(e.target.value)}
-          autoComplete="off" autoCorrect="off" autoCapitalize="words" />
+          {...noAutofillProps} name="photo-title" />
       </label>
       <label className="field">Notes
         <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />

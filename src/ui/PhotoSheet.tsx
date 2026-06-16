@@ -5,6 +5,7 @@ import type { Media } from '../lib/types.ts';
 import { deleteOne, putOne } from '../lib/db.ts';
 import { stampUpdate } from '../lib/stamps.ts';
 import { mediaUrl } from './media.ts';
+import { noAutofillProps } from './SuggestField.tsx';
 import { Sheet, ConfirmSheet } from './Sheet.tsx';
 
 export function PhotoSheet({ media, onClose, onChanged, allowDelete = true }: {
@@ -44,7 +45,7 @@ export function PhotoSheet({ media, onClose, onChanged, allowDelete = true }: {
       )}
       <label className="field">Name
         <input value={name} onChange={(e) => setName(e.target.value)}
-          autoComplete="off" autoCorrect="off" autoCapitalize="words" />
+          {...noAutofillProps} name="photo-title" />
       </label>
       <label className="field">Notes
         <textarea rows={3} value={annotations} onChange={(e) => setAnnotations(e.target.value)} />
