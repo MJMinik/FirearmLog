@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { View } from './nav.ts';
 import { Sheet } from './Sheet.tsx';
+import { InstallCard } from './InstallCard.tsx';
 import { APP_VERSION } from '../version.ts';
 
 interface TourStep { title: string; body: string; view?: View }
@@ -206,6 +207,8 @@ export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: Vie
         <span />
       </div>
       <h1 className="large-title">Tour &amp; Setup</h1>
+
+      <InstallCard />
 
       <div className="card">
         <h2>Tours &amp; setup</h2>
