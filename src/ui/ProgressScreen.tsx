@@ -191,12 +191,21 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
             <title>{`${c.date}: ${c.sessions} session${c.sessions !== 1 ? 's' : ''}, ${c.rounds.toLocaleString()} rounds`}</title>
           </rect>
         )))}
-        {labels.map((lab, li) => (li % labelStep === 0 ? (
-          <text key={lab.col} x={lab.col * (cell + gap)} y={h + labelFont} textAnchor="start"
-            fill="var(--text-dim)" fontSize={labelFont} fontFamily="inherit">
-            {lab.text}
-          </text>
-        ) : null))}
+        {labels.map((lab, li) => {
+          if (li % labelStep !== 0) return null;
+          const lx = lab.col * (cell + gap);
+          // A label near the right edge would run past the chart and get
+          // clipped (e.g. the current month). Right-anchor it to the edge so
+          // it tucks in flush instead of spilling off.
+          const overflowRight = lx + labelFont * 2 > w;
+          return (
+            <text key={lab.col} x={overflowRight ? w : lx} y={h + labelFont}
+              textAnchor={overflowRight ? 'end' : 'start'}
+              fill="var(--text-dim)" fontSize={labelFont} fontFamily="inherit">
+              {lab.text}
+            </text>
+          );
+        })}
       </svg>
       {selText
         ? <p className="report-note" aria-live="polite">{selText}</p>
