@@ -213,7 +213,7 @@ export function App() {
       onFinish={() => { refresh(); replace(null); }}
       onCancel={back} />;
   } else if (tab === 'home') {
-    content = <HomeScreen refreshKey={refreshKey} onImported={refresh} open={push} />;
+    content = <HomeScreen refreshKey={refreshKey} onImported={refresh} open={push} onGoBackup={() => setTab('more')} />;
   } else if (tab === 'log') {
     content = <LogScreen refreshKey={refreshKey} open={push} />;
   } else if (tab === 'compete') {

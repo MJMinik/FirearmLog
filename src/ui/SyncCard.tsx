@@ -4,7 +4,8 @@
 import { useRef, useState } from 'react';
 import { buildFlog, parseFlog } from '../lib/flog.ts';
 import type { Snapshot } from '../lib/flog.ts';
-import { exportSnapshot, localLastModified, restoreSnapshot } from '../lib/db.ts';
+import { exportSnapshot, localLastModified, restoreSnapshot, putSettings } from '../lib/db.ts';
+import type { AppSettings } from '../lib/types.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 
 function stampWords(ms: number): string {
@@ -20,7 +21,7 @@ type Stage =
   | { name: 'confirm'; snapshot: Snapshot; warning: string; label: string }
   | { name: 'working'; message: string };
 
-export function SyncCard({ onPulled }: { onPulled: () => void }) {
+export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBackedUp?: () => void }) {
   const [stage, setStage] = useState<Stage>({ name: 'idle' });
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -44,8 +45,14 @@ export function SyncCard({ onPulled }: { onPulled: () => void }) {
     }
   }
 
-  function pushDone(url: string) {
+  function pushDone(url: string, saved = false) {
     setTimeout(() => URL.revokeObjectURL(url), 120000);
+    // Only stamp the backup time when the user actually tapped Save (not when
+    // they just closed the sheet). Additive write — records are untouched.
+    if (saved) {
+      void putSettings<AppSettings>({ lastBackupAt: Date.now() });
+      onBackedUp?.();
+    }
     setStage({
       name: 'idle',
       message: 'File saved? Great — pull it on your other device and you\u2019re in sync.'
@@ -126,7 +133,7 @@ export function SyncCard({ onPulled }: { onPulled: () => void }) {
             (On a desktop computer the file simply lands in your Downloads folder — move it to iCloud Drive.)
           </p>
           <a className="button" href={stage.url} download="FirearmLog.flog"
-            onClick={() => pushDone(stage.url)}>
+            onClick={() => pushDone(stage.url, true)}>
             Save the File Now
           </a>
         </Sheet>

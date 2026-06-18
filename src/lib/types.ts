@@ -295,6 +295,9 @@ export interface AppSettings {
   ownerName: string;
   theme: string;
   checklistCustomItems: ChecklistCustomItems;
+  /** When the user last saved a backup file (Push to File). Drives the Home
+   *  backup reminder. Optional — undefined means never backed up. */
+  lastBackupAt?: number;
   legacy?: Record<string, unknown>;
 }
 

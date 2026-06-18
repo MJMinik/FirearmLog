@@ -1,9 +1,9 @@
 // Tab screens. Home and Log are live against the database; Compete and
 // Progress arrive in M5 and M7 and say so in plain language.
 import { useEffect, useState, useCallback } from 'react';
-import type { Ammunition, Classifier, DrillDef, Firearm, GunCategory, MaintenanceEntry, Match, Purchase, Reference, Session } from '../lib/types.ts';
+import type { Ammunition, AppSettings, Classifier, DrillDef, Firearm, GunCategory, MaintenanceEntry, Match, Purchase, Reference, Session } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
-import { getAll, getOne, putOne } from '../lib/db.ts';
+import { getAll, getOne, getSettings, putOne } from '../lib/db.ts';
 import { maintenanceAlerts, maintenanceStatus, resolveSchedule } from '../lib/maintenance.ts';
 import type { Alert } from '../lib/maintenance.ts';
 import { lowAmmo } from '../lib/costing.ts';
@@ -24,7 +24,7 @@ import { LogFilterBar } from './FilterBar.tsx';
 import { emptyLogFilter, matchMatchesFilter, sessionKind, sessionMatchesFilter } from '../lib/searchFilter.ts';
 import type { LogFilter } from '../lib/searchFilter.ts';
 import type { View } from './nav.ts';
-import { dashboardStats, roundsByMonth, daysSinceLastSession, selfRatingDipping, alertDismissKey, isAlertDismissed, personalRecords, formatDrillScore, allClassifications } from '../lib/dashboard.ts';
+import { dashboardStats, roundsByMonth, daysSinceLastSession, selfRatingDipping, alertDismissKey, isAlertDismissed, personalRecords, formatDrillScore, allClassifications, changesSinceBackup, BACKUP_REMINDER_THRESHOLD, BACKUP_TRACKED_STORES } from '../lib/dashboard.ts';
 import type { MonthBucket, RoundsFilter } from '../lib/dashboard.ts';
 
 function useData(refreshKey: number) {
@@ -224,19 +224,34 @@ function AlertRow({ alert, onTap, onDismiss, onComplete }: {
   );
 }
 
-export function HomeScreen({ refreshKey, onImported, open }: {
-  refreshKey: number; onImported: () => void; open: (v: View) => void;
+export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
+  refreshKey: number; onImported: () => void; open: (v: View) => void; onGoBackup: () => void;
 }) {
   const { firearms, sessions, matches, maintenance, references, ammo, classifiers, drills, loaded } = useData(refreshKey);
   const [dismissed, setDismissed] = useState<Record<string, string>>({});
   const [chartFilter, setChartFilter] = useState<RoundsFilter>({});
   const [chartMonths, setChartMonths] = useState(12);
+  const [backupChanges, setBackupChanges] = useState(0);
 
   // Load dismissed alerts from meta store on mount.
   useEffect(() => {
     void (async () => {
       const row = await getOne<{ key: string; value: Record<string, string> }>('meta', 'dismissedAlerts');
       if (row?.value) setDismissed(row.value);
+    })();
+  }, [refreshKey]);
+
+  // Count un-backed-up changes for the backup nudge: records across the tracked
+  // stores whose updatedAt is newer than the last backup. Read-only.
+  useEffect(() => {
+    void (async () => {
+      const settings = await getSettings<AppSettings>();
+      const since = settings?.lastBackupAt ?? 0;
+      const all: { updatedAt?: number }[] = [];
+      for (const store of BACKUP_TRACKED_STORES) {
+        all.push(...await getAll<{ updatedAt?: number }>(store));
+      }
+      setBackupChanges(changesSinceBackup(all, since));
     })();
   }, [refreshKey]);
 
@@ -256,6 +271,7 @@ export function HomeScreen({ refreshKey, onImported, open }: {
     return !isAlertDismissed(key, dismissed, a.item.detail);
   });
   const lowCans = lowAmmo(ammo);
+  const showBackup = backupChanges >= BACKUP_REMINDER_THRESHOLD;
 
   const stats = dashboardStats(firearms, sessions, matches, classifiers, ammo);
   const buckets = roundsByMonth(sessions, matches, chartMonths, new Date(), chartFilter, firearms);
@@ -348,9 +364,18 @@ export function HomeScreen({ refreshKey, onImported, open }: {
           )}
 
           {/* ---- Needs Attention (dismissible) ---- */}
-          {(alerts.length > 0 || lowCans.length > 0 || (trainingGap !== null && trainingGap >= 14) || (ratingTrend?.dipping)) && (
+          {(showBackup || alerts.length > 0 || lowCans.length > 0 || (trainingGap !== null && trainingGap >= 14) || (ratingTrend?.dipping)) && (
             <div className="card" style={{ marginTop: 16 }}>
               <h2>Needs Attention</h2>
+              {showBackup && (
+                <button className="row-tap" onClick={onGoBackup}>
+                  <span className="label">
+                    Back up your data
+                    <div className="row-sub">{backupChanges} changes since your last backup — your log lives only on this device. Tap to back up.</div>
+                  </span>
+                  <span className="badge warn-badge" style={{ fontSize: 11 }}>Backup</span>
+                </button>
+              )}
               {alerts.map((a, i) => (
                 <AlertRow key={`${a.firearmId}-${a.item.type}-${i}`} alert={a}
                   onTap={() => open({ kind: 'gun-detail', id: a.firearmId })}
@@ -619,7 +644,7 @@ export function MoreScreen({ refreshKey, onImported, open }: {
           <span className="value">›</span>
         </button>
       </div>
-      <SyncCard onPulled={onImported} />
+      <SyncCard onPulled={onImported} onBackedUp={onImported} />
       <PhotoCleanupCard />
       <div className="card">
         <h2>Backup &amp; Import</h2>

@@ -3,11 +3,24 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   dashboardStats, roundsByMonth, daysSinceLastSession, selfRatingDipping,
-  alertDismissKey, isAlertDismissed, personalRecords, formatDrillScore, allClassifications
+  alertDismissKey, isAlertDismissed, personalRecords, formatDrillScore, allClassifications,
+  changesSinceBackup, BACKUP_REMINDER_THRESHOLD
 } from '../src/lib/dashboard.ts';
 import type { Firearm, Match, Session, DrillDef } from '../src/lib/types.ts';
 
 const base = { createdAt: 0, updatedAt: 0 };
+
+test('changesSinceBackup counts only records edited after the backup time', () => {
+  const recs = [{ updatedAt: 100 }, { updatedAt: 200 }, { updatedAt: 50 }, {}];
+  assert.equal(changesSinceBackup(recs, 100), 1);   // only updatedAt 200 is newer
+  assert.equal(changesSinceBackup(recs, 0), 3);     // never backed up: all stamped records count
+  assert.equal(changesSinceBackup(recs, 500), 0);   // all older than the backup
+  assert.equal(changesSinceBackup([], 0), 0);       // nothing logged
+});
+
+test('BACKUP_REMINDER_THRESHOLD default is 10', () => {
+  assert.equal(BACKUP_REMINDER_THRESHOLD, 10);
+});
 
 const guns: Firearm[] = [
   { ...base, id: 'g1', name: 'Atlas Erebus', manufacturer: 'Atlas', model: 'Erebus', caliber: '9mm', category: 'Pistol', serialNumber: null, dateAcquired: '', startingRoundCount: 0, photoIds: [], referenceId: null, notes: '' },

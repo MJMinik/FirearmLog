@@ -236,6 +236,33 @@ export function isAlertDismissed(
   return dismissed[key] === currentDetail;
 }
 
+// ---- Backup reminder (event-threshold nudge) ----
+
+/**
+ * Stores whose records count as "meaningful changes" toward the backup nudge
+ * (spec decision 2). Deletes aren't counted in v1 — a removed record leaves no
+ * stamp to read.
+ */
+export const BACKUP_TRACKED_STORES = [
+  'sessions', 'matches', 'firearms', 'optics', 'ammunition',
+  'magazines', 'parts', 'drills', 'maintenance', 'purchases', 'goals'
+] as const;
+
+/**
+ * How many un-backed-up changes before the Home nudge appears. Fixed in v1; a
+ * user-settable threshold is the planned fast-follow.
+ */
+export const BACKUP_REMINDER_THRESHOLD = 10;
+
+/**
+ * Count records created or edited since the last backup. `since` is the
+ * lastBackupAt timestamp (0 = never backed up, so everything counts). Pure and
+ * tested; the Home screen gathers the records and calls this.
+ */
+export function changesSinceBackup(records: { updatedAt?: number }[], since: number): number {
+  return records.filter(r => (r.updatedAt ?? 0) > since).length;
+}
+
 // ---- Top Personal Records (PT dashboard parity) ----
 
 export interface PersonalRecord {
