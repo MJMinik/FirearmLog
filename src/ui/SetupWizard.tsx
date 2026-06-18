@@ -150,7 +150,7 @@ export function SetupWizard({ onFinish, onCancel }: {
             <p className="report-note" style={{ marginBottom: 8 }}>
               {noGuns
                 ? 'Start with a gun — your optics, ammo, and sessions all attach to one. Add as many as you like; the others are here whenever you\'re ready.'
-                : 'Add as much or as little as you like. You can always come back to this from Help, or add more from each screen.'}
+                : 'Add as much or as little as you like. You can always come back to this from Tour & Setup, or add more from each screen.'}
             </p>
             {gearRow('Guns', counts.guns, 'gun', true)}
             {gearRow('Optics', counts.optics, 'optic', false)}

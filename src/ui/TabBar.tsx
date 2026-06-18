@@ -26,9 +26,10 @@ const SECTIONS: { target: View; label: string; icon: IconName; also: View['kind'
   { target: { kind: 'maintenance' }, label: 'Maintenance', icon: 'maintenance', also: [] },
   { target: { kind: 'parts' }, label: 'Spare Parts & Inventory', icon: 'parts', also: ['part-form'] },
   { target: { kind: 'references' }, label: 'Reference', icon: 'reference', also: ['reference-detail', 'reference-form'] },
-  { target: { kind: 'reports' }, label: 'Reports', icon: 'reports', also: [] },
-  { target: { kind: 'help' }, label: 'Help & Tour', icon: 'help', also: ['setup'] }
+  { target: { kind: 'reports' }, label: 'Reports', icon: 'reports', also: [] }
 ];
+// Tour & Setup is a different kind of destination from the gear/data sections,
+// so it sits on its own below the divider (matching the phone's separate card).
 
 export function TabBar({ active, onChange, view, onOpen }: {
   active: TabId; onChange: (t: TabId) => void;
@@ -36,9 +37,12 @@ export function TabBar({ active, onChange, view, onOpen }: {
 }) {
   const sectionOn = (s: typeof SECTIONS[number]) =>
     !!view && (view.kind === s.target.kind || s.also.includes(view.kind));
-  // While a sidebar section is open, the section is the highlighted thing,
-  // not whatever tab happens to be underneath it.
-  const anySectionOn = SECTIONS.some(sectionOn);
+  // The Tour & Setup screen (and the setup wizard it launches) highlight their
+  // own sidebar entry, below the divider.
+  const tourOn = !!view && (view.kind === 'help' || view.kind === 'setup');
+  // While a sidebar section (or Tour & Setup) is open, that is the highlighted
+  // thing, not whatever tab happens to be underneath it.
+  const anySectionOn = SECTIONS.some(sectionOn) || tourOn;
 
   const tabButton = (t: { id: TabId; label: string; icon: IconName }) => (
     <button
@@ -68,6 +72,12 @@ export function TabBar({ active, onChange, view, onOpen }: {
         </button>
       ))}
       <div className="nav-divider" aria-hidden="true" />
+      <button className={`sidebar-only ${tourOn ? 'active' : ''}`}
+        aria-current={tourOn ? 'page' : undefined}
+        onClick={() => onOpen({ kind: 'help' })}>
+        <span className="glyph" aria-hidden="true"><Icon name="help" /></span>
+        Tour &amp; Setup
+      </button>
       {tabButton({ id: 'more', label: 'More', icon: 'more' })}
     </nav>
   );

@@ -51,7 +51,7 @@ const QUICK_TOUR: TourStep[] = [
   {
     title: 'Your gear and data',
     view: { kind: 'guns' },
-    body: 'Guns, optics, ammo, magazines, drills, costs, maintenance, parts, reference guides, reports, and Help. On a phone they\'re under the More tab; on a computer they\'re listed down the sidebar. It\'s also where you import your old Pistol Tracker data.',
+    body: 'Guns, optics, ammo, magazines, drills, costs, maintenance, parts, reference guides, and reports. Tour & Setup sits just below them. On a phone they\'re under the More tab; on a computer they\'re listed down the sidebar. The More tab is also where you import your old Pistol Tracker data.',
   },
   {
     title: 'Your data stays yours',
@@ -158,7 +158,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Setup & importing old data',
       view: { kind: 'setup' },
-      body: `The first time you open the app it offers to import your Pistol Tracker backup, start fresh, or load sample data to explore — and you can re-run that any time from Help. Re-importing the same file simply re-applies the records — it won't double anything up. After an import, a verification report checks every record and round count came across.`,
+      body: `The first time you open the app it offers to import your Pistol Tracker backup, start fresh, or load sample data to explore — and you can re-run that any time from Tour & Setup. Re-importing the same file simply re-applies the records — it won't double anything up. After an import, a verification report checks every record and round count came across.`,
     },
     {
       title: 'Your data & privacy',
@@ -205,7 +205,7 @@ export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: Vie
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Help</h1>
+      <h1 className="large-title">Tour &amp; Setup</h1>
 
       <div className="card">
         <h2>Tours &amp; setup</h2>
