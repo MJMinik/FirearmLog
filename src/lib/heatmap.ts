@@ -63,3 +63,24 @@ export function buildHeatmap(
   }
   return cols;
 }
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** One label per week-column where the month changes (left→right), for drawing
+ *  a month strip above the heatmap. `col` is the column index; `text` is the
+ *  3-letter month. The leftmost column is always labeled so the strip has a
+ *  starting month. Month is read straight off the date string (no timezone). */
+export function monthLabels(grid: HeatCell[][]): { col: number; text: string }[] {
+  const out: { col: number; text: string }[] = [];
+  let prevMonth = -1;
+  for (let i = 0; i < grid.length; i++) {
+    const first = grid[i][0];
+    if (!first) continue;
+    const m = Number(first.date.slice(5, 7)) - 1; // 0-based month from 'YYYY-MM-DD'
+    if (m !== prevMonth) {
+      out.push({ col: i, text: MONTH_ABBR[m] });
+      prevMonth = m;
+    }
+  }
+  return out;
+}

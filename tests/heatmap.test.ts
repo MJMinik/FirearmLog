@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Session } from '../src/lib/types.ts';
-import { buildHeatmap, heatLevel } from '../src/lib/heatmap.ts';
+import { buildHeatmap, heatLevel, monthLabels } from '../src/lib/heatmap.ts';
 
 test('heatLevel thresholds', () => {
   assert.equal(heatLevel(0, 0), 0);
@@ -39,4 +39,19 @@ test('buildHeatmap marks future padding days out of range and ignores planned', 
   assert.ok(future.every((c) => c.level === 0));
   // planned session contributes nothing
   assert.ok(grid.flat().every((c) => c.sessions === 0));
+});
+
+test('monthLabels: leftmost column is labeled and columns strictly increase', () => {
+  const grid = buildHeatmap([], 52, new Date(2026, 5, 18)); // 52 weeks ending Jun 18 2026
+  const labels = monthLabels(grid);
+  assert.equal(labels[0].col, 0);
+  for (let i = 1; i < labels.length; i++) assert.ok(labels[i].col > labels[i - 1].col);
+  for (const l of labels) assert.match(l.text, /^[A-Z][a-z]{2}$/);
+});
+
+test('monthLabels: 52 weeks spans ~13 months, 26 weeks spans ~7', () => {
+  const long = monthLabels(buildHeatmap([], 52, new Date(2026, 5, 18)));
+  const short = monthLabels(buildHeatmap([], 26, new Date(2026, 5, 18)));
+  assert.ok(long.length >= 12 && long.length <= 14, `52wk labels: ${long.length}`);
+  assert.ok(short.length >= 6 && short.length <= 8, `26wk labels: ${short.length}`);
 });
