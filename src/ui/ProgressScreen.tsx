@@ -172,7 +172,7 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
   const labelH = labelFont + 4;
   return (
     <div className="card">
-      <h2>Training Heatmap <InfoTip title="Training Heatmap">Each square is a day — darker means more rounds. Switch between the last 26 or 52 weeks; press a square to see that day's count.</InfoTip></h2>
+      <h2>Training Heatmap <InfoTip title="Training Heatmap">Each square is a day — darker means more rounds, with the months labeled across the top. Switch between the last 26 or 52 weeks; press a square to see that day's count.</InfoTip></h2>
       <div className="chart-filters">
         <select aria-label="Heatmap weeks" value={weeks} onChange={(e) => setWeeks(Number(e.target.value))}>
           <option value={26}>26 weeks</option>
