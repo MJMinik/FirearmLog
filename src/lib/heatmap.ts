@@ -84,3 +84,13 @@ export function monthLabels(grid: HeatCell[][]): { col: number; text: string }[]
   }
   return out;
 }
+
+/** The real (non-planned) sessions logged on a given day, for tapping a heatmap
+ *  square to open that day. Generic so it returns the caller's full session
+ *  objects; only `date` and `planned` are read. */
+export function sessionsOnDay<T extends { date: string; planned?: boolean }>(
+  sessions: T[],
+  dateKey: string
+): T[] {
+  return sessions.filter((s) => !s.planned && s.date === dateKey);
+}

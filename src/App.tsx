@@ -214,7 +214,7 @@ export function App() {
   } else if (tab === 'compete') {
     content = <CompeteScreen refreshKey={refreshKey} open={push} />;
   } else if (tab === 'progress') {
-    content = <ProgressScreen refreshKey={refreshKey} />;
+    content = <ProgressScreen refreshKey={refreshKey} open={push} />;
   } else {
     content = <MoreScreen refreshKey={refreshKey} onImported={refresh} open={push} />;
   }

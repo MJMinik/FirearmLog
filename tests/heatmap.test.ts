@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Session } from '../src/lib/types.ts';
-import { buildHeatmap, heatLevel, monthLabels } from '../src/lib/heatmap.ts';
+import { buildHeatmap, heatLevel, monthLabels, sessionsOnDay } from '../src/lib/heatmap.ts';
 
 test('heatLevel thresholds', () => {
   assert.equal(heatLevel(0, 0), 0);
@@ -54,4 +54,16 @@ test('monthLabels: 52 weeks spans ~13 months, 26 weeks spans ~7', () => {
   const short = monthLabels(buildHeatmap([], 26, new Date(2026, 5, 18)));
   assert.ok(long.length >= 12 && long.length <= 14, `52wk labels: ${long.length}`);
   assert.ok(short.length >= 6 && short.length <= 8, `26wk labels: ${short.length}`);
+});
+
+test('sessionsOnDay returns only that day\'s real sessions, skipping planned', () => {
+  const ss = [
+    session({ id: 'a', date: '2026-06-10' }),
+    session({ id: 'b', date: '2026-06-10' }),
+    session({ id: 'c', date: '2026-06-11' }),
+    session({ id: 'p', date: '2026-06-10', planned: true })
+  ];
+  const ids = sessionsOnDay(ss, '2026-06-10').map((s) => s.id);
+  assert.deepEqual(ids, ['a', 'b']);
+  assert.equal(sessionsOnDay(ss, '2026-06-12').length, 0);
 });

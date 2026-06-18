@@ -124,7 +124,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Progress — heatmap & records',
-      body: 'The training heatmap is a grid of days, darker where you shot more — toggle 26 or 52 weeks, with the months labeled along the bottom, and press a square to see that day\'s count. Personal records list your best result per drill.',
+      body: 'The training heatmap is a grid of days, darker where you shot more — toggle 26 or 52 weeks, with the months labeled along the bottom, and press a square to see that day\'s count — or flip on "Tap a day to open its session" to jump straight into that day\'s log. Personal records list your best result per drill.',
     },
     {
       title: 'Guns',

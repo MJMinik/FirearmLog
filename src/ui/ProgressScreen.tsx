@@ -16,13 +16,15 @@ import {
   allClassifications, formatDrillScore, personalRecords, roundsByMonth, type RoundsFilter
 } from '../lib/dashboard.ts';
 import { bucketTotals, malfunctionsInRange, ratePerThousand, spanStartDate } from '../lib/trends.ts';
-import { buildHeatmap, monthLabels } from '../lib/heatmap.ts';
+import { buildHeatmap, monthLabels, sessionsOnDay } from '../lib/heatmap.ts';
+import { sessionRounds } from '../lib/stats.ts';
+import type { View } from './nav.ts';
 import { RoundsByMonthChart } from './screens.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { InfoTip } from './InfoTip.tsx';
 
-export function ProgressScreen({ refreshKey }: { refreshKey: number }) {
+export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open: (v: View) => void }) {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [skills, setSkills] = useState<SkillAssessment[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -135,7 +137,7 @@ export function ProgressScreen({ refreshKey }: { refreshKey: number }) {
       <TrendsCard sessions={sessions} matches={matches} firearms={firearms}
         drills={drills} classifiers={classifiers} malfunctions={malfunctions} />
 
-      <HeatmapCard sessions={sessions} />
+      <HeatmapCard sessions={sessions} open={open} />
 
       {editing && (
         <GoalEditSheet goal={editing} categories={cats}
@@ -151,11 +153,29 @@ export function ProgressScreen({ refreshKey }: { refreshKey: number }) {
   );
 }
 
-function HeatmapCard({ sessions }: { sessions: Session[] }) {
+const SESSION_TYPE_LABEL: Record<string, string> = {
+  practice: 'Live practice', dry_fire: 'Dry fire', class: 'Class'
+};
+
+function HeatmapCard({ sessions, open }: { sessions: Session[]; open: (v: View) => void }) {
   const [weeks, setWeeks] = useState(26);
   // Audit #20: tapping a day shows its count here — the SVG <title> only worked
   // on desktop hover, so on a phone the "press a square" help did nothing.
   const [selText, setSelText] = useState<string | null>(null);
+  // Opt-in, default off, not remembered across visits (Michael's call): when on,
+  // tapping a day opens that day's session instead of showing its count. One
+  // session opens directly; several show a picker; an empty day falls back to
+  // the count so the tap is never dead.
+  const [openOnTap, setOpenOnTap] = useState(false);
+  const [daySheet, setDaySheet] = useState<Session[] | null>(null);
+  function tapCell(c: { date: string; sessions: number; rounds: number }) {
+    if (openOnTap) {
+      const day = sessionsOnDay(sessions, c.date);
+      if (day.length === 1) { open({ kind: 'session-form', id: day[0].id }); return; }
+      if (day.length > 1) { setDaySheet(day); return; }
+    }
+    setSelText(`${formatDayKey(c.date)}: ${c.sessions} session${c.sessions !== 1 ? 's' : ''}, ${c.rounds.toLocaleString()} rounds`);
+  }
   const grid = buildHeatmap(sessions, weeks, new Date());
   const cell = 12, gap = 3, rows = 7;
   const w = grid.length * (cell + gap) - gap;
@@ -173,13 +193,17 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
   const labelH = labelFont + 4;
   return (
     <div className="card">
-      <h2>Training Heatmap <InfoTip title="Training Heatmap">Each square is a day — darker means more rounds, with the months labeled along the bottom. Switch between the last 26 or 52 weeks; press a square to see that day's count.</InfoTip></h2>
+      <h2>Training Heatmap <InfoTip title="Training Heatmap">Each square is a day — darker means more rounds, with the months labeled along the bottom. Switch between the last 26 or 52 weeks; press a square to see that day's count, or turn on "Tap a day to open its session" to jump straight into that day's log.</InfoTip></h2>
       <div className="chart-filters">
         <select aria-label="Heatmap weeks" value={weeks} onChange={(e) => setWeeks(Number(e.target.value))}>
           <option value={26}>26 weeks</option>
           <option value={52}>52 weeks</option>
         </select>
       </div>
+      <label className="report-note" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginTop: 4 }}>
+        <input type="checkbox" checked={openOnTap} onChange={(e) => setOpenOnTap(e.target.checked)} />
+        Tap a day to open its session
+      </label>
       <svg viewBox={`0 0 ${w} ${h + labelH}`} width="100%" role="img" aria-label="Training activity heatmap"
         style={{ display: 'block', maxWidth: w, marginTop: 4 }}>
         {grid.map((col, ci) => col.map((c, ri) => (
@@ -187,7 +211,7 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
             fill={c.level === 0 ? 'var(--separator)' : 'var(--accent)'}
             opacity={c.level === 0 ? (c.inRange ? 0.4 : 0.12) : opacities[c.level]}
             style={{ cursor: 'pointer' }}
-            onClick={() => setSelText(`${formatDayKey(c.date)}: ${c.sessions} session${c.sessions !== 1 ? 's' : ''}, ${c.rounds.toLocaleString()} rounds`)}>
+            onClick={() => tapCell(c)}>
             <title>{`${c.date}: ${c.sessions} session${c.sessions !== 1 ? 's' : ''}, ${c.rounds.toLocaleString()} rounds`}</title>
           </rect>
         )))}
@@ -209,7 +233,22 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
       </svg>
       {selText
         ? <p className="report-note" aria-live="polite">{selText}</p>
-        : <p className="report-note">Each square is a day; darker = more rounds — tap one for that day. Last {weeks} weeks.</p>}
+        : <p className="report-note">
+            {openOnTap
+              ? `Tap a day to open its session. Last ${weeks} weeks.`
+              : `Each square is a day; darker = more rounds — tap one for that day. Last ${weeks} weeks.`}
+          </p>}
+      {daySheet && (
+        <Sheet title="That Day" onClose={() => setDaySheet(null)}>
+          {daySheet.map((s) => (
+            <button key={s.id} className="drill-pick-row"
+              onClick={() => { setDaySheet(null); open({ kind: 'session-form', id: s.id }); }}>
+              <strong>{formatDayKey(s.date)} · {SESSION_TYPE_LABEL[s.type] ?? s.type}</strong>
+              <span>{sessionRounds(s).toLocaleString()} rounds{s.location ? ` · ${s.location}` : ''}</span>
+            </button>
+          ))}
+        </Sheet>
+      )}
     </div>
   );
 }
