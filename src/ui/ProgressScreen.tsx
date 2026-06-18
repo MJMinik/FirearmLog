@@ -161,9 +161,10 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
   const w = grid.length * (cell + gap) - gap;
   const h = rows * (cell + gap) - gap;
   const opacities = [0, 0.3, 0.5, 0.75, 1];
-  // Month strip above the grid (spec §10). The dates already live on every
-  // square, so this is display-only. Thin to every-other label once there are
-  // many months (the 52-week view spans ~13) so they don't collide. Mobile
+  // Month strip below the grid (spec §10) — placed at the bottom to match the
+  // Trends bar chart's x-axis labels (consistency). The dates already live on
+  // every square, so this is display-only. Thin to every-other label once there
+  // are many months (the 52-week view spans ~13) so they don't collide. Mobile
   // wins (rule 4): the label font scales up with the grid width so it stays
   // readable on a phone, where a 52-week grid is shrunk to fit the screen.
   const labels = monthLabels(grid);
@@ -172,7 +173,7 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
   const labelH = labelFont + 4;
   return (
     <div className="card">
-      <h2>Training Heatmap <InfoTip title="Training Heatmap">Each square is a day — darker means more rounds, with the months labeled across the top. Switch between the last 26 or 52 weeks; press a square to see that day's count.</InfoTip></h2>
+      <h2>Training Heatmap <InfoTip title="Training Heatmap">Each square is a day — darker means more rounds, with the months labeled along the bottom. Switch between the last 26 or 52 weeks; press a square to see that day's count.</InfoTip></h2>
       <div className="chart-filters">
         <select aria-label="Heatmap weeks" value={weeks} onChange={(e) => setWeeks(Number(e.target.value))}>
           <option value={26}>26 weeks</option>
@@ -181,23 +182,21 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
       </div>
       <svg viewBox={`0 0 ${w} ${h + labelH}`} width="100%" role="img" aria-label="Training activity heatmap"
         style={{ display: 'block', maxWidth: w, marginTop: 4 }}>
+        {grid.map((col, ci) => col.map((c, ri) => (
+          <rect key={c.date} x={ci * (cell + gap)} y={ri * (cell + gap)} width={cell} height={cell} rx={2}
+            fill={c.level === 0 ? 'var(--separator)' : 'var(--accent)'}
+            opacity={c.level === 0 ? (c.inRange ? 0.4 : 0.12) : opacities[c.level]}
+            style={{ cursor: 'pointer' }}
+            onClick={() => setSelText(`${formatDayKey(c.date)}: ${c.sessions} session${c.sessions !== 1 ? 's' : ''}, ${c.rounds.toLocaleString()} rounds`)}>
+            <title>{`${c.date}: ${c.sessions} session${c.sessions !== 1 ? 's' : ''}, ${c.rounds.toLocaleString()} rounds`}</title>
+          </rect>
+        )))}
         {labels.map((lab, li) => (li % labelStep === 0 ? (
-          <text key={lab.col} x={lab.col * (cell + gap)} y={labelFont} textAnchor="start"
+          <text key={lab.col} x={lab.col * (cell + gap)} y={h + labelFont} textAnchor="start"
             fill="var(--text-dim)" fontSize={labelFont} fontFamily="inherit">
             {lab.text}
           </text>
         ) : null))}
-        <g transform={`translate(0,${labelH})`}>
-          {grid.map((col, ci) => col.map((c, ri) => (
-            <rect key={c.date} x={ci * (cell + gap)} y={ri * (cell + gap)} width={cell} height={cell} rx={2}
-              fill={c.level === 0 ? 'var(--separator)' : 'var(--accent)'}
-              opacity={c.level === 0 ? (c.inRange ? 0.4 : 0.12) : opacities[c.level]}
-              style={{ cursor: 'pointer' }}
-              onClick={() => setSelText(`${formatDayKey(c.date)}: ${c.sessions} session${c.sessions !== 1 ? 's' : ''}, ${c.rounds.toLocaleString()} rounds`)}>
-              <title>{`${c.date}: ${c.sessions} session${c.sessions !== 1 ? 's' : ''}, ${c.rounds.toLocaleString()} rounds`}</title>
-            </rect>
-          )))}
-        </g>
       </svg>
       {selText
         ? <p className="report-note" aria-live="polite">{selText}</p>
