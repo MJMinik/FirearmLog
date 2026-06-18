@@ -376,7 +376,7 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
                 <button className="row-tap" onClick={onGoBackup}>
                   <span className="label">
                     Back up your data
-                    <div className="row-sub">{backupChanges} changes since your last backup — your log lives only on this device. Tap to back up.</div>
+                    <div className="row-sub">{backupChanges} changes since your last backup — your log lives only on this device. Tap to back up; the reminder clears once you do.</div>
                   </span>
                   <span className="badge warn-badge" style={{ fontSize: 11 }}>Backup</span>
                 </button>
