@@ -242,16 +242,21 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
   }, [refreshKey]);
 
   // Count un-backed-up changes for the backup nudge: records across the tracked
-  // stores whose updatedAt is newer than the last backup. Read-only.
+  // stores whose updatedAt is newer than the last backup. Read-only. Reads run in
+  // parallel (CR-D2), and the whole thing is guarded so a storage hiccup can never
+  // break Home — it just hides the nudge (CR-D3, resilience-first per rule 23).
   useEffect(() => {
     void (async () => {
-      const settings = await getSettings<AppSettings>();
-      const since = settings?.lastBackupAt ?? 0;
-      const all: { updatedAt?: number }[] = [];
-      for (const store of BACKUP_TRACKED_STORES) {
-        all.push(...await getAll<{ updatedAt?: number }>(store));
+      try {
+        const settings = await getSettings<AppSettings>();
+        const since = settings?.lastBackupAt ?? 0;
+        const lists = await Promise.all(
+          BACKUP_TRACKED_STORES.map((store) => getAll<{ updatedAt?: number }>(store))
+        );
+        setBackupChanges(changesSinceBackup(lists.flat(), since));
+      } catch {
+        setBackupChanges(0); // fail safe: no nudge rather than a broken screen
       }
-      setBackupChanges(changesSinceBackup(all, since));
     })();
   }, [refreshKey]);
 

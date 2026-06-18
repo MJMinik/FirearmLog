@@ -132,6 +132,10 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
           <p className="report-note" style={{ marginBottom: 12 }}>
             (On a desktop computer the file simply lands in your Downloads folder — move it to iCloud Drive.)
           </p>
+          <p className="report-note" style={{ marginBottom: 12 }}>
+            Heads up: your "back up your data" reminder on the Home screen only clears once you've
+            actually saved the file. If you back out without saving, the reminder stays — on purpose.
+          </p>
           <a className="button" href={stage.url} download="FirearmLog.flog"
             onClick={() => pushDone(stage.url, true)}>
             Save the File Now
