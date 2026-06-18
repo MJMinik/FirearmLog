@@ -34,8 +34,13 @@ export function App() {
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => setRefreshKey((k) => k + 1);
 
+  // Opening a screen or switching tabs should land at the top, not wherever the
+  // previous screen happened to be scrolled (the whole document scrolls, on
+  // phone and desktop alike). rAF so it runs after the new screen has rendered.
+  const scrollTop = () => requestAnimationFrame(() => window.scrollTo(0, 0));
+
   // Views live in browser history so Back works (and never blanks the app).
-  const push = (v: View) => { history.pushState({ view: v }, ''); setViewState(v); };
+  const push = (v: View) => { history.pushState({ view: v }, ''); setViewState(v); scrollTop(); };
   const replace = (v: View | null) => { history.replaceState({ view: v }, ''); setViewState(v); };
   const back = () => history.back();
 
@@ -62,7 +67,7 @@ export function App() {
     return () => { alive = false; };
   }, []);
 
-  const setTab = (t: TabId) => { replace(null); setTabState(t); };
+  const setTab = (t: TabId) => { replace(null); setTabState(t); scrollTop(); };
   // Desktop sidebar section links (C1): re-clicking the open section is a no-op
   // so it can't stack duplicate history entries.
   const openSection = (v: View) => { if (view?.kind !== v.kind) push(v); };
