@@ -20,7 +20,7 @@ export async function gotoTab(page: Page, name: string): Promise<void> {
 }
 
 /**
- * Go to a "Data & Gear" section (Guns, Optics, Ammo, ... Help & Tour).
+ * Go to a "Data & Gear" section (Guns, Optics, Ammo, ...) or Tour & Setup.
  * On desktop these are sidebar links; on phone they live under the More tab.
  */
 export async function gotoSection(page: Page, name: string): Promise<void> {

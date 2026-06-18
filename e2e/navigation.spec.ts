@@ -45,8 +45,8 @@ test.describe('Navigation', () => {
     });
   }
 
-  test('section: Help & Tour', async ({ page }) => {
-    await gotoSection(page, 'Help & Tour');
-    await expect(page.getByRole('heading', { name: 'Help' }).first()).toBeVisible();
+  test('section: Tour & Setup', async ({ page }) => {
+    await gotoSection(page, 'Tour & Setup');
+    await expect(page.getByRole('heading', { name: 'Tour & Setup' }).first()).toBeVisible();
   });
 });

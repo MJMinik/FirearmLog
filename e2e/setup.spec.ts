@@ -13,8 +13,8 @@ test.describe('Setup wizard', () => {
   test('loading sample data on top of existing data asks for confirmation', async ({ page }) => {
     await seedDemo(page);
 
-    // Re-open the wizard from Help.
-    await gotoSection(page, 'Help & Tour');
+    // Re-open the wizard from Tour & Setup.
+    await gotoSection(page, 'Tour & Setup');
     await page.getByRole('button', { name: 'Set Up' }).click();
     await expect(page.getByRole('heading', { name: 'Set up FirearmLog' })).toBeVisible();
 
