@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import type { Ammunition, Purchase, Session } from '../lib/types.ts';
 import { applyAmmoMerge, deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
+import { activeOnly } from '../lib/softDelete.ts';
 import { todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -37,7 +38,7 @@ export function AmmoScreen({ refreshKey, onBack, openForm }: {
       if (!alive) return;
       setAmmo(a.sort((x, y) => ammoLabel(x).localeCompare(ammoLabel(y))));
       setPurchases(p);
-      setSessions(s);
+      setSessions(activeOnly(s)); // App 7: trashed sessions don't count usage
       setLoaded(true);
     });
     return () => { alive = false; };
@@ -125,9 +126,10 @@ export function AmmoForm({ id, onSaved, onCancel }: {
     });
     void getAll<Session>('sessions').then((all) => {
       if (!alive) return;
-      setSessions(all);
+      const live = activeOnly(all); // App 7: trashed sessions don't count usage
+      setSessions(live);
       if (id !== undefined) {
-        setUsedBy(all.filter((x) => (x.ammoUsage ?? []).some((u) => u.ammoId === id)).length);
+        setUsedBy(live.filter((x) => (x.ammoUsage ?? []).some((u) => u.ammoId === id)).length);
       }
     });
     if (id !== undefined) {
@@ -250,6 +252,8 @@ export function AmmoForm({ id, onSaved, onCancel }: {
     if (original) {
       // Every session and purchase that pointed at the duplicate now points at
       // the kept can, so history and FIFO costing survive the merge.
+      // NB: include trashed sessions here on purpose — a merged-away can must be
+      // repointed on EVERY session (App 7), or a later restore would dangle.
       const [sessions, purchases] = await Promise.all([
         getAll<Session>('sessions'), getAll<Purchase>('purchases')
       ]);

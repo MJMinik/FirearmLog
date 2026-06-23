@@ -7,6 +7,7 @@ import type {
 } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
 import { deleteOne, getAll, putOne } from '../lib/db.ts';
+import { activeOnly, activeMalfunctions, trashedIdSet } from '../lib/softDelete.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
@@ -50,8 +51,13 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
         getAll<Classifier>('classifiers'), getAll<MalfunctionEntry>('malfunctions')
       ]);
       if (!alive) return;
-      setGoals(sortGoals(g)); setSkills(s); setSessions(se); setMatches(m);
-      setFirearms(f); setDrills(d); setClassifiers(c); setMalfunctions(mf);
+      // App 7: drop trashed sessions and any malfunctions filed against them, so
+      // trends, personal records, and the malfunction rate never count deleted data.
+      const live = activeOnly(se);
+      const trashedIds = trashedIdSet(se);
+      setGoals(sortGoals(g)); setSkills(s); setSessions(live); setMatches(m);
+      setFirearms(f); setDrills(d); setClassifiers(c);
+      setMalfunctions(activeMalfunctions(mf, trashedIds));
     })();
     return () => { alive = false; };
   }, [refreshKey, bump]);

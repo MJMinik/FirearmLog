@@ -19,6 +19,8 @@ import {
   type ChecklistCategory, addCustomItem
 } from '../lib/checklist.ts';
 import { buildDrillReportHtml } from '../lib/drillReport.ts';
+import { activeOnly } from '../lib/softDelete.ts';
+import { softDeleteSession } from './sessionDelete.ts';
 import { buildReportHtml, type ReportSection } from '../lib/reports.ts';
 import { reportImageUrls } from './reportImages.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
@@ -127,7 +129,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       setFirearms(f.sort((a, b) => a.name.localeCompare(b.name)));
       setDrillLib(dl);
       setAmmoLib(am.sort((a, b) => ammoLabel(a).localeCompare(ammoLabel(b))));
-      setPastLocations(recentValues(allSessions.map((s) => ({ date: s.date, value: s.location }))));
+      setPastLocations(recentValues(activeOnly(allSessions).map((s) => ({ date: s.date, value: s.location }))));
       const instructorRow = await getOne<{ key: string; value: string[] }>('meta', 'instructors');
       if (alive) setInstructors(instructorRow?.value ?? []);
       const settings = await getSettings<AppSettings>();
@@ -448,22 +450,15 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     }
   }
 
-  // Delete lives on the edit screen now (the read-only detail screen was
-  // retired). Removes the session, its photos, and its malfunctions; a real
-  // (non-planned) session's ammo goes back on the can. Planned sessions never
-  // moved stock, so nothing to return there.
+  // Delete is now a SOFT delete (App 7): the session moves to Recently Deleted
+  // and is recoverable for 30 days, then purged. A real (non-planned) session's
+  // ammo goes back on the can here; restoring re-deducts it. The shared helper
+  // keeps this identical to a swipe-delete on the Log list. Its photos and
+  // malfunctions are kept (they come back if it's restored) and only removed by
+  // the purge / Delete Forever.
   async function reallyDelete() {
     if (!original) return;
-    if (!original.planned) {
-      const changes = inventoryAfterUsageChange(ammoLib, original.ammoUsage ?? [], []);
-      for (const [ammoId, quantity] of changes) {
-        const can = ammoLib.find((a) => a.id === ammoId);
-        if (can) await putOne('ammunition', stampUpdate({ ...can, quantity }, Date.now()));
-      }
-    }
-    for (const m of existingMedia) await deleteOne('media', m.id);
-    for (const mid of oldMalfIds) await deleteOne('malfunctions', mid);
-    await deleteOne('sessions', original.id);
+    await softDeleteSession(original, ammoLib);
     onDeleted?.();
   }
 
@@ -792,7 +787,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       {confirming && (
         <ConfirmSheet
           title="Delete this session?"
-          message="This removes the session, its photos, and its round counts. Ammo it used goes back on the can. There's no undo."
+          message="It moves to Recently Deleted and any ammo it used goes back on the can. You can restore it for 30 days from the Log screen — after that it's gone for good."
           confirmLabel="Delete Session"
           onConfirm={() => void reallyDelete()}
           onClose={() => setConfirming(false)}

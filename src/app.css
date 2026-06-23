@@ -341,6 +341,36 @@ select.category-pick {
 .row-tap .value { color: var(--text-dim); text-align: right; flex-shrink: 0; }
 .row-sub { font-size: var(--fs-footnote); color: var(--text-dim); font-weight: 400; }
 
+/* ---------- App 7: swipe-to-delete + Recently Deleted ---------- */
+/* A row you swipe left (phone) to reveal a red Delete, or hover (desktop). */
+.swipe-row { position: relative; overflow: hidden; }
+.swipe-row:last-child .row-tap { border-bottom: none; }
+.swipe-delete {
+  position: absolute; top: 0; right: 0; height: 100%; width: 88px;
+  border: none; background: var(--danger); color: #fff; font-weight: 600;
+  font-size: var(--fs-body); cursor: pointer;
+}
+.swipe-front { position: relative; z-index: 1; background: var(--bg-card); touch-action: pan-y; }
+/* Desktop hover affordance; hidden on touch devices (which use the swipe). */
+.swipe-hover-del {
+  position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+  z-index: 2; opacity: 0; pointer-events: none;
+  border: none; border-radius: 8px; padding: 6px 12px; min-height: 36px;
+  background: var(--danger); color: #fff; font-size: var(--fs-footnote);
+  font-weight: 600; cursor: pointer; transition: opacity 0.15s ease;
+}
+@media (hover: hover) {
+  .swipe-row:hover .swipe-hover-del { opacity: 1; pointer-events: auto; }
+}
+.trash-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; flex-wrap: wrap; padding: 8px 0;
+  border-bottom: 0.5px solid var(--separator);
+}
+.trash-row:last-child { border-bottom: none; }
+.trash-actions { display: flex; gap: 8px; flex-shrink: 0; }
+.button.small { width: auto; min-height: 36px; padding: 6px 12px; font-size: var(--fs-footnote); }
+
 /* ---------- M2 slice 2: photo viewer + staged thumbnails ---------- */
 .photo-full {
   width: 100%; max-height: 45dvh; object-fit: contain;

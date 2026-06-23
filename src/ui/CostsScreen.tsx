@@ -5,6 +5,7 @@
 import { useEffect, useState } from 'react';
 import type { Ammunition, Firearm, Match, Part, Purchase, Session } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
+import { activeOnly } from '../lib/softDelete.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -45,7 +46,7 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
       getAll<Firearm>('firearms'), getAll<Ammunition>('ammunition'), getAll<Part>('parts')
     ]).then(([s, p, m, f, a, pt]) => {
       if (!alive) return;
-      setSessions(s);
+      setSessions(activeOnly(s)); // App 7: trashed sessions never count toward costs
       // Date-safe sort: a purchase with a missing date must never crash the
       // load (a rejected promise here would hang the whole screen forever).
       setPurchases(p.sort((x, y) => (y.date || '').localeCompare(x.date || '')));

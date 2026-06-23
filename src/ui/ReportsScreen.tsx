@@ -7,6 +7,7 @@ import type {
 } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
 import { getAll } from '../lib/db.ts';
+import { activeOnly, activeMalfunctions, trashedIdSet } from '../lib/softDelete.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { roundsForFirearm, dryRepsForFirearm, totalRounds } from '../lib/stats.ts';
 import { costTotals, gunSpend, roundsFired, matchFee } from '../lib/costing.ts';
@@ -47,7 +48,11 @@ export function ReportsScreen({ refreshKey, onBack }: { refreshKey: number; onBa
           getAll<Media>('media'), getAll<Part>('parts')
         ]);
       if (!alive) return;
-      setData({ firearms, sessions, matches, purchases, ammo, classifiers, malfunctions, maintenance, references, drills, goals, media, parts });
+      // App 7: every report works off live data only — trashed sessions and the
+      // malfunctions filed against them are excluded before anything is built.
+      const liveSessions = activeOnly(sessions);
+      const liveMalfs = activeMalfunctions(malfunctions, trashedIdSet(sessions));
+      setData({ firearms, sessions: liveSessions, matches, purchases, ammo, classifiers, malfunctions: liveMalfs, maintenance, references, drills, goals, media, parts });
     })();
     return () => { alive = false; };
   }, [refreshKey]);

@@ -1,6 +1,7 @@
 // Tab screens. Home and Log are live against the database; Compete and
 // Progress arrive in M5 and M7 and say so in plain language.
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import type { ReactNode } from 'react';
 import type { Ammunition, AppSettings, Classifier, DrillDef, Firearm, GunCategory, MaintenanceEntry, Match, Purchase, Reference, Session } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
 import { getAll, getOne, getSettings, putOne } from '../lib/db.ts';
@@ -23,6 +24,9 @@ import type { CalItem } from './Calendar.tsx';
 import { LogFilterBar } from './FilterBar.tsx';
 import { emptyLogFilter, matchMatchesFilter, sessionKind, sessionMatchesFilter } from '../lib/searchFilter.ts';
 import type { LogFilter } from '../lib/searchFilter.ts';
+import { activeOnly, trashedOnly, daysLeft } from '../lib/softDelete.ts';
+import { softDeleteSession, restoreSession, purgeSession, purgeExpiredSessions } from './sessionDelete.ts';
+import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import type { View } from './nav.ts';
 import { dashboardStats, roundsByMonth, daysSinceLastSession, selfRatingDipping, alertDismissKey, isAlertDismissed, personalRecords, formatDrillScore, allClassifications, changesSinceBackup, BACKUP_REMINDER_THRESHOLD, BACKUP_TRACKED_STORES } from '../lib/dashboard.ts';
 import type { MonthBucket, RoundsFilter } from '../lib/dashboard.ts';
@@ -30,6 +34,7 @@ import type { MonthBucket, RoundsFilter } from '../lib/dashboard.ts';
 function useData(refreshKey: number) {
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [trashed, setTrashed] = useState<Session[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceEntry[]>([]);
   const [references, setReferences] = useState<Reference[]>([]);
@@ -38,9 +43,16 @@ function useData(refreshKey: number) {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [drills, setDrills] = useState<DrillDef[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // A local counter so an in-screen change (e.g. a swipe-delete) can re-read the
+  // database without the parent having to hand down a fresh refreshKey.
+  const [nonce, setNonce] = useState(0);
+  const reload = useCallback(() => setNonce((n) => n + 1), []);
   useEffect(() => {
     let alive = true;
     void (async () => {
+      // Sweep out anything past its 30-day window first, so the lists below are
+      // already clean. Fails safe (returns 0) — it can never block the load.
+      await purgeExpiredSessions();
       const [f, s, m, mt, r, am, cl, pu, dr] = await Promise.all([
         getAll<Firearm>('firearms'), getAll<Session>('sessions'),
         getAll<Match>('matches'), getAll<MaintenanceEntry>('maintenance'),
@@ -50,7 +62,10 @@ function useData(refreshKey: number) {
       ]);
       if (!alive) return;
       setFirearms(f);
-      setSessions(s.sort((a, b) => b.date.localeCompare(a.date)));
+      // Trashed sessions are kept out of the live list and every total; they
+      // surface only in the Log's "Recently Deleted" section.
+      setSessions(activeOnly(s).sort((a, b) => b.date.localeCompare(a.date)));
+      setTrashed(trashedOnly(s));
       setMatches(m);
       setMaintenance(mt);
       setReferences(r);
@@ -61,23 +76,85 @@ function useData(refreshKey: number) {
       setLoaded(true);
     })();
     return () => { alive = false; };
-  }, [refreshKey]);
-  return { firearms, sessions, matches, maintenance, references, ammo, classifiers, purchases, drills, loaded };
+  }, [refreshKey, nonce]);
+  return { firearms, sessions, trashed, matches, maintenance, references, ammo, classifiers, purchases, drills, loaded, reload };
 }
 
-function SessionRow({ s, firearms, onTap }: { s: Session; firearms: Firearm[]; onTap: () => void }) {
+/**
+ * A list row you can swipe left (on a phone) to reveal a red Delete button —
+ * the iOS Mail/Reminders pattern. We reveal a button you then tap, rather than
+ * deleting the instant you swipe, so a stray swipe can never delete by accident
+ * (the zero-data-loss bar). On a desktop (a device with a real hover) the same
+ * Delete button fades in when you hover the row. Tapping anywhere on an open row
+ * just closes it. The gesture only engages on a clearly horizontal drag, so it
+ * never fights the page's vertical scroll.
+ */
+function SwipeRow({ onDelete, deleteLabel = 'Delete', children }: {
+  onDelete?: () => void; deleteLabel?: string; children: ReactNode;
+}) {
+  const REVEAL = 88;
+  const [open, setOpen] = useState(false);
+  const [drag, setDrag] = useState(0);
+  const sx = useRef<number | null>(null);
+  const sy = useRef<number | null>(null);
+  const axis = useRef<'h' | 'v' | null>(null);
+
+  // No delete handler (e.g. Home's glance list) → render a plain, static row.
+  if (!onDelete) return <>{children}</>;
+
+  const tx = Math.max(-REVEAL, Math.min(0, (open ? -REVEAL : 0) + drag));
+
+  return (
+    <div className="swipe-row">
+      <button className="swipe-delete" tabIndex={open ? 0 : -1} aria-hidden={!open}
+        onClick={(e) => { e.stopPropagation(); setOpen(false); setDrag(0); onDelete(); }}>
+        {deleteLabel}
+      </button>
+      {/* Desktop-only: fades in on hover (touch devices swipe instead). */}
+      <button className="swipe-hover-del" aria-label={deleteLabel}
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}>{deleteLabel}</button>
+      <div className="swipe-front"
+        style={{ transform: `translateX(${tx}px)`, transition: drag !== 0 ? 'none' : 'transform 0.2s ease' }}
+        onClickCapture={(e) => { if (open) { e.stopPropagation(); e.preventDefault(); setOpen(false); setDrag(0); } }}
+        onTouchStart={(e) => {
+          sx.current = e.touches[0].clientX; sy.current = e.touches[0].clientY; axis.current = null;
+        }}
+        onTouchMove={(e) => {
+          if (sx.current == null || sy.current == null) return;
+          const dX = e.touches[0].clientX - sx.current;
+          const dY = e.touches[0].clientY - sy.current;
+          if (axis.current == null && (Math.abs(dX) > 8 || Math.abs(dY) > 8)) {
+            axis.current = Math.abs(dX) > Math.abs(dY) ? 'h' : 'v';
+          }
+          if (axis.current === 'h') { e.preventDefault(); setDrag(dX); }
+        }}
+        onTouchEnd={() => {
+          if (axis.current === 'h') setOpen((open ? -REVEAL : 0) + drag < -REVEAL / 2);
+          sx.current = null; sy.current = null; axis.current = null; setDrag(0);
+        }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function SessionRow({ s, firearms, onTap, onDelete }: {
+  s: Session; firearms: Firearm[]; onTap: () => void; onDelete?: () => void;
+}) {
   const names = s.guns
     .map((g) => firearms.find((f) => f.id === g.firearmId)?.name ?? '—')
     .join(', ');
   return (
-    <button className="row-tap" onClick={onTap}>
-      <span className="label">
-        {formatDayKey(s.date)}
-        {s.planned && <span className="badge info" style={{ marginLeft: 6 }}>Planned</span>}
-        <div className="row-sub">{names}{s.location ? ` · ${s.location}` : ''}</div>
-      </span>
-      <span className="value">{sessionRounds(s).toLocaleString()} {s.type === 'dry_fire' ? 'reps' : 'rds'}</span>
-    </button>
+    <SwipeRow onDelete={onDelete}>
+      <button className="row-tap" onClick={onTap}>
+        <span className="label">
+          {formatDayKey(s.date)}
+          {s.planned && <span className="badge info" style={{ marginLeft: 6 }}>Planned</span>}
+          <div className="row-sub">{names}{s.location ? ` · ${s.location}` : ''}</div>
+        </span>
+        <span className="value">{sessionRounds(s).toLocaleString()} {s.type === 'dry_fire' ? 'reps' : 'rds'}</span>
+      </button>
+    </SwipeRow>
   );
 }
 
@@ -521,9 +598,21 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
 }
 
 export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: View) => void }) {
-  const { firearms, sessions, matches, loaded } = useData(refreshKey);
+  const { firearms, sessions, trashed, matches, ammo, loaded, reload } = useData(refreshKey);
   const [mode, setMode] = useState<'list' | 'calendar'>('list');
   const [filter, setFilter] = useState<LogFilter>(emptyLogFilter());
+  const [explain, setExplain] = useState<Session | null>(null); // logged-session swipe
+  const [forget, setForget] = useState<Session | null>(null);    // delete-forever confirm
+
+  // Swiping a row: a planned session deletes straight to Recently Deleted (it's
+  // recoverable, and the swipe-then-tap is already deliberate). A LOGGED session
+  // can't be quick-deleted — we explain why and point to the edit screen.
+  function onRowDelete(s: Session) {
+    if (s.planned) void softDeleteSession(s, ammo).then(reload);
+    else setExplain(s);
+  }
+  function onRestore(s: Session) { void restoreSession(s, ammo).then(reload); }
+
   if (!loaded) return <div className="screen" />;
 
   // B6: one filter rules both the list and the calendar.
@@ -549,7 +638,7 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
 
   return (
     <div className="screen">
-      <h1 className="large-title">Log <InfoTip title="Log">Every session, plus a calendar — tap a day to open it, or start a new session.</InfoTip></h1>
+      <h1 className="large-title">Log <InfoTip title="Log">Every session, plus a calendar — tap a day to open it, or start a new session. Swipe a row left to delete it (hover it on a computer); deletions wait 30 days in Recently Deleted so you can restore them.</InfoTip></h1>
       <p className="report-note" style={{ marginTop: -8, marginBottom: 12 }}>
         Your training record: live practice, dry fire, classes, and planned range
         trips — with rounds, drills, ammo used, malfunctions, photos, and how it felt.
@@ -583,10 +672,83 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
           <h2>{shownSessions.length === sessions.length ? 'All Sessions' : 'Matching Sessions'}</h2>
           {shownSessions.map((s) => (
             <SessionRow key={s.id} s={s} firearms={firearms}
-              onTap={() => open({ kind: 'session-form', id: s.id })} />
+              onTap={() => open({ kind: 'session-form', id: s.id })}
+              onDelete={() => onRowDelete(s)} />
           ))}
         </div>
       )}
+
+      <RecentlyDeleted trashed={trashed} firearms={firearms}
+        onRestore={onRestore} onForget={setForget} />
+
+      {/* Swiping a logged session explains why it can't be quick-deleted. */}
+      {explain && (
+        <Sheet title="This one's part of your record" onClose={() => setExplain(null)}>
+          <p className="report-note" style={{ marginBottom: 14 }}>
+            Logged sessions feed your round counts, costs, and personal records, so
+            they can't be swiped away by accident. To remove this one, open it and tap
+            <strong> Delete Session</strong> at the bottom. It'll sit in Recently Deleted
+            for 30 days, so you can always bring it back.
+          </p>
+          <button className="button" onClick={() => { const s = explain; setExplain(null); open({ kind: 'session-form', id: s.id }); }}>
+            Open This Session
+          </button>
+          <div style={{ height: 8 }} />
+          <button className="button secondary" onClick={() => setExplain(null)}>Not now</button>
+        </Sheet>
+      )}
+
+      {/* Delete Forever from Recently Deleted — the one permanent action. */}
+      {forget && (
+        <ConfirmSheet
+          title="Delete this session for good?"
+          message="This permanently removes the session, its photos, and its malfunctions. It can't be undone."
+          confirmLabel="Delete Forever"
+          onConfirm={() => { const s = forget; setForget(null); void purgeSession(s.id).then(reload); }}
+          onClose={() => setForget(null)} />
+      )}
+    </div>
+  );
+}
+
+/**
+ * "Recently Deleted" — every trashed session, each restorable or deletable on
+ * its own (like Apple Photos), with the days it has left before the 30-day
+ * purge. Collapsed by default so it never gets in the way of the live list.
+ */
+function RecentlyDeleted({ trashed, firearms, onRestore, onForget }: {
+  trashed: Session[]; firearms: Firearm[];
+  onRestore: (s: Session) => void; onForget: (s: Session) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  if (trashed.length === 0) return null;
+  const now = Date.now();
+  return (
+    <div className="card">
+      <button className="row-tap" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <span className="label">
+          Recently Deleted
+          <div className="row-sub">{trashed.length} session{trashed.length === 1 ? '' : 's'} · kept 30 days</div>
+        </span>
+        <span className="value">{open ? '▾' : '▸'}</span>
+      </button>
+      {open && trashed.map((s) => {
+        const names = s.guns.map((g) => firearms.find((f) => f.id === g.firearmId)?.name ?? '—').join(', ');
+        const left = daysLeft(s.deletedAt as number, now);
+        return (
+          <div className="trash-row" key={s.id}>
+            <div className="label">
+              {formatDayKey(s.date)}
+              {s.planned && <span className="badge info" style={{ marginLeft: 6 }}>Planned</span>}
+              <div className="row-sub">{names || 'No gun'} · {left} day{left === 1 ? '' : 's'} left</div>
+            </div>
+            <div className="trash-actions">
+              <button className="button secondary small" onClick={() => onRestore(s)}>Restore</button>
+              <button className="button danger small" onClick={() => onForget(s)}>Delete Forever</button>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

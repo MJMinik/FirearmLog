@@ -38,7 +38,7 @@ const QUICK_TOUR: TourStep[] = [
   {
     title: 'Log',
     view: { kind: 'session-form' },
-    body: 'Every range trip and dry-fire session, plus a calendar — tap a day to open it. Logging a session: pick the gun(s), add drills, rounds, any malfunctions, photos or video, and notes. Tap any photo to caption it or draw labeled circles on it. You can edit anything later, forever.',
+    body: 'Every range trip and dry-fire session, plus a calendar — tap a day to open it. Logging a session: pick the gun(s), add drills, rounds, any malfunctions, photos or video, and notes. Tap any photo to caption it or draw labeled circles on it. You can edit anything later, forever — and to remove a session, swipe its row left in the list (it waits 30 days in Recently Deleted in case you change your mind).',
   },
   {
     title: 'Compete',
@@ -85,7 +85,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Logging a session',
       view: { kind: 'session-form' },
-      body: 'Start a session from Home or the Log tab: set the date and place, pick the gun or guns and the rounds for each, and choose live-fire or dry-fire. Add drills (the picker only shows ones that fit the gun and dry/live), record any malfunctions, attach photos or video, and add notes. A range fee you enter here is stored on the session itself and is the single place that fee counts toward Costs — it\'s never entered or counted twice. Sessions stay editable forever.',
+      body: 'Start a session from Home or the Log tab: set the date and place, pick the gun or guns and the rounds for each, and choose live-fire or dry-fire. Add drills (the picker only shows ones that fit the gun and dry/live), record any malfunctions, attach photos or video, and add notes. A range fee you enter here is stored on the session itself and is the single place that fee counts toward Costs — it\'s never entered or counted twice. Sessions stay editable forever. To remove one, swipe its row left in the Log list (on a computer, hover the row and tap Delete) — or open it and tap Delete Session. A planned session you swipe goes straight to Recently Deleted; a logged one you delete from its own screen does too, and either way it\'s restorable for 30 days before it\'s gone for good.',
     },
     {
       title: 'Photos, captions & markup',

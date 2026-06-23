@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Firearm, MaintenanceEntry, Match, Media, Optic, Reference, Session } from '../lib/types.ts';
 import { getAll, getOne, putOne } from '../lib/db.ts';
+import { activeOnly } from '../lib/softDelete.ts';
 import { newId } from '../lib/id.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -51,12 +52,16 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
         getAll<Optic>('optics')
       ]);
       if (!alive || !g) return;
+      // App 7: stats and maintenance ignore trashed sessions, but the "has
+      // history" gate below counts them too — a restorable session still
+      // references this gun, so it must not be hard-deletable yet.
+      const live = activeOnly(sessions);
       setGun(g);
       setPhotos(media.filter((m) => m.ownerType === 'firearm' && m.ownerId === id));
       setStats({
-        rounds: roundsForFirearm(id, firearms, sessions, matches),
-        sessions: sessions.filter((s) => !s.planned && s.guns.some((x) => x.firearmId === id)).length,
-        dryReps: dryRepsForFirearm(id, sessions)
+        rounds: roundsForFirearm(id, firearms, live, matches),
+        sessions: live.filter((s) => !s.planned && s.guns.some((x) => x.firearmId === id)).length,
+        dryReps: dryRepsForFirearm(id, live)
       });
       // Whether this gun is named on any session or match — gates permanent delete.
       setHasHistory(
@@ -64,7 +69,7 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
         matches.some((m) => m.firearmId === id)
       );
       setCustomRefs(refs);
-      setMaintItems(maintenanceStatus(g, buildRefLookup(refs)(g.referenceId), sessions, maintenance, firearms, new Date()));
+      setMaintItems(maintenanceStatus(g, buildRefLookup(refs)(g.referenceId), live, maintenance, firearms, new Date()));
       setHistory(maintenance.filter((m) => m.firearmId === id).sort((a, b) => b.date.localeCompare(a.date)));
       setOptics(allOptics.filter((o) => o.firearmId === id));
     })();

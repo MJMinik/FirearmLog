@@ -104,6 +104,14 @@ export interface Session extends BaseRecord, Imported {
   planned: boolean;
   instructor?: string | null; // for Class sessions
   checklist: SessionChecklist | null;
+  /**
+   * Soft-delete tombstone (App 7). When set to a timestamp, this session is in
+   * the Trash ("Recently Deleted"): hidden from every list, chart, cost total,
+   * round count, and report, but kept so it can be restored. Absent/null = live.
+   * A purge permanently removes it after TRASH_WINDOW_DAYS. Optional + additive,
+   * so existing data and the sync file need no migration.
+   */
+  deletedAt?: number | null;
 }
 
 export interface DrillDef extends BaseRecord, Imported {
