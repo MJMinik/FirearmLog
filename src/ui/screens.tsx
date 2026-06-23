@@ -89,8 +89,8 @@ function useData(refreshKey: number) {
  * just closes it. The gesture only engages on a clearly horizontal drag, so it
  * never fights the page's vertical scroll.
  */
-function SwipeRow({ onDelete, deleteLabel = 'Delete', children }: {
-  onDelete?: () => void; deleteLabel?: string; children: ReactNode;
+function SwipeRow({ onDelete, deleteLabel = 'Delete', desktopButton = false, children }: {
+  onDelete?: () => void; deleteLabel?: string; desktopButton?: boolean; children: ReactNode;
 }) {
   const REVEAL = 104; // wider than the 76px button so the row's value clears it
   const [open, setOpen] = useState(false);
@@ -105,14 +105,23 @@ function SwipeRow({ onDelete, deleteLabel = 'Delete', children }: {
   const tx = Math.max(-REVEAL, Math.min(0, (open ? -REVEAL : 0) + drag));
 
   return (
-    <div className="swipe-row">
+    <div className={`swipe-row${desktopButton ? ' has-desk-del' : ''}`}>
       <button className="swipe-delete" tabIndex={open ? 0 : -1} aria-hidden={!open}
         onClick={(e) => { e.stopPropagation(); setOpen(false); setDrag(0); onDelete(); }}>
         {deleteLabel}
       </button>
-      {/* Desktop-only: fades in on hover (touch devices swipe instead). */}
-      <button className="swipe-hover-del" aria-label={deleteLabel}
-        onClick={(e) => { e.stopPropagation(); onDelete(); }}>{deleteLabel}</button>
+      {/* Desktop-only delete control — a small trash icon (dim at rest, red on
+          hover). Shown ONLY where a click cleanly deletes: planned sessions. On
+          touch, everything is handled by the swipe instead. */}
+      {desktopButton && (
+        <button className="swipe-hover-del" aria-label={deleteLabel}
+          onClick={(e) => { e.stopPropagation(); onDelete(); }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+            strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+            <path d="M4 7h16 M10 11v6 M14 11v6 M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13 M9 7V4h6v3" />
+          </svg>
+        </button>
+      )}
       <div className="swipe-front"
         style={{ transform: `translateX(${tx}px)`, transition: drag !== 0 ? 'none' : 'transform 0.2s ease' }}
         onClickCapture={(e) => { if (open) { e.stopPropagation(); e.preventDefault(); setOpen(false); setDrag(0); } }}
@@ -145,7 +154,7 @@ function SessionRow({ s, firearms, onTap, onDelete }: {
     .map((g) => firearms.find((f) => f.id === g.firearmId)?.name ?? '—')
     .join(', ');
   return (
-    <SwipeRow onDelete={onDelete}>
+    <SwipeRow onDelete={onDelete} desktopButton={s.planned}>
       <button className="row-tap" onClick={onTap}>
         <span className="label">
           {formatDayKey(s.date)}
@@ -684,11 +693,18 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
       {/* Swiping a logged session explains why it can't be quick-deleted. */}
       {explain && (
         <Sheet title="This one's part of your record" onClose={() => setExplain(null)}>
-          <p className="report-note" style={{ marginBottom: 14 }}>
+          <p className="report-note" style={{ marginBottom: 10 }}>
             Logged sessions feed your round counts, costs, and personal records, so
-            they can't be swiped away by accident. To remove this one, open it and tap
-            <strong> Delete Session</strong> at the bottom. It'll sit in Recently Deleted
-            for 30 days, so you can always bring it back.
+            they can't be swiped away by accident. Here's how to remove this one:
+          </p>
+          <ol className="report-note" style={{ margin: '0 0 12px', paddingLeft: 22, lineHeight: 1.7 }}>
+            <li>Tap <strong>Open This Session</strong> below.</li>
+            <li>Scroll to the bottom of the session and tap <strong>Delete Session</strong>.</li>
+            <li>Tap <strong>Delete Session</strong> once more to confirm.</li>
+          </ol>
+          <p className="report-note" style={{ marginBottom: 14 }}>
+            It then moves to <strong>Recently Deleted</strong>, where you can restore it
+            for 30 days before it's gone for good.
           </p>
           <button className="button" onClick={() => { const s = explain; setExplain(null); open({ kind: 'session-form', id: s.id }); }}>
             Open This Session
