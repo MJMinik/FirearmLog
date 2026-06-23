@@ -33,6 +33,33 @@ export async function gotoSection(page: Page, name: string): Promise<void> {
 }
 
 /**
+ * Simulate a left swipe on a list row (a SwipeRow) to reveal its Delete action.
+ * Dispatches real touch events in-page, so it works headlessly without relying
+ * on Playwright's pointer timing. `row` is the `.swipe-row` element.
+ */
+export async function swipeRowLeft(row: Locator): Promise<void> {
+  await row.evaluate(async (el) => {
+    const front = (el.querySelector('.swipe-front') as HTMLElement) ?? (el as HTMLElement);
+    const r = front.getBoundingClientRect();
+    const y = r.top + r.height / 2;
+    const x0 = r.left + r.width - 16;
+    const mk = (x: number) => new Touch({ identifier: 1, target: front, clientX: x, clientY: y });
+    const fire = (type: string, x: number, end = false) =>
+      front.dispatchEvent(new TouchEvent(type, {
+        bubbles: true, cancelable: true,
+        touches: end ? [] : [mk(x)], changedTouches: [mk(x)],
+      }));
+    // A tick between events lets React flush its state (drag/axis) and re-render,
+    // so by touchend the handler sees the full -130px drag and opens the row.
+    const tick = () => new Promise((res) => setTimeout(res, 20));
+    fire('touchstart', x0); await tick();
+    fire('touchmove', x0 - 24); await tick();
+    fire('touchmove', x0 - 130); await tick();
+    fire('touchend', x0 - 130, true); await tick();
+  });
+}
+
+/**
  * Seed a fresh install with the bundled demo dataset via the in-app one-tap
  * loader — exactly what a tester does. Leaves the app on Home with data.
  */
