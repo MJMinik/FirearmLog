@@ -357,17 +357,22 @@ select.category-pick {
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.18);
 }
 .swipe-front { position: relative; z-index: 1; background: var(--bg-card); touch-action: pan-y; }
-/* Desktop hover affordance; hidden on touch devices (which use the swipe). */
+/* Desktop delete control: a small trash button at the right of each Log row.
+   Always visible but quiet (dim at rest, red when you point at it) so it's
+   discoverable without a hover-hunt, yet stays out of the way. Hidden on touch
+   devices, which use the swipe instead. */
 .swipe-hover-del {
-  position: absolute; top: 50%; right: 10px; transform: translateY(-50%);
-  z-index: 2; opacity: 0; pointer-events: none;
-  border: none; border-radius: 10px; padding: 7px 16px; min-height: 36px;
-  background: var(--danger); color: #fff; font-size: var(--fs-footnote);
-  font-weight: 600; cursor: pointer; transition: opacity 0.15s ease;
-  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.2);
+  position: absolute; top: 50%; right: 8px; transform: translateY(-50%);
+  z-index: 2; display: none; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border: none; border-radius: 8px;
+  background: transparent; color: var(--text-dim); cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
 }
 @media (hover: hover) {
-  .swipe-row:hover .swipe-hover-del { opacity: 1; pointer-events: auto; }
+  /* Only planned rows carry the desktop icon, so only they reserve the gutter. */
+  .swipe-row.has-desk-del .swipe-hover-del { display: flex; }
+  .swipe-row.has-desk-del .swipe-front { padding-right: 44px; }
+  .swipe-hover-del:hover { color: #fff; background: var(--danger); }
 }
 .trash-row {
   display: flex; align-items: center; justify-content: space-between;

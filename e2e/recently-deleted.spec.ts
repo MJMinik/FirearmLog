@@ -56,7 +56,8 @@ test.describe('Recently Deleted (App 7)', () => {
     await expect(page.getByRole('button', { name: /Recently Deleted/ })).toHaveCount(0);
   });
 
-  test('a logged session is protected — a swipe explains instead of deleting', async ({ page }) => {
+  test('on touch, swiping a logged session explains instead of deleting', async ({ page }) => {
+    test.skip(isDesktop(page), 'logged sessions have no inline delete on desktop — covered by the gating test');
     await seedDemo(page);
     await gotoTab(page, 'Log');
     await makeSession(page, 'log', '2468'); // a real, logged session
@@ -65,12 +66,25 @@ test.describe('Recently Deleted (App 7)', () => {
     const row = main.locator('.swipe-row', { hasText: '2,468' });
     await expect(row).toHaveCount(1);
 
-    await deleteRow(page, row);
+    await swipeRowLeft(row);
+    await row.locator('.swipe-delete').click();
 
     // No deletion: the explanation appears and the session stays in the list.
     await expect(page.getByText("This one's part of your record")).toBeVisible();
     await page.getByRole('button', { name: 'Not now' }).click();
     await expect(main.locator('.swipe-row', { hasText: '2,468' })).toHaveCount(1);
     await expect(page.getByRole('button', { name: /Recently Deleted/ })).toHaveCount(0);
+  });
+
+  test('on desktop, the inline Delete icon shows only on planned sessions', async ({ page }) => {
+    test.skip(!isDesktop(page), 'desktop-only affordance');
+    await seedDemo(page);
+    await gotoTab(page, 'Log');
+    await makeSession(page, 'plan', '1357'); // planned -> should have the icon
+    await makeSession(page, 'log', '2468');  // logged  -> should NOT
+
+    const main = page.getByRole('main');
+    await expect(main.locator('.swipe-row', { hasText: '1,357' }).locator('.swipe-hover-del')).toHaveCount(1);
+    await expect(main.locator('.swipe-row', { hasText: '2,468' }).locator('.swipe-hover-del')).toHaveCount(0);
   });
 });
