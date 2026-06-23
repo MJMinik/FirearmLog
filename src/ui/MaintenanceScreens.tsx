@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import type { Firearm, MaintenanceEntry, Reference, Session } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
+import { activeOnly } from '../lib/softDelete.ts';
 import { todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -29,7 +30,7 @@ export function MaintenanceOverview({ refreshKey, onBack, openGun, logFor }: {
     ]).then(([f, s, m, r]) => {
       if (!alive) return;
       setFirearms(f.sort((a, b) => a.name.localeCompare(b.name)));
-      setSessions(s);
+      setSessions(activeOnly(s)); // App 7: trashed sessions don't count toward maintenance
       setMaintenance(m);
       setReferences(r);
       setLoaded(true);
