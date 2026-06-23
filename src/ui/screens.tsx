@@ -92,7 +92,7 @@ function useData(refreshKey: number) {
 function SwipeRow({ onDelete, deleteLabel = 'Delete', children }: {
   onDelete?: () => void; deleteLabel?: string; children: ReactNode;
 }) {
-  const REVEAL = 88;
+  const REVEAL = 104; // wider than the 76px button so the row's value clears it
   const [open, setOpen] = useState(false);
   const [drag, setDrag] = useState(0);
   const sx = useRef<number | null>(null);

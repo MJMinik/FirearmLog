@@ -345,19 +345,26 @@ select.category-pick {
 /* A row you swipe left (phone) to reveal a red Delete, or hover (desktop). */
 .swipe-row { position: relative; overflow: hidden; }
 .swipe-row:last-child .row-tap { border-bottom: none; }
+/* A rounded, inset "floating" Delete button — sits a little off the edges so it
+   reads as a button, not a hard slab. The reveal (REVEAL in SwipeRow) is wider
+   than the button so the row's value isn't jammed against it. */
 .swipe-delete {
-  position: absolute; top: 0; right: 0; height: 100%; width: 88px;
-  border: none; background: var(--danger); color: #fff; font-weight: 600;
+  position: absolute; top: 6px; right: 8px; height: calc(100% - 12px); width: 76px;
+  display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 12px;
+  background: var(--danger); color: #fff; font-weight: 600;
   font-size: var(--fs-body); cursor: pointer;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.18);
 }
 .swipe-front { position: relative; z-index: 1; background: var(--bg-card); touch-action: pan-y; }
 /* Desktop hover affordance; hidden on touch devices (which use the swipe). */
 .swipe-hover-del {
-  position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+  position: absolute; top: 50%; right: 10px; transform: translateY(-50%);
   z-index: 2; opacity: 0; pointer-events: none;
-  border: none; border-radius: 8px; padding: 6px 12px; min-height: 36px;
+  border: none; border-radius: 10px; padding: 7px 16px; min-height: 36px;
   background: var(--danger); color: #fff; font-size: var(--fs-footnote);
   font-weight: 600; cursor: pointer; transition: opacity 0.15s ease;
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.2);
 }
 @media (hover: hover) {
   .swipe-row:hover .swipe-hover-del { opacity: 1; pointer-events: auto; }
