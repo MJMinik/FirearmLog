@@ -587,6 +587,11 @@ select { max-width: 100%; min-width: 0; }
 /* Goals (Progress tab) */
 .goal-row { display: flex; align-items: flex-start; gap: 8px; min-height: var(--touch-min); padding: 8px 0; border-bottom: 0.5px solid var(--separator); }
 .goal-row:last-child { border-bottom: none; }
+/* Each goal row is wrapped in its own .swipe-row for swipe-to-delete, which makes
+   every .goal-row a :last-child — so restore the between-row separators here and
+   drop only the genuine last one. */
+.swipe-row .goal-row { border-bottom: 0.5px solid var(--separator); }
+.swipe-row:last-child .goal-row { border-bottom: none; }
 .goal-row .checklist-take { align-items: flex-start; }
 .goal-add { margin-bottom: 4px; }
 

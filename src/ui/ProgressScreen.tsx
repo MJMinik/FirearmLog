@@ -23,6 +23,7 @@ import type { View } from './nav.ts';
 import { RoundsByMonthChart } from './screens.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
+import { SwipeRow } from './SwipeRow.tsx';
 import { InfoTip } from './InfoTip.tsx';
 
 export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open: (v: View) => void }) {
@@ -79,6 +80,15 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
     setBump((b) => b + 1);
   }
 
+  // Swipe-left delete on a goal row. Goals carry no references and are trivial to
+  // re-create, and the SwipeRow's reveal-then-tap is itself the guard, so this
+  // deletes immediately (no extra confirm) — matching the session swipe and iOS.
+  // (The Edit Goal sheet keeps its own confirm for the deliberate delete path.)
+  async function deleteGoal(g: Goal) {
+    await deleteOne('goals', g.id);
+    setBump((b) => b + 1);
+  }
+
   const stats = goalStats(goals);
   const cats = goalCategories(goals);
 
@@ -120,21 +130,23 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
           <p className="report-note">No goals yet. Set a target — "Bill Drill under 2.0s" — and check it off when you get there.</p>
         )}
         {goals.map((g) => (
-          <div className="goal-row" key={g.id}>
-            <label className="checklist-take" style={{ flex: 1 }}>
-              <input type="checkbox" checked={g.achieved} onChange={() => void toggleAchieved(g)} />
-              <span style={g.achieved ? { textDecoration: 'line-through', color: 'var(--text-dim)' } : undefined}>
-                {g.text}
-                {(g.category || g.target) && (
-                  <div className="row-sub">{[g.category, g.target].filter(Boolean).join(' · ')}</div>
-                )}
-                {g.achieved && g.dateAchieved && (
-                  <div className="row-sub">Achieved {formatDayKey(g.dateAchieved)}</div>
-                )}
-              </span>
-            </label>
-            <button className="icon-btn" aria-label={`Edit ${g.text}`} onClick={() => setEditing(g)}>✎</button>
-          </div>
+          <SwipeRow key={g.id} onDelete={() => void deleteGoal(g)} deleteLabel="Delete">
+            <div className="goal-row">
+              <label className="checklist-take" style={{ flex: 1 }}>
+                <input type="checkbox" checked={g.achieved} onChange={() => void toggleAchieved(g)} />
+                <span style={g.achieved ? { textDecoration: 'line-through', color: 'var(--text-dim)' } : undefined}>
+                  {g.text}
+                  {(g.category || g.target) && (
+                    <div className="row-sub">{[g.category, g.target].filter(Boolean).join(' · ')}</div>
+                  )}
+                  {g.achieved && g.dateAchieved && (
+                    <div className="row-sub">Achieved {formatDayKey(g.dateAchieved)}</div>
+                  )}
+                </span>
+              </label>
+              <button className="icon-btn" aria-label={`Edit ${g.text}`} onClick={() => setEditing(g)}>✎</button>
+            </div>
+          </SwipeRow>
         ))}
       </div>
 
