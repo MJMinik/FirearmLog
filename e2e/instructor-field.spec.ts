@@ -1,25 +1,19 @@
 import { test, expect } from '@playwright/test';
 import { seedDemo, gotoTab } from './helpers';
 
-// Instructor field on a Class session. With no saved instructors yet, there's no
-// empty dropdown — just a plain "Instructor" text field (you type a name). Once
-// one is saved, the dropdown appears with a "No instructor" option plus the saved
-// names. (The demo ships with no saved instructors, so a fresh Class session hits
-// the empty branch first.)
+// Instructor on a Class session is a single "creatable" field (same component as
+// "Where"): you type a name or tap a past one, and whatever's in the box is the
+// instructor — no separate "add" step. A name typed on one class shows up as a
+// suggestion on the next.
 
 test.describe('Class session instructor field', () => {
-  test('empty list shows a text field; after saving one, a dropdown with "No instructor" appears', async ({ page }) => {
+  test('a typed instructor is suggested on the next class session', async ({ page }) => {
     await seedDemo(page);
     await gotoTab(page, 'Log');
 
-    // New Class session — no saved instructors, so "Instructor" is a text field,
-    // and there is NO instructor dropdown.
+    // Log a class with a brand-new instructor typed into the single field.
     await page.getByRole('button', { name: '+ Log Session' }).click();
     await page.getByRole('radio', { name: 'Class' }).click();
-    await expect(page.getByRole('textbox', { name: 'Instructor' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Instructor' })).toHaveCount(0);
-
-    // Type an instructor, log the session.
     await page.getByRole('textbox', { name: 'Instructor' }).fill('Test Coach');
     const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
     await gunsCard.locator('button.gun-toggle').first().click();
@@ -27,13 +21,12 @@ test.describe('Class session instructor field', () => {
     await page.locator('.navbar-action').click();
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
 
-    // New Class session — the instructor is now saved, so the dropdown shows with
-    // a "No instructor" option and the name we just added.
+    // New class session: typing in Instructor suggests the name we just used.
     await page.getByRole('button', { name: '+ Log Session' }).click();
     await page.getByRole('radio', { name: 'Class' }).click();
-    const dropdown = page.getByRole('combobox', { name: 'Instructor' });
-    await expect(dropdown).toBeVisible();
-    await expect(dropdown.locator('option', { hasText: 'No instructor' })).toHaveCount(1);
-    await expect(dropdown.locator('option', { hasText: 'Test Coach' })).toHaveCount(1);
+    const instr = page.getByRole('textbox', { name: 'Instructor' });
+    await instr.click();
+    await instr.fill('Test');
+    await expect(page.getByRole('option', { name: 'Test Coach' })).toBeVisible();
   });
 });

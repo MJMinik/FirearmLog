@@ -86,7 +86,6 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const [planned, setPlanned] = useState(!editing && !!initialPlanned);
   const [instructors, setInstructors] = useState<string[]>([]);
   const [instructor, setInstructor] = useState('');
-  const [newInstructor, setNewInstructor] = useState('');
   const [rounds, setRounds] = useState<Record<string, string>>({});
   const [drills, setDrills] = useState<DrillRow[]>([]);
   const [malfs, setMalfs] = useState<MalfRow[]>([]);
@@ -134,8 +133,12 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       setPastLocations(recentValues(activeOnly(allSessions).map((s) => ({ date: s.date, value: s.location }))));
       setSavedMalfTypes([...new Set(allMalf.map((m) => m.type).filter(Boolean))]);
       setSavedClearMethods([...new Set(allMalf.map((m) => m.resolution).filter(Boolean))]);
+      // Instructor suggestions = past sessions' instructors (most-recent first,
+      // like the "Where" field) unioned with any names in the legacy instructors
+      // meta list, so nothing previously saved is lost.
       const instructorRow = await getOne<{ key: string; value: string[] }>('meta', 'instructors');
-      if (alive) setInstructors(instructorRow?.value ?? []);
+      const sessionInstructors = recentValues(activeOnly(allSessions).map((s) => ({ date: s.date, value: s.instructor ?? '' })));
+      if (alive) setInstructors([...new Set([...sessionInstructors, ...(instructorRow?.value ?? [])])]);
       const settings = await getSettings<AppSettings>();
       if (alive) setCustomItems(normalizeCustomItems(settings?.checklistCustomItems));
       if (id !== undefined) {
@@ -429,7 +432,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     try {
       const sid = original ? original.id : newId('se');
       const now = Date.now();
-      const finalInstructor = kind === 'class' ? (newInstructor.trim() || instructor.trim()) : '';
+      const finalInstructor = kind === 'class' ? instructor.trim() : '';
       const fields = {
         date, type: kind, guns, location: location.trim(), notes: notes.trim(),
         drills: drills.map(fromRow), selfRating, rangeFee: fee, ammoUsage,
@@ -442,9 +445,8 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           ...fields, distances: '', targetMediaIds: [], malfunctions: []
         }, sid, now));
       }
-      if (finalInstructor && !instructors.includes(finalInstructor)) {
-        await putOne('meta', { key: 'instructors', value: [...instructors, finalInstructor].sort() });
-      }
+      // (No separate instructor list to maintain — a class session's instructor
+      // is sourced back as a suggestion from the saved sessions themselves.)
 
       // Ammo comes off the cans — only the CHANGE, so edits never double-deduct.
       // Planned sessions never move stock: their usage baseline/target is empty,
@@ -539,25 +541,13 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         <SuggestField label="Where" value={location} onChange={setLocation}
           suggestions={pastLocations} placeholder="Shoot Straight: University" />
         {kind === 'class' && (
-          <>
-            {instructors.length > 0 && (
-              <label className="field">Instructor
-                <select value={instructor} onChange={(e) => { setInstructor(e.target.value); setNewInstructor(''); }}>
-                  <option value="">No instructor</option>
-                  {instructors.map((n) => <option key={n} value={n}>{n}</option>)}
-                </select>
-              </label>
-            )}
-            {/* When no instructors are saved yet, the dropdown above would only
-                hold "No instructor", so we hide it and show just this text field
-                labeled plainly as "Instructor" — typing a name is obviously the
-                way to add one. name="instructor-add" (NOT "...-name") so iOS
-                doesn't read it as a contact field and pop the AutoFill bar. */}
-            <label className="field">{instructors.length > 0 ? '…or add a new instructor' : 'Instructor'}
-              <input value={newInstructor} onChange={(e) => setNewInstructor(e.target.value)} placeholder="Ben Stoeger"
-                {...noAutofillProps} name="instructor-add" />
-            </label>
-          </>
+          // One "creatable" field (same as Where): type a name or tap a past
+          // instructor from the suggestions — whatever's in the box IS the
+          // instructor, so a new name takes effect immediately with no separate
+          // "add" step, and shows up as a suggestion next time. name="instructor"
+          // (no "name" token) keeps iOS's contact AutoFill bar away.
+          <SuggestField label="Instructor" value={instructor} onChange={setInstructor}
+            suggestions={instructors} placeholder="Ben Stoeger" name="instructor" />
         )}
         <div className="row">
           <button className={`gun-toggle ${planned ? 'on' : ''}`} aria-pressed={planned}
