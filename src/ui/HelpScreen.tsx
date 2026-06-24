@@ -52,7 +52,7 @@ const QUICK_TOUR: TourStep[] = [
   {
     title: 'Your gear and data',
     view: { kind: 'guns' },
-    body: 'Guns, optics, ammo, magazines, drills, costs, maintenance, parts, reference guides, and reports. Tour & Setup sits just below them. On a phone they\'re under the More tab; on a computer they\'re listed down the sidebar. The More tab is also where you import your old Pistol Tracker data.',
+    body: 'Guns, optics, ammo, magazines, drills, costs, maintenance, malfunctions, parts, reference guides, and reports. Tour & Setup sits just below them. On a phone they\'re under the More tab; on a computer they\'re listed down the sidebar. The More tab is also where you import your old Pistol Tracker data.',
   },
   {
     title: 'Your data stays yours',
@@ -107,9 +107,9 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
       body: 'Log classifier scores with their code, division, hit factor, and percent. You can attach photos and videos to a classifier too — handy if you film your run. The classification view tracks your current percent and what you need for the next class — your C-toward-B progress — using best-6-of-8 style math.',
     },
     {
-      title: 'Importing match results (PractiScore)',
+      title: 'Importing results (PractiScore & USPSA)',
       view: { kind: 'practiscore-import' },
-      body: 'On Compete, tap "Import…" and choose PractiScore, then paste or load a match\'s exported results (or try the built-in sample). The whole field comes in — search for and tap which competitor is you, preview your result, pick the gun you shot, and add an entry fee if you like. Save makes it a normal match you can edit or delete — nothing is written until you tap Save.',
+      body: 'On Compete, tap "Import…" — there are two importers. "Import from PractiScore" brings in a match: paste or load its exported results (or try the built-in sample), then search for and tap which competitor is you, preview your result, pick the gun you shot, and add an entry fee if you like. "Import USPSA Classifiers" brings your classifier scores in from USPSA the same way. Either way nothing is written until you tap Save, and what comes in is a normal match or classifier you can edit or delete.',
     },
     {
       title: 'Progress — goals',
@@ -150,7 +150,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Malfunctions',
       view: { kind: 'malfunctions' },
-      body: `Every malfunction you record while logging a session collects under ${at('Malfunctions')} — newest first. Search or filter by gun, type, ammo, or magazine to spot patterns, like a magazine or a batch of ammo that jams more than the rest, and tap any one to jump to the session it happened in. The Malfunctions report (under Reports) totals them up by gun, type, ammo, and magazine.`,
+      body: `Every malfunction you record while logging a session collects under ${at('Malfunctions')} — newest first. Search by any word, or filter by gun, type, ammo, magazine, or date range to spot patterns, like a magazine or a batch of ammo that jams more than the rest, and tap any one to jump to the session it happened in. The Malfunctions report (under Reports) totals them up by gun, type, ammo, and magazine.`,
     },
     {
       title: 'Reports',
