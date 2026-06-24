@@ -540,15 +540,22 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           suggestions={pastLocations} placeholder="Shoot Straight: University" />
         {kind === 'class' && (
           <>
-            <label className="field">Instructor
-              <select value={instructor} onChange={(e) => { setInstructor(e.target.value); setNewInstructor(''); }}>
-                <option value="">—</option>
-                {instructors.map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
-            </label>
-            <label className="field">…or add a new instructor
+            {instructors.length > 0 && (
+              <label className="field">Instructor
+                <select value={instructor} onChange={(e) => { setInstructor(e.target.value); setNewInstructor(''); }}>
+                  <option value="">No instructor</option>
+                  {instructors.map((n) => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+            )}
+            {/* When no instructors are saved yet, the dropdown above would only
+                hold "No instructor", so we hide it and show just this text field
+                labeled plainly as "Instructor" — typing a name is obviously the
+                way to add one. name="instructor-add" (NOT "...-name") so iOS
+                doesn't read it as a contact field and pop the AutoFill bar. */}
+            <label className="field">{instructors.length > 0 ? '…or add a new instructor' : 'Instructor'}
               <input value={newInstructor} onChange={(e) => setNewInstructor(e.target.value)} placeholder="Ben Stoeger"
-                {...noAutofillProps} name="instructor-name" />
+                {...noAutofillProps} name="instructor-add" />
             </label>
           </>
         )}
