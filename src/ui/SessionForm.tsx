@@ -530,7 +530,8 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               </select>
             </label>
             <label className="field">…or add a new instructor
-              <input value={newInstructor} onChange={(e) => setNewInstructor(e.target.value)} placeholder="Ben Stoeger" />
+              <input value={newInstructor} onChange={(e) => setNewInstructor(e.target.value)} placeholder="Ben Stoeger"
+                {...noAutofillProps} name="instructor-name" />
             </label>
           </>
         )}

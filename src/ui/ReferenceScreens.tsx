@@ -11,6 +11,7 @@ import type { ReferenceEntry } from '../lib/referenceData.ts';
 import { REFERENCES, getReference, isCustomRefId, toEntry } from '../lib/referenceData.ts';
 import type { Firearm } from '../lib/types.ts';
 import { ConfirmSheet } from './Sheet.tsx';
+import { noAutofillProps } from './SuggestField.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
 
@@ -262,8 +263,9 @@ export function ReferenceForm({ id, copyFrom, onSaved, onCancel }: {
       <FormProblem problem={problem} />
 
       <div className="card">
-        <label className="field">Guide name
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Wilson Combat, Grandpa's 1911…" />
+        <label className="field">What this Guide is called
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Wilson Combat, Grandpa's 1911…"
+            {...noAutofillProps} name="reference-title" />
         </label>
         <label className="field">Gun type
           <select value={category} onChange={(e) => setCategory(e.target.value as GunCategory)}>

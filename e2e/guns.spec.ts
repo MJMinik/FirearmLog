@@ -28,7 +28,7 @@ test.describe('Guns', () => {
     await expect(page.getByRole('heading', { name: 'New Gun' })).toBeVisible();
 
     const name = `E2E Test Pistol ${Date.now()}`;
-    await page.getByRole('textbox', { name: 'Name' }).fill(name);
+    await page.getByRole('textbox', { name: 'What this Gun is called' }).fill(name);
     await page.getByRole('textbox', { name: 'Caliber' }).fill('9mm');
     await page.getByRole('button', { name: 'Add Gun', exact: true }).click();
 

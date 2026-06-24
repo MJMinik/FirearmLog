@@ -178,7 +178,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
 
           <div className="card">
             <h2>Finish the details</h2>
-            <label className="field">What to call it
+            <label className="field">What this Match is called
               <input value={matchName} onChange={(e) => setMatchName(e.target.value)} placeholder="Spring Classic"
                 {...noAutofillProps} name="match-title" />
             </label>

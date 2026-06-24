@@ -11,7 +11,7 @@ test('a gun can be retired and brought back to active', async ({ page }) => {
   // Create a fresh gun to operate on.
   const name = `E2E Retire ${Date.now()}`;
   await page.getByRole('button', { name: '+ Add Gun' }).click();
-  await page.getByRole('textbox', { name: 'Name' }).fill(name);
+  await page.getByRole('textbox', { name: 'What this Gun is called' }).fill(name);
   await page.getByRole('button', { name: 'Add Gun', exact: true }).click();
   await expect(page.getByText(name)).toBeVisible();
 

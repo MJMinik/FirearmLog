@@ -9,6 +9,7 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { ConfirmSheet } from './Sheet.tsx';
+import { noAutofillProps } from './SuggestField.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 
 const FIRE_LABEL: Record<DrillDef['fire'], string> = {
@@ -139,8 +140,9 @@ export function DrillForm({ id, onSaved, onCancel }: {
       <FormProblem problem={problem} />
 
       <div className="card">
-        <label className="field">Name
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Bill Drill" />
+        <label className="field">What this Drill is called
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Bill Drill"
+            {...noAutofillProps} name="drill-title" />
         </label>
         <h2 style={{ marginTop: 4 }}>Fire Type</h2>
         <div className="seg" role="radiogroup" aria-label="Fire type">

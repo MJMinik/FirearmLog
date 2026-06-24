@@ -6,6 +6,7 @@ import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { suggestReferenceMatch, type ReferenceEntry } from '../lib/referenceData.ts';
 import { FormProblem } from './FormProblem.tsx';
+import { noAutofillProps } from './SuggestField.tsx';
 
 export function GunForm({ id, onSaved, onCancel }: {
   id?: string; onSaved: (gunId: string) => void; onCancel: () => void;
@@ -100,8 +101,9 @@ export function GunForm({ id, onSaved, onCancel }: {
       <FormProblem problem={problem} />
 
       <div className="card">
-        <label className="field">Name
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Atlas Erebus" />
+        <label className="field">What this Gun is called
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Atlas Erebus"
+            {...noAutofillProps} name="gun-title" />
         </label>
         <label className="field">Made by
           <input value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} placeholder="Atlas Gunworks" />
