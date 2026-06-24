@@ -12,6 +12,7 @@ import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { drillsForContext } from '../lib/drillFilter.ts';
 import { inventoryAfterUsageChange } from '../lib/costing.ts';
+import { MALF_TYPES, CLEAR_METHODS, mergeOptions } from '../lib/malfunctions.ts';
 import { recentValues } from '../lib/suggest.ts';
 import {
   buildChecklistPrintHtml, checklistItemsForCategory, checklistProgress, itemState, newChecklist,
@@ -37,21 +38,14 @@ const KINDS = [
   { value: 'class', label: 'Class' }
 ];
 
-const MALF_TYPES = [
-  'Failure to feed', 'Failure to fire', 'Failure to eject', 'Failure to extract',
-  'Double feed', 'Stovepipe', 'Light strike', 'Other'
-];
-
-// PT's clearing methods, carried over verbatim.
-const CLEAR_METHODS = [
-  'Tap-Rack-Bang', 'Tap-Rack-Reassess', 'Mortar (double feed)', 'Manual clear',
-  'Disassembly required', 'Mag swap', 'Resolved itself', 'Other'
-];
-
 interface DrillRow {
   name: string; distance: string; time: string; score: string; maxScore: string; notes: string;
 }
-interface MalfRow { firearmId: string; type: string; resolution: string; notes: string; }
+interface MalfRow {
+  firearmId: string; type: string; resolution: string; notes: string;
+  // App 2: transient (not saved) — true while typing a custom "Other" value.
+  otherType?: boolean; otherRes?: boolean;
+}
 interface AmmoRow { ammoId: string; rounds: string; }
 
 const toRow = (d: DrillResult): DrillRow => ({
@@ -94,6 +88,10 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const [drills, setDrills] = useState<DrillRow[]>([]);
   const [malfs, setMalfs] = useState<MalfRow[]>([]);
   const [oldMalfIds, setOldMalfIds] = useState<string[]>([]);
+  // App 2: custom malfunction types/methods the shooter has used before, so a
+  // typed-in "Other" value reappears in the dropdown next time.
+  const [savedMalfTypes, setSavedMalfTypes] = useState<string[]>([]);
+  const [savedClearMethods, setSavedClearMethods] = useState<string[]>([]);
   const [existingMedia, setExistingMedia] = useState<Media[]>([]);
   const [removedMedia, setRemovedMedia] = useState<string[]>([]);
   const [newFiles, setNewFiles] = useState<StagedFile[]>([]);
@@ -120,15 +118,17 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const [f, dl, am, allSessions] = await Promise.all([
+      const [f, dl, am, allSessions, allMalf] = await Promise.all([
         getAll<Firearm>('firearms'), getAll<DrillDef>('drills'), getAll<Ammunition>('ammunition'),
-        getAll<Session>('sessions')
+        getAll<Session>('sessions'), getAll<MalfunctionEntry>('malfunctions')
       ]);
       if (!alive) return;
       setFirearms(f.sort((a, b) => a.name.localeCompare(b.name)));
       setDrillLib(dl);
       setAmmoLib(am.sort((a, b) => ammoLabel(a).localeCompare(ammoLabel(b))));
       setPastLocations(recentValues(activeOnly(allSessions).map((s) => ({ date: s.date, value: s.location }))));
+      setSavedMalfTypes([...new Set(allMalf.map((m) => m.type).filter(Boolean))]);
+      setSavedClearMethods([...new Set(allMalf.map((m) => m.resolution).filter(Boolean))]);
       const instructorRow = await getOne<{ key: string; value: string[] }>('meta', 'instructors');
       if (alive) setInstructors(instructorRow?.value ?? []);
       const settings = await getSettings<AppSettings>();
@@ -155,7 +155,8 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         const mine = allMalfs.filter((m) => m.sessionId === id);
         setOldMalfIds(mine.map((m) => m.id));
         setMalfs(mine.map((m) => ({
-          firearmId: m.firearmId, type: m.type, resolution: m.resolution, notes: m.notes
+          firearmId: m.firearmId, type: m.type, resolution: m.resolution, notes: m.notes,
+          otherType: false, otherRes: false
         })));
         setRatings({
           focus: s.selfRating?.focus !== undefined ? String(s.selfRating.focus) : '',
@@ -204,6 +205,17 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const pickable = useMemo(
     () => drillsForContext(drillLib, selectedCategories, kind),
     [drillLib, selectedCategories, kind]
+  );
+
+  // App 2: dropdown options = built-ins + custom values already saved (and any
+  // committed in this form), so a typed-in "Other" sticks for next time.
+  const mergedMalfTypes = useMemo(
+    () => mergeOptions(MALF_TYPES, [...savedMalfTypes, ...malfs.filter((m) => !m.otherType && m.type).map((m) => m.type)]),
+    [savedMalfTypes, malfs]
+  );
+  const mergedClearMethods = useMemo(
+    () => mergeOptions(CLEAR_METHODS, [...savedClearMethods, ...malfs.filter((m) => !m.otherRes && m.resolution).map((m) => m.resolution)]),
+    [savedClearMethods, malfs]
   );
 
   // Guns & Rounds and the Gear Checklist's Firearms list stay in lockstep
@@ -711,12 +723,19 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                 onClick={() => setMalfs((prev) => prev.filter((_, x) => x !== i))}>✕</button>
             </div>
             <label className="field">What happened
-              <select value={m.type}
-                onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, type: e.target.value } : x))}>
+              <select value={m.otherType ? 'Other' : m.type}
+                onChange={(e) => { const v = e.target.value; setMalfs((p) => p.map((x, n) => n === i ? { ...x, otherType: v === 'Other', type: v === 'Other' ? '' : v } : x)); }}>
                 <option value="">Pick one…</option>
-                {MALF_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                {mergedMalfTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+                <option value="Other">Other…</option>
               </select>
             </label>
+            {m.otherType && (
+              <label className="field">Name the malfunction
+                <input value={m.type} placeholder="e.g. Brass over bolt" autoComplete="off" autoCorrect="off"
+                  onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, type: e.target.value } : x))} />
+              </label>
+            )}
             <label className="field">Which gun
               <select value={m.firearmId}
                 onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, firearmId: e.target.value } : x))}>
@@ -725,12 +744,19 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               </select>
             </label>
             <label className="field">How you cleared it
-              <select value={CLEAR_METHODS.includes(m.resolution) || m.resolution === '' ? m.resolution : 'Other'}
-                onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, resolution: e.target.value } : x))}>
+              <select value={m.otherRes ? 'Other' : m.resolution}
+                onChange={(e) => { const v = e.target.value; setMalfs((p) => p.map((x, n) => n === i ? { ...x, otherRes: v === 'Other', resolution: v === 'Other' ? '' : v } : x)); }}>
                 <option value="">Pick one…</option>
-                {CLEAR_METHODS.map((c) => <option key={c} value={c}>{c}</option>)}
+                {mergedClearMethods.map((c) => <option key={c} value={c}>{c}</option>)}
+                <option value="Other">Other…</option>
               </select>
             </label>
+            {m.otherRes && (
+              <label className="field">How did you clear it?
+                <input value={m.resolution} placeholder="e.g. Stripped the mag and racked" autoComplete="off" autoCorrect="off"
+                  onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, resolution: e.target.value } : x))} />
+              </label>
+            )}
             <label className="field">Notes
               <input value={m.notes}
                 onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, notes: e.target.value } : x))} />
