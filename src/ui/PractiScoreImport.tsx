@@ -17,6 +17,7 @@ import {
 } from '../lib/practiscore.ts';
 import { FormProblem } from './FormProblem.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
+import { noAutofillProps } from './SuggestField.tsx';
 
 const toNum = (t: string): number | null => (t.trim() === '' ? null : Number(t));
 
@@ -177,8 +178,9 @@ export function PractiScoreImport({ onCancel, onSaved }: {
 
           <div className="card">
             <h2>Finish the details</h2>
-            <label className="field">Match name
-              <input value={matchName} onChange={(e) => setMatchName(e.target.value)} placeholder="Spring Classic" />
+            <label className="field">What to call it
+              <input value={matchName} onChange={(e) => setMatchName(e.target.value)} placeholder="Spring Classic"
+                {...noAutofillProps} name="match-title" />
             </label>
             <label className="field">Date
               <input type="date" value={matchDate} onChange={(e) => setMatchDate(e.target.value)} />

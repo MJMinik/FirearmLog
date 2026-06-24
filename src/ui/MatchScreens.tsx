@@ -267,7 +267,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
       <FormProblem problem={problem} />
 
       <div className="card">
-        <label className="field">Match name
+        <label className="field">What to call it
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="June Club Match"
             {...noAutofillProps} name="match-title" />
         </label>
