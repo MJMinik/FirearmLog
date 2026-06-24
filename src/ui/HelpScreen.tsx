@@ -85,7 +85,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Logging a session',
       view: { kind: 'session-form' },
-      body: 'Start a session from Home or the Log tab: set the date and place, pick the gun or guns and the rounds for each, and choose live-fire or dry-fire. Add drills (the picker only shows ones that fit the gun and dry/live), record any malfunctions, attach photos or video, and add notes. A range fee you enter here is stored on the session itself and is the single place that fee counts toward Costs — it\'s never entered or counted twice. Sessions stay editable forever. To remove one, swipe its row left in the Log list (on a computer, hover the row and tap Delete) — or open it and tap Delete Session. A planned session you swipe goes straight to Recently Deleted; a logged one you delete from its own screen does too, and either way it\'s restorable for 30 days before it\'s gone for good.',
+      body: 'Start a session from Home or the Log tab: set the date and place, pick the gun or guns and the rounds for each, and choose live-fire or dry-fire. Add drills (the picker only shows ones that fit the gun and dry/live), record any malfunctions, attach photos or video, and add notes. A range fee you enter here is stored on the session itself and is the single place that fee counts toward Costs — it\'s never entered or counted twice. Sessions stay editable forever. On a phone or iPad, swipe a row left to remove it: a planned session goes straight to Recently Deleted, and a logged one shows you how (open it and tap Delete Session). On a computer, planned sessions have a small delete icon on the row; for a logged session, open it and tap Delete Session. Either way, deletions wait 30 days in Recently Deleted where you can restore them before they\'re gone for good.',
     },
     {
       title: 'Photos, captions & markup',
@@ -94,7 +94,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Drills',
       view: { kind: 'drills' },
-      body: `The drill library lives under ${at('Drills')}. Each drill knows which gun types it's for and whether it's dry-fire, live-fire, or both — that's how the session picker filters them. A drill has a short and an expandable full description, a scoring type, and a par or max score. You can also attach a target image to a drill (and mark it up with labeled circles); it prints on the session's drill run-sheet so you can take the target to the range.`,
+      body: `The drill library lives under ${at('Drills')}. Each drill knows which gun types it's for and whether it's dry-fire, live-fire, or both — that's how the session picker filters them. A drill has a short and an expandable full description, a scoring type, and a par or max score. When a session has drills, "Print Drills" makes a score sheet of them — a planned session prints blank boxes to fill in at the range, and a logged session prints the same table with your recorded results.`,
     },
     {
       title: 'Compete — matches',

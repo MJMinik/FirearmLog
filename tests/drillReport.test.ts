@@ -1,61 +1,47 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildDrillReportHtml, scoringLabel, type DrillReportItem } from '../src/lib/drillReport.ts';
+import { buildDrillReportHtml, type DrillReportItem } from '../src/lib/drillReport.ts';
 
 const item = (o: Partial<DrillReportItem>): DrillReportItem => ({
-  name: 'Bill Drill', fire: 'live', gunCategories: ['Pistol'],
-  brief: '6 shots from the holster at 7 yards.', full: '', scoring: 'Par 2.0s',
-  requiresHolster: true, distance: '7 yd', ...o
+  name: 'Bill Drill', brief: '6 shots from holster at 7 yards.',
+  distance: '', time: null, score: null, maxScore: null, ...o
 });
 
-test('drill report lists drills, brief, distance, and the fire/category tags', () => {
-  const html = buildDrillReportHtml([item({})], { includeScoring: false, date: '2026-06-14', location: 'Shoot Straight' });
-  assert.match(html, /Drills for This Session/);
+test('planned sheet: headers, the drill, its description, and blank fill-in boxes', () => {
+  const html = buildDrillReportHtml([item({})], { planned: true, date: '2026-06-14', location: 'Shoot Straight' });
+  assert.match(html, /Drills for this session/);
   assert.match(html, /Bill Drill/);
-  assert.match(html, /6 shots from the holster/);
-  assert.match(html, /Live fire/);
-  assert.match(html, /Holster/);
-  assert.match(html, /7 yd/);
+  assert.match(html, /6 shots from holster/);
+  assert.match(html, /<th>Distance<\/th>/);
+  assert.match(html, /<th>Time \(s\)<\/th>/);
+  assert.match(html, /<th>Score<\/th>/);
+  assert.match(html, /<th>Out of<\/th>/);
+  assert.match(html, /class="box"/);
+  assert.match(html, /Fill in your results/);
   assert.match(html, /Shoot Straight/);
 });
 
-test('includeScoring shows or hides the scoring line', () => {
-  const withScore = buildDrillReportHtml([item({})], { includeScoring: true });
-  const without = buildDrillReportHtml([item({})], { includeScoring: false });
-  assert.match(withScore, /Par 2\.0s/);
-  assert.doesNotMatch(without, /Par 2\.0s/);
+test('planned pre-fills a set distance but leaves Time/Score/Out-of as boxes', () => {
+  const html = buildDrillReportHtml([item({ distance: '7 yd' })], { planned: true });
+  assert.match(html, /<div class="val">7 yd<\/div>/);          // distance pre-filled
+  assert.equal((html.match(/class="box"/g) || []).length, 3); // the other three stay blank
 });
 
-test('scoringLabel humanizes the old codes, hides none, passes free text through', () => {
-  assert.equal(scoringLabel('time_score'), 'Time / Score');
-  assert.equal(scoringLabel('time'), 'Time');
-  assert.equal(scoringLabel('score'), 'Score');
-  assert.equal(scoringLabel('none'), '');
-  assert.equal(scoringLabel('Par 2.0s'), 'Par 2.0s');
+test('logged sheet fills the recorded results and uses no fill-in boxes', () => {
+  const html = buildDrillReportHtml(
+    [item({ distance: '5 yd', time: 2.6, score: 5, maxScore: 6 })],
+    { planned: false }
+  );
+  assert.match(html, /<div class="val">5 yd<\/div>/);
+  assert.match(html, /<div class="val">2\.6<\/div>/);
+  assert.match(html, /<div class="val">5<\/div>/);
+  assert.match(html, /<div class="val">6<\/div>/);
+  assert.doesNotMatch(html, /class="box"/);
+  assert.doesNotMatch(html, /Fill in your results/);
 });
 
-test('report shows the humanized scoring code, not the raw value', () => {
-  const html = buildDrillReportHtml([item({ scoring: 'time_score' })], { includeScoring: true });
-  assert.match(html, /Time \/ Score/);
-  assert.doesNotMatch(html, /time_score/);
-});
-
-test('drill report escapes user text and handles an empty list', () => {
-  const html = buildDrillReportHtml([item({ name: 'A & <B>' })], { includeScoring: false });
+test('escapes user text and handles an empty list', () => {
+  const html = buildDrillReportHtml([item({ name: 'A & <B>' })], { planned: false });
   assert.match(html, /A &amp; &lt;B&gt;/);
-  assert.match(buildDrillReportHtml([], { includeScoring: true }), /No drills scheduled yet/);
-});
-
-test('drill report prints attached target images with their markup legend', () => {
-  const html = buildDrillReportHtml([item({
-    targets: [{ src: 'data:image/jpeg;base64,AAAA', legend: ['A-zone hits', 'Low left'] }]
-  })], { includeScoring: false });
-  assert.match(html, /<img class="target" src="data:image\/jpeg;base64,AAAA"/);
-  assert.match(html, /A-zone hits/);
-  assert.match(html, /Low left/);
-});
-
-test('drill with no target adds no image block', () => {
-  const html = buildDrillReportHtml([item({})], { includeScoring: false });
-  assert.doesNotMatch(html, /class="target"/);
+  assert.match(buildDrillReportHtml([], { planned: true }), /No drills scheduled yet/);
 });
