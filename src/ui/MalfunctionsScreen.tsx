@@ -13,6 +13,7 @@ import { InfoTip } from './InfoTip.tsx';
 import {
   emptyMalfFilter, malfFilterCount, filterMalfunctions, distinctTypes, type MalfFilter
 } from '../lib/malfunctionFilter.ts';
+import { labelOrRemoved } from '../lib/lookup.ts';
 
 export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
   refreshKey: number;
@@ -52,12 +53,13 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
   const types = useMemo(() => distinctTypes(malfs), [malfs]);
   const active = malfFilterCount(filter);
 
-  // Crash-safe name lookups — a since-deleted ammo/magazine reads as "(removed)".
+  // Crash-safe name lookups — a since-deleted ammo/magazine reads as "(removed)";
+  // no id reads as empty here (inline subtitle omits the bit). See lib/lookup.ts.
   const gunName = (id: string) => firearms.find((g) => g.id === id)?.name ?? '—';
-  const ammoName = (id?: string | null) => id ? (ammo.find((a) => a.id === id) ? ammoLabel(ammo.find((a) => a.id === id)!) : '(removed)') : '';
-  const magName = (id?: string | null) => id ? (magazines.find((m) => m.id === id)?.label ?? '(removed)') : '';
+  const ammoName = (id?: string | null) => labelOrRemoved(ammo, id, ammoLabel);
+  const magName = (id?: string | null) => labelOrRemoved(magazines, id, (m) => m.label);
 
-  function set<K extends keyof MalfFilter>(key: K, v: MalfFilter[K]) {
+  function setField<K extends keyof MalfFilter>(key: K, v: MalfFilter[K]) {
     setFilter((prev) => ({ ...prev, [key]: v }));
   }
 
@@ -117,31 +119,31 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
         <Sheet title="Search & Filter" onClose={() => setSheetOpen(false)}>
           <label className="field">Search the malfunction's words — type, how you cleared it, notes
             <input type="search" value={filter.query} placeholder="Type to search"
-              onChange={(e) => set('query', e.target.value)} />
+              onChange={(e) => setField('query', e.target.value)} />
           </label>
           <div className="field-row">
             <label className="field small">From
-              <input type="date" value={filter.from} onChange={(e) => set('from', e.target.value)} />
+              <input type="date" value={filter.from} onChange={(e) => setField('from', e.target.value)} />
             </label>
             <label className="field small">To
-              <input type="date" value={filter.to} onChange={(e) => set('to', e.target.value)} />
+              <input type="date" value={filter.to} onChange={(e) => setField('to', e.target.value)} />
             </label>
           </div>
           <label className="field">Gun
-            <select value={filter.firearmId} onChange={(e) => set('firearmId', e.target.value)}>
+            <select value={filter.firearmId} onChange={(e) => setField('firearmId', e.target.value)}>
               <option value="">All guns</option>
               {firearms.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </label>
           <label className="field">Type
-            <select value={filter.type} onChange={(e) => set('type', e.target.value)}>
+            <select value={filter.type} onChange={(e) => setField('type', e.target.value)}>
               <option value="">All types</option>
               {types.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
           {ammo.length > 0 && (
             <label className="field">Ammo
-              <select value={filter.ammoId} onChange={(e) => set('ammoId', e.target.value)}>
+              <select value={filter.ammoId} onChange={(e) => setField('ammoId', e.target.value)}>
                 <option value="">All ammo</option>
                 {ammo.map((a) => <option key={a.id} value={a.id}>{ammoLabel(a)}</option>)}
               </select>
@@ -149,7 +151,7 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
           )}
           {magazines.length > 0 && (
             <label className="field">Magazine
-              <select value={filter.magazineId} onChange={(e) => set('magazineId', e.target.value)}>
+              <select value={filter.magazineId} onChange={(e) => setField('magazineId', e.target.value)}>
                 <option value="">All magazines</option>
                 {magazines.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
               </select>

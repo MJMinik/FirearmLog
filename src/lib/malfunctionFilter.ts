@@ -31,6 +31,12 @@ export function malfFilterCount(f: MalfFilter): number {
 }
 
 function inDateRange(date: string, f: MalfFilter): boolean {
+  // Intent (review 2.1): malfunctions are always stamped with their session's
+  // date on save, so an empty date is effectively a legacy/imported edge case.
+  // When it happens, an un-dated record is shown only while NO date bound is set
+  // and drops out the moment a From/To is chosen — i.e. a date filter means "only
+  // records that fall in this window," and an undated record can't. This matches
+  // the Log screen's date filtering, so the behavior is consistent app-wide.
   if (!date) return !f.from && !f.to;
   if (f.from && date < f.from) return false;
   if (f.to && date > f.to) return false;

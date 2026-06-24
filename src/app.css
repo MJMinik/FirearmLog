@@ -7,7 +7,8 @@
   --text-dim: #6c6c70; /* WCAG AA: ~4.7:1 on the grey app bg (was #8e8e93 ≈ 2.9:1) — audit #D1 */
   --accent: #0060e6; /* WCAG AA: white-on-accent ≈5.5:1, accent-as-text ≈5.0:1 (was #007aff ≈4.0:1) — audit #D2 */
   --separator: rgba(60, 60, 67, 0.18);
-  --danger: #ff3b30;
+  --danger: #ff3b30; /* iOS system red — used for accents, badges, error text, bars */
+  --danger-deep: #d70015; /* white-on-this ≈5.4:1 (AA pass) — for solid Delete buttons (audit F1; plain #ff3b30 was 3.55:1) */
   --success: #34c759;
   --warn: #ff9500;
   --tabbar-bg: rgba(249, 249, 249, 0.85);
@@ -235,7 +236,9 @@ select.category-pick {
 .field textarea { min-height: 80px; }
 .field.small { flex: 1; }
 .field-optional { color: var(--text-dim); font-weight: 400; opacity: 0.75; }
-.link-btn { background: none; border: 0; padding: 0; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer; }
+.link-btn { background: none; border: 0; padding: 0 4px; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer;
+  /* audit F2: a real tap target, not a 25px sliver, even though it reads as a link */
+  display: inline-flex; align-items: center; min-height: var(--touch-min); }
 .form-problem { color: var(--danger); margin: -4px 0 12px; font-size: 15px; }
 
 .seg { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; margin-bottom: 12px; }
@@ -331,7 +334,7 @@ select.category-pick {
 .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
 .photo-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; }
 .note-text { font-size: var(--fs-base); line-height: 1.5; white-space: pre-wrap; }
-.button.danger { background: var(--danger); }
+.button.danger { background: var(--danger-deep); }
 
 .row-tap {
   width: 100%; background: none; border: none; color: var(--text); text-align: left;
@@ -354,7 +357,7 @@ select.category-pick {
   position: absolute; top: 6px; right: 8px; height: calc(100% - 12px); width: 76px;
   display: flex; align-items: center; justify-content: center;
   border: none; border-radius: 12px;
-  background: var(--danger); color: #fff; font-weight: 600;
+  background: var(--danger-deep); color: #fff; font-weight: 600;
   font-size: var(--fs-body); cursor: pointer;
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.18);
 }
@@ -374,7 +377,7 @@ select.category-pick {
   /* Only planned rows carry the desktop icon, so only they reserve the gutter. */
   .swipe-row.has-desk-del .swipe-hover-del { display: flex; }
   .swipe-row.has-desk-del .swipe-front { padding-right: 44px; }
-  .swipe-hover-del:hover { color: #fff; background: var(--danger); }
+  .swipe-hover-del:hover { color: #fff; background: var(--danger-deep); }
 }
 .trash-row {
   display: flex; align-items: center; justify-content: space-between;
@@ -610,6 +613,10 @@ select { max-width: 100%; min-width: 0; }
   appearance: none; border: none; background: none; cursor: pointer;
   color: var(--accent); font-size: 15px; line-height: 1; vertical-align: middle;
   padding: 14px; margin: -14px -6px; border-radius: 50%;
+  /* audit F3: guarantee a full 44x44 hit area (the glyph stays small via the
+     negative margins, so the heading doesn't bloat). */
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: var(--touch-min); min-height: var(--touch-min); box-sizing: border-box;
 }
 /* The reveal flows as a full-width block under the heading (no absolute
    positioning), so it can never run off the side of the screen. */

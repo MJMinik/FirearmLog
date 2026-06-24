@@ -6,7 +6,7 @@ import type { CSSProperties } from 'react';
 export type IconName =
   | 'home' | 'log' | 'compete' | 'progress' | 'more'
   | 'gun' | 'optic' | 'ammo' | 'magazine' | 'drills'
-  | 'costs' | 'maintenance' | 'parts' | 'reference' | 'reports' | 'help' | 'malfunction';
+  | 'costs' | 'maintenance' | 'parts' | 'reference' | 'reports' | 'help' | 'malfunction' | 'info';
 
 // 24x24 viewBox line paths.
 const PATHS: Record<IconName, string> = {
@@ -27,6 +27,7 @@ const PATHS: Record<IconName, string> = {
   reports:     'M6 3.5h8l4 4V20.5H6z M14 3.5V8h4 M9 17v-3 M12 17v-6 M15 17v-4',
   help:        'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M9.6 9.2a2.5 2.5 0 0 1 4.9.6c0 1.6-2.4 1.9-2.4 3.4 M12 16.8h.01',
   malfunction: 'M12 4.5 20.5 19H3.5z M12 10v4 M12 16.8h.01',
+  info:        'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 11v5 M12 7.6h.01',
 };
 
 export function Icon({ name, size = 22, style }: { name: IconName; size?: number; style?: CSSProperties }) {

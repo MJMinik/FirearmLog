@@ -22,6 +22,7 @@ import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { isOwned } from '../lib/gunStatus.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
+import { labelOrRemoved } from '../lib/lookup.ts';
 
 interface Bundle {
   firearms: Firearm[]; sessions: Session[]; matches: Match[]; purchases: Purchase[];
@@ -168,11 +169,11 @@ export function ReportsScreen({ refreshKey, onBack }: { refreshKey: number; onBa
 
   function malfunctionsReport() {
     // App 3a: malfunctions now carry optional ammo / magazine / round-number
-    // context, so the report breaks down by those too and lists each one.
-    const ammoName = (id?: string | null) =>
-      id ? (d.ammo.find((a) => a.id === id) ? ammoLabel(d.ammo.find((a) => a.id === id)!) : '(removed)') : '—';
-    const magName = (id?: string | null) =>
-      id ? (d.magazines.find((mg) => mg.id === id)?.label ?? '(removed)') : '—';
+    // context, so the report breaks down by those too and lists each one. A table
+    // cell with no ammo/magazine shows a dash (the "none" placeholder); a deleted
+    // record reads "(removed)". See lib/lookup.ts.
+    const ammoName = (id?: string | null) => labelOrRemoved(d.ammo, id, ammoLabel, '—');
+    const magName = (id?: string | null) => labelOrRemoved(d.magazines, id, (mg) => mg.label, '—');
 
     const byGun = new Map<string, number>();
     const byType = new Map<string, number>();

@@ -94,7 +94,7 @@ export function SetupWizard({ onFinish, onCancel }: {
               Begin with an empty log and let's add your gear. You can always add more later from the
               Guns, Optics, Ammo, and Magazines screens.
             </p>
-            <button className="button secondary" onClick={() => setMode('gear')}>Add my gear</button>
+            <button className="button" onClick={() => setMode('gear')}>Add my gear</button>
           </div>
 
           <div className="card">

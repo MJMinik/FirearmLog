@@ -225,6 +225,12 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     [savedClearMethods, malfs]
   );
 
+  // Patch one malfunction row by index (review 4.2): replaces the repeated
+  // `setMalfs((p) => p.map((x, n) => n === i ? { ...x, k: v } : x))` closures in
+  // the row JSX with one named helper, so the rows read as intent not plumbing.
+  const updateMalf = (i: number, patch: Partial<MalfRow>) =>
+    setMalfs((p) => p.map((x, n) => (n === i ? { ...x, ...patch } : x)));
+
   // Guns & Rounds and the Gear Checklist's Firearms list stay in lockstep
   // (Michael's June 14 request): turning a gun on or off in EITHER place
   // adds or removes it in the other. Removing also clears its "packed" mark
@@ -458,7 +464,13 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       // Malfunctions: rewrite this session's set.
       for (const mid of oldMalfIds) await deleteOne('malfunctions', mid);
       for (const m of malfs) {
-        if (!m.type) continue;
+        // Keep a row if the shooter filled in ANYTHING — type, how-cleared, notes,
+        // ammo, magazine, or round number. Only a completely blank row is skipped,
+        // so partly-filled context (e.g. ammo + round but no type) is never silently
+        // dropped (review 1.4). A blank type reads as "Other" downstream.
+        const hasContent = m.type || m.resolution.trim() || m.notes.trim()
+          || m.ammoId || m.magazineId || m.roundCount.trim();
+        if (!hasContent) continue;
         await putOne('malfunctions', stampNew({
           sessionId: sid, date, firearmId: m.firearmId,
           type: m.type, resolution: m.resolution.trim(), notes: m.notes.trim(),
@@ -470,6 +482,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       }
 
       onSaved(sid);
+    } catch {
+      // Review 7.1 / rule 23: a failed IndexedDB write (quota, locked txn, bad
+      // record) must not fail silently. Surface a plain-language message through
+      // the existing problem channel and leave the form usable to retry.
+      setProblem('Could not save this session — please try again.');
     } finally {
       setSaving(false);
     }
@@ -737,7 +754,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             </div>
             <label className="field">What happened
               <select value={m.otherType ? 'Other' : m.type}
-                onChange={(e) => { const v = e.target.value; setMalfs((p) => p.map((x, n) => n === i ? { ...x, otherType: v === 'Other', type: v === 'Other' ? '' : v } : x)); }}>
+                onChange={(e) => { const v = e.target.value; updateMalf(i, { otherType: v === 'Other', type: v === 'Other' ? '' : v }); }}>
                 <option value="">Pick one…</option>
                 {mergedMalfTypes.map((t) => <option key={t} value={t}>{t}</option>)}
                 <option value="Other">Other…</option>
@@ -746,19 +763,19 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             {m.otherType && (
               <label className="field">Describe it
                 <input value={m.type} placeholder="e.g. Brass over bolt" name="malfunction-desc" {...noAutofillProps}
-                  onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, type: e.target.value } : x))} />
+                  onChange={(e) => updateMalf(i, { type: e.target.value })} />
               </label>
             )}
             <label className="field">Which gun
               <select value={m.firearmId}
-                onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, firearmId: e.target.value } : x))}>
+                onChange={(e) => updateMalf(i, { firearmId: e.target.value })}>
                 {(selectedGuns.length ? selectedGuns : firearms).map((f) =>
                   <option key={f.id} value={f.id}>{f.name}</option>)}
               </select>
             </label>
             <label className="field">How you cleared it
               <select value={m.otherRes ? 'Other' : m.resolution}
-                onChange={(e) => { const v = e.target.value; setMalfs((p) => p.map((x, n) => n === i ? { ...x, otherRes: v === 'Other', resolution: v === 'Other' ? '' : v } : x)); }}>
+                onChange={(e) => { const v = e.target.value; updateMalf(i, { otherRes: v === 'Other', resolution: v === 'Other' ? '' : v }); }}>
                 <option value="">Pick one…</option>
                 {mergedClearMethods.map((c) => <option key={c} value={c}>{c}</option>)}
                 <option value="Other">Other…</option>
@@ -767,13 +784,13 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             {m.otherRes && (
               <label className="field">How did you clear it?
                 <input value={m.resolution} placeholder="e.g. Stripped the mag and racked" name="malfunction-clear" {...noAutofillProps}
-                  onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, resolution: e.target.value } : x))} />
+                  onChange={(e) => updateMalf(i, { resolution: e.target.value })} />
               </label>
             )}
             {ammoLib.length > 0 && (
               <label className="field">Ammo <span className="field-optional">(optional)</span>
                 <select value={m.ammoId}
-                  onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, ammoId: e.target.value } : x))}>
+                  onChange={(e) => updateMalf(i, { ammoId: e.target.value })}>
                   <option value="">— Not sure —</option>
                   {ammoLib.map((a) => <option key={a.id} value={a.id}>{ammoLabel(a)}</option>)}
                 </select>
@@ -782,7 +799,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             {magazines.length > 0 && (
               <label className="field">Magazine <span className="field-optional">(optional)</span>
                 <select value={m.magazineId}
-                  onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, magazineId: e.target.value } : x))}>
+                  onChange={(e) => updateMalf(i, { magazineId: e.target.value })}>
                   <option value="">— Not sure —</option>
                   {magazinesForFirearm(magazines, m.firearmId).map((mag) =>
                     <option key={mag.id} value={mag.id}>{mag.label}{mag.active === false ? ' (retired)' : ''}</option>)}
@@ -792,11 +809,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             <label className="field">Round number <span className="field-optional">(optional)</span>
               <input type="number" inputMode="numeric" min="0" value={m.roundCount} placeholder="e.g. 47"
                 autoComplete="off"
-                onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, roundCount: e.target.value } : x))} />
+                onChange={(e) => updateMalf(i, { roundCount: e.target.value })} />
             </label>
             <label className="field">Notes
               <input value={m.notes}
-                onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, notes: e.target.value } : x))} />
+                onChange={(e) => updateMalf(i, { notes: e.target.value })} />
             </label>
           </div>
         ))}
