@@ -148,6 +148,11 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
       body: `Log cleaning and parts changes under ${at('Maintenance')}; schedules come from each gun's linked Reference or your own settings, and Home warns you when something's due. Reference (under ${at('Reference')}) holds manufacturer care guides for popular pistol, rifle, and shotgun makers, and you can add your own.`,
     },
     {
+      title: 'Malfunctions',
+      view: { kind: 'malfunctions' },
+      body: `Every malfunction you record while logging a session collects under ${at('Malfunctions')} — newest first. Search or filter by gun, type, ammo, or magazine to spot patterns, like a magazine or a batch of ammo that jams more than the rest, and tap any one to jump to the session it happened in. The Malfunctions report (under Reports) totals them up by gun, type, ammo, and magazine.`,
+    },
+    {
       title: 'Reports',
       view: { kind: 'reports' },
       body: `You'll find printable reports under ${at('Reports')}: round count, costs, competition season, training summary, malfunctions, maintenance history, and an insurance inventory with your guns' photos. There's also a one-session report on each session. Each opens a clean printable page — use your browser's "Save as PDF" to keep a copy.`,

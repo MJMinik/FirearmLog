@@ -24,6 +24,7 @@ const SECTIONS: { target: View; label: string; icon: IconName; also: View['kind'
   { target: { kind: 'drills' }, label: 'Drills', icon: 'drills', also: ['drill-form'] },
   { target: { kind: 'costs' }, label: 'Costs & Purchases', icon: 'costs', also: ['purchase-form'] },
   { target: { kind: 'maintenance' }, label: 'Maintenance', icon: 'maintenance', also: [] },
+  { target: { kind: 'malfunctions' }, label: 'Malfunctions', icon: 'malfunction', also: [] },
   { target: { kind: 'parts' }, label: 'Spare Parts & Inventory', icon: 'parts', also: ['part-form'] },
   { target: { kind: 'references' }, label: 'Reference', icon: 'reference', also: ['reference-detail', 'reference-form'] },
   { target: { kind: 'reports' }, label: 'Reports', icon: 'reports', also: [] }

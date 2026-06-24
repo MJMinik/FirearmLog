@@ -15,6 +15,7 @@ import { DrillsScreen, DrillForm } from './ui/DrillsScreen.tsx';
 import { MagazinesScreen, MagazineForm } from './ui/MagazinesScreen.tsx';
 import { ReferenceList, ReferenceDetail, ReferenceForm } from './ui/ReferenceScreens.tsx';
 import { MaintenanceOverview, MaintenanceForm } from './ui/MaintenanceScreens.tsx';
+import { MalfunctionsScreen } from './ui/MalfunctionsScreen.tsx';
 import { AmmoScreen, AmmoForm } from './ui/AmmoScreens.tsx';
 import { CostsScreen, PurchaseForm } from './ui/CostsScreen.tsx';
 import { OpticsScreen, OpticForm } from './ui/OpticsScreen.tsx';
@@ -142,6 +143,10 @@ export function App() {
     content = <MaintenanceForm gunId={v.gunId} id={v.id}
       onCancel={back}
       onSaved={() => { refresh(); replace({ kind: 'gun-detail', id: v.gunId }); }} />;
+  } else if (view?.kind === 'malfunctions') {
+    content = <MalfunctionsScreen refreshKey={refreshKey}
+      onBack={back}
+      openSession={(sid) => push({ kind: 'session-form', id: sid })} />;
   } else if (view?.kind === 'match-detail') {
     const v = view;
     content = <MatchDetail id={v.id} refreshKey={refreshKey}

@@ -808,6 +808,10 @@ export function MoreScreen({ refreshKey, onImported, open }: {
           <span className="label">Maintenance</span>
           <span className="value">›</span>
         </button>
+        <button className="row-tap" onClick={() => open({ kind: 'malfunctions' })}>
+          <span className="label">Malfunctions</span>
+          <span className="value">›</span>
+        </button>
         <button className="row-tap" onClick={() => open({ kind: 'parts' })}>
           <span className="label">Spare Parts &amp; Inventory</span>
           <span className="value">›</span>
