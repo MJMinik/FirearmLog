@@ -3,6 +3,7 @@
 // scoring. Pure HTML builder so it's unit-testable; the session form resolves
 // each drill row against the drill library and hands the items here.
 import { formatDayKey } from './dates.ts';
+import type { ReportImage } from './reports.ts';
 
 export interface DrillReportItem {
   name: string;
@@ -13,6 +14,8 @@ export interface DrillReportItem {
   scoring: string;
   requiresHolster: boolean;
   distance: string;      // planned distance for this session (may be blank)
+  /** Printable target image(s) attached to the drill (App 1). Optional. */
+  targets?: ReportImage[];
 }
 
 function escapeHtml(s: string): string {
@@ -56,6 +59,9 @@ export function buildDrillReportHtml(
     .drill .full { font-size: 10.5pt; color: #333; white-space: pre-wrap; line-height: 1.45; margin-bottom: 6px; }
     .drill .row { font-size: 10pt; color: #222; margin-top: 4px; }
     .drill .label { color: #666; }
+    .drill .targets { margin-top: 8px; }
+    .drill .target { display: block; max-width: 100%; max-height: 420px; object-fit: contain; border: 1px solid #ccc; border-radius: 6px; margin: 6px 0; }
+    .drill .legend { font-size: 9.5pt; color: #333; margin: 2px 0 8px; padding-left: 20px; }
     .close-bar { margin-bottom: 16px; }
     .close-btn { font-family: inherit; font-size: 11pt; padding: 10px 16px; border-radius: 8px; border: 1px solid #888; background: #f2f2f2; color: #111; cursor: pointer; }
     @media print { body { padding: 0.4in 0.5in; } .close-bar { display: none; } }
@@ -75,6 +81,10 @@ export function buildDrillReportHtml(
           ${d.full ? `<div class="full">${escapeHtml(d.full)}</div>` : ''}
           ${d.distance ? `<div class="row"><span class="label">Distance:</span> ${escapeHtml(d.distance)}</div>` : ''}
           ${includeScoring && scoringLabel(d.scoring) ? `<div class="row"><span class="label">Scoring:</span> ${escapeHtml(scoringLabel(d.scoring))}</div>` : ''}
+          ${(d.targets && d.targets.length) ? `<div class="targets">${d.targets.map((t) =>
+            `<img class="target" src="${t.src}" alt="Target for ${escapeHtml(d.name)}" />` +
+            (t.legend && t.legend.length ? `<ol class="legend">${t.legend.map((l) => `<li>${escapeHtml(l)}</li>`).join('')}</ol>` : '')
+          ).join('')}</div>` : ''}
         </div>`;
       }).join('');
 
