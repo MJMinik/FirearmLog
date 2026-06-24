@@ -25,7 +25,7 @@ import { softDeleteSession } from './sessionDelete.ts';
 import { buildReportHtml, type ReportSection } from '../lib/reports.ts';
 import { reportImageUrls } from './reportImages.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
-import { SuggestField } from './SuggestField.tsx';
+import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { MediaField, commitMedia } from './MediaField.tsx';
 import type { StagedFile } from './MediaField.tsx';
@@ -743,8 +743,8 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               </select>
             </label>
             {m.otherType && (
-              <label className="field">Name the malfunction
-                <input value={m.type} placeholder="e.g. Brass over bolt" autoComplete="off" autoCorrect="off"
+              <label className="field">Describe it
+                <input value={m.type} placeholder="e.g. Brass over bolt" name="malfunction-desc" {...noAutofillProps}
                   onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, type: e.target.value } : x))} />
               </label>
             )}
@@ -765,7 +765,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             </label>
             {m.otherRes && (
               <label className="field">How did you clear it?
-                <input value={m.resolution} placeholder="e.g. Stripped the mag and racked" autoComplete="off" autoCorrect="off"
+                <input value={m.resolution} placeholder="e.g. Stripped the mag and racked" name="malfunction-clear" {...noAutofillProps}
                   onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, resolution: e.target.value } : x))} />
               </label>
             )}
