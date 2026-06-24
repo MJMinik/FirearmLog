@@ -19,9 +19,20 @@ test('rankSuggestions: typing "S" lists the S locations first', () => {
   const values = ['Shoot Straight: University', 'Sarasota Gun Club', 'Ancient City Shooting Range'];
   assert.deepEqual(rankSuggestions(values, 'S'), [
     'Shoot Straight: University', 'Sarasota Gun Club', 'Ancient City Shooting Range'
-  ]); // the last one contains an "s" mid-word, so it trails the starts-with matches
+  ]); // the last one matches on its word "Shooting", so it trails the whole-prefix matches
   assert.deepEqual(rankSuggestions(values, 'sa'), ['Sarasota Gun Club']);
   assert.deepEqual(rankSuggestions(values, 'ancient'), ['Ancient City Shooting Range']);
+});
+
+test('rankSuggestions: a single letter matches word-starts only, not letters buried mid-word', () => {
+  // "h" sits mid-word in "Echo" and "night"; only "Home" actually starts with it.
+  assert.deepEqual(rankSuggestions(['Home', 'Echo Valley', 'Steel night'], 'H'), ['Home']);
+});
+
+test('rankSuggestions: matches the start of a later word, not just the whole value', () => {
+  const values = ['Shoot Straight: University', 'Echo Valley'];
+  assert.deepEqual(rankSuggestions(values, 'univ'), ['Shoot Straight: University']);
+  assert.deepEqual(rankSuggestions(values, 'valley'), ['Echo Valley']);
 });
 
 test('rankSuggestions: empty query shows the recent list; exact match is hidden', () => {

@@ -22,21 +22,27 @@ export function recentValues(rows: { date: string; value: string }[]): string[] 
 }
 
 /**
- * Filter suggestions as the user types: matches that START with what they
- * typed come first (type "S", get the S locations), then matches that merely
- * contain it. Case doesn't matter. An exact match is hidden — nothing to
- * suggest once it's already typed. Capped at `limit`.
+ * Filter suggestions as the user types: a value matches when the typed text is a
+ * prefix of the whole value (type "S", get the S locations) OR the start of any
+ * WORD inside it (type "univ", get "Shoot Straight: University"). It deliberately
+ * does NOT match a letter buried mid-word — so a lone "h" gives you "Home", not
+ * everything with an "h" in it ("Echo", "night"). Whole-string prefixes rank
+ * first. An exact match is hidden — nothing to suggest once it's fully typed.
+ * Case doesn't matter. Capped at `limit`.
  */
 export function rankSuggestions(values: string[], query: string, limit = 6): string[] {
   const q = query.trim().toLowerCase();
   if (q === '') return values.slice(0, limit);
-  const starts: string[] = [];
-  const contains: string[] = [];
+  const whole: string[] = [];
+  const word: string[] = [];
   for (const v of values) {
     const lower = v.toLowerCase();
     if (lower === q) continue;
-    if (lower.startsWith(q)) starts.push(v);
-    else if (lower.includes(q)) contains.push(v);
+    if (lower.startsWith(q)) { whole.push(v); continue; }
+    // Split on spaces and common separators; the first chunk is already covered
+    // by the whole-string prefix above, so only later words need checking.
+    const laterWords = lower.split(/[\s:,\-]+/).filter(Boolean).slice(1);
+    if (laterWords.some((w) => w.startsWith(q))) word.push(v);
   }
-  return [...starts, ...contains].slice(0, limit);
+  return [...whole, ...word].slice(0, limit);
 }
