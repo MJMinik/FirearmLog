@@ -29,3 +29,32 @@ export function mergeOptions(builtin: string[], saved: string[]): string[] {
   customs.sort((a, b) => a.localeCompare(b));
   return [...builtin, ...customs];
 }
+
+/**
+ * App 3a: the magazines to offer when logging a malfunction on a given gun.
+ * Magazines explicitly linked to that firearm come first (the context-aware
+ * pick); if none are linked, ALL magazines are returned as a fallback so the
+ * picker is never empty and stays usable. Active magazines sort ahead of
+ * retired ones. Pure; unit-tested. Generic so it can take the stored Magazine
+ * shape without importing it here.
+ */
+export function magazinesForFirearm<T extends { firearmIds: string[]; active?: boolean }>(
+  magazines: T[], firearmId: string,
+): T[] {
+  const fit = magazines.filter((m) => Array.isArray(m.firearmIds) && m.firearmIds.includes(firearmId));
+  const list = fit.length ? fit : magazines;
+  return [...list].sort((a, b) => Number(b.active !== false) - Number(a.active !== false));
+}
+
+/**
+ * App 3a: parse the optional "round number when it happened" field. Empty or
+ * non-numeric input becomes null (the field is optional). Negatives and
+ * fractions are rejected to null — a round count is a positive whole number.
+ */
+export function parseRoundCount(input: string): number | null {
+  const t = (input ?? '').trim();
+  if (!t) return null;
+  const num = Number(t);
+  if (!Number.isFinite(num) || !Number.isInteger(num) || num < 0) return null;
+  return num;
+}

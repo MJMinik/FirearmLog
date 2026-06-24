@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import type {
   Ammunition, AppSettings, ChecklistCustomItems, DrillDef, DrillResult, Firearm, GunCategory,
-  MalfunctionEntry, Media, Session, SessionChecklist
+  Magazine, MalfunctionEntry, Media, Session, SessionChecklist
 } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, getSettings, putOne, putSettings } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
@@ -12,7 +12,7 @@ import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { drillsForContext } from '../lib/drillFilter.ts';
 import { inventoryAfterUsageChange } from '../lib/costing.ts';
-import { MALF_TYPES, CLEAR_METHODS, mergeOptions } from '../lib/malfunctions.ts';
+import { MALF_TYPES, CLEAR_METHODS, mergeOptions, magazinesForFirearm, parseRoundCount } from '../lib/malfunctions.ts';
 import { recentValues } from '../lib/suggest.ts';
 import {
   buildChecklistPrintHtml, checklistItemsForCategory, checklistProgress, itemState, newChecklist,
@@ -43,6 +43,8 @@ interface DrillRow {
 }
 interface MalfRow {
   firearmId: string; type: string; resolution: string; notes: string;
+  // App 3a: optional context. Held as strings in the form; '' means "not set".
+  ammoId: string; magazineId: string; roundCount: string;
   // App 2: transient (not saved) — true while typing a custom "Other" value.
   otherType?: boolean; otherRes?: boolean;
 }
@@ -74,6 +76,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [drillLib, setDrillLib] = useState<DrillDef[]>([]);
   const [ammoLib, setAmmoLib] = useState<Ammunition[]>([]);
+  const [magazines, setMagazines] = useState<Magazine[]>([]);
   const [ammoRows, setAmmoRows] = useState<AmmoRow[]>([]);
   const [pastLocations, setPastLocations] = useState<string[]>([]);
 
@@ -118,14 +121,16 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const [f, dl, am, allSessions, allMalf] = await Promise.all([
+      const [f, dl, am, mags, allSessions, allMalf] = await Promise.all([
         getAll<Firearm>('firearms'), getAll<DrillDef>('drills'), getAll<Ammunition>('ammunition'),
+        getAll<Magazine>('magazines'),
         getAll<Session>('sessions'), getAll<MalfunctionEntry>('malfunctions')
       ]);
       if (!alive) return;
       setFirearms(f.sort((a, b) => a.name.localeCompare(b.name)));
       setDrillLib(dl);
       setAmmoLib(am.sort((a, b) => ammoLabel(a).localeCompare(ammoLabel(b))));
+      setMagazines(mags);
       setPastLocations(recentValues(activeOnly(allSessions).map((s) => ({ date: s.date, value: s.location }))));
       setSavedMalfTypes([...new Set(allMalf.map((m) => m.type).filter(Boolean))]);
       setSavedClearMethods([...new Set(allMalf.map((m) => m.resolution).filter(Boolean))]);
@@ -156,6 +161,8 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         setOldMalfIds(mine.map((m) => m.id));
         setMalfs(mine.map((m) => ({
           firearmId: m.firearmId, type: m.type, resolution: m.resolution, notes: m.notes,
+          ammoId: m.ammoId ?? '', magazineId: m.magazineId ?? '',
+          roundCount: m.roundCount != null ? String(m.roundCount) : '',
           otherType: false, otherRes: false
         })));
         setRatings({
@@ -301,7 +308,8 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       dr.score != null ? `${dr.score}${dr.maxScore != null ? '/' + dr.maxScore : ''}` : '—'
     ]);
     const malfRows = malfs.map((m) => [
-      m.type || '—', firearms.find((f) => f.id === m.firearmId)?.name ?? '—', m.resolution || '', m.notes || ''
+      m.type || '—', firearms.find((f) => f.id === m.firearmId)?.name ?? '—',
+      m.roundCount.trim() || '—', m.resolution || '', m.notes || ''
     ]);
     const photos = await reportImageUrls(existingMedia, 'session', original.id);
     const sections: ReportSection[] = [
@@ -314,7 +322,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       ] },
       { heading: 'Guns', rows: gunRows },
       ...(drillRows.length ? [{ heading: 'Drills', table: { headers: ['Drill', 'Distance', 'Time', 'Score'], rows: drillRows } }] : []),
-      ...(malfRows.length ? [{ heading: 'Malfunctions', table: { headers: ['Type', 'Gun', 'Cleared', 'Notes'], rows: malfRows } }] : []),
+      ...(malfRows.length ? [{ heading: 'Malfunctions', table: { headers: ['Type', 'Gun', 'Round', 'Cleared', 'Notes'], rows: malfRows } }] : []),
       ...(original.notes ? [{ heading: 'Notes', rows: [{ label: '', value: original.notes }] }] : []),
       ...(photos.length ? [{ heading: 'Photos', images: photos }] : [])
     ];
@@ -453,7 +461,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         if (!m.type) continue;
         await putOne('malfunctions', stampNew({
           sessionId: sid, date, firearmId: m.firearmId,
-          type: m.type, resolution: m.resolution.trim(), notes: m.notes.trim()
+          type: m.type, resolution: m.resolution.trim(), notes: m.notes.trim(),
+          // App 3a: optional context. '' → null so the record stays clean.
+          ammoId: m.ammoId || null,
+          magazineId: m.magazineId || null,
+          roundCount: parseRoundCount(m.roundCount)
         }, newId('mf'), now));
       }
 
@@ -757,6 +769,30 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                   onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, resolution: e.target.value } : x))} />
               </label>
             )}
+            {ammoLib.length > 0 && (
+              <label className="field">Ammo <span className="field-optional">(optional)</span>
+                <select value={m.ammoId}
+                  onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, ammoId: e.target.value } : x))}>
+                  <option value="">— Not sure —</option>
+                  {ammoLib.map((a) => <option key={a.id} value={a.id}>{ammoLabel(a)}</option>)}
+                </select>
+              </label>
+            )}
+            {magazines.length > 0 && (
+              <label className="field">Magazine <span className="field-optional">(optional)</span>
+                <select value={m.magazineId}
+                  onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, magazineId: e.target.value } : x))}>
+                  <option value="">— Not sure —</option>
+                  {magazinesForFirearm(magazines, m.firearmId).map((mag) =>
+                    <option key={mag.id} value={mag.id}>{mag.label}{mag.active === false ? ' (retired)' : ''}</option>)}
+                </select>
+              </label>
+            )}
+            <label className="field">Round number <span className="field-optional">(optional)</span>
+              <input type="number" inputMode="numeric" min="0" value={m.roundCount} placeholder="e.g. 47"
+                autoComplete="off"
+                onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, roundCount: e.target.value } : x))} />
+            </label>
             <label className="field">Notes
               <input value={m.notes}
                 onChange={(e) => setMalfs((p) => p.map((x, n) => n === i ? { ...x, notes: e.target.value } : x))} />
@@ -765,7 +801,8 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         ))}
         <button className="button secondary" onClick={() => setMalfs((prev) => [
           ...prev,
-          { firearmId: (selectedGuns[0] ?? firearms[0])?.id ?? '', type: '', resolution: '', notes: '' }
+          { firearmId: (selectedGuns[0] ?? firearms[0])?.id ?? '', type: '', resolution: '', notes: '',
+            ammoId: '', magazineId: '', roundCount: '' }
         ])}>+ Add Malfunction</button>
       </div>
 
