@@ -1,7 +1,7 @@
 // The drill library: see every drill, fix its dry/live setting, gun types,
 // and descriptions, or add your own (reqs. 19–20).
 import { useEffect, useState } from 'react';
-import type { DrillDef, GunCategory, Media } from '../lib/types.ts';
+import type { DrillDef, GunCategory } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
@@ -10,9 +10,6 @@ import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { ConfirmSheet } from './Sheet.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
-import { MediaField, commitMedia } from './MediaField.tsx';
-import type { StagedFile } from './MediaField.tsx';
-import { MarkThumb } from './MarkThumb.tsx';
 
 const FIRE_LABEL: Record<DrillDef['fire'], string> = {
   live: 'Live fire', dry: 'Dry fire', both: 'Live & dry'
@@ -22,16 +19,12 @@ export function DrillsScreen({ refreshKey, onBack, openForm }: {
   refreshKey: number; onBack: () => void; openForm: (id?: string) => void;
 }) {
   const [drills, setDrills] = useState<DrillDef[]>([]);
-  const [media, setMedia] = useState<Media[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [q, setQ] = useState('');
   useEffect(() => {
     let alive = true;
     void getAll<DrillDef>('drills').then((d) => {
       if (alive) setDrills(d.sort((a, b) => a.name.localeCompare(b.name)));
-    });
-    void getAll<Media>('media').then((m) => {
-      if (alive) setMedia(m.filter((x) => x.ownerType === 'drill'));
     });
     return () => { alive = false; };
   }, [refreshKey]);
@@ -42,7 +35,7 @@ export function DrillsScreen({ refreshKey, onBack, openForm }: {
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Drills <InfoTip title="Drills">Your drill library. Each drill is tagged by gun type and dry/live, so the session picker shows the right ones. Tap a drill to read how to run it, or "+ Add Drill" to create your own. You can attach a target image to a drill — it prints on the session's drill run-sheet so you can take it to the range.</InfoTip></h1>
+      <h1 className="large-title">Drills <InfoTip title="Drills">Your drill library. Each drill is tagged by gun type and dry/live, so the session picker shows the right ones. Tap a drill to read how to run it, or "+ Add Drill" to create your own.</InfoTip></h1>
       <button className="button" onClick={() => openForm()}>+ Add Drill</button>
       {drills.length > 8 && <ListSearch value={q} onChange={setQ} placeholder="Search drills" />}
       <div className="card" style={{ marginTop: 16 }}>
@@ -52,7 +45,6 @@ export function DrillsScreen({ refreshKey, onBack, openForm }: {
             just to read what a drill is. Edit is a button inside the expansion. */}
         {drills.filter((d) => matchesQuery(q, d.name, d.briefDescription, d.gunCategories.join(' '))).map((d) => {
           const open = expanded === d.id;
-          const targets = media.filter((m) => m.ownerId === d.id);
           return (
             <div key={d.id}>
               <button className="row-tap" aria-expanded={open}
@@ -69,16 +61,6 @@ export function DrillsScreen({ refreshKey, onBack, openForm }: {
                   {d.fullDescription && <p className="note-text">{d.fullDescription}</p>}
                   {d.scoring && <p className="report-note">Scoring: {d.scoring}</p>}
                   {d.requiresHolster && <p className="report-note">Needs a holster.</p>}
-                  {targets.length > 0 && (
-                    <div className="photo-grid" style={{ margin: '8px 0' }}>
-                      {targets.map((m) => (
-                        <div className="thumb-wrap" key={m.id}>
-                          <MarkThumb media={m} />
-                          <span className="thumb-caption">{m.name}</span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
                   <button className="button secondary" onClick={() => openForm(d.id)}>Edit Drill</button>
                 </div>
               )}
@@ -103,11 +85,6 @@ export function DrillForm({ id, onSaved, onCancel }: {
   const [holster, setHolster] = useState(false);
   const [problem, setProblem] = useState('');
   const [confirming, setConfirming] = useState(false);
-  // Target image(s) attached to the drill (App 1) — staged via the shared
-  // MediaField and committed at save, exactly like session/match photos.
-  const [existingMedia, setExistingMedia] = useState<Media[]>([]);
-  const [removedMedia, setRemovedMedia] = useState<string[]>([]);
-  const [newFiles, setNewFiles] = useState<StagedFile[]>([]);
 
   useEffect(() => {
     if (id === undefined) return;
@@ -118,9 +95,6 @@ export function DrillForm({ id, onSaved, onCancel }: {
       setName(d.name); setFire(d.fire); setCats(d.gunCategories);
       setBrief(d.briefDescription); setFull(d.fullDescription);
       setScoring(d.scoring); setHolster(d.requiresHolster);
-    });
-    void getAll<Media>('media').then((all) => {
-      if (alive) setExistingMedia(all.filter((m) => m.ownerType === 'drill' && m.ownerId === id));
     });
     return () => { alive = false; };
   }, [id]);
@@ -137,15 +111,12 @@ export function DrillForm({ id, onSaved, onCancel }: {
       briefDescription: brief.trim(), fullDescription: full.trim(),
       scoring: scoring.trim(), requiresHolster: holster
     };
-    // Custom drills use a 'drx-' ID so a re-import never touches them. Generate
-    // it up front so the target media can be saved against the drill's id.
-    const did = original ? original.id : newId('drx');
     if (original) {
       await putOne('drills', stampUpdate({ ...original, ...fields }, Date.now()));
     } else {
-      await putOne('drills', stampNew({ ...fields, tags: [] }, did, Date.now()));
+      // Custom drills use a 'drx-' ID so a re-import never touches them.
+      await putOne('drills', stampNew({ ...fields, tags: [] }, newId('drx'), Date.now()));
     }
-    await commitMedia('drill', did, newFiles, removedMedia, existingMedia.length);
     onSaved();
   }
 
@@ -154,13 +125,7 @@ export function DrillForm({ id, onSaved, onCancel }: {
   // drill definition leaves past sessions untouched (they store the drill by name).
   const isCustom = !!original && original.id.startsWith('drx');
   async function reallyDelete() {
-    if (original) {
-      const all = await getAll<Media>('media');
-      for (const m of all.filter((m) => m.ownerType === 'drill' && m.ownerId === original.id)) {
-        await deleteOne('media', m.id);
-      }
-      await deleteOne('drills', original.id);
-    }
+    if (original) await deleteOne('drills', original.id);
     onSaved();
   }
 
@@ -213,11 +178,6 @@ export function DrillForm({ id, onSaved, onCancel }: {
           </button>
         </div>
       </div>
-      <MediaField heading="Target" addLabel="+ Add Target Image"
-        ownerType="drill" ownerId={original?.id ?? ''}
-        existingMedia={existingMedia} setExistingMedia={setExistingMedia}
-        removedMedia={removedMedia} setRemovedMedia={setRemovedMedia}
-        newFiles={newFiles} setNewFiles={setNewFiles} />
       <button className="button" onClick={() => void save()}>{original ? 'Save Changes' : 'Add Drill'}</button>
       {isCustom && (
         <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>

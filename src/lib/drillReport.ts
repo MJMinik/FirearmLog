@@ -1,21 +1,20 @@
-// "Print Drill" report (Michael's June 14 request): a printable run-sheet of
-// the drills scheduled for a session, with the option to include or omit the
-// scoring. Pure HTML builder so it's unit-testable; the session form resolves
-// each drill row against the drill library and hands the items here.
+// The "Print Drills" run-sheet (Michael's June-23 redesign): a printable score
+// table for a session's drills. Drills run down the left; columns across the top
+// are Drill, Distance, Time (s), Score, Out of.
+//   - Planned session  -> blank grey boxes you fill in by hand at the range
+//                         (Distance pre-filled if one was set, otherwise blank).
+//   - Logged session   -> the same grid with your recorded results.
+// Pure HTML builder so it's unit-testable; the session form resolves each drill
+// row against the drill library and hands the items here.
 import { formatDayKey } from './dates.ts';
-import type { ReportImage } from './reports.ts';
 
 export interface DrillReportItem {
   name: string;
-  fire: string;          // 'live' | 'dry' | 'both'
-  gunCategories: string[];
-  brief: string;
-  full: string;
-  scoring: string;
-  requiresHolster: boolean;
-  distance: string;      // planned distance for this session (may be blank)
-  /** Printable target image(s) attached to the drill (App 1). Optional. */
-  targets?: ReportImage[];
+  brief: string;              // short description, printed under the drill name
+  distance: string;          // planned: pre-filled if set; logged: as recorded
+  time: number | null;
+  score: number | null;
+  maxScore: number | null;
 }
 
 function escapeHtml(s: string): string {
@@ -24,44 +23,34 @@ function escapeHtml(s: string): string {
   }[c] ?? c));
 }
 
-const FIRE_LABEL: Record<string, string> = { live: 'Live fire', dry: 'Dry fire', both: 'Live & dry' };
+const num = (n: number | null): string => (n == null ? '' : String(n));
 
-// Old Pistol Tracker stored scoring as a code; show it in plain language.
-// 'none' maps to '' so no scoring line prints. Anything else (free text the
-// user typed) passes through unchanged.
-const SCORING_LABELS: Record<string, string> = {
-  time: 'Time', score: 'Score', time_score: 'Time / Score', none: ''
-};
-
-export function scoringLabel(scoring: string): string {
-  const key = scoring.trim().toLowerCase();
-  return key in SCORING_LABELS ? SCORING_LABELS[key] : scoring;
-}
-
-/** Printable drill run-sheet. `includeScoring` shows/hides each drill's scoring. */
+/**
+ * Printable drill score-sheet. `planned` chooses blank fill-in boxes (true) vs.
+ * the recorded results (false).
+ */
 export function buildDrillReportHtml(
   items: DrillReportItem[],
-  opts: { includeScoring: boolean; date?: string; location?: string }
+  opts: { planned: boolean; date?: string; location?: string }
 ): string {
-  const { includeScoring, date, location } = opts;
+  const { planned, date, location } = opts;
 
   const styles = `
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, Arial, sans-serif; font-size: 11pt; color: #111; background: #fff; padding: 32px 40px; max-width: 720px; margin: 0 auto; }
     .app-label { font-size: 8pt; color: #bbb; text-align: right; margin-bottom: 6px; }
-    .header { border-bottom: 2px solid #111; padding-bottom: 12px; margin-bottom: 20px; }
+    .header { border-bottom: 2px solid #111; padding-bottom: 12px; margin-bottom: 18px; }
     .header h1 { font-size: 18pt; font-weight: bold; }
     .header .meta { font-size: 10pt; color: #555; margin-top: 4px; }
-    .drill { border: 1px solid #999; border-radius: 6px; padding: 12px 14px; margin-bottom: 12px; page-break-inside: avoid; }
-    .drill h2 { font-size: 13pt; margin-bottom: 4px; }
-    .drill .tags { font-size: 9pt; color: #666; margin-bottom: 8px; }
-    .drill .brief { font-size: 11pt; margin-bottom: 6px; }
-    .drill .full { font-size: 10.5pt; color: #333; white-space: pre-wrap; line-height: 1.45; margin-bottom: 6px; }
-    .drill .row { font-size: 10pt; color: #222; margin-top: 4px; }
-    .drill .label { color: #666; }
-    .drill .targets { margin-top: 8px; }
-    .drill .target { display: block; max-width: 100%; max-height: 420px; object-fit: contain; border: 1px solid #ccc; border-radius: 6px; margin: 6px 0; }
-    .drill .legend { font-size: 9.5pt; color: #333; margin: 2px 0 8px; padding-left: 20px; }
+    .hint { font-size: 9.5pt; color: #666; margin-bottom: 12px; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th { text-align: left; color: #555; font-weight: 600; font-size: 9.5pt; padding: 4px 6px; border-bottom: 1.5px solid #999; }
+    td { padding: 9px 6px; vertical-align: top; border-bottom: 1px solid #e3e3e3; }
+    tr { page-break-inside: avoid; }
+    .drill-name { font-weight: bold; font-size: 11.5pt; }
+    .drill-brief { font-size: 9pt; color: #666; margin-top: 2px; }
+    .box { background: #f1f1f1; border: 1px solid #cfcfcf; border-radius: 6px; height: 30px; }
+    .val { font-size: 11pt; padding-top: 3px; }
     .close-bar { margin-bottom: 16px; }
     .close-btn { font-family: inherit; font-size: 11pt; padding: 10px 16px; border-radius: 8px; border: 1px solid #888; background: #f2f2f2; color: #111; cursor: pointer; }
     @media print { body { padding: 0.4in 0.5in; } .close-bar { display: none; } }
@@ -69,33 +58,41 @@ export function buildDrillReportHtml(
 
   const metaBits = [date ? formatDayKey(date) : '', location ?? ''].filter(Boolean).map(escapeHtml).join(' · ');
 
-  const body = items.length === 0
-    ? '<p>No drills scheduled yet.</p>'
-    : items.map((d) => {
-        const tags = [FIRE_LABEL[d.fire] ?? d.fire, d.gunCategories.join(', ') || 'Any gun',
-          d.requiresHolster ? 'Holster' : ''].filter(Boolean).map(escapeHtml).join(' · ');
-        return `<div class="drill">
-          <h2>${escapeHtml(d.name)}</h2>
-          <div class="tags">${tags}</div>
-          ${d.brief ? `<div class="brief">${escapeHtml(d.brief)}</div>` : ''}
-          ${d.full ? `<div class="full">${escapeHtml(d.full)}</div>` : ''}
-          ${d.distance ? `<div class="row"><span class="label">Distance:</span> ${escapeHtml(d.distance)}</div>` : ''}
-          ${includeScoring && scoringLabel(d.scoring) ? `<div class="row"><span class="label">Scoring:</span> ${escapeHtml(scoringLabel(d.scoring))}</div>` : ''}
-          ${(d.targets && d.targets.length) ? `<div class="targets">${d.targets.map((t) =>
-            `<img class="target" src="${t.src}" alt="Target for ${escapeHtml(d.name)}" />` +
-            (t.legend && t.legend.length ? `<ol class="legend">${t.legend.map((l) => `<li>${escapeHtml(l)}</li>`).join('')}</ol>` : '')
-          ).join('')}</div>` : ''}
-        </div>`;
-      }).join('');
+  // One cell: a blank box (planned) or the recorded value (logged). The planned
+  // Distance cell shows its pre-filled value when one was set.
+  const cell = (value: string, forceBox = false): string => {
+    if (planned && (forceBox || !value)) return '<div class="box"></div>';
+    return `<div class="val">${escapeHtml(value) || '&nbsp;'}</div>`;
+  };
+
+  const rows = items.length === 0
+    ? '<tr><td colspan="5" style="color:#666;padding:14px 6px;">No drills scheduled yet.</td></tr>'
+    : items.map((d) => `<tr>
+        <td>
+          <div class="drill-name">${escapeHtml(d.name)}</div>
+          ${d.brief ? `<div class="drill-brief">${escapeHtml(d.brief)}</div>` : ''}
+        </td>
+        <td>${cell(d.distance)}</td>
+        <td>${cell(num(d.time), true)}</td>
+        <td>${cell(num(d.score), true)}</td>
+        <td>${cell(num(d.maxScore), true)}</td>
+      </tr>`).join('');
 
   return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Drills${date ? ' — ' + escapeHtml(date) : ''}</title><style>${styles}</style></head>
   <body>
     <div class="close-bar"><button class="close-btn" onclick="window.close()">← Close &amp; return to FirearmLog</button></div>
     <div class="app-label">FirearmLog — Drill Run-Sheet</div>
     <div class="header">
-      <h1>Drills for This Session</h1>
+      <h1>Drills for this session</h1>
       ${metaBits ? `<div class="meta">${metaBits}</div>` : ''}
     </div>
-    ${body}
+    ${planned ? '<div class="hint">Fill in your results at the range.</div>' : ''}
+    <table>
+      <colgroup><col style="width:34%"><col style="width:16.5%"><col style="width:16.5%"><col style="width:16.5%"><col style="width:16.5%"></colgroup>
+      <thead><tr>
+        <th>Drill</th><th>Distance</th><th>Time (s)</th><th>Score</th><th>Out of</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
   </body></html>`;
 }
