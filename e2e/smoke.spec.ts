@@ -2,10 +2,11 @@ import { test, expect } from '@playwright/test';
 import { seedDemo } from './helpers';
 
 test.describe('Smoke', () => {
-  test('a fresh install opens on the Setup Wizard with all three start options', async ({ page }) => {
+  test('a fresh install opens on the Setup Wizard with the start options', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Set up FirearmLog' })).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Choose my file' })).toBeVisible();
+    // First run is for new users: start fresh or explore sample data. (Importing
+    // an old backup lives under Gear & Data, not in the first-run wizard.)
     await expect(page.getByRole('button', { name: 'Add my gear' })).toBeVisible();
     await expect(page.getByRole('button', { name: 'See it with sample data' })).toBeVisible();
   });

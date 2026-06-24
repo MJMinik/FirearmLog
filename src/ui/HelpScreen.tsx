@@ -52,7 +52,7 @@ const QUICK_TOUR: TourStep[] = [
   {
     title: 'Your gear and data',
     view: { kind: 'guns' },
-    body: 'Guns, optics, ammo, magazines, drills, costs, maintenance, malfunctions, parts, reference guides, and reports. Tour & Setup sits just below them. On a phone they\'re under the More tab; on a computer they\'re listed down the sidebar. The More tab is also where you import your old Pistol Tracker data.',
+    body: 'Guns, optics, ammo, magazines, drills, costs, maintenance, malfunctions, parts, reference guides, and reports. Tour & Setup sits just below them. On a phone they\'re under the More tab; on a computer they\'re listed down the sidebar.',
   },
   {
     title: 'Your data stays yours',
@@ -162,9 +162,9 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
       body: `Sync (on ${hub}) moves a single file between your devices through iCloud Drive or the Files app. Push from the device you just used, pull on the other one. The app tells you plainly when one copy is newer. On that same screen, Free Up Space appears when older full-size photos are taking up room — tap it to shrink them.`,
     },
     {
-      title: 'Setup & importing old data',
+      title: 'Setup & sample data',
       view: { kind: 'setup' },
-      body: `The first time you open the app it offers to import your Pistol Tracker backup, start fresh, or load sample data to explore — and you can re-run that any time from Tour & Setup. Re-importing the same file simply re-applies the records — it won't double anything up. After an import, a verification report checks every record and round count came across.`,
+      body: `The first time you open the app it offers to start fresh — add your guns and gear right then — or load a ready-made sample log so you can explore everything the app does. You can re-run either any time from Tour & Setup, and clear the sample whenever you like by starting fresh.`,
     },
     {
       title: 'Your data & privacy',

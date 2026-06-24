@@ -1,16 +1,16 @@
 // First-run Setup Wizard (M9 — Help & Tour; spec §14.3).
 // Shown automatically the first time the app opens with an empty log, and
-// re-runnable any time from Help. Two paths: import a Pistol Tracker file (the
-// existing, tested ImportFlow), or "start fresh" and add gear via an
-// add-your-gear checklist. The checklist reuses the SAME add forms the user
-// already knows (GunForm, OpticForm, AmmoForm, MagazineForm) — no new gear-entry
-// code, and no new data-handling code here. Guns are nudged first because optics,
-// ammo, and sessions all attach to a gun.
+// re-runnable any time from Help. Two paths: "start fresh" and add gear via an
+// add-your-gear checklist, or load sample data to explore. The checklist reuses
+// the SAME add forms the user already knows (GunForm, OpticForm, AmmoForm,
+// MagazineForm) — no new gear-entry code, and no new data-handling code here.
+// Guns are nudged first because optics, ammo, and sessions all attach to a gun.
+// (Importing an old backup file lives under Gear & Data → Backup & Import, not
+// here — it's not part of the new-user first run.)
 import { useEffect, useState } from 'react';
 import { countAll, restoreSnapshot } from '../lib/db.ts';
 import { parseFlog } from '../lib/flog.ts';
 import { ConfirmSheet } from './Sheet.tsx';
-import { ImportFlow } from './ImportFlow.tsx';
 import { GunForm } from './GunForm.tsx';
 import { OpticForm } from './OpticsScreen.tsx';
 import { AmmoForm } from './AmmoScreens.tsx';
@@ -22,7 +22,7 @@ export function SetupWizard({ onFinish, onCancel }: {
   onFinish: () => void; // mark setup done + return to Home
   onCancel: () => void; // leave without choosing (re-run case)
 }) {
-  const [mode, setMode] = useState<'choose' | 'import' | 'gear'>('choose');
+  const [mode, setMode] = useState<'choose' | 'gear'>('choose');
   const [adding, setAdding] = useState<Adding>(null);
   const [counts, setCounts] = useState({ guns: 0, optics: 0, ammo: 0, mags: 0 });
   const [bump, setBump] = useState(0);
@@ -89,15 +89,6 @@ export function SetupWizard({ onFinish, onCancel }: {
           <p className="report-note" style={{ marginBottom: 12 }}>Welcome! How would you like to start?</p>
 
           <div className="card">
-            <h2>Bring in my Pistol Tracker data</h2>
-            <p className="report-note" style={{ marginBottom: 12 }}>
-              Import your Pistol Tracker backup or sync file — guns, sessions, photos, the lot.
-              Nothing is lost, and you can re-run this any time without doubling anything up.
-            </p>
-            <button className="button" onClick={() => setMode('import')}>Choose my file</button>
-          </div>
-
-          <div className="card">
             <h2>Start fresh</h2>
             <p className="report-note" style={{ marginBottom: 12 }}>
               Begin with an empty log and let's add your gear. You can always add more later from the
@@ -130,17 +121,6 @@ export function SetupWizard({ onFinish, onCancel }: {
             Skip for now — I'm just looking around
           </button>
         </>
-      )}
-
-      {mode === 'import' && (
-        <div className="card">
-          <h2>Import your Pistol Tracker file</h2>
-          <p className="report-note" style={{ marginBottom: 12 }}>
-            Pick your backup or sync file. You'll confirm each gun's type, then see a report
-            checking every record came across.
-          </p>
-          <ImportFlow onImported={onFinish} />
-        </div>
       )}
 
       {mode === 'gear' && (

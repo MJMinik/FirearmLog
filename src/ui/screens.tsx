@@ -673,7 +673,7 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
             : { kind: 'session-form', id: it.id })}
           onEmptyDay={(dk) => open({ kind: 'session-form', date: dk })} />
       ) : sessions.length === 0 ? (
-        <p className="empty">Nothing logged yet. Tap "Log Session" after your next range trip, or import your Pistol Tracker data from the Home screen.</p>
+        <p className="empty">Nothing logged yet. Tap "Log Session" after your next range trip.</p>
       ) : shownSessions.length === 0 ? (
         <p className="empty">Nothing matches your search. Tap Clear to see everything again{shownMatches.length > 0 ? ', or flip to Calendar — your matches are there' : ''}.</p>
       ) : (
