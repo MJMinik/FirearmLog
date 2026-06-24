@@ -166,6 +166,13 @@ export interface MalfunctionEntry extends BaseRecord, Imported {
   type: string;       // plain language, e.g. "Failure to feed"
   resolution: string; // what cleared it
   notes: string;
+  // App 3a: optional context for the malfunction, to power the App 3b report
+  // (which ammo / magazine / round number tends to choke). All optional and
+  // additive — older records simply lack them, and the data-file validator
+  // imposes no per-field allow-list, so sync/import are unaffected.
+  ammoId?: string | null;
+  magazineId?: string | null;
+  roundCount?: number | null;
 }
 
 export interface Magazine extends BaseRecord, Imported {

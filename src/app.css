@@ -234,6 +234,7 @@ select.category-pick {
 }
 .field textarea { min-height: 80px; }
 .field.small { flex: 1; }
+.field-optional { color: var(--text-dim); font-weight: 400; opacity: 0.75; }
 .form-problem { color: var(--danger); margin: -4px 0 12px; font-size: 15px; }
 
 .seg { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; margin-bottom: 12px; }

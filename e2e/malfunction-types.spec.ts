@@ -29,3 +29,39 @@ test.describe('Custom malfunction types (App 2)', () => {
     await expect(whatHappened2.locator('option', { hasText: 'Brass over bolt' })).toHaveCount(1);
   });
 });
+
+// App 3a — a malfunction can carry an optional round number (and ammo/magazine
+// when present), and those stick when you reopen the session to edit it.
+test.describe('Malfunction details (App 3a)', () => {
+  test('round number is saved and reappears when the session is reopened', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Log');
+
+    await page.getByRole('button', { name: '+ Log Session' }).click();
+    const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+    await gunsCard.locator('button.gun-toggle').first().click();
+    await gunsCard.getByRole('spinbutton').first().fill('50');
+
+    await page.getByRole('button', { name: '+ Add Malfunction' }).click();
+    await page.locator('label', { hasText: 'What happened' }).locator('select').selectOption('Stovepipe');
+
+    // The optional round-number field is always present; fill it.
+    const roundField = page.locator('label', { hasText: 'Round number' }).locator('input');
+    await roundField.fill('47');
+
+    // Ammo picker only renders when sample ammo exists; pick a real one if so.
+    const ammoSelect = page.locator('label', { hasText: 'Ammo' }).locator('select');
+    if (await ammoSelect.count()) {
+      await ammoSelect.selectOption({ index: 1 }); // index 0 is "— Not sure —"
+    }
+
+    await page.locator('.navbar-action').click(); // Save
+    await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
+
+    // Reopen the just-logged session (today's date sorts to the top) — tapping a
+    // Log row opens the editable session form directly.
+    await page.getByRole('main').locator('.row-tap').first().click();
+    const roundFieldAgain = page.locator('label', { hasText: 'Round number' }).locator('input');
+    await expect(roundFieldAgain).toHaveValue('47');
+  });
+});

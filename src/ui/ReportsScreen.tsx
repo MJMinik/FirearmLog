@@ -2,7 +2,7 @@
 // PDF from the print dialog), assembled from the already-tested data helpers.
 import { useEffect, useState } from 'react';
 import type {
-  Ammunition, Classifier, DrillDef, Firearm, Goal, Match, MalfunctionEntry,
+  Ammunition, Classifier, DrillDef, Firearm, Goal, Magazine, Match, MalfunctionEntry,
   MaintenanceEntry, Media, Part, Purchase, Reference, Session
 } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
@@ -21,12 +21,13 @@ import { reportImageUrls } from './reportImages.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { isOwned } from '../lib/gunStatus.ts';
+import { ammoLabel } from './AmmoScreens.tsx';
 
 interface Bundle {
   firearms: Firearm[]; sessions: Session[]; matches: Match[]; purchases: Purchase[];
   ammo: Ammunition[]; classifiers: Classifier[]; malfunctions: MalfunctionEntry[];
   maintenance: MaintenanceEntry[]; references: Reference[]; drills: DrillDef[];
-  goals: Goal[]; media: Media[]; parts: Part[];
+  goals: Goal[]; media: Media[]; parts: Part[]; magazines: Magazine[];
 }
 
 const n = (x: number) => x.toLocaleString();
@@ -39,20 +40,20 @@ export function ReportsScreen({ refreshKey, onBack }: { refreshKey: number; onBa
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const [firearms, sessions, matches, purchases, ammo, classifiers, malfunctions, maintenance, references, drills, goals, media, parts] =
+      const [firearms, sessions, matches, purchases, ammo, classifiers, malfunctions, maintenance, references, drills, goals, media, parts, magazines] =
         await Promise.all([
           getAll<Firearm>('firearms'), getAll<Session>('sessions'), getAll<Match>('matches'),
           getAll<Purchase>('purchases'), getAll<Ammunition>('ammunition'), getAll<Classifier>('classifiers'),
           getAll<MalfunctionEntry>('malfunctions'), getAll<MaintenanceEntry>('maintenance'),
           getAll<Reference>('references'), getAll<DrillDef>('drills'), getAll<Goal>('goals'),
-          getAll<Media>('media'), getAll<Part>('parts')
+          getAll<Media>('media'), getAll<Part>('parts'), getAll<Magazine>('magazines')
         ]);
       if (!alive) return;
       // App 7: every report works off live data only — trashed sessions and the
       // malfunctions filed against them are excluded before anything is built.
       const liveSessions = activeOnly(sessions);
       const liveMalfs = activeMalfunctions(malfunctions, trashedIdSet(sessions));
-      setData({ firearms, sessions: liveSessions, matches, purchases, ammo, classifiers, malfunctions: liveMalfs, maintenance, references, drills, goals, media, parts });
+      setData({ firearms, sessions: liveSessions, matches, purchases, ammo, classifiers, malfunctions: liveMalfs, maintenance, references, drills, goals, media, parts, magazines });
     })();
     return () => { alive = false; };
   }, [refreshKey]);
@@ -166,21 +167,41 @@ export function ReportsScreen({ refreshKey, onBack }: { refreshKey: number; onBa
   }
 
   function malfunctionsReport() {
+    // App 3a: malfunctions now carry optional ammo / magazine / round-number
+    // context, so the report breaks down by those too and lists each one.
+    const ammoName = (id?: string | null) =>
+      id ? (d.ammo.find((a) => a.id === id) ? ammoLabel(d.ammo.find((a) => a.id === id)!) : '(removed)') : '—';
+    const magName = (id?: string | null) =>
+      id ? (d.magazines.find((mg) => mg.id === id)?.label ?? '(removed)') : '—';
+
     const byGun = new Map<string, number>();
     const byType = new Map<string, number>();
+    const byAmmo = new Map<string, number>();
+    const byMag = new Map<string, number>();
     for (const m of d.malfunctions) {
       byGun.set(m.firearmId, (byGun.get(m.firearmId) ?? 0) + 1);
       byType.set(m.type || 'Other', (byType.get(m.type || 'Other') ?? 0) + 1);
+      if (m.ammoId) byAmmo.set(m.ammoId, (byAmmo.get(m.ammoId) ?? 0) + 1);
+      if (m.magazineId) byMag.set(m.magazineId, (byMag.get(m.magazineId) ?? 0) + 1);
     }
     const rounds = totalRounds(d.firearms, d.sessions, d.matches);
     const rate = ratePerThousand(d.malfunctions.length, rounds);
+    const recent = [...d.malfunctions].sort((a, b) => (b.date || '').localeCompare(a.date || '')).slice(0, 30);
     open('Malfunctions', `As of ${formatDayKey(todayKey())}`, [
       { heading: 'Summary', rows: [
         { label: 'Total malfunctions', value: n(d.malfunctions.length) },
         { label: 'Per 1,000 rounds', value: rate != null ? rate.toFixed(1) : '—' }
       ] },
       { heading: 'By Gun', rows: [...byGun.entries()].map(([id, c]) => ({ label: gunName(id), value: n(c) })) },
-      { heading: 'By Type', rows: [...byType.entries()].map(([t, c]) => ({ label: t, value: n(c) })) }
+      { heading: 'By Type', rows: [...byType.entries()].map(([t, c]) => ({ label: t, value: n(c) })) },
+      ...(byAmmo.size ? [{ heading: 'By Ammo', rows: [...byAmmo.entries()].map(([id, c]) => ({ label: ammoName(id), value: n(c) })) }] : []),
+      ...(byMag.size ? [{ heading: 'By Magazine', rows: [...byMag.entries()].map(([id, c]) => ({ label: magName(id), value: n(c) })) }] : []),
+      ...(recent.length ? [{ heading: 'Recent Malfunctions', table: {
+        headers: ['Date', 'Gun', 'Type', 'Ammo', 'Magazine', 'Round'],
+        rows: recent.map((m) => [
+          m.date ? formatDayKey(m.date) : '—', gunName(m.firearmId), m.type || '—',
+          ammoName(m.ammoId), magName(m.magazineId), m.roundCount != null ? String(m.roundCount) : '—'
+        ]) } }] : [])
     ]);
   }
 
@@ -225,7 +246,7 @@ export function ReportsScreen({ refreshKey, onBack }: { refreshKey: number; onBa
     { label: 'Costs', run: costsReport, desc: 'By category, cost per round, spend by gun' },
     { label: 'Competition Season', run: seasonReport, desc: 'Matches, finishes, classification' },
     { label: 'Training Summary', run: trainingSummaryReport, desc: 'Sessions, rounds, PRs, goals' },
-    { label: 'Malfunctions', run: malfunctionsReport, desc: 'By gun and type, rate per 1,000' },
+    { label: 'Malfunctions', run: malfunctionsReport, desc: 'By gun, type, ammo, magazine; rate per 1,000' },
     { label: 'Maintenance History', run: maintenanceReport, desc: "What's due + recent work" },
     { label: 'Insurance Inventory', run: insuranceReport, desc: 'Guns, serials, photos' }
   ];
