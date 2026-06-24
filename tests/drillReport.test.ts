@@ -45,3 +45,17 @@ test('drill report escapes user text and handles an empty list', () => {
   assert.match(html, /A &amp; &lt;B&gt;/);
   assert.match(buildDrillReportHtml([], { includeScoring: true }), /No drills scheduled yet/);
 });
+
+test('drill report prints attached target images with their markup legend', () => {
+  const html = buildDrillReportHtml([item({
+    targets: [{ src: 'data:image/jpeg;base64,AAAA', legend: ['A-zone hits', 'Low left'] }]
+  })], { includeScoring: false });
+  assert.match(html, /<img class="target" src="data:image\/jpeg;base64,AAAA"/);
+  assert.match(html, /A-zone hits/);
+  assert.match(html, /Low left/);
+});
+
+test('drill with no target adds no image block', () => {
+  const html = buildDrillReportHtml([item({})], { includeScoring: false });
+  assert.doesNotMatch(html, /class="target"/);
+});

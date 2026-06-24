@@ -94,7 +94,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Drills',
       view: { kind: 'drills' },
-      body: `The drill library lives under ${at('Drills')}. Each drill knows which gun types it's for and whether it's dry-fire, live-fire, or both — that's how the session picker filters them. A drill has a short and an expandable full description, a scoring type, and a par or max score; you can multi-select drills to print them and print target references where they apply.`,
+      body: `The drill library lives under ${at('Drills')}. Each drill knows which gun types it's for and whether it's dry-fire, live-fire, or both — that's how the session picker filters them. A drill has a short and an expandable full description, a scoring type, and a par or max score. You can also attach a target image to a drill (and mark it up with labeled circles); it prints on the session's drill run-sheet so you can take the target to the range.`,
     },
     {
       title: 'Compete — matches',

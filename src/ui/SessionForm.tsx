@@ -18,7 +18,7 @@ import {
   normalizeChecklist, normalizeCustomItems, setChecklistMode, setItemPacked, setItemTake,
   type ChecklistCategory, addCustomItem
 } from '../lib/checklist.ts';
-import { buildDrillReportHtml } from '../lib/drillReport.ts';
+import { buildDrillReportHtml, type DrillReportItem } from '../lib/drillReport.ts';
 import { activeOnly } from '../lib/softDelete.ts';
 import { softDeleteSession } from './sessionDelete.ts';
 import { buildReportHtml, type ReportSection } from '../lib/reports.ts';
@@ -251,21 +251,38 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     openPrintWindow(buildChecklistPrintHtml({ date, location, notes, checklist, custom: customItems, firearms }));
   }
 
-  function printDrills() {
-    const items = drills.map((row) => {
-      const def = drillLib.find((d) => d.name === row.name);
-      return {
-        name: row.name,
-        fire: def?.fire ?? 'live',
-        gunCategories: def?.gunCategories ?? [],
-        brief: def?.briefDescription ?? '',
-        full: def?.fullDescription ?? '',
-        scoring: def?.scoring ?? '',
-        requiresHolster: def?.requiresHolster ?? false,
-        distance: row.distance
-      };
-    });
-    openPrintWindow(buildDrillReportHtml(items, { includeScoring, date, location }));
+  async function printDrills() {
+    // Open the window inside the tap (so iOS doesn't block it), show a holding
+    // note, then write once any target images are downscaled (full-res targets
+    // would otherwise crash mobile Safari — same fix as the reports hub).
+    const win = window.open('', '_blank');
+    if (!win) { setProblem('Pop-ups blocked — please allow pop-ups and try again.'); return; }
+    win.document.write('<!doctype html><meta charset="utf-8"><body style="font:15px -apple-system,Arial,sans-serif;padding:40px;color:#555">Preparing run-sheet…</body>');
+    try {
+      const allMedia = await getAll<Media>('media');
+      const items: DrillReportItem[] = [];
+      for (const row of drills) {
+        const def = drillLib.find((d) => d.name === row.name);
+        const targets = def ? await reportImageUrls(allMedia, 'drill', def.id) : [];
+        items.push({
+          name: row.name,
+          fire: def?.fire ?? 'live',
+          gunCategories: def?.gunCategories ?? [],
+          brief: def?.briefDescription ?? '',
+          full: def?.fullDescription ?? '',
+          scoring: def?.scoring ?? '',
+          requiresHolster: def?.requiresHolster ?? false,
+          distance: row.distance,
+          targets,
+        });
+      }
+      win.document.open();
+      win.document.write(buildDrillReportHtml(items, { includeScoring, date, location }));
+      win.document.close(); win.focus();
+      setTimeout(() => win.print(), 400);
+    } catch {
+      try { win.document.body.textContent = 'Sorry — could not build this run-sheet. Please try again.'; } catch { /* window already closed */ }
+    }
   }
 
   async function printSessionReport() {
@@ -692,7 +709,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                 onChange={(e) => setIncludeScoring(e.target.checked)} />
               Include scoring on the Print Drills report
             </label>
-            <button className="button secondary" style={{ marginTop: 8 }} onClick={printDrills}>
+            <button className="button secondary" style={{ marginTop: 8 }} onClick={() => void printDrills()}>
               Print Drills
             </button>
           </>
