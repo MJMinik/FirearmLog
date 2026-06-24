@@ -185,17 +185,19 @@ function TourModal({ steps, onClose, onGo }: { steps: TourStep[]; onClose: () =>
         <button className="button secondary" style={{ marginBottom: 10 }} onClick={() => onGo(view)}>Take me there</button>
       )}
       <p className="report-note" aria-live="polite">Step {i + 1} of {steps.length}</p>
+      {/* The advance button stays pinned: this row is the LAST element, and the
+          sheet is bottom-anchored, so Next and (on the final step) Done sit in the
+          identical spot every step — you can click straight through without moving
+          the pointer. Back's slot is reserved on step 1 so the primary button
+          never shifts sideways either. Mid-tour exit is the sheet's header ✕. */}
       <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
-        {i > 0 && (
-          <button className="button secondary" style={{ flex: 1 }} onClick={() => setI(i - 1)}>‹ Back</button>
-        )}
+        {i > 0
+          ? <button className="button secondary" style={{ flex: 1 }} onClick={() => setI(i - 1)}>‹ Back</button>
+          : <span style={{ flex: 1 }} aria-hidden="true" />}
         {last
           ? <button className="button" style={{ flex: 1 }} onClick={onClose}>Done</button>
           : <button className="button" style={{ flex: 1 }} onClick={() => setI(i + 1)}>Next ›</button>}
       </div>
-      {!last && (
-        <button className="button secondary" style={{ marginTop: 8 }} onClick={onClose}>Close</button>
-      )}
     </Sheet>
   );
 }
