@@ -14,6 +14,7 @@ import { drillsForContext } from '../lib/drillFilter.ts';
 import { inventoryAfterUsageChange } from '../lib/costing.ts';
 import { MALF_TYPES, CLEAR_METHODS, mergeOptions, magazinesForFirearm, parseRoundCount } from '../lib/malfunctions.ts';
 import { recentValues } from '../lib/suggest.ts';
+import { suggestAmmoRow, sharedCaliber } from '../lib/ammoSuggest.ts';
 import {
   buildChecklistPrintHtml, checklistItemsForCategory, checklistProgress, itemState, newChecklist,
   normalizeChecklist, normalizeCustomItems, setChecklistMode, setItemPacked, setItemTake,
@@ -78,6 +79,12 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const [ammoLib, setAmmoLib] = useState<Ammunition[]>([]);
   const [magazines, setMagazines] = useState<Magazine[]>([]);
   const [ammoRows, setAmmoRows] = useState<AmmoRow[]>([]);
+  // Once the shooter touches the Ammo Used section, the form stops auto-syncing
+  // it to the gun rounds (so borrow/lend cases, where the numbers legitimately
+  // differ, stick). recentAmmoIds drives the smart type default (most-recent
+  // first, from past sessions).
+  const [ammoTouched, setAmmoTouched] = useState(false);
+  const [recentAmmoIds, setRecentAmmoIds] = useState<string[]>([]);
   const [pastLocations, setPastLocations] = useState<string[]>([]);
 
   const [kind, setKind] = useState('practice');
@@ -131,6 +138,15 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       setAmmoLib(am.sort((a, b) => ammoLabel(a).localeCompare(ammoLabel(b))));
       setMagazines(mags);
       setPastLocations(recentValues(activeOnly(allSessions).map((s) => ({ date: s.date, value: s.location }))));
+      // Ammo types used before, most-recent first — feeds the smart default for
+      // the auto Ammo Used row.
+      const recentAmmo: string[] = [];
+      for (const s of [...activeOnly(allSessions)].sort((a, b) => b.date.localeCompare(a.date))) {
+        for (const u of s.ammoUsage ?? []) {
+          if (u.ammoId && !recentAmmo.includes(u.ammoId)) recentAmmo.push(u.ammoId);
+        }
+      }
+      setRecentAmmoIds(recentAmmo);
       setSavedMalfTypes([...new Set(allMalf.map((m) => m.type).filter(Boolean))]);
       setSavedClearMethods([...new Set(allMalf.map((m) => m.resolution).filter(Boolean))]);
       // Instructor suggestions = past sessions' instructors (most-recent first,
@@ -159,6 +175,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         setRounds(r);
         setDrills(s.drills.map(toRow));
         setAmmoRows((s.ammoUsage ?? []).map((u) => ({ ammoId: u.ammoId, rounds: String(u.rounds) })));
+        // Editing/converting an existing session: never auto-overwrite its saved
+        // ammo — treat the section as already user-managed.
+        setAmmoTouched(true);
         setExistingMedia(allMedia.filter((m) => m.ownerType === 'session' && m.ownerId === id));
         const mine = allMalfs.filter((m) => m.sessionId === id);
         setOldMalfIds(mine.map((m) => m.id));
@@ -180,6 +199,22 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     })();
     return () => { alive = false; };
   }, [editing, id, convert]);
+
+  // Auto-default the "Ammo Used" row to match the gun rounds on a NEW session,
+  // so logging rounds actually draws ammo off inventory instead of silently
+  // doing nothing. Stops the instant the shooter touches the ammo section
+  // (ammoTouched), and never runs for an existing session (editing/converting),
+  // which keeps its saved ammo exactly as-is.
+  useEffect(() => {
+    if (id !== undefined || ammoTouched) return;
+    if (kind === 'dry_fire') { setAmmoRows([]); return; }
+    const gunRounds = firearms.map((f) => ({ caliber: f.caliber, rounds: Number(rounds[f.id]) || 0 }));
+    const total = gunRounds.reduce((t, g) => t + g.rounds, 0);
+    const row = suggestAmmoRow({
+      totalRounds: total, caliber: sharedCaliber(gunRounds), ammoLib, recentAmmoIds,
+    });
+    setAmmoRows(row ? [row] : []);
+  }, [id, ammoTouched, kind, rounds, firearms, ammoLib, recentAmmoIds]);
 
   const selectedGuns = useMemo(
     () => firearms.filter((f) => rounds[f.id] !== undefined),
@@ -655,29 +690,36 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           {ammoRows.map((r, i) => (
             <div className="row" key={i}>
               <select className="category-pick ammo-pick" aria-label={`Ammo ${i + 1}`} value={r.ammoId}
-                onChange={(e) => setAmmoRows((p) => p.map((x, n) => n === i ? { ...x, ammoId: e.target.value } : x))}>
+                onChange={(e) => { setAmmoTouched(true); setAmmoRows((p) => p.map((x, n) => n === i ? { ...x, ammoId: e.target.value } : x)); }}>
                 <option value="">Pick ammo…</option>
                 {ammoLib.map((a) => <option key={a.id} value={a.id}>{ammoLabel(a)}</option>)}
               </select>
               <input className="rounds-input" type="number" inputMode="numeric" min="0"
                 placeholder="rounds" aria-label={`Rounds of ammo ${i + 1}`} value={r.rounds}
-                onChange={(e) => setAmmoRows((p) => p.map((x, n) => n === i ? { ...x, rounds: e.target.value } : x))} />
+                onChange={(e) => { setAmmoTouched(true); setAmmoRows((p) => p.map((x, n) => n === i ? { ...x, rounds: e.target.value } : x)); }} />
               <button className="icon-btn" aria-label="Remove ammo row"
-                onClick={() => setAmmoRows((prev) => prev.filter((_, x) => x !== i))}>✕</button>
+                onClick={() => { setAmmoTouched(true); setAmmoRows((prev) => prev.filter((_, x) => x !== i)); }}>✕</button>
             </div>
           ))}
-          <button className="button secondary" onClick={() => setAmmoRows((prev) => [...prev, { ammoId: '', rounds: '' }])}>
+          <button className="button secondary" onClick={() => { setAmmoTouched(true); setAmmoRows((prev) => [...prev, { ammoId: '', rounds: '' }]); }}>
             + Add Ammo
           </button>
           {(() => {
             const used = ammoRows.reduce((t, r) => t + (Number(r.rounds) || 0), 0);
             const shot = Object.values(rounds).reduce((t, v) => t + (Number(v) || 0), 0);
-            return used > 0 && shot > 0 && used !== shot ? (
-              <p className="report-note">
+            // A row has rounds but no type picked: nothing will deduct until the
+            // shooter chooses one — say so plainly (Michael's request).
+            const needType = ammoRows.some((r) => (Number(r.rounds) || 0) > 0 && r.ammoId === '');
+            if (needType) return (
+              <p className="report-note warn">Pick an ammo type, or these rounds won't come off your inventory.</p>
+            );
+            if (used > 0 && shot > 0 && used !== shot) return (
+              <p className="report-note warn">
                 Heads up: ammo rows total {used.toLocaleString()} but the guns above total{' '}
                 {shot.toLocaleString()}. You can still save — just check the numbers.
               </p>
-            ) : (
+            );
+            return (
               <p className="report-note">Rounds come off the can when you save; fixing a number later puts the difference back.</p>
             );
           })()}
