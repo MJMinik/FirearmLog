@@ -549,12 +549,6 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           <SuggestField label="Instructor" value={instructor} onChange={setInstructor}
             suggestions={instructors} placeholder="Ben Stoeger" name="instructor" />
         )}
-        <div className="row">
-          <button className={`gun-toggle ${planned ? 'on' : ''}`} aria-pressed={planned}
-            onClick={() => setPlanned(!planned)}>
-            Planned session (hasn't happened yet — nothing counts until it does)
-          </button>
-        </div>
       </div>
 
       <div className="card">
