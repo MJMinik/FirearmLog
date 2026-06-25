@@ -11,6 +11,7 @@
   --danger-deep: #d70015; /* white-on-this ≈5.4:1 (AA pass) — for solid Delete buttons (audit F1; plain #ff3b30 was 3.55:1) */
   --success: #34c759;
   --warn: #ff9500;
+  --warn-text: #8a5300; /* readable amber for warning TEXT on light cards (AA ~6:1) */
   --tabbar-bg: rgba(249, 249, 249, 0.85);
   --touch-min: 44px; /* HIG minimum tap target (rules T1–T8) */
 
@@ -41,6 +42,7 @@
     --danger: #ff453a;
     --success: #30d158;
     --warn: #ff9f0a;
+    --warn-text: #ffb340; /* readable amber for warning TEXT on dark cards */
     --tabbar-bg: rgba(22, 22, 24, 0.85);
   }
 }
@@ -217,6 +219,7 @@ select.category-pick {
 .tabbar .glyph { font-size: 22px; line-height: 1; }
 
 .report-note { font-size: var(--fs-subhead); line-height: 1.45; color: var(--text-dim); margin-top: 10px; }
+.report-note.warn { color: var(--warn-text); font-weight: 600; }
 
 /* ---------- M2: navigation bar on pushed screens ---------- */
 .navbar { display: flex; justify-content: space-between; align-items: center; min-height: 44px; }
