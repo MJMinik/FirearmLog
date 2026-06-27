@@ -32,6 +32,8 @@ import { MediaField, commitMedia } from './MediaField.tsx';
 import type { StagedFile } from './MediaField.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
+import { InfoTip } from './InfoTip.tsx';
+import { DrillForm } from './DrillsScreen.tsx';
 
 const KINDS = [
   { value: 'practice', label: 'Live practice' },
@@ -120,6 +122,14 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const [checklistOpen, setChecklistOpen] = useState(false);
   const [picking, setPicking] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  // Inline quick-add a drill from inside the Pick Drills sheet: the lite form
+  // (name only — gun type + fire come from the session context) and the
+  // escalation to the full DrillForm editor for power users.
+  const [quickAdding, setQuickAdding] = useState(false);
+  const [quickName, setQuickName] = useState('');
+  const [quickProblem, setQuickProblem] = useState('');
+  const [quickSaving, setQuickSaving] = useState(false);
+  const [fullEditor, setFullEditor] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState('');
@@ -385,6 +395,83 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       ...prev,
       ...toAdd.map((d) => ({ name: d.name, distance: '', time: '', score: '', maxScore: '', notes: '' }))
     ]);
+    setPicking(false);
+  }
+
+  // Map the session's kind to the drill's `fire` value for the quick-add prefill.
+  // A dry-fire session makes a dry drill; everything else (live practice, class)
+  // makes a live drill. ('both' is only ever chosen deliberately in the full
+  // editor — the fast path picks the single fire type that matches the session.)
+  const contextFire: DrillDef['fire'] = kind === 'dry_fire' ? 'dry' : 'live';
+  // Gun types for the quick-add: the session's selected categories, or a sensible
+  // ['Pistol'] default when no gun is picked yet (mirrors DrillForm's default so
+  // the drill still passes its "at least one gun type" check).
+  const contextCats: GunCategory[] = selectedCategories.length ? selectedCategories : ['Pistol'];
+
+  // Add a drill to the current session by name, but only once — sessions
+  // reference drills BY NAME, so the same name twice would be a confusing
+  // duplicate row. Case-insensitive guard.
+  function addDrillToSessionByName(name: string) {
+    setDrills((prev) => {
+      if (prev.some((d) => d.name.trim().toLowerCase() === name.trim().toLowerCase())) return prev;
+      return [...prev, { name, distance: '', time: '', score: '', maxScore: '', notes: '' }];
+    });
+  }
+
+  // Lite quick-add: create a drill from just a name, with gun type + fire
+  // pre-filled from the session context, then drop it straight onto the session.
+  async function saveQuickDrill() {
+    if (quickSaving) return;
+    const name = quickName.trim();
+    if (!name) { setQuickProblem('Give the drill a name.'); return; }
+    setQuickSaving(true);
+    try {
+      // Name-collision: if a drill with this name already exists (case-insensitive),
+      // REUSE it instead of creating a silent duplicate. Sessions reference drills
+      // by name, so a duplicate definition would split that reference and is unsafe.
+      const existing = drillLib.find((d) => d.name.trim().toLowerCase() === name.toLowerCase());
+      if (existing) {
+        addDrillToSessionByName(existing.name);
+        setQuickAdding(false); setQuickName(''); setQuickProblem('');
+        setPicking(false);
+        return;
+      }
+      // Create exactly as DrillForm does: a 'drx-' id via stampNew, same field
+      // shape (tags: []), so a re-import never clobbers it.
+      const def = stampNew({
+        name, fire: contextFire, gunCategories: contextCats,
+        briefDescription: '', fullDescription: '', scoring: '', requiresHolster: false, tags: []
+      }, newId('drx'), Date.now()) as DrillDef;
+      await putOne('drills', def);
+      setDrillLib((prev) => [...prev, def]); // refresh the in-memory library
+      addDrillToSessionByName(def.name);
+      setQuickAdding(false); setQuickName(''); setQuickProblem('');
+      setPicking(false);
+    } catch {
+      // Rule 23 / zero-crash: a failed write must not strand the user on a blank
+      // sheet. Surface a plain message and leave the lite form usable to retry.
+      setQuickProblem('Could not save this drill — please try again.');
+    } finally {
+      setQuickSaving(false);
+    }
+  }
+
+  // Power-user escalation: the full DrillForm saved a new drill. We don't get its
+  // id back, so reload the library and diff against what we already had to find
+  // the newly-created custom drill(s), then add them to the session by name.
+  async function onFullEditorSaved() {
+    try {
+      const all = await getAll<DrillDef>('drills');
+      const known = new Set(drillLib.map((d) => d.id));
+      const added = all.filter((d) => !known.has(d.id));
+      setDrillLib(all);
+      for (const d of added) addDrillToSessionByName(d.name);
+    } catch {
+      // If the reload fails, the drill is still saved to the store; just refresh
+      // on next open. Fail safe to a usable state rather than crashing the form.
+    }
+    setFullEditor(false);
+    setQuickAdding(false); setQuickName(''); setQuickProblem('');
     setPicking(false);
   }
 
@@ -727,7 +814,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       )}
 
       <div className="card">
-        <h2>Drills</h2>
+        <h2>Drills <InfoTip title="Drills">Pick from your drill library below, or add a new drill right here — it saves to your library and lands on this session. Manage every drill (edit, delete, full details) under More &rarr; Drills.</InfoTip></h2>
         {drills.map((d, i) => (
           <div className="drill-edit" key={i}>
             <div className="drill-edit-head">
@@ -903,17 +990,24 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       )}
 
       {picking && (
-        <Sheet title="Pick Drills" onClose={() => setPicking(false)}>
-          {pickable.length === 0 && (
-            <p className="report-note">
-              No drills fit this setup yet ({selectedCategories.join(', ') || 'no gun picked'} ·{' '}
-              {kind === 'dry_fire' ? 'dry fire' : 'live fire'}).
-            </p>
+        <Sheet title="Pick Drills" onClose={() => { setPicking(false); setQuickAdding(false); setQuickName(''); setQuickProblem(''); }}>
+          {!quickAdding && pickable.length === 0 && (
+            <>
+              {/* Dead-end no more: the empty state's prominent call-to-action is to
+                  create a drill right here. */}
+              <p className="report-note">
+                No drills fit this setup yet ({selectedCategories.join(', ') || 'no gun picked'} ·{' '}
+                {kind === 'dry_fire' ? 'dry fire' : 'live fire'}) — create one.
+              </p>
+              <button className="button" onClick={() => { setQuickName(''); setQuickProblem(''); setQuickAdding(true); }}>
+                + New drill
+              </button>
+            </>
           )}
-          {pickable.length > 0 && (
-            <p className="report-note">Tap to select one or more, then Add.</p>
+          {!quickAdding && pickable.length > 0 && (
+            <p className="report-note">Tap to select one or more, then Add — or make a new one below.</p>
           )}
-          {pickable.map((d) => {
+          {!quickAdding && pickable.map((d) => {
             const on = picked.has(d.id);
             return (
               <button key={d.id} className={`drill-pick-row ${on ? 'on' : ''}`} aria-pressed={on}
@@ -927,12 +1021,55 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               </button>
             );
           })}
-          {pickable.length > 0 && (
-            <button className="button" style={{ marginTop: 12 }} disabled={picked.size === 0} onClick={addPickedDrills}>
-              Add{picked.size > 0 ? ` ${picked.size}` : ''} {picked.size === 1 ? 'Drill' : 'Drills'}
-            </button>
+          {!quickAdding && pickable.length > 0 && (
+            <>
+              <button className="button" style={{ marginTop: 12 }} disabled={picked.size === 0} onClick={addPickedDrills}>
+                Add{picked.size > 0 ? ` ${picked.size}` : ''} {picked.size === 1 ? 'Drill' : 'Drills'}
+              </button>
+              <button className="button secondary" style={{ marginTop: 8 }}
+                onClick={() => { setQuickName(''); setQuickProblem(''); setQuickAdding(true); }}>
+                + New drill
+              </button>
+            </>
+          )}
+
+          {quickAdding && (
+            // Lightweight quick-add: name only. Gun type + fire are pre-filled
+            // from the session context and shown so the shooter knows what's set;
+            // "More options" hands off to the full DrillForm editor.
+            <>
+              <FormProblem problem={quickProblem} />
+              <label className="field">What this drill is called
+                <input value={quickName} autoFocus placeholder="Bill Drill"
+                  aria-label="New drill name" {...noAutofillProps} name="quick-drill-title"
+                  onChange={(e) => setQuickName(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') void saveQuickDrill(); }} />
+              </label>
+              <p className="report-note">
+                Saved as <strong>{contextFire === 'dry' ? 'dry fire' : 'live fire'}</strong> for{' '}
+                <strong>{contextCats.join(', ')}</strong>, from this session.
+              </p>
+              <button className="button" style={{ marginTop: 8 }} disabled={quickSaving} onClick={() => void saveQuickDrill()}>
+                {quickSaving ? 'Saving…' : 'Save & Add to Session'}
+              </button>
+              <button className="button secondary" style={{ marginTop: 8 }} onClick={() => setFullEditor(true)}>
+                More options / full editor
+              </button>
+              <button className="button secondary" style={{ marginTop: 8 }}
+                onClick={() => { setQuickAdding(false); setQuickName(''); setQuickProblem(''); }}>
+                Cancel
+              </button>
+            </>
           )}
         </Sheet>
+      )}
+
+      {fullEditor && (
+        // Power-user path: reuse the full DrillForm editor in an overlay. On save
+        // we reload the library, find the new drill, and add it to this session.
+        <div className="screen-overlay">
+          <DrillForm onSaved={() => void onFullEditorSaved()} onCancel={() => setFullEditor(false)} />
+        </div>
       )}
     </div>
   );

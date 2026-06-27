@@ -324,6 +324,14 @@ select.category-pick {
 .sheet-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .sheet-head h3 { font-size: 17px; }
 
+/* Full-screen overlay that floats a whole .screen (e.g. the reused DrillForm
+   "full editor") above the Pick Drills sheet. Sits above the sheet (z-index 50)
+   with the app background so nothing shows through, and scrolls on its own. */
+.screen-overlay {
+  position: fixed; inset: 0; z-index: 60;
+  background: var(--bg); overflow: auto;
+}
+
 .drill-pick-row {
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%;
   background: none; border: none; border-bottom: 0.5px solid var(--separator);
