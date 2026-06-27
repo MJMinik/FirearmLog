@@ -1041,7 +1041,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               <FormProblem problem={quickProblem} />
               <label className="field">What this drill is called
                 <input value={quickName} autoFocus placeholder="Bill Drill"
-                  aria-label="New drill name" {...noAutofillProps} name="quick-drill-title"
+                  aria-label="Drill to add" {...noAutofillProps} name="quick-drill-title"
                   onChange={(e) => setQuickName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') void saveQuickDrill(); }} />
               </label>

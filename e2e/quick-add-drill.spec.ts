@@ -34,7 +34,7 @@ test.describe('Quick-add a drill inline (Pick Drills)', () => {
 
     // A unique name so we never collide with a bundled demo drill.
     const drillName = `Inline QA Drill ${Date.now()}`;
-    await sheet.getByLabel('New drill name').fill(drillName);
+    await sheet.getByLabel('Drill to add').fill(drillName);
     await sheet.getByRole('button', { name: 'Save & Add to Session' }).click();
 
     // The sheet closes and the new drill is now a row on the session.
@@ -64,7 +64,7 @@ test.describe('Quick-add a drill inline (Pick Drills)', () => {
     await sheet.getByRole('button', { name: '+ New drill' }).click();
     // Type the name in the quick-add FIRST, then escalate -- it must migrate.
     const typedName = `Migrated Drill ${Date.now()}`;
-    await sheet.getByLabel('New drill name').fill(typedName);
+    await sheet.getByLabel('Drill to add').fill(typedName);
     await sheet.getByRole('button', { name: 'More options / full editor' }).click();
 
     // The full DrillForm editor opens in an overlay (its own "New Drill" screen).
