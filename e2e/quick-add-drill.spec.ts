@@ -62,18 +62,21 @@ test.describe('Quick-add a drill inline (Pick Drills)', () => {
 
     const sheet = page.getByRole('dialog', { name: 'Pick Drills' });
     await sheet.getByRole('button', { name: '+ New drill' }).click();
+    // Type the name in the quick-add FIRST, then escalate -- it must migrate.
+    const typedName = `Migrated Drill ${Date.now()}`;
+    await sheet.getByLabel('New drill name').fill(typedName);
     await sheet.getByRole('button', { name: 'More options / full editor' }).click();
 
     // The full DrillForm editor opens in an overlay (its own "New Drill" screen).
     const overlay = page.locator('.screen-overlay');
     await expect(overlay.getByRole('heading', { name: 'New Drill' })).toBeVisible();
-    const fullName = `Full Editor Drill ${Date.now()}`;
-    await overlay.getByLabel('What this Drill is called').fill(fullName);
+    // The name typed in the quick-add carried into the full editor (the bug fix).
+    await expect(overlay.getByLabel('What this Drill is called')).toHaveValue(typedName);
     // Scope to the overlay's Save (the underlying session form also has one).
     await overlay.locator('.navbar-action').click();
     await expect(overlay).toBeHidden();
 
     // Back on the session, the editor-created drill is a row.
-    await expect(drillsCard.getByText(fullName, { exact: true })).toBeVisible();
+    await expect(drillsCard.getByText(typedName, { exact: true })).toBeVisible();
   });
 });

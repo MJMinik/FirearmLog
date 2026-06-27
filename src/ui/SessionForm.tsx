@@ -1068,7 +1068,8 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         // Power-user path: reuse the full DrillForm editor in an overlay. On save
         // we reload the library, find the new drill, and add it to this session.
         <div className="screen-overlay">
-          <DrillForm onSaved={() => void onFullEditorSaved()} onCancel={() => setFullEditor(false)} />
+          <DrillForm initialName={quickName} initialFire={contextFire} initialCats={contextCats}
+            onSaved={() => void onFullEditorSaved()} onCancel={() => setFullEditor(false)} />
         </div>
       )}
     </div>

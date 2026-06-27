@@ -73,13 +73,17 @@ export function DrillsScreen({ refreshKey, onBack, openForm }: {
   );
 }
 
-export function DrillForm({ id, onSaved, onCancel }: {
-  id?: string; onSaved: () => void; onCancel: () => void;
+export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, onCancel }: {
+  id?: string; initialName?: string; initialFire?: DrillDef['fire'];
+  initialCats?: GunCategory[]; onSaved: () => void; onCancel: () => void;
 }) {
   const [original, setOriginal] = useState<DrillDef | null>(null);
-  const [name, setName] = useState('');
-  const [fire, setFire] = useState<DrillDef['fire']>('live');
-  const [cats, setCats] = useState<GunCategory[]>(['Pistol']);
+  // For a brand-new drill, seed from any values handed in (e.g. the name and
+  // context the shooter already typed in the session quick-add) so nothing is lost
+  // when they escalate to the full editor.
+  const [name, setName] = useState(initialName ?? '');
+  const [fire, setFire] = useState<DrillDef['fire']>(initialFire ?? 'live');
+  const [cats, setCats] = useState<GunCategory[]>(initialCats && initialCats.length ? initialCats : ['Pistol']);
   const [brief, setBrief] = useState('');
   const [full, setFull] = useState('');
   const [scoring, setScoring] = useState('');
