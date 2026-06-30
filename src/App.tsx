@@ -24,6 +24,7 @@ import { ReportsScreen } from './ui/ReportsScreen.tsx';
 import { PractiScoreImport } from './ui/PractiScoreImport.tsx';
 import { UspsaImport } from './ui/UspsaImport.tsx';
 import { HelpScreen } from './ui/HelpScreen.tsx';
+import { NumbersGuide } from './ui/NumbersGuide.tsx';
 import { SetupWizard } from './ui/SetupWizard.tsx';
 import { countAll } from './lib/db.ts';
 import { ErrorBoundary } from './ui/ErrorBoundary.tsx';
@@ -149,7 +150,7 @@ export function App() {
       openSession={(sid) => push({ kind: 'session-form', id: sid })} />;
   } else if (view?.kind === 'match-detail') {
     const v = view;
-    content = <MatchDetail id={v.id} refreshKey={refreshKey}
+    content = <MatchDetail id={v.id} refreshKey={refreshKey} open={push}
       onBack={back}
       onEdit={() => push({ kind: 'match-form', id: v.id })}
       onDeleted={() => { refresh(); replace(null); }} />;
@@ -213,6 +214,8 @@ export function App() {
       onDone={() => { refresh(); replace(null); }} />;
   } else if (view?.kind === 'help') {
     content = <HelpScreen onBack={back} open={push} />;
+  } else if (view?.kind === 'numbers') {
+    content = <NumbersGuide onBack={back} />;
   } else if (view?.kind === 'setup') {
     content = <SetupWizard
       onFinish={() => { refresh(); replace(null); }}

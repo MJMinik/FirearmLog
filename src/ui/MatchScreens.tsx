@@ -9,6 +9,7 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown } from '../lib/competition.ts';
 import { MarkThumb } from './MarkThumb.tsx';
 import { InfoTip } from './InfoTip.tsx';
+import type { View } from './nav.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { MediaField, commitMedia } from './MediaField.tsx';
@@ -24,8 +25,9 @@ function fmtMetric(s: { percent: number | null; hitFactor: number | null }, by: 
   return '—';
 }
 
-export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
+export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }: {
   id: string; onEdit: () => void; onBack: () => void; onDeleted: () => void; refreshKey: number;
+  open: (v: View) => void;
 }) {
   const [match, setMatch] = useState<Match | null>(null);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
@@ -113,6 +115,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
       {match.stages.length > 0 && (
         <div className="card">
           <h2>Stage breakdown <InfoTip title="Stage breakdown">Hit factor is your points divided by your time (higher is better). Stage percent is your score against the stage winner. We flag your toughest stage — where you lost the most ground — and your strongest. Add a stage's A/C/D/miss breakdown (when you log or edit the match) and we'll show what it would have scored with all alphas, plus your % of available points.</InfoTip></h2>
+          <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers' })}>How the numbers work ›</button>
           {insights.rankedBy !== 'none' && insights.strongest && insights.toughest.length > 0 && (
             <p className="report-note" style={{ marginTop: 0, marginBottom: 10 }}>
               Toughest: {insights.toughest.map((s) => `Stage ${s.number} (${fmtMetric(s, insights.rankedBy)})`).join(', ')}.{' '}

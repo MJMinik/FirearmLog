@@ -753,6 +753,10 @@ export function MoreScreen({ refreshKey, onImported, open }: {
           <span className="label">Reference</span>
           <span className="value">›</span>
         </button>
+        <button className="row-tap" onClick={() => open({ kind: 'numbers' })}>
+          <span className="label">How the numbers work</span>
+          <span className="value">›</span>
+        </button>
         <button className="row-tap" onClick={() => open({ kind: 'reports' })}>
           <span className="label">Reports</span>
           <span className="value">›</span>
