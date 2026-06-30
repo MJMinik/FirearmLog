@@ -6,8 +6,9 @@ import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
-import { DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor } from '../lib/competition.ts';
+import { DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor, analyzeMatch } from '../lib/competition.ts';
 import { MarkThumb } from './MarkThumb.tsx';
+import { InfoTip } from './InfoTip.tsx';
 import { ConfirmSheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { MediaField, commitMedia } from './MediaField.tsx';
@@ -15,6 +16,13 @@ import type { StagedFile } from './MediaField.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
+
+/** Format a stage's ranking metric for the debrief read-out. */
+function fmtMetric(s: { percent: number | null; hitFactor: number | null }, by: 'percent' | 'hitFactor' | 'none'): string {
+  if (by === 'percent' && s.percent !== null) return `${s.percent}%`;
+  if (by === 'hitFactor' && s.hitFactor !== null) return `HF ${s.hitFactor}`;
+  return '—';
+}
 
 export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
   id: string; onEdit: () => void; onBack: () => void; onDeleted: () => void; refreshKey: number;
@@ -42,6 +50,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
 
   if (!match) return <div className="screen" />;
   const gunName = firearms.find((f) => f.id === match.firearmId)?.name ?? '—';
+  const insights = analyzeMatch(match.stages);
 
   async function reallyDelete() {
     for (const v of videos) await deleteOne('media', v.id);
@@ -56,6 +65,25 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
         <button className="navbar-action" onClick={onEdit}>Edit</button>
       </div>
       <h1 className="large-title">{match.name || formatDayKey(match.date)}</h1>
+
+      {(match.matchPercent != null || match.divisionPlace != null) && (
+        <div className="card">
+          <div className="stat-grid">
+            {match.divisionPlace != null && (
+              <div className="stat">
+                <div className="num">{match.divisionPlace}{match.divisionOf != null ? ` of ${match.divisionOf}` : ''}</div>
+                <div className="cap">{match.division || 'Division'} finish</div>
+              </div>
+            )}
+            {match.matchPercent != null && (
+              <div className="stat">
+                <div className="num" style={{ color: 'var(--accent)' }}>{match.matchPercent}%</div>
+                <div className="cap">Match percent</div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="card">
         <h2>Match</h2>
@@ -84,24 +112,29 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
 
       {match.stages.length > 0 && (
         <div className="card">
-          <h2>Stages</h2>
-          {match.stages.map((st, i) => {
-            const hf = hitFactor(st.points, st.time);
-            return (
-              <div className="row" key={i}>
-                <span className="label">
-                  Stage {st.number}
-                  {st.notes && <div className="row-sub">{st.notes}</div>}
-                </span>
-                <span className="value">
-                  {[st.points !== null ? `${st.points} pts` : null,
-                    st.time !== null ? `${st.time}s` : null,
-                    hf !== null ? `HF ${hf}` : null,
-                    st.percent !== null ? `${st.percent}%` : null].filter(Boolean).join(' · ') || '—'}
-                </span>
-              </div>
-            );
-          })}
+          <h2>Stage breakdown <InfoTip title="Stage breakdown">Hit factor is your points divided by your time (higher is better). Stage percent is your score against the stage winner. We flag your toughest stage — where you lost the most ground — and your strongest, so you know where to look first. (Whether a stage was lost on speed or on accuracy needs the hit breakdown, which is coming next.)</InfoTip></h2>
+          {insights.rankedBy !== 'none' && insights.strongest && insights.toughest.length > 0 && (
+            <p className="report-note" style={{ marginTop: 0, marginBottom: 10 }}>
+              Toughest: {insights.toughest.map((s) => `Stage ${s.number} (${fmtMetric(s, insights.rankedBy)})`).join(', ')}.{' '}
+              Strongest: Stage {insights.strongest.number} ({fmtMetric(insights.strongest, insights.rankedBy)}).
+            </p>
+          )}
+          {insights.stages.map((st, i) => (
+            <div className="row" key={i}>
+              <span className="label">
+                Stage {st.number}
+                {st.isToughest && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--text-dim)' }}>Toughest</span>}
+                {st.isStrongest && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--accent)' }}>Strongest</span>}
+                {st.notes && <div className="row-sub">{st.notes}</div>}
+              </span>
+              <span className="value">
+                {[st.points !== null ? `${st.points} pts` : null,
+                  st.time !== null ? `${st.time}s` : null,
+                  st.hitFactor !== null ? `HF ${st.hitFactor}` : null,
+                  st.percent !== null ? `${st.percent}%` : null].filter(Boolean).join(' · ') || '—'}
+              </span>
+            </div>
+          ))}
         </div>
       )}
 

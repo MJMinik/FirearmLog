@@ -1,6 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classFor, classificationProgress, hitFactor } from '../src/lib/competition.ts';
+import { analyzeMatch, classFor, classificationProgress, hitFactor } from '../src/lib/competition.ts';
+import type { MatchStage } from '../src/lib/types.ts';
+
+const stage = (number: number, points: number | null, time: number | null,
+  percent: number | null = null, notes = ''): MatchStage => ({ number, points, time, percent, notes });
 
 test('hit factor is points per second, rounded to 4 places', () => {
   assert.equal(hitFactor(130, 25.55), 5.0881);
@@ -56,4 +60,42 @@ test('progress with nothing returns empty', () => {
   const p = classificationProgress([]);
   assert.equal(p.average, null);
   assert.equal(p.currentClass, null);
+});
+
+test('analyzeMatch ranks by stage percent and flags toughest + strongest', () => {
+  const a = analyzeMatch([stage(1, 80, 8, 90), stage(2, 60, 12, 54), stage(3, 70, 9, 72)]);
+  assert.equal(a.rankedBy, 'percent');
+  assert.equal(a.strongest?.number, 1);
+  assert.deepEqual(a.toughest.map((s) => s.number), [2]);
+  assert.equal(a.stages.find((s) => s.number === 2)?.isToughest, true);
+  assert.equal(a.stages.find((s) => s.number === 1)?.isStrongest, true);
+});
+
+test('analyzeMatch falls back to hit factor when no percents recorded', () => {
+  const a = analyzeMatch([stage(1, 80, 8), stage(2, 60, 12)]); // HF 10 vs 5
+  assert.equal(a.rankedBy, 'hitFactor');
+  assert.equal(a.strongest?.number, 1);
+  assert.deepEqual(a.toughest.map((s) => s.number), [2]);
+});
+
+test('analyzeMatch: 4+ stages flag the two toughest', () => {
+  const a = analyzeMatch([stage(1, 100, 10, 95), stage(2, 50, 10, 50), stage(3, 80, 10, 80), stage(4, 40, 10, 40)]);
+  assert.equal(a.strongest?.number, 1);
+  assert.deepEqual(a.toughest.map((s) => s.number).sort(), [2, 4]);
+});
+
+test('analyzeMatch: a single stage gets no toughest/strongest flags', () => {
+  const a = analyzeMatch([stage(1, 80, 8, 90)]);
+  assert.equal(a.strongest, null);
+  assert.deepEqual(a.toughest, []);
+  assert.equal(a.stages[0].isToughest, false);
+  assert.equal(a.stages[0].isStrongest, false);
+});
+
+test('analyzeMatch: empty and all-null data degrade to none without throwing', () => {
+  assert.equal(analyzeMatch([]).rankedBy, 'none');
+  const a = analyzeMatch([stage(1, null, null), stage(2, null, null)]);
+  assert.equal(a.rankedBy, 'none');
+  assert.equal(a.strongest, null);
+  assert.deepEqual(a.toughest, []);
 });
