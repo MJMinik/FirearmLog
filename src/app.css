@@ -305,6 +305,11 @@ select.category-pick {
 .drill-edit:last-of-type { border-bottom: none; }
 .drill-edit-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; }
 .drill-edit-fields { display: flex; gap: 8px; }
+/* Hit-breakdown grid: labels vary in length (e.g. "No-shoots" wraps on a phone),
+   so make each field a column and pin the input to the bottom -- labels top-align,
+   inputs bottom-align, nothing knocks out of line. */
+.break-fields .field { display: flex; flex-direction: column; }
+.break-fields .field input { margin-top: auto; }
 
 .icon-btn {
   background: none; border: none; color: var(--text-dim);

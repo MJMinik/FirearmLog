@@ -439,7 +439,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
               )}
               {st.showBreak && (
                 <>
-                  <div className="drill-edit-fields">
+                  <div className="drill-edit-fields break-fields">
                     {BREAK_FIELDS.map(([key, label]) => (
                       <label className="field small" key={key}>{label}
                         <input type="number" inputMode="numeric" min="0" value={st[key]}
