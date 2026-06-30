@@ -6,7 +6,7 @@ import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
-import { DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor, analyzeMatch } from '../lib/competition.ts';
+import { DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown } from '../lib/competition.ts';
 import { MarkThumb } from './MarkThumb.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { ConfirmSheet } from './Sheet.tsx';
@@ -50,7 +50,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
 
   if (!match) return <div className="screen" />;
   const gunName = firearms.find((f) => f.id === match.firearmId)?.name ?? '—';
-  const insights = analyzeMatch(match.stages);
+  const insights = analyzeMatch(match.stages, match.powerFactor);
 
   async function reallyDelete() {
     for (const v of videos) await deleteOne('media', v.id);
@@ -112,7 +112,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
 
       {match.stages.length > 0 && (
         <div className="card">
-          <h2>Stage breakdown <InfoTip title="Stage breakdown">Hit factor is your points divided by your time (higher is better). Stage percent is your score against the stage winner. We flag your toughest stage — where you lost the most ground — and your strongest, so you know where to look first. (Whether a stage was lost on speed or on accuracy needs the hit breakdown, which is coming next.)</InfoTip></h2>
+          <h2>Stage breakdown <InfoTip title="Stage breakdown">Hit factor is your points divided by your time (higher is better). Stage percent is your score against the stage winner. We flag your toughest stage — where you lost the most ground — and your strongest. Add a stage's A/C/D/miss breakdown (when you log or edit the match) and we'll show what it would have scored with all alphas, plus your % of available points.</InfoTip></h2>
           {insights.rankedBy !== 'none' && insights.strongest && insights.toughest.length > 0 && (
             <p className="report-note" style={{ marginTop: 0, marginBottom: 10 }}>
               Toughest: {insights.toughest.map((s) => `Stage ${s.number} (${fmtMetric(s, insights.rankedBy)})`).join(', ')}.{' '}
@@ -126,9 +126,17 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
                 {st.isToughest && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--text-dim)' }}>Toughest</span>}
                 {st.isStrongest && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--accent)' }}>Strongest</span>}
                 {st.notes && <div className="row-sub">{st.notes}</div>}
+                {st.score && (
+                  <div className="row-sub">
+                    A {st.score.alphas} · C {st.score.charlies} · D {st.score.deltas} · M {st.score.misses}
+                    {(st.score.noShoots > 0 || st.score.procedurals > 0) ? ` · NS ${st.score.noShoots} · P ${st.score.procedurals}` : ''}
+                    {st.score.allAlphaDelta != null && st.score.allAlphaDelta > 0 ? ` — all A's ${st.score.allAlphaHitFactor} (+${st.score.allAlphaDelta})` : ''}
+                    {st.score.pctAvailable != null ? ` — ${Math.round(st.score.pctAvailable * 100)}% of points` : ''}
+                  </div>
+                )}
               </span>
               <span className="value">
-                {[st.points !== null ? `${st.points} pts` : null,
+                {[(st.score ? st.score.stagePoints : st.points) !== null ? `${st.score ? st.score.stagePoints : st.points} pts` : null,
                   st.time !== null ? `${st.time}s` : null,
                   st.hitFactor !== null ? `HF ${st.hitFactor}` : null,
                   st.percent !== null ? `${st.percent}%` : null].filter(Boolean).join(' · ') || '—'}
@@ -179,7 +187,18 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey }: {
   );
 }
 
-interface StageRow { points: string; time: string; percent: string; notes: string; }
+interface StageRow {
+  points: string; time: string; percent: string; notes: string;
+  showBreak: boolean;
+  alphas: string; charlies: string; deltas: string;
+  misses: string; noShoots: string; procedurals: string;
+}
+
+/** The six hit-breakdown keys, with their on-screen labels. */
+const BREAK_FIELDS = [
+  ['alphas', 'Alphas (A)'], ['charlies', 'Charlies (C)'], ['deltas', 'Deltas (D)'],
+  ['misses', 'Misses (M)'], ['noShoots', 'No-shoots'], ['procedurals', 'Procedurals'],
+] as const;
 
 export function MatchForm({ id, onSaved, onCancel }: {
   id?: string; onSaved: (matchId: string) => void; onCancel: () => void;
@@ -235,7 +254,14 @@ export function MatchForm({ id, onSaved, onCancel }: {
           points: st.points == null ? '' : String(st.points),
           time: st.time == null ? '' : String(st.time),
           percent: st.percent == null ? '' : String(st.percent),
-          notes: st.notes
+          notes: st.notes,
+          showBreak: hasHitBreakdown(st),
+          alphas: st.alphas == null ? '' : String(st.alphas),
+          charlies: st.charlies == null ? '' : String(st.charlies),
+          deltas: st.deltas == null ? '' : String(st.deltas),
+          misses: st.misses == null ? '' : String(st.misses),
+          noShoots: st.noShoots == null ? '' : String(st.noShoots),
+          procedurals: st.procedurals == null ? '' : String(st.procedurals),
         })));
         setExistingMedia(allMedia.filter((x) => x.ownerType === 'match' && x.ownerId === id));
         setEntryFee(m.entryFee == null ? '' : String(m.entryFee));
@@ -249,7 +275,9 @@ export function MatchForm({ id, onSaved, onCancel }: {
 
   const stageObjs: MatchStage[] = useMemo(() => stages.map((st, i) => ({
     number: i + 1, points: num(st.points), time: num(st.time),
-    percent: num(st.percent), notes: st.notes.trim()
+    percent: num(st.percent), notes: st.notes.trim(),
+    alphas: num(st.alphas), charlies: num(st.charlies), deltas: num(st.deltas),
+    misses: num(st.misses), noShoots: num(st.noShoots), procedurals: num(st.procedurals),
   })), [stages]);
 
 
@@ -259,7 +287,9 @@ export function MatchForm({ id, onSaved, onCancel }: {
     if (!firearmId) { setProblem('Pick a gun.'); return; }
     const numbers = [num(totalRounds), num(matchPercent), num(divPlace), num(divOf),
       num(overallPlace), num(overallOf), num(entryFee),
-      ...stageObjs.flatMap((st) => [st.points, st.time, st.percent])];
+      ...stageObjs.flatMap((st) => [st.points, st.time, st.percent,
+        st.alphas ?? null, st.charlies ?? null, st.deltas ?? null,
+        st.misses ?? null, st.noShoots ?? null, st.procedurals ?? null])];
     if (numbers.some((n) => n !== null && !Number.isFinite(n))) {
       setProblem('One of the numbers isn’t a plain number.'); return;
     }
@@ -360,7 +390,11 @@ export function MatchForm({ id, onSaved, onCancel }: {
       <div className="card">
         <h2>Stages</h2>
         {stages.map((st, i) => {
-          const hf = hitFactor(num(st.points), num(st.time));
+          const sc = scoreStageHits(
+            { alphas: num(st.alphas), charlies: num(st.charlies), deltas: num(st.deltas),
+              misses: num(st.misses), noShoots: num(st.noShoots), procedurals: num(st.procedurals) },
+            powerFactor, num(st.time));
+          const hf = sc ? sc.hitFactor : hitFactor(num(st.points), num(st.time));
           return (
             <div className="drill-edit" key={i}>
               <div className="drill-edit-head">
@@ -382,6 +416,31 @@ export function MatchForm({ id, onSaved, onCancel }: {
                     onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, percent: e.target.value } : x))} />
                 </label>
               </div>
+              {!st.showBreak && (
+                <button type="button" className="link-btn" style={{ marginTop: 2 }}
+                  onClick={() => setStages((p) => p.map((x, n) => n === i ? { ...x, showBreak: true } : x))}>
+                  + Add hit breakdown (A/C/D/miss)
+                </button>
+              )}
+              {st.showBreak && (
+                <>
+                  <div className="drill-edit-fields">
+                    {BREAK_FIELDS.map(([key, label]) => (
+                      <label className="field small" key={key}>{label}
+                        <input type="number" inputMode="numeric" min="0" value={st[key]}
+                          onChange={(e) => setStages((p) => p.map((x, n) => n === i ? ({ ...x, [key]: e.target.value }) as StageRow : x))} />
+                      </label>
+                    ))}
+                  </div>
+                  {sc && (
+                    <p className="report-note" style={{ marginTop: 2 }}>
+                      Derived: {sc.stagePoints} pts{sc.hitFactor != null ? ` · HF ${sc.hitFactor}` : ''}
+                      {sc.allAlphaDelta != null && sc.allAlphaDelta > 0 ? ` · all A's ${sc.allAlphaHitFactor} (+${sc.allAlphaDelta})` : ''}
+                      {sc.pctAvailable != null ? ` · ${Math.round(sc.pctAvailable * 100)}% of points` : ''}
+                    </p>
+                  )}
+                </>
+              )}
               <label className="field">Stage notes
                 <input value={st.notes}
                   onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, notes: e.target.value } : x))} />
@@ -390,7 +449,8 @@ export function MatchForm({ id, onSaved, onCancel }: {
           );
         })}
         <button className="button secondary"
-          onClick={() => setStages((p) => [...p, { points: '', time: '', percent: '', notes: '' }])}>
+          onClick={() => setStages((p) => [...p, { points: '', time: '', percent: '', notes: '',
+            showBreak: false, alphas: '', charlies: '', deltas: '', misses: '', noShoots: '', procedurals: '' }])}>
           + Add Stage
         </button>
       </div>

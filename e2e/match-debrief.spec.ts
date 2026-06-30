@@ -34,4 +34,25 @@ test.describe('Match-after debrief (Layer 1)', () => {
     await expect(page.getByText('Toughest', { exact: true })).toBeVisible();
     await expect(page.getByText('Strongest', { exact: true })).toBeVisible();
   });
+
+  test('a stage hit breakdown derives the all-alphas read-back', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Compete');
+
+    await page.getByRole('button', { name: '+ Log Match' }).click();
+    await page.getByLabel('What this Match is called').fill('Breakdown Test');
+
+    await page.getByRole('button', { name: '+ Add Stage' }).click();
+    const block = page.locator('.drill-edit').first();
+    await block.getByLabel('Time (s)').fill('2');
+    await block.getByRole('button', { name: /Add hit breakdown/ }).click();
+    await block.getByLabel('Alphas (A)').fill('1');
+    await block.getByLabel('Charlies (C)').fill('1');
+
+    await page.getByRole('button', { name: 'Save Match' }).click();
+
+    await expect(page.getByRole('heading', { name: 'Breakdown Test' })).toBeVisible();
+    // Minor 1A 1C in 2s = HF 4.0; all alphas = 5.0 (+1.0).
+    await expect(page.getByText(/all A's/)).toBeVisible();
+  });
 });
