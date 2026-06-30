@@ -49,6 +49,9 @@ test.describe('Match-after debrief (Layer 1)', () => {
     await block.getByLabel('Alphas (A)').fill('1');
     await block.getByLabel('Charlies (C)').fill('1');
 
+    // Points is now derived (read-only) from the hits: 1A(5) + 1C(3) minor = 8.
+    await expect(block.getByLabel(/^Points/)).toHaveValue('8');
+
     await page.getByRole('button', { name: 'Save Match' }).click();
 
     await expect(page.getByRole('heading', { name: 'Breakdown Test' })).toBeVisible();

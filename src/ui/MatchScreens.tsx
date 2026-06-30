@@ -273,12 +273,21 @@ export function MatchForm({ id, onSaved, onCancel }: {
 
   const num = (t: string): number | null => t.trim() === '' ? null : Number(t);
 
-  const stageObjs: MatchStage[] = useMemo(() => stages.map((st, i) => ({
-    number: i + 1, points: num(st.points), time: num(st.time),
-    percent: num(st.percent), notes: st.notes.trim(),
-    alphas: num(st.alphas), charlies: num(st.charlies), deltas: num(st.deltas),
-    misses: num(st.misses), noShoots: num(st.noShoots), procedurals: num(st.procedurals),
-  })), [stages]);
+  const stageObjs: MatchStage[] = useMemo(() => stages.map((st, i) => {
+    const hb = {
+      alphas: num(st.alphas), charlies: num(st.charlies), deltas: num(st.deltas),
+      misses: num(st.misses), noShoots: num(st.noShoots), procedurals: num(st.procedurals),
+    };
+    // When a breakdown is entered, the stage's points are DERIVED from the hits
+    // (and the field is read-only), so points can never disagree with the hits.
+    const sc = scoreStageHits(hb, powerFactor, num(st.time));
+    return {
+      number: i + 1,
+      points: sc ? sc.stagePoints : num(st.points),
+      time: num(st.time), percent: num(st.percent), notes: st.notes.trim(),
+      ...hb,
+    };
+  }), [stages, powerFactor]);
 
 
   async function save() {
@@ -403,8 +412,11 @@ export function MatchForm({ id, onSaved, onCancel }: {
                   onClick={() => setStages((p) => p.filter((_, x) => x !== i))}>✕</button>
               </div>
               <div className="drill-edit-fields">
-                <label className="field small">Points
-                  <input type="number" inputMode="decimal" value={st.points}
+                <label className="field small">Points{sc ? ' (from hits)' : ''}
+                  <input type="number" inputMode="decimal"
+                    value={sc ? String(sc.stagePoints) : st.points}
+                    readOnly={!!sc} aria-readonly={!!sc}
+                    style={sc ? { color: 'var(--text-dim)' } : undefined}
                     onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, points: e.target.value } : x))} />
                 </label>
                 <label className="field small">Time (s)
