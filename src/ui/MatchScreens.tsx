@@ -449,7 +449,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
                   </div>
                   {sc && (
                     <p className="report-note" style={{ marginTop: 2 }}>
-                      Derived: {sc.stagePoints} pts{sc.hitFactor != null ? ` · HF ${sc.hitFactor}` : ''}
+                      Derived <InfoTip title="How this is derived">Hit factor = points / time. Points come from your hits — A is 5; C is 4 major / 3 minor; D is 2 major / 1 minor — minus 10 for each miss, no-shoot, and procedural, and never below zero. "All A's" is what it would be if every hit were an alpha, at the same time. Full math and sources: "How the numbers work" (under More, or from any saved match).</InfoTip>: {sc.stagePoints} pts{sc.hitFactor != null ? ` · HF ${sc.hitFactor}` : ''}
                       {sc.allAlphaDelta != null && sc.allAlphaDelta > 0 ? ` · all A's ${sc.allAlphaHitFactor} (+${sc.allAlphaDelta})` : ''}
                       {sc.pctAvailable != null ? ` · ${Math.round(sc.pctAvailable * 100)}% of points` : ''}
                     </p>
