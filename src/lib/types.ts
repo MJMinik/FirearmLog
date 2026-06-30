@@ -231,6 +231,16 @@ export interface MatchStage {
   time: number | null;
   percent: number | null;
   notes: string;
+  // Layer 2 -- optional per-stage USPSA hit breakdown. Absent on legacy/aggregate
+  // stages; when present, scoring (points / hit factor) is DERIVED from these +
+  // the match's power factor (never stored as separate truth). All optional so
+  // every existing match stays valid and renders exactly as before.
+  alphas?: number | null;
+  charlies?: number | null;
+  deltas?: number | null;
+  misses?: number | null;
+  noShoots?: number | null;
+  procedurals?: number | null;
 }
 
 export interface Match extends BaseRecord, Imported {

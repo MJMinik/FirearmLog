@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { analyzeMatch, classFor, classificationProgress, hitFactor } from '../src/lib/competition.ts';
+import { analyzeMatch, classFor, classificationProgress, hitFactor, scoreStageHits } from '../src/lib/competition.ts';
 import type { MatchStage } from '../src/lib/types.ts';
 
 const stage = (number: number, points: number | null, time: number | null,
@@ -98,4 +98,65 @@ test('analyzeMatch: empty and all-null data degrade to none without throwing', (
   assert.equal(a.rankedBy, 'none');
   assert.equal(a.strongest, null);
   assert.deepEqual(a.toughest, []);
+});
+
+test('scoreStageHits: minor 1A 1C in 2s = HF 4.0, all-alpha 5.0 (+1.0)', () => {
+  const r = scoreStageHits({ alphas: 1, charlies: 1 }, 'Minor', 2)!;
+  assert.equal(r.stagePoints, 8);        // 5 + 3
+  assert.equal(r.availablePoints, 10);   // 2 scoring shots * 5
+  assert.equal(r.pctAvailable, 0.8);
+  assert.equal(r.hitFactor, 4);
+  assert.equal(r.allAlphaHitFactor, 5);
+  assert.equal(r.allAlphaDelta, 1);
+});
+
+test('scoreStageHits: major charlie is worth more than minor', () => {
+  const r = scoreStageHits({ alphas: 1, charlies: 1 }, 'Major', 2)!;
+  assert.equal(r.stagePoints, 9);        // 5 + 4
+  assert.equal(r.hitFactor, 4.5);
+});
+
+test('scoreStageHits: a miss zeroes a 2-shot stage; all-alpha shows the gain', () => {
+  const r = scoreStageHits({ alphas: 1, misses: 1 }, 'Major', 2)!;
+  assert.equal(r.stagePoints, 0);        // max(0, 5 - 10)
+  assert.equal(r.hitFactor, 0);
+  assert.equal(r.availablePoints, 10);   // the miss still counts as a scoring shot
+  assert.equal(r.allAlphaHitFactor, 5);  // both shots as A: 10 / 2
+  assert.equal(r.allAlphaDelta, 5);
+});
+
+test('scoreStageHits: all-alphas cannot erase a no-shoot/procedural', () => {
+  const r = scoreStageHits({ alphas: 2, noShoots: 1 }, 'Major', 2)!;
+  assert.equal(r.stagePoints, 0);        // 10 - 10
+  assert.equal(r.availablePoints, 10);   // 2 scoring shots (NS is not one)
+  assert.equal(r.allAlphaHitFactor, 0);  // (10 - 10) / 2
+  assert.equal(r.allAlphaDelta, 0);
+});
+
+test('scoreStageHits: no breakdown returns null (legacy mode)', () => {
+  assert.equal(scoreStageHits({}, 'Minor', 10), null);
+  assert.equal(scoreStageHits({ alphas: null, charlies: null }, 'Minor', 10), null);
+});
+
+test('scoreStageHits: an explicit 0 still counts as a breakdown', () => {
+  assert.notEqual(scoreStageHits({ alphas: 0, misses: 2 }, 'Minor', 4), null);
+});
+
+test('scoreStageHits: no time yields null hit factors but keeps counts/points', () => {
+  const r = scoreStageHits({ alphas: 2 }, 'Major', null)!;
+  assert.equal(r.stagePoints, 10);
+  assert.equal(r.hitFactor, null);
+  assert.equal(r.allAlphaDelta, null);
+});
+
+test('analyzeMatch uses the derived hit factor when a stage has a breakdown', () => {
+  // Stage 1: breakdown only (no manual points), 2A in 1s Major -> derived HF 10.
+  // Stage 2: legacy points/time -> HF 5. Stage 1 should rank strongest.
+  const s1: MatchStage = { number: 1, points: null, time: 1, percent: null, notes: '', alphas: 2 };
+  const s2: MatchStage = { number: 2, points: 50, time: 10, percent: null, notes: '' };
+  const a = analyzeMatch([s1, s2], 'Major');
+  assert.equal(a.rankedBy, 'hitFactor');
+  assert.equal(a.strongest?.number, 1);
+  assert.equal(a.stages.find((s) => s.number === 1)?.score?.hitFactor, 10);
+  assert.equal(a.stages.find((s) => s.number === 2)?.score, null);
 });
