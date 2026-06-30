@@ -400,7 +400,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
       </div>
 
       <div className="card">
-        <h2>Stages</h2>
+        <h2>Stages <InfoTip title="How the numbers work">Hit factor = points / time. Add a stage's A/C/D/miss breakdown and the points are computed from your hits — A is 5; C is 4 major / 3 minor; D is 2 major / 1 minor — minus 10 for each miss, no-shoot, and procedural, and never below zero (the Points field then becomes read-only). The full math and sources are in "How the numbers work," under More or from a saved match's debrief.</InfoTip></h2>
         {stages.map((st, i) => {
           const sc = scoreStageHits(
             { alphas: num(st.alphas), charlies: num(st.charlies), deltas: num(st.deltas),
