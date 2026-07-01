@@ -16,3 +16,6 @@ blob-report/
 
 # OS noise
 .DS_Store
+
+# Vite writes an ephemeral timestamp file when loading its config
+vite.config.ts.timestamp-*.mjs

@@ -41,7 +41,7 @@ export function rankSuggestions(values: string[], query: string, limit = 6): str
     if (lower.startsWith(q)) { whole.push(v); continue; }
     // Split on spaces and common separators; the first chunk is already covered
     // by the whole-string prefix above, so only later words need checking.
-    const laterWords = lower.split(/[\s:,\-]+/).filter(Boolean).slice(1);
+    const laterWords = lower.split(/[\s:,-]+/).filter(Boolean).slice(1);
     if (laterWords.some((w) => w.startsWith(q))) word.push(v);
   }
   return [...whole, ...word].slice(0, limit);
