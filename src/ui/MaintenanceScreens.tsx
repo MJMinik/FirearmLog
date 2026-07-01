@@ -11,6 +11,7 @@ import { buildRefLookup } from '../lib/referenceData.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { ConfirmSheet } from './Sheet.tsx';
 import { ownedGuns } from '../lib/gunStatus.ts';
+import { ScreenError } from './ScreenState.tsx';
 
 export function MaintenanceOverview({ refreshKey, onBack, openGun, logFor }: {
   refreshKey: number; onBack: () => void;
@@ -21,9 +22,12 @@ export function MaintenanceOverview({ refreshKey, onBack, openGun, logFor }: {
   const [maintenance, setMaintenance] = useState<MaintenanceEntry[]>([]);
   const [references, setReferences] = useState<Reference[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
     let alive = true;
+    setError(false);
     void Promise.all([
       getAll<Firearm>('firearms'), getAll<Session>('sessions'),
       getAll<MaintenanceEntry>('maintenance'), getAll<Reference>('references')
@@ -34,10 +38,11 @@ export function MaintenanceOverview({ refreshKey, onBack, openGun, logFor }: {
       setMaintenance(m);
       setReferences(r);
       setLoaded(true);
-    });
+    }).catch(() => { if (alive) setError(true); });
     return () => { alive = false; };
-  }, [refreshKey]);
+  }, [refreshKey, reloadNonce]);
 
+  if (error) return <ScreenError onRetry={() => setReloadNonce((n) => n + 1)} />;
   if (!loaded) return <div className="screen" />;
   const now = new Date();
   const lookup = buildRefLookup(references);

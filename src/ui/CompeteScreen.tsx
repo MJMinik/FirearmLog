@@ -15,6 +15,7 @@ import { FormProblem } from './FormProblem.tsx';
 import { MediaField, commitMedia } from './MediaField.tsx';
 import type { StagedFile } from './MediaField.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
+import { ScreenError } from './ScreenState.tsx';
 
 export function CompeteScreen({ refreshKey, open }: {
   refreshKey: number; open: (v: View) => void;
@@ -23,12 +24,15 @@ export function CompeteScreen({ refreshKey, open }: {
   const [classifiers, setClassifiers] = useState<Classifier[]>([]);
   const [division, setDivision] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   // Audit #17: the two importers live behind one "Import…" choice so the
   // classification/season status shows sooner instead of under four buttons.
   const [showImport, setShowImport] = useState(false);
 
   useEffect(() => {
     let alive = true;
+    setError(false);
     void Promise.all([getAll<Match>('matches'), getAll<Classifier>('classifiers')]).then(([m, c]) => {
       if (!alive) return;
       setMatches(m.sort((a, b) => b.date.localeCompare(a.date)));
@@ -36,9 +40,9 @@ export function CompeteScreen({ refreshKey, open }: {
       setClassifiers(sorted);
       setDivision((prev) => prev || sorted[0]?.division || 'Carry Optics');
       setLoaded(true);
-    });
+    }).catch(() => { if (alive) setError(true); });
     return () => { alive = false; };
-  }, [refreshKey]);
+  }, [refreshKey, reloadNonce]);
 
   const progress = useMemo(
     () => classificationProgress(classifiers.filter((c) => c.division === division)),
@@ -51,6 +55,7 @@ export function CompeteScreen({ refreshKey, open }: {
   // Same single-source fee math the Costs screen uses (handles old imported matches too).
   const seasonFees = seasonMatches.reduce((s, m) => s + matchFee(m), 0);
 
+  if (error) return <ScreenError onRetry={() => setReloadNonce((n) => n + 1)} />;
   if (!loaded) return <div className="screen" />;
 
   return (

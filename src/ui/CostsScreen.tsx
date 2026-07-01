@@ -17,6 +17,7 @@ import { InfoTip } from './InfoTip.tsx';
 import { ConfirmSheet } from './Sheet.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
+import { ScreenError } from './ScreenState.tsx';
 
 const CATEGORIES = [
   'Ammo Purchase', 'Range Fee', 'Gear / Equipment', 'Service / Repair',
@@ -37,10 +38,13 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
   const [ammo, setAmmo] = useState<Ammunition[]>([]);
   const [parts, setParts] = useState<Part[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [q, setQ] = useState('');
 
   useEffect(() => {
     let alive = true;
+    setError(false);
     void Promise.all([
       getAll<Session>('sessions'), getAll<Purchase>('purchases'), getAll<Match>('matches'),
       getAll<Firearm>('firearms'), getAll<Ammunition>('ammunition'), getAll<Part>('parts')
@@ -55,10 +59,11 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
       setAmmo(a);
       setParts(pt);
       setLoaded(true);
-    });
+    }).catch(() => { if (alive) setError(true); });
     return () => { alive = false; };
-  }, [refreshKey]);
+  }, [refreshKey, reloadNonce]);
 
+  if (error) return <ScreenError onRetry={() => setReloadNonce((n) => n + 1)} />;
   if (!loaded) return <div className="screen" />;
 
   const year = todayKey().slice(0, 4);

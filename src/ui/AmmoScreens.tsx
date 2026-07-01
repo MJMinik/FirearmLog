@@ -17,6 +17,7 @@ import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
+import { ScreenError } from './ScreenState.tsx';
 
 export const ammoLabel = (a: Pick<Ammunition, 'brand' | 'caliber' | 'grain' | 'bulletType'>): string =>
   [a.brand, a.caliber, a.grain && `${a.grain}gr`, a.bulletType].filter(Boolean).join(' ');
@@ -28,10 +29,13 @@ export function AmmoScreen({ refreshKey, onBack, openForm }: {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [q, setQ] = useState('');
 
   useEffect(() => {
     let alive = true;
+    setError(false);
     void Promise.all([
       getAll<Ammunition>('ammunition'), getAll<Purchase>('purchases'), getAll<Session>('sessions')
     ]).then(([a, p, s]) => {
@@ -40,10 +44,11 @@ export function AmmoScreen({ refreshKey, onBack, openForm }: {
       setPurchases(p);
       setSessions(activeOnly(s)); // App 7: trashed sessions don't count usage
       setLoaded(true);
-    });
+    }).catch(() => { if (alive) setError(true); });
     return () => { alive = false; };
-  }, [refreshKey]);
+  }, [refreshKey, reloadNonce]);
 
+  if (error) return <ScreenError onRetry={() => setReloadNonce((n) => n + 1)} />;
   if (!loaded) return <div className="screen" />;
   const low = new Set(lowAmmo(ammo).map((a) => a.id));
 

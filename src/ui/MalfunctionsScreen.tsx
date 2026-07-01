@@ -14,6 +14,7 @@ import {
   emptyMalfFilter, malfFilterCount, filterMalfunctions, distinctTypes, type MalfFilter
 } from '../lib/malfunctionFilter.ts';
 import { labelOrRemoved } from '../lib/lookup.ts';
+import { ScreenError } from './ScreenState.tsx';
 
 export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
   refreshKey: number;
@@ -25,11 +26,14 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
   const [ammo, setAmmo] = useState<Ammunition[]>([]);
   const [magazines, setMagazines] = useState<Magazine[]>([]);
   const [loaded, setLoaded] = useState(false);
+  const [error, setError] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
   const [filter, setFilter] = useState<MalfFilter>(emptyMalfFilter());
   const [sheetOpen, setSheetOpen] = useState(false);
 
   useEffect(() => {
     let alive = true;
+    setError(false);
     void (async () => {
       try {
         const [mf, sessions, f, am, mags] = await Promise.all([
@@ -42,12 +46,12 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
         setFirearms(f);
         setAmmo(am.sort((a, b) => ammoLabel(a).localeCompare(ammoLabel(b))));
         setMagazines(mags);
-      } finally {
+      } catch { if (alive) setError(true); } finally {
         if (alive) setLoaded(true);
       }
     })();
     return () => { alive = false; };
-  }, [refreshKey]);
+  }, [refreshKey, reloadNonce]);
 
   const filtered = useMemo(() => filterMalfunctions(malfs, filter), [malfs, filter]);
   const types = useMemo(() => distinctTypes(malfs), [malfs]);
@@ -63,6 +67,7 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
     setFilter((prev) => ({ ...prev, [key]: v }));
   }
 
+  if (error) return <ScreenError onRetry={() => setReloadNonce((n) => n + 1)} />;
   if (!loaded) return <div className="screen" />;
 
   return (
