@@ -48,7 +48,7 @@ export function MaintenanceOverview({ refreshKey, onBack, openGun, logFor }: {
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Maintenance <InfoTip title="Maintenance">Cleaning and parts work per gun, against each gun's schedule. Home warns you when something's due. Want a custom schedule or care steps? Create a guide in the Reference section and link it to the gun.</InfoTip></h1>
+      <h1 className="large-title">Maintenance <InfoTip title="Maintenance">Cleaning and parts work per gun, against each gun's schedule. Home warns you when something's due. Want a custom schedule or care steps? Create a guide in the Care Guides section and link it to the gun.</InfoTip></h1>
       {ownedGuns(firearms).length === 0 && (
         <p className="empty">No guns yet — add a gun on the Guns screen to track its maintenance.</p>
       )}

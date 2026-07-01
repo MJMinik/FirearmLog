@@ -52,7 +52,7 @@ const QUICK_TOUR: TourStep[] = [
   {
     title: 'Your gear and data',
     view: { kind: 'guns' },
-    body: 'Everything else is grouped into four sets: Your Gear (guns, optics, magazines, ammo, parts), Training (drills, reference, how the numbers work), Records (maintenance, malfunctions, costs, reports), and App & Data (Tour & Setup, sync, and backups). On a phone they\'re under the More tab; on a computer they\'re down the sidebar.',
+    body: 'Everything else is grouped into four sets: Your Gear (guns, optics, magazines, ammo, parts, care guides), Training (drills, how the numbers work), Records (maintenance, malfunctions, costs, reports), and App & Data (Tour & Setup, sync, and backups). On a phone they\'re under the More tab; on a computer they\'re down the sidebar.',
   },
   {
     title: 'Your data stays yours',
@@ -130,7 +130,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Guns',
       view: { kind: 'guns' },
-      body: `Your firearms live under ${at('Guns')}. Each carries its make, model, caliber, category, serial, date acquired, starting round count, recoil-spring interval, photos, and notes. Link a manufacturer Reference to a gun and its maintenance schedule comes along automatically — you can still customize it per gun. When a gun leaves the rotation, open it and choose Retire (still yours — kept for insurance, and you can un-retire any time) or "No longer own it" (sold, gifted, lost, stolen, or destroyed). Either way its past sessions and matches keep it on record, and its optic and magazines move to your inventory.`,
+      body: `Your firearms live under ${at('Guns')}. Each carries its make, model, caliber, category, serial, date acquired, starting round count, recoil-spring interval, photos, and notes. Link a manufacturer Care Guide to a gun and its maintenance schedule comes along automatically — you can still customize it per gun. When a gun leaves the rotation, open it and choose Retire (still yours — kept for insurance, and you can un-retire any time) or "No longer own it" (sold, gifted, lost, stolen, or destroyed). Either way its past sessions and matches keep it on record, and its optic and magazines move to your inventory.`,
     },
     {
       title: 'Optics, magazines & spare parts',
@@ -145,7 +145,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Maintenance & reference',
       view: { kind: 'maintenance' },
-      body: `Log cleaning and parts changes under ${at('Maintenance')}; schedules come from each gun's linked Reference or your own settings, and Home warns you when something's due. Reference (under ${at('Reference')}) holds manufacturer care guides for popular pistol, rifle, and shotgun makers, and you can add your own.`,
+      body: `Log cleaning and parts changes under ${at('Maintenance')}; schedules come from each gun's linked Care Guide or your own settings, and Home warns you when something's due. Care Guides (under ${at('Care Guides')}) holds manufacturer care guides for popular pistol, rifle, and shotgun makers, and you can add your own.`,
     },
     {
       title: 'Malfunctions',

@@ -33,7 +33,7 @@ test.describe('Navigation', () => {
     'Costs & Purchases',
     'Maintenance',
     'Spare Parts & Inventory',
-    'Reference',
+    'Care Guides',
     'Reports',
   ];
 

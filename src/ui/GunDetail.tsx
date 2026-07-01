@@ -292,7 +292,7 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
             </button>
           ))}
           {customForCategory.length + referencesForCategory(gun.category).length === 0 && (
-            <p className="report-note">No guides for this gun type yet — create one from the Reference screen.</p>
+            <p className="report-note">No guides for this gun type yet — create one from the Care Guides screen.</p>
           )}
           {gun.referenceId && (
             <button className="drill-pick-row" onClick={() => void linkReference(null)}>
