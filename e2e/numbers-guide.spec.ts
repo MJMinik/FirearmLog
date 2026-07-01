@@ -19,7 +19,9 @@ test.describe('How the numbers work (wiki)', () => {
 
     await expect(page.getByRole('heading', { name: 'Wiki Link Test' })).toBeVisible();
 
-    await page.getByRole('button', { name: /How the numbers work/ }).click();
+    // Scope to the debrief (main content): "How the numbers work" also appears in
+    // the desktop sidebar now, so an unscoped match would hit two buttons.
+    await page.getByRole('main').getByRole('button', { name: /How the numbers work/ }).click();
     await expect(page.getByRole('heading', { name: 'How the numbers work' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Hit factor' })).toBeVisible();
   });
