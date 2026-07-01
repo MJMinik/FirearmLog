@@ -21,7 +21,7 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 
 function openDb(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
-  dbPromise = new Promise((resolve, reject) => {
+  const p = new Promise<IDBDatabase>((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, SCHEMA_VERSION);
     req.onupgradeneeded = () => {
       const db = req.result;
@@ -34,6 +34,12 @@ function openDb(): Promise<IDBDatabase> {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+  // T1-4: if the open FAILS (Safari Private Mode, quota exhaustion, a corrupt DB),
+  // don't cache the rejected promise forever — that bricks every later call and the
+  // app silently dies. Clear it so the next call can retry a fresh open. (Guarded so
+  // we never null a newer open that has since replaced this one.)
+  p.catch(() => { if (dbPromise === p) dbPromise = null; });
+  dbPromise = p;
   return dbPromise;
 }
 
@@ -43,6 +49,25 @@ function txDone(tx: IDBTransaction): Promise<void> {
     tx.onerror = () => reject(tx.error);
     tx.onabort = () => reject(tx.error ?? new Error('transaction aborted'));
   });
+}
+
+// T1-5: serialize the two multi-transaction destructive operations (restore and
+// import). Each writes media across MANY transactions, so two overlapping (e.g. a
+// double-tap, or a Pull fired during an import) could race the add/delete passes.
+// This backstops the UI's own `saving` guards: a second one is refused with a
+// clear message rather than interleaving. Always reset in `finally` so a failure
+// can never leave imports permanently blocked.
+let ioBusy = false;
+async function withIoGuard<T>(what: string, fn: () => Promise<T>): Promise<T> {
+  if (ioBusy) {
+    throw new Error(`Another import or restore is still finishing — please wait a moment, then try ${what} again.`);
+  }
+  ioBusy = true;
+  try {
+    return await fn();
+  } finally {
+    ioBusy = false;
+  }
 }
 
 export async function getAll<T>(store: StoreName): Promise<T[]> {
@@ -98,6 +123,19 @@ export async function applyAmmoMerge(ops: {
   await txDone(tx);
 }
 
+/**
+ * T1-5: write imported classifier rows in ONE transaction (mirrors applyAmmoMerge),
+ * so an interrupted USPSA import can't leave a half-written set. Replaces a
+ * per-row putOne loop in the import screen.
+ */
+export async function commitClassifiers(rows: object[]): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction('classifiers', 'readwrite');
+  const os = tx.objectStore('classifiers');
+  for (const r of rows) os.put(r);
+  await txDone(tx);
+}
+
 export async function countAll(store: StoreName): Promise<number> {
   const db = await openDb();
   const tx = db.transaction(store, 'readonly');
@@ -112,6 +150,14 @@ export async function countAll(store: StoreName): Promise<number> {
  * on many megabytes in a single write. onProgress reports photo progress.
  */
 export async function commitDataSet(
+  data: DataSet,
+  settings: unknown,
+  onProgress?: (done: number, total: number) => void
+): Promise<void> {
+  return withIoGuard('the import', () => commitDataSetInner(data, settings, onProgress));
+}
+
+async function commitDataSetInner(
   data: DataSet,
   settings: unknown,
   onProgress?: (done: number, total: number) => void
@@ -270,6 +316,13 @@ export function validateSnapshotShape(snapshot: Snapshot): void {
  *    interruption can leave a few extra photos but can never lose them.
  */
 export async function restoreSnapshot(
+  snapshot: Snapshot,
+  onProgress?: (done: number, total: number) => void
+): Promise<void> {
+  return withIoGuard('the restore', () => restoreSnapshotInner(snapshot, onProgress));
+}
+
+async function restoreSnapshotInner(
   snapshot: Snapshot,
   onProgress?: (done: number, total: number) => void
 ): Promise<void> {
