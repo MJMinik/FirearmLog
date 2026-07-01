@@ -1,6 +1,11 @@
 // Phone: bottom tab bar (Apple HIG). Desktop ≥900px: the SAME component lays
 // out as a full sidebar with every section visible — feedback C1, spec §4.2.
 // One component, two layouts via CSS; nothing is built twice.
+//
+// The sidebar sections are grouped to match the phone More screen (July 1 2026):
+// Your Gear / Training / Records, then an App & Data group with Tour & Setup and
+// the Sync & Backup screen. Phone and desktop tell the same story.
+import { Fragment } from 'react';
 import type { View } from './nav.ts';
 import { Icon } from './Icon.tsx';
 import type { IconName } from './Icon.tsx';
@@ -14,36 +19,55 @@ const TABS: { id: TabId; label: string; icon: IconName }[] = [
   { id: 'progress', label: 'Progress', icon: 'progress' }
 ];
 
-// Desktop-only direct links to the sections that live under More on the phone.
-// Order + "Data & Gear" grouping per Michael's June 14 layout.
-const SECTIONS: { target: View; label: string; icon: IconName; also: View['kind'][] }[] = [
-  { target: { kind: 'guns' }, label: 'Guns', icon: 'gun', also: ['gun-detail', 'gun-form'] },
-  { target: { kind: 'optics' }, label: 'Optics', icon: 'optic', also: ['optic-form'] },
-  { target: { kind: 'ammo' }, label: 'Ammo', icon: 'ammo', also: ['ammo-form'] },
-  { target: { kind: 'magazines' }, label: 'Magazines', icon: 'magazine', also: ['magazine-form'] },
-  { target: { kind: 'drills' }, label: 'Drills', icon: 'drills', also: ['drill-form'] },
-  { target: { kind: 'costs' }, label: 'Costs & Purchases', icon: 'costs', also: ['purchase-form'] },
-  { target: { kind: 'maintenance' }, label: 'Maintenance', icon: 'maintenance', also: [] },
-  { target: { kind: 'malfunctions' }, label: 'Malfunctions', icon: 'malfunction', also: [] },
-  { target: { kind: 'parts' }, label: 'Spare Parts & Inventory', icon: 'parts', also: ['part-form'] },
-  { target: { kind: 'references' }, label: 'Reference', icon: 'reference', also: ['reference-detail', 'reference-form'] },
-  { target: { kind: 'reports' }, label: 'Reports', icon: 'reports', also: [] }
+type SectionDef = { target: View; label: string; icon: IconName; also: View['kind'][] };
+
+// Desktop-only direct links to the sections that live under More on the phone,
+// grouped exactly like the phone More screen. Nothing is removed vs. the old
+// flat list; "How the numbers work" is added here for phone/desktop parity.
+const GROUPS: { label: string; sections: SectionDef[] }[] = [
+  {
+    label: 'Your Gear',
+    sections: [
+      { target: { kind: 'guns' }, label: 'Guns', icon: 'gun', also: ['gun-detail', 'gun-form'] },
+      { target: { kind: 'optics' }, label: 'Optics', icon: 'optic', also: ['optic-form'] },
+      { target: { kind: 'magazines' }, label: 'Magazines', icon: 'magazine', also: ['magazine-form'] },
+      { target: { kind: 'ammo' }, label: 'Ammo', icon: 'ammo', also: ['ammo-form'] },
+      { target: { kind: 'parts' }, label: 'Spare Parts & Inventory', icon: 'parts', also: ['part-form'] }
+    ]
+  },
+  {
+    label: 'Training',
+    sections: [
+      { target: { kind: 'drills' }, label: 'Drills', icon: 'drills', also: ['drill-form'] },
+      { target: { kind: 'references' }, label: 'Reference', icon: 'reference', also: ['reference-detail', 'reference-form'] },
+      { target: { kind: 'numbers' }, label: 'How the numbers work', icon: 'info', also: [] }
+    ]
+  },
+  {
+    label: 'Records',
+    sections: [
+      { target: { kind: 'maintenance' }, label: 'Maintenance', icon: 'maintenance', also: [] },
+      { target: { kind: 'malfunctions' }, label: 'Malfunctions', icon: 'malfunction', also: [] },
+      { target: { kind: 'costs' }, label: 'Costs & Purchases', icon: 'costs', also: ['purchase-form'] },
+      { target: { kind: 'reports' }, label: 'Reports', icon: 'reports', also: [] }
+    ]
+  }
 ];
-// Tour & Setup is a different kind of destination from the gear/data sections,
-// so it sits on its own below the divider (matching the phone's separate card).
+
+const ALL_SECTIONS: SectionDef[] = GROUPS.flatMap((g) => g.sections);
 
 export function TabBar({ active, onChange, view, onOpen }: {
   active: TabId; onChange: (t: TabId) => void;
   view: View | null; onOpen: (v: View) => void;
 }) {
-  const sectionOn = (s: typeof SECTIONS[number]) =>
+  const sectionOn = (s: SectionDef) =>
     !!view && (view.kind === s.target.kind || s.also.includes(view.kind));
   // The Tour & Setup screen (and the setup wizard it launches) highlight their
-  // own sidebar entry, below the divider.
+  // own sidebar entry, in the App & Data group.
   const tourOn = !!view && (view.kind === 'help' || view.kind === 'setup');
   // While a sidebar section (or Tour & Setup) is open, that is the highlighted
   // thing, not whatever tab happens to be underneath it.
-  const anySectionOn = SECTIONS.some(sectionOn) || tourOn;
+  const anySectionOn = ALL_SECTIONS.some(sectionOn) || tourOn;
 
   const tabButton = (t: { id: TabId; label: string; icon: IconName }) => (
     <button
@@ -54,7 +78,7 @@ export function TabBar({ active, onChange, view, onOpen }: {
     >
       <span className="glyph" aria-hidden="true"><Icon name={t.icon} /></span>
       {t.id === 'more'
-        ? <><span className="label-phone">More</span><span className="label-desk">Gear &amp; Data</span></>
+        ? <><span className="label-phone">More</span><span className="label-desk">Sync &amp; Backup</span></>
         : t.label}
     </button>
   );
@@ -63,16 +87,20 @@ export function TabBar({ active, onChange, view, onOpen }: {
     <nav className="tabbar" aria-label="Main">
       <div className="side-title" aria-hidden="true">FirearmLog</div>
       {TABS.map(tabButton)}
-      <div className="nav-group-label" aria-hidden="true">Data &amp; Gear</div>
-      {SECTIONS.map((s) => (
-        <button key={s.target.kind} className={`sidebar-only ${sectionOn(s) ? 'active' : ''}`}
-          aria-current={sectionOn(s) ? 'page' : undefined}
-          onClick={() => onOpen(s.target)}>
-          <span className="glyph" aria-hidden="true"><Icon name={s.icon} /></span>
-          {s.label}
-        </button>
+      {GROUPS.map((g) => (
+        <Fragment key={g.label}>
+          <div className="nav-group-label" aria-hidden="true">{g.label}</div>
+          {g.sections.map((s) => (
+            <button key={s.target.kind} className={`sidebar-only ${sectionOn(s) ? 'active' : ''}`}
+              aria-current={sectionOn(s) ? 'page' : undefined}
+              onClick={() => onOpen(s.target)}>
+              <span className="glyph" aria-hidden="true"><Icon name={s.icon} /></span>
+              {s.label}
+            </button>
+          ))}
+        </Fragment>
       ))}
-      <div className="nav-divider" aria-hidden="true" />
+      <div className="nav-group-label" aria-hidden="true">App &amp; Data</div>
       <button className={`sidebar-only ${tourOn ? 'active' : ''}`}
         aria-current={tourOn ? 'page' : undefined}
         onClick={() => onOpen({ kind: 'help' })}>

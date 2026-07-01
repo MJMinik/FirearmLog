@@ -52,7 +52,7 @@ const QUICK_TOUR: TourStep[] = [
   {
     title: 'Your gear and data',
     view: { kind: 'guns' },
-    body: 'Guns, optics, ammo, magazines, drills, costs, maintenance, malfunctions, parts, reference guides, and reports. Tour & Setup sits just below them. On a phone they\'re under the More tab; on a computer they\'re listed down the sidebar.',
+    body: 'Everything else is grouped into four sets: Your Gear (guns, optics, magazines, ammo, parts), Training (drills, reference, how the numbers work), Records (maintenance, malfunctions, costs, reports), and App & Data (Tour & Setup, sync, and backups). On a phone they\'re under the More tab; on a computer they\'re down the sidebar.',
   },
   {
     title: 'Your data stays yours',
@@ -69,13 +69,13 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
   const at = (section: string) =>
     isDesktop ? `the ${section} section in the sidebar` : `More → ${section}`;
   // The catch-all screen that holds Sync, import, and Help.
-  const hub = isDesktop ? 'the Gear & Data screen (bottom of the sidebar)' : 'the More tab';
+  const hub = isDesktop ? 'the Sync & Backup screen (bottom of the sidebar)' : 'the More tab';
 
   return [
     {
       title: 'Getting around',
       body: isDesktop
-        ? 'On a computer, the left sidebar lists Home, Log, Compete, and Progress at the top, then a "Data & Gear" group with every section — Guns, Optics, Ammo, Drills, Costs, and the rest — each one click away. Use the search button to search across sessions, guns, drills, matches, and notes. Almost anything on screen — a number, a chart bar, a list row — can be clicked to open what\'s behind it.'
+        ? 'On a computer, the left sidebar lists Home, Log, Compete, and Progress at the top, then your sections grouped into Your Gear, Training, Records, and App & Data — each one click away. Use the search button to search across sessions, guns, drills, matches, and notes. Almost anything on screen — a number, a chart bar, a list row — can be clicked to open what\'s behind it.'
         : 'On a phone, the bar along the bottom has Home, Log, Compete, and Progress, plus More for everything else. Use the search button to search across sessions, guns, drills, matches, and notes. Almost anything on screen — a number, a chart bar, a list row — can be tapped to open what\'s behind it.',
     },
     {
@@ -237,7 +237,7 @@ export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: Vie
         <p className="report-note">
           Your log lives only on your own devices — there's no account and no cloud copy. So your
           data is as safe as your backups: every so often, and before you switch phones or update,
-          use <strong>Push to File</strong> (in {isDesktop ? 'Gear & Data' : 'the More tab'}) to save a
+          use <strong>Push to File</strong> (in {isDesktop ? 'Sync & Backup' : 'the More tab'}) to save a
           copy to iCloud Drive or Files. That file is your safety net. The Home screen also reminds you
           once you've logged a fair bit since your last backup.
         </p>

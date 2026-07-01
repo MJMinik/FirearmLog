@@ -711,8 +711,10 @@ export function MoreScreen({ refreshKey, onImported, open }: {
   return (
     <div className="screen">
       <h1 className="large-title">More</h1>
+
+      <h2 className="menu-group-title">Your Gear</h2>
+      <p className="menu-group-sub">The things you own</p>
       <div className="card">
-        <h2>Data &amp; Gear</h2>
         <button className="row-tap" onClick={() => open({ kind: 'guns' })}>
           <span className="label">Guns</span>
           <span className="value">›</span>
@@ -721,32 +723,25 @@ export function MoreScreen({ refreshKey, onImported, open }: {
           <span className="label">Optics</span>
           <span className="value">›</span>
         </button>
-        <button className="row-tap" onClick={() => open({ kind: 'ammo' })}>
-          <span className="label">Ammo</span>
-          <span className="value">›</span>
-        </button>
         <button className="row-tap" onClick={() => open({ kind: 'magazines' })}>
           <span className="label">Magazines</span>
           <span className="value">›</span>
         </button>
-        <button className="row-tap" onClick={() => open({ kind: 'drills' })}>
-          <span className="label">Drills</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'costs' })}>
-          <span className="label">Costs &amp; Purchases</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'maintenance' })}>
-          <span className="label">Maintenance</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'malfunctions' })}>
-          <span className="label">Malfunctions</span>
+        <button className="row-tap" onClick={() => open({ kind: 'ammo' })}>
+          <span className="label">Ammo</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'parts' })}>
           <span className="label">Spare Parts &amp; Inventory</span>
+          <span className="value">›</span>
+        </button>
+      </div>
+
+      <h2 className="menu-group-title">Training</h2>
+      <p className="menu-group-sub">Getting better</p>
+      <div className="card">
+        <button className="row-tap" onClick={() => open({ kind: 'drills' })}>
+          <span className="label">Drills</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'references' })}>
@@ -757,11 +752,31 @@ export function MoreScreen({ refreshKey, onImported, open }: {
           <span className="label">How the numbers work</span>
           <span className="value">›</span>
         </button>
+      </div>
+
+      <h2 className="menu-group-title">Records</h2>
+      <p className="menu-group-sub">Your history</p>
+      <div className="card">
+        <button className="row-tap" onClick={() => open({ kind: 'maintenance' })}>
+          <span className="label">Maintenance</span>
+          <span className="value">›</span>
+        </button>
+        <button className="row-tap" onClick={() => open({ kind: 'malfunctions' })}>
+          <span className="label">Malfunctions</span>
+          <span className="value">›</span>
+        </button>
+        <button className="row-tap" onClick={() => open({ kind: 'costs' })}>
+          <span className="label">Costs &amp; Purchases</span>
+          <span className="value">›</span>
+        </button>
         <button className="row-tap" onClick={() => open({ kind: 'reports' })}>
           <span className="label">Reports</span>
           <span className="value">›</span>
         </button>
       </div>
+
+      <h2 className="menu-group-title">App &amp; Data</h2>
+      <p className="menu-group-sub">Setup, sync, and backups</p>
       <div className="card">
         <button className="row-tap" onClick={() => open({ kind: 'help' })}>
           <span className="label">Tour &amp; Setup</span>
