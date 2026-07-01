@@ -226,3 +226,104 @@ export function scoreStageHits(
     stagePoints, availablePoints, pctAvailable, hitFactor, allAlphaHitFactor, allAlphaDelta,
   };
 }
+
+// ---- Steel Challenge (SCSA) scoring: time-only, best-4-of-5 ----
+// Cited (SCSA rulebook; to be shown in the in-app "How the numbers work" wiki):
+//   Each string scores its raw time + 3.00s per missed plate, capped at 30.00s;
+//   a string whose stop plate is never hit scores the 30.00s maximum. A stage takes
+//   the best 4 of 5 strings (drop the single slowest) EXCEPT "Outer Limits", which
+//   is 4 strings with none dropped. Match total = sum of stage times; LOWEST wins.
+
+export const STEEL_MAX_STRING = 30;   // seconds — per-string maximum / stop-plate-missed value
+export const STEEL_MISS_PENALTY = 3;  // seconds added per missed plate
+
+/** The 8 official SCSA classifier stages; Outer Limits is the only 4-string stage. */
+export const STEEL_STAGES: { name: string; strings: 4 | 5 }[] = [
+  { name: '5 to Go', strings: 5 },
+  { name: 'Showdown', strings: 5 },
+  { name: 'Smoke & Hope', strings: 5 },
+  { name: 'Outer Limits', strings: 4 },
+  { name: 'Accelerator', strings: 5 },
+  { name: 'The Pendulum', strings: 5 },
+  { name: 'Speed Option', strings: 5 },
+  { name: 'Roundabout', strings: 5 },
+];
+
+export interface SteelStringScore {
+  raw: number | null;
+  misses: number;
+  stopMissed: boolean;
+  capped: number | null; // min(raw + misses*3, 30); 30 if stop plate missed; null if not entered
+}
+export interface SteelStageScore {
+  strings: SteelStringScore[];
+  stringsExpected: 4 | 5;
+  droppedIndex: number | null; // index of the single dropped (slowest) string; null when none dropped
+  stageTime: number | null;    // sum of the counted strings; null if nothing entered
+}
+
+const round2 = (x: number): number => Math.round(x * 100) / 100;
+
+/** Outer Limits is 4 strings (keep all); every other Steel stage is best-4-of-5. */
+export function steelStringsExpected(steelStage?: string): 4 | 5 {
+  return steelStage === 'Outer Limits' ? 4 : 5;
+}
+
+export interface SteelStageInput {
+  strings?: (number | null)[];
+  stringMisses?: (number | null)[];
+  stringStopMissed?: boolean[];
+  steelStage?: string;
+}
+
+/**
+ * Score a Steel Challenge stage. Pure; never throws; unentered strings are ignored.
+ * Keeps the best 4 strings on a 5-string stage (drops the single slowest) and keeps
+ * all on Outer Limits (4 strings). Times round to 0.01s (the timer's resolution).
+ */
+export function scoreSteelStage(stage: SteelStageInput): SteelStageScore {
+  const raws = stage.strings ?? [];
+  const missesArr = stage.stringMisses ?? [];
+  const stopArr = stage.stringStopMissed ?? [];
+  const expected = steelStringsExpected(stage.steelStage);
+  const scored: SteelStringScore[] = raws.map((raw, i) => {
+    const misses = nonNeg(missesArr[i]);
+    const stopMissed = stopArr[i] === true;
+    const rawNum = (typeof raw === 'number' && Number.isFinite(raw) && raw >= 0) ? raw : null;
+    let capped: number | null;
+    if (stopMissed) capped = STEEL_MAX_STRING;
+    else if (rawNum !== null) capped = Math.min(round2(rawNum + misses * STEEL_MISS_PENALTY), STEEL_MAX_STRING);
+    else capped = null; // not entered
+    return { raw: rawNum, misses, stopMissed, capped };
+  });
+  const counted = scored.map((s, i) => (s.capped !== null ? i : -1)).filter((i) => i >= 0);
+  if (counted.length === 0) {
+    return { strings: scored, stringsExpected: expected, droppedIndex: null, stageTime: null };
+  }
+  // Best 4 of 5 (drop the slowest); Outer Limits keeps all counted strings.
+  const keepCount = expected === 5 ? 4 : counted.length;
+  const byTimeAsc = [...counted].sort((a, b) => (scored[a].capped as number) - (scored[b].capped as number));
+  const keep = byTimeAsc.slice(0, Math.min(keepCount, byTimeAsc.length));
+  const dropped = byTimeAsc.slice(Math.min(keepCount, byTimeAsc.length));
+  const droppedIndex = dropped.length === 1 ? dropped[0] : null;
+  const stageTime = round2(keep.reduce((sum, i) => sum + (scored[i].capped as number), 0));
+  return { strings: scored, stringsExpected: expected, droppedIndex, stageTime };
+}
+
+/** Steel match total = sum of stage times; lowest wins. Null if no stage is scored. */
+export function steelMatchTotal(stages: SteelStageInput[]): number | null {
+  let total = 0;
+  let any = false;
+  for (const st of stages ?? []) {
+    const s = scoreSteelStage(st);
+    if (s.stageTime !== null) { total += s.stageTime; any = true; }
+  }
+  return any ? round2(total) : null;
+}
+
+/** Derive a match's scoring system from its match type (used to default new matches). */
+export function scoringTypeFor(matchType: string): 'uspsa' | 'idpa' | 'steel' {
+  if (matchType === 'Steel Challenge') return 'steel';
+  if (matchType.startsWith('IDPA')) return 'idpa';
+  return 'uspsa';
+}
