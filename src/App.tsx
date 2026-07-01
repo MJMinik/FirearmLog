@@ -232,11 +232,16 @@ export function App() {
     content = <MoreScreen refreshKey={refreshKey} onImported={refresh} open={push} />;
   }
 
+  // Key the error boundary to the current screen so navigating away from a
+  // crashed screen remounts it fresh (auto-recovers) — pro-grade audit T1-2.
+  const boundaryKey = view ? `${view.kind}:${(view as { id?: string }).id ?? ''}` : tab;
+
   return (
     <>
       {/* Audit #D5: a <main> landmark for screen readers (the nav landmark is the tab bar).
-          Audit CR-17/#D16: an error boundary turns a render crash into a friendly reload. */}
-      <main><ErrorBoundary>{content}</ErrorBoundary></main>
+          Audit CR-17/#D16: an error boundary turns a render crash into a friendly reload.
+          T1-2: keyed to the current view so navigation recovers from a crash. */}
+      <main><ErrorBoundary key={boundaryKey}>{content}</ErrorBoundary></main>
       <TabBar active={tab} onChange={setTab} view={view} onOpen={openSection} />
     </>
   );

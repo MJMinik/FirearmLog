@@ -55,6 +55,12 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBound
     done();
   };
 
+  // Recover in place: clear the error so the children re-render. If the fault is
+  // deterministic it re-trips and shows this card again (no worse); if it was
+  // transient, the screen comes back. Navigation also resets it (App keys this
+  // boundary to the current view). Pro-grade audit T1-2.
+  private reset = (): void => this.setState({ failed: false, message: '', copied: false });
+
   render(): ReactNode {
     if (this.state.failed) {
       return (
@@ -63,14 +69,15 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBound
             <h2>Something went wrong</h2>
             <p className="report-note" style={{ marginBottom: 12 }}>
               This screen hit an unexpected error. Your data is safe on this device —
-              reloading usually clears it.
+              tap Try again, or switch to another tab, to recover.
             </p>
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <button className="button" style={{ flex: 1, minWidth: 120 }} onClick={() => location.reload()}>Reload</button>
-              <button className="button secondary" style={{ flex: 1, minWidth: 120 }} onClick={this.copy}>
-                {this.state.copied ? 'Copied ✓' : 'Copy error details'}
-              </button>
+              <button className="button" style={{ flex: 1, minWidth: 120 }} onClick={this.reset}>Try again</button>
+              <button className="button secondary" style={{ flex: 1, minWidth: 120 }} onClick={() => location.reload()}>Reload</button>
             </div>
+            <button className="button secondary" style={{ width: '100%', marginTop: 8 }} onClick={this.copy}>
+              {this.state.copied ? 'Copied ✓' : 'Copy error details'}
+            </button>
             {this.state.copied && (
               <p className="report-note" style={{ marginTop: 12 }}>
                 Copied. If this keeps happening, paste it into an email to support so we can fix it.

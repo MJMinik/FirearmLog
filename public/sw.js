@@ -1,6 +1,6 @@
 // FirearmLog service worker — keeps the app working offline.
 // Bump CACHE_VERSION on each release so users get fresh files.
-const CACHE_VERSION = 'firearmlog-v10';
+const CACHE_VERSION = 'firearmlog-v11';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -23,8 +23,13 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(
       fetch(req)
         .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE_VERSION).then((c) => c.put(req, copy));
+          // Only cache a genuine, successful same-origin response — never a 5xx/error
+          // or opaque response, which would poison the cache and serve a broken shell
+          // offline (pro-grade audit T1-3).
+          if (res.ok && res.type === 'basic') {
+            const copy = res.clone();
+            caches.open(CACHE_VERSION).then((c) => c.put(req, copy));
+          }
           return res;
         })
         .catch(() => caches.match(req).then((hit) => hit || caches.match('./index.html')))
@@ -38,8 +43,11 @@ self.addEventListener('fetch', (event) => {
       (hit) =>
         hit ||
         fetch(req).then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE_VERSION).then((c) => c.put(req, copy));
+          // Same guard: don't cache a failed/opaque response (T1-3).
+          if (res.ok && res.type === 'basic') {
+            const copy = res.clone();
+            caches.open(CACHE_VERSION).then((c) => c.put(req, copy));
+          }
           return res;
         })
     )
