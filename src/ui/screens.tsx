@@ -17,6 +17,7 @@ import { SyncCard } from './SyncCard.tsx';
 import { PhotoCleanupCard } from './PhotoCleanupCard.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { Icon } from './Icon.tsx';
+import { ScreenError } from './ScreenState.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { isActive, isOwned, isFormer, isRetired, statusBadge } from '../lib/gunStatus.ts';
 import { MonthCalendar } from './Calendar.tsx';
@@ -44,41 +45,51 @@ function useData(refreshKey: number) {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [drills, setDrills] = useState<DrillDef[]>([]);
   const [loaded, setLoaded] = useState(false);
+  // If the load fails (a bad read / storage hiccup), fail safe to a recoverable
+  // error state instead of hanging on a blank screen (pro-grade audit T1-1).
+  const [error, setError] = useState(false);
   // A local counter so an in-screen change (e.g. a swipe-delete) can re-read the
   // database without the parent having to hand down a fresh refreshKey.
   const [nonce, setNonce] = useState(0);
   const reload = useCallback(() => setNonce((n) => n + 1), []);
   useEffect(() => {
     let alive = true;
+    setError(false);
     void (async () => {
-      // Sweep out anything past its 30-day window first, so the lists below are
-      // already clean. Fails safe (returns 0) — it can never block the load.
-      await purgeExpiredSessions();
-      const [f, s, m, mt, r, am, cl, pu, dr] = await Promise.all([
-        getAll<Firearm>('firearms'), getAll<Session>('sessions'),
-        getAll<Match>('matches'), getAll<MaintenanceEntry>('maintenance'),
-        getAll<Reference>('references'), getAll<Ammunition>('ammunition'),
-        getAll<Classifier>('classifiers'), getAll<Purchase>('purchases'),
-        getAll<DrillDef>('drills')
-      ]);
-      if (!alive) return;
-      setFirearms(f);
-      // Trashed sessions are kept out of the live list and every total; they
-      // surface only in the Log's "Recently Deleted" section.
-      setSessions(activeOnly(s).sort((a, b) => b.date.localeCompare(a.date)));
-      setTrashed(trashedOnly(s));
-      setMatches(m);
-      setMaintenance(mt);
-      setReferences(r);
-      setAmmo(am);
-      setClassifiers(cl);
-      setPurchases(pu);
-      setDrills(dr);
-      setLoaded(true);
+      try {
+        // Sweep out anything past its 30-day window first, so the lists below are
+        // already clean. Fails safe (returns 0) — it can never block the load.
+        await purgeExpiredSessions();
+        const [f, s, m, mt, r, am, cl, pu, dr] = await Promise.all([
+          getAll<Firearm>('firearms'), getAll<Session>('sessions'),
+          getAll<Match>('matches'), getAll<MaintenanceEntry>('maintenance'),
+          getAll<Reference>('references'), getAll<Ammunition>('ammunition'),
+          getAll<Classifier>('classifiers'), getAll<Purchase>('purchases'),
+          getAll<DrillDef>('drills')
+        ]);
+        if (!alive) return;
+        setFirearms(f);
+        // Trashed sessions are kept out of the live list and every total; they
+        // surface only in the Log's "Recently Deleted" section.
+        setSessions(activeOnly(s).sort((a, b) => b.date.localeCompare(a.date)));
+        setTrashed(trashedOnly(s));
+        setMatches(m);
+        setMaintenance(mt);
+        setReferences(r);
+        setAmmo(am);
+        setClassifiers(cl);
+        setPurchases(pu);
+        setDrills(dr);
+        setLoaded(true);
+      } catch (e) {
+        if (!alive) return;
+        console.error('Screen data load failed', e);
+        setError(true);
+      }
     })();
     return () => { alive = false; };
   }, [refreshKey, nonce]);
-  return { firearms, sessions, trashed, matches, maintenance, references, ammo, classifiers, purchases, drills, loaded, reload };
+  return { firearms, sessions, trashed, matches, maintenance, references, ammo, classifiers, purchases, drills, loaded, error, reload };
 }
 
 function SessionRow({ s, firearms, onTap, onDelete }: {
@@ -247,7 +258,7 @@ function AlertRow({ alert, onTap, onDismiss, onComplete }: {
 export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
   refreshKey: number; onImported: () => void; open: (v: View) => void; onGoBackup: () => void;
 }) {
-  const { firearms, sessions, matches, maintenance, references, ammo, classifiers, drills, loaded } = useData(refreshKey);
+  const { firearms, sessions, matches, maintenance, references, ammo, classifiers, drills, loaded, error, reload } = useData(refreshKey);
   const [dismissed, setDismissed] = useState<Record<string, string>>({});
   const [chartFilter, setChartFilter] = useState<RoundsFilter>({});
   const [chartMonths, setChartMonths] = useState(12);
@@ -285,6 +296,7 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
     await putOne('meta', { key: 'dismissedAlerts', value: next });
   }, []);
 
+  if (error) return <ScreenError onRetry={reload} />;
   if (!loaded) return <div className="screen" />;
 
   const empty = firearms.length === 0 && sessions.length === 0;
@@ -541,7 +553,7 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
 }
 
 export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: View) => void }) {
-  const { firearms, sessions, trashed, matches, ammo, loaded, reload } = useData(refreshKey);
+  const { firearms, sessions, trashed, matches, ammo, loaded, error, reload } = useData(refreshKey);
   const [mode, setMode] = useState<'list' | 'calendar'>('list');
   const [filter, setFilter] = useState<LogFilter>(emptyLogFilter());
   const [explain, setExplain] = useState<Session | null>(null); // logged-session swipe
@@ -556,6 +568,7 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
   }
   function onRestore(s: Session) { void restoreSession(s, ammo).then(reload); }
 
+  if (error) return <ScreenError onRetry={reload} />;
   if (!loaded) return <div className="screen" />;
 
   // B6: one filter rules both the list and the calendar.
@@ -707,7 +720,8 @@ function RecentlyDeleted({ trashed, firearms, onRestore, onForget }: {
 export function MoreScreen({ refreshKey, onImported, open }: {
   refreshKey: number; onImported: () => void; open: (v: View) => void;
 }) {
-  const { loaded } = useData(refreshKey);
+  const { loaded, error, reload } = useData(refreshKey);
+  if (error) return <ScreenError onRetry={reload} />;
   if (!loaded) return <div className="screen" />;
   return (
     <div className="screen">
@@ -816,9 +830,10 @@ export function MoreScreen({ refreshKey, onImported, open }: {
 export function GunsScreen({ refreshKey, onBack, open }: {
   refreshKey: number; onBack: () => void; open: (v: View) => void;
 }) {
-  const { firearms, loaded } = useData(refreshKey);
+  const { firearms, loaded, error, reload } = useData(refreshKey);
   const [q, setQ] = useState('');
   const [showFormer, setShowFormer] = useState(false);
+  if (error) return <ScreenError onRetry={reload} />;
   if (!loaded) return <div className="screen" />;
   // Audit #10: active + retired show by default (with badges); guns you no longer
   // own hide behind a toggle. Open a gun to retire/remove or bring it back.

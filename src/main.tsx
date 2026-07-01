@@ -1,7 +1,12 @@
 import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
+import { installGlobalErrorHandler } from './ui/globalErrorBanner.ts';
 import './app.css';
+
+// App-wide safety net: surface any escaped error/rejection as a small,
+// non-blocking banner instead of a silent blank screen (pro-grade audit T1-1).
+installGlobalErrorHandler();
 
 // Ask the browser to keep our data persistently (resist automatic eviction).
 // Local-first means the user's log lives only in this browser's IndexedDB; without
