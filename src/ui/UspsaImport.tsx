@@ -5,7 +5,7 @@
 // The parser is pure + tested in src/lib/uspsaClassifier.ts.
 import { useEffect, useRef, useState } from 'react';
 import type { Classifier } from '../lib/types.ts';
-import { getAll, putOne } from '../lib/db.ts';
+import { getAll, commitClassifiers } from '../lib/db.ts';
 import { stampNew } from '../lib/stamps.ts';
 import { newId } from '../lib/id.ts';
 import {
@@ -49,12 +49,13 @@ export function UspsaImport({ onCancel, onDone }: {
     setSaving(true);
     try {
       const now = Date.now();
-      for (const r of newRows) {
-        await putOne('classifiers', stampNew({
-          code: r.code, name: r.name, date: r.date, division: r.division,
-          hitFactor: r.hitFactor, percent: r.percent, notes: 'Imported from USPSA.',
-        }, newId('cl'), now));
-      }
+      // T1-5: build all rows, then commit them in ONE transaction so an
+      // interrupted import can't leave a half-written set.
+      const rows = newRows.map((r) => stampNew({
+        code: r.code, name: r.name, date: r.date, division: r.division,
+        hitFactor: r.hitFactor, percent: r.percent, notes: 'Imported from USPSA.',
+      }, newId('cl'), now));
+      await commitClassifiers(rows);
       onDone();
     } finally {
       setSaving(false);
