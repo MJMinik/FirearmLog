@@ -374,7 +374,14 @@ select.category-pick {
   border-bottom: 0.5px solid var(--separator);
 }
 .row-tap:last-child { border-bottom: none; }
+.row-tap .label { flex: 1; }
 .row-tap .value { color: var(--text-dim); text-align: right; flex-shrink: 0; }
+/* Leading icon on a menu row (More screen): quiet monochrome, matches the
+   desktop sidebar glyphs. Fixed box so labels line up in a neat column. */
+.row-ico {
+  flex-shrink: 0; width: 26px; display: inline-flex; align-items: center;
+  justify-content: center; color: var(--text-dim);
+}
 .row-sub { font-size: var(--fs-footnote); color: var(--text-dim); font-weight: 400; }
 
 /* ---------- App 7: swipe-to-delete + Recently Deleted ---------- */

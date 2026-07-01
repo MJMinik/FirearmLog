@@ -16,6 +16,7 @@ import { ImportFlow } from './ImportFlow.tsx';
 import { SyncCard } from './SyncCard.tsx';
 import { PhotoCleanupCard } from './PhotoCleanupCard.tsx';
 import { InfoTip } from './InfoTip.tsx';
+import { Icon } from './Icon.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { isActive, isOwned, isFormer, isRetired, statusBadge } from '../lib/gunStatus.ts';
 import { MonthCalendar } from './Calendar.tsx';
@@ -716,26 +717,32 @@ export function MoreScreen({ refreshKey, onImported, open }: {
       <p className="menu-group-sub">The things you own</p>
       <div className="card">
         <button className="row-tap" onClick={() => open({ kind: 'guns' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="gun" size={20} /></span>
           <span className="label">Guns</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'optics' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="optic" size={20} /></span>
           <span className="label">Optics</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'magazines' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="magazine" size={20} /></span>
           <span className="label">Magazines</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'ammo' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="ammo" size={20} /></span>
           <span className="label">Ammo</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'parts' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="parts" size={20} /></span>
           <span className="label">Spare Parts &amp; Inventory</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'references' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="reference" size={20} /></span>
           <span className="label">Care Guides</span>
           <span className="value">›</span>
         </button>
@@ -745,10 +752,12 @@ export function MoreScreen({ refreshKey, onImported, open }: {
       <p className="menu-group-sub">Getting better</p>
       <div className="card">
         <button className="row-tap" onClick={() => open({ kind: 'drills' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="drills" size={20} /></span>
           <span className="label">Drills</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'numbers' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="info" size={20} /></span>
           <span className="label">How the numbers work</span>
           <span className="value">›</span>
         </button>
@@ -758,18 +767,22 @@ export function MoreScreen({ refreshKey, onImported, open }: {
       <p className="menu-group-sub">Your history</p>
       <div className="card">
         <button className="row-tap" onClick={() => open({ kind: 'maintenance' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="maintenance" size={20} /></span>
           <span className="label">Maintenance</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'malfunctions' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="malfunction" size={20} /></span>
           <span className="label">Malfunctions</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'costs' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="costs" size={20} /></span>
           <span className="label">Costs &amp; Purchases</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'reports' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="reports" size={20} /></span>
           <span className="label">Reports</span>
           <span className="value">›</span>
         </button>
@@ -779,6 +792,7 @@ export function MoreScreen({ refreshKey, onImported, open }: {
       <p className="menu-group-sub">Setup, sync, and backups</p>
       <div className="card">
         <button className="row-tap" onClick={() => open({ kind: 'help' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="help" size={20} /></span>
           <span className="label">Tour &amp; Setup</span>
           <span className="value">›</span>
         </button>
