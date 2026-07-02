@@ -467,6 +467,18 @@ export function idpaMatchTotal(stages: IdpaStageInput[]): number | null {
   return any ? round2(total) : null;
 }
 
+/** Reconcile a FirearmLog-computed time against an entered official time (for the
+ *  time-plus sports, Steel + IDPA). diff = official - ours (positive = the official is
+ *  higher than ours), rounded to 0.01s; `matches` when within half a hundredth of a
+ *  second. Null-safe: a blank side yields no diff. Pure. */
+export function reconcileTime(ours: number | null, official: number | null): { diff: number | null; matches: boolean } {
+  if (ours == null || official == null || !Number.isFinite(ours) || !Number.isFinite(official)) {
+    return { diff: null, matches: false };
+  }
+  const diff = round2(official - ours);
+  return { diff, matches: Math.abs(diff) < 0.005 };
+}
+
 /** Derive a match's scoring system from its match type (used to default new matches). */
 export function scoringTypeFor(matchType: string): 'uspsa' | 'idpa' | 'steel' {
   if (matchType === 'Steel Challenge') return 'steel';

@@ -8,6 +8,7 @@ import {
   scoreIdpaStage,
   idpaMatchTotal,
   scoringTypeFor,
+  reconcileTime,
   IDPA_HNT_SECONDS,
   IDPA_FTDR_SECONDS,
   IDPA_RULE_QUOTES,
@@ -79,6 +80,15 @@ test('idpaMatchTotal is null when no stage has a time', () => {
 test('scoringTypeFor maps IDPA match types to idpa', () => {
   assert.equal(scoringTypeFor('IDPA Match'), 'idpa');
   assert.equal(scoringTypeFor('IDPA Sanctioned (Tier 2+)'), 'idpa');
+});
+
+test('reconcileTime: diff = official - ours, rounded, with a match tolerance', () => {
+  assert.deepEqual(reconcileTime(30, 30), { diff: 0, matches: true });
+  assert.deepEqual(reconcileTime(30, 35), { diff: 5, matches: false }); // official higher
+  assert.deepEqual(reconcileTime(30, 28.5), { diff: -1.5, matches: false }); // ours higher
+  assert.deepEqual(reconcileTime(13.96, 13.96), { diff: 0, matches: true });
+  assert.deepEqual(reconcileTime(null, 30), { diff: null, matches: false });
+  assert.deepEqual(reconcileTime(30, null), { diff: null, matches: false });
 });
 
 test('every rule quote carries a section label and non-empty verbatim text', () => {

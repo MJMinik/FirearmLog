@@ -8,7 +8,7 @@ import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { DIVISIONS, IDPA_DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown,
   scoringTypeFor, scoreSteelStage, steelMatchTotal, steelStringsExpected, STEEL_STAGES,
-  scoreIdpaStage, idpaMatchTotal } from '../lib/competition.ts';
+  scoreIdpaStage, idpaMatchTotal, reconcileTime } from '../lib/competition.ts';
 import { MarkThumb } from './MarkThumb.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import type { View } from './nav.ts';
@@ -37,6 +37,8 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
   const [confirming, setConfirming] = useState(false);
   const [viewing, setViewing] = useState<Media | null>(null);
   const [localBump, setLocalBump] = useState(0);
+  const [showReconcile, setShowReconcile] = useState(false);
+  const [officialTimes, setOfficialTimes] = useState<string[]>([]);
 
   useEffect(() => {
     let alive = true;
@@ -62,6 +64,20 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
   const steelTotal = isSteel ? steelMatchTotal(match.stages) : null;
   const idpaRows = isIdpa ? match.stages.map((st) => ({ st, score: scoreIdpaStage(st) })) : [];
   const idpaTotal = isIdpa ? idpaMatchTotal(match.stages) : null;
+  // Reconcile-with-official (time-plus sports only): compare our per-stage times to the
+  // user's entered official times. Transient/diagnostic -- no db write, no danger zone.
+  const oursByStage: (number | null)[] = isSteel ? steelRows.map((r) => r.score.stageTime)
+    : isIdpa ? idpaRows.map((r) => r.score.stageTime) : [];
+  const ourTotal = isSteel ? steelTotal : isIdpa ? idpaTotal : null;
+  const parseNum = (t: string | undefined): number | null => {
+    const s = (t ?? '').trim();
+    return s === '' ? null : Number(s);
+  };
+  const allOfficialEntered = oursByStage.length > 0 && oursByStage.every((_, i) => (officialTimes[i] ?? '').trim() !== '');
+  const officialTotal = allOfficialEntered
+    ? Math.round(oursByStage.reduce<number>((s, _, i) => s + (parseNum(officialTimes[i]) ?? 0), 0) * 100) / 100
+    : null;
+  const totalReconcile = ourTotal != null && officialTotal != null ? reconcileTime(ourTotal, officialTotal) : null;
 
   async function reallyDelete() {
     for (const v of videos) await deleteOne('media', v.id);
@@ -216,6 +232,58 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
               <span className="value">{score.stageTime != null ? `${score.stageTime}s` : '—'}</span>
             </div>
           ))}
+        </div>
+      )}
+
+      {(isSteel || isIdpa) && match.stages.length > 0 && (
+        <div className="card">
+          <h2>Reconcile with the official score</h2>
+          {!showReconcile ? (
+            <button className="link-btn" onClick={() => setShowReconcile(true)}>
+              My official score didn&rsquo;t match? Reconcile it ›
+            </button>
+          ) : (
+            <>
+              <p className="report-note" style={{ marginTop: 0 }}>
+                Enter your official time for each stage. A gap almost always means a number was entered
+                differently than the official card — we&rsquo;ll flag which stage and where to look.
+              </p>
+              {oursByStage.map((ours, i) => {
+                const { diff, matches } = reconcileTime(ours, parseNum(officialTimes[i]));
+                return (
+                  <div className="row" key={i}>
+                    <span className="label">
+                      Stage {i + 1}
+                      <div className="row-sub">Ours: {ours != null ? `${ours}s` : '—'}</div>
+                      {diff !== null && (matches ? (
+                        <div className="row-sub" style={{ color: 'var(--success)' }}>Matches ✓</div>
+                      ) : (
+                        <div className="row-sub" style={{ color: 'var(--warn-text)' }}>
+                          Off by {diff > 0 ? '+' : ''}{diff}s — {isIdpa
+                            ? "recheck this stage's points down and penalties"
+                            : "recheck this stage's string times and missed-plate counts"}.
+                        </div>
+                      ))}
+                    </span>
+                    <label className="field small" style={{ maxWidth: 130 }}>Official (s)
+                      <input type="number" inputMode="decimal" value={officialTimes[i] ?? ''}
+                        onChange={(e) => setOfficialTimes((p) => { const n = p.slice(); n[i] = e.target.value; return n; })} />
+                    </label>
+                  </div>
+                );
+              })}
+              {totalReconcile && (
+                <div className="row" style={{ marginTop: 4 }}>
+                  <span className="label"><strong>Match total</strong>
+                    <div className="row-sub">Ours: {ourTotal}s · official: {officialTotal}s</div>
+                  </span>
+                  <span className="value" style={{ color: totalReconcile.matches ? 'var(--success)' : 'var(--warn-text)' }}>
+                    {totalReconcile.matches ? 'Matches ✓' : `off by ${totalReconcile.diff !== null && totalReconcile.diff > 0 ? '+' : ''}${totalReconcile.diff}s`}
+                  </span>
+                </div>
+              )}
+            </>
+          )}
         </div>
       )}
 
