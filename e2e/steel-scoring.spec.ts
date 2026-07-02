@@ -1,11 +1,11 @@
 import { test, expect } from '@playwright/test';
 import { seedDemo, gotoTab } from './helpers';
 
-// Layer 2 -- Steel Challenge (SCSA) scoring: time-only, best-4-of-5, lowest wins.
-// We log a Steel match, enter five string times on one stage, and confirm the
-// entry form derives the stage time (dropping the slowest string) and that the
-// saved debrief shows the match total. Then we confirm Outer Limits keeps all 4
-// strings (nothing dropped).
+// Layer 2 -- Steel Challenge (SCSA) scoring: time-only, lowest wins. We log a Steel
+// match, enter five string times on one stage, and confirm the entry form derives
+// the stage time (dropping the slowest string) and that the saved debrief shows the
+// match total. Then we confirm Outer Limits is 4 strings scored best-3-of-4 (the
+// slowest is dropped).
 
 test.describe('Steel Challenge scoring (Layer 2)', () => {
   test('a Steel match derives stage time (best 4 of 5) and shows the match total', async ({ page }) => {
@@ -44,7 +44,7 @@ test.describe('Steel Challenge scoring (Layer 2)', () => {
     await expect(page.getByText('15s').first()).toBeVisible();
   });
 
-  test('Outer Limits is a 4-string stage with nothing dropped', async ({ page }) => {
+  test('Outer Limits is a 4-string stage scored best-3-of-4 (slowest dropped)', async ({ page }) => {
     await seedDemo(page);
     await gotoTab(page, 'Compete');
 
@@ -65,11 +65,11 @@ test.describe('Steel Challenge scoring (Layer 2)', () => {
     await block.getByLabel('String 3 time (s)').fill('5.00');
     await block.getByLabel('String 4 time (s)').fill('5.50');
 
-    // All four count (19.00) and nothing is dropped.
-    await expect(block.getByText(/dropped String/)).toHaveCount(0);
+    // Best 3 of 4 count (13.50) and the slowest (String 4) is dropped.
+    await expect(block.getByText(/dropped String 4/)).toBeVisible();
 
     await page.getByRole('button', { name: 'Save Match' }).click();
     await expect(page.getByRole('heading', { name: 'Outer Limits Test' })).toBeVisible();
-    await expect(page.getByText('19s').first()).toBeVisible();
+    await expect(page.getByText('13.5s').first()).toBeVisible();
   });
 });

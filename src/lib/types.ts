@@ -243,11 +243,23 @@ export interface MatchStage {
   procedurals?: number | null;
   // Steel Challenge (SCSA): per-string raw times, optional per-string miss counts,
   // and stop-plate-missed flags. Scoring is time-only, best-4-of-5 (Outer Limits =
-  // 4 strings, none dropped). All optional; absent on non-Steel stages.
+  // 4 strings, best 3 of 4 -- slowest dropped). All optional; absent on non-Steel stages.
   strings?: (number | null)[];
   stringMisses?: (number | null)[];
   stringStopMissed?: boolean[];
   steelStage?: string; // which SCSA stage (drives 4- vs 5-string); '' = generic 5-string
+  // IDPA (time-plus): the `time` above is the raw timer time. These are the hit
+  // breakdown (points-down zones) + penalties. Points down: -1 = 1, -3 = 3, miss = 5;
+  // each point down = 1s. Non-threat hit = 5s, PE = 3s, flagrant = 10s, FTDR = 20s.
+  // All optional; absent on non-IDPA stages. (Verified vs the 2026.2 IDPA Rulebook.)
+  idpaDown0?: number | null;
+  idpaDown1?: number | null;
+  idpaDown3?: number | null;
+  idpaMisses?: number | null;
+  idpaNonThreatHits?: number | null;
+  idpaProceduralErrors?: number | null;
+  idpaFlagrantPenalties?: number | null;
+  idpaFailureToDoRight?: number | null;
 }
 
 export interface Match extends BaseRecord, Imported {

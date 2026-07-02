@@ -1,6 +1,7 @@
-// Steel Challenge (SCSA) scoring — time-only, best-4-of-5 (Outer Limits = 4, none
-// dropped); string = raw + 3s/miss, capped at 30; stop-plate-missed = 30. Match
-// total = sum of stage times, lowest wins. Worked examples verified by hand.
+// Steel Challenge (SCSA) scoring — time-only; string = raw + 3s/miss, capped at 30;
+// stop-plate-missed = 30. A stage drops the single slowest string: best 4 of 5, and
+// best 3 of 4 on Outer Limits. Match total = sum of stage times, lowest wins. Worked
+// examples verified by hand.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -44,11 +45,11 @@ test('a string time is capped at 30s', () => {
   assert.equal(s.strings[0].capped, 30);
 });
 
-test('Outer Limits is 4 strings with none dropped', () => {
-  assert.equal(steelStringsExpected('Outer Limits'), 4);
+test('Outer Limits: 4 strings, best 3 count (the slowest is dropped)', () => {
+  assert.equal(steelStringsExpected('Outer Limits'), 4); // 4 strings SHOT
   const s = scoreSteelStage({ steelStage: 'Outer Limits', strings: [4.0, 4.5, 5.0, 5.5] });
-  assert.equal(s.droppedIndex, null);
-  assert.equal(s.stageTime, 19.0); // all four
+  assert.equal(s.droppedIndex, 3); // the 5.5 string (slowest) is dropped
+  assert.equal(s.stageTime, 13.5); // best 3: 4.0 + 4.5 + 5.0
 });
 
 test('fewer than 5 strings entered on a 5-string stage keeps them all (nothing to drop)', () => {
@@ -65,10 +66,10 @@ test('nothing entered -> null stage time, no crash', () => {
 
 test('match total sums stage times (lowest wins)', () => {
   const total = steelMatchTotal([
-    { strings: [3.21, 3.44, 3.6, 3.71, 4.9] }, // 13.96
-    { steelStage: 'Outer Limits', strings: [4.0, 4.5, 5.0, 5.5] }, // 19.00
+    { strings: [3.21, 3.44, 3.6, 3.71, 4.9] }, // 13.96 (best 4 of 5)
+    { steelStage: 'Outer Limits', strings: [4.0, 4.5, 5.0, 5.5] }, // 13.50 (best 3 of 4)
   ]);
-  assert.equal(total, 32.96);
+  assert.equal(total, 27.46);
   assert.equal(steelMatchTotal([]), null);
 });
 

@@ -274,6 +274,13 @@ select.category-pick {
 .report-note { font-size: var(--fs-subhead); line-height: 1.45; color: var(--text-dim); margin-top: 10px; }
 .report-note.warn { color: var(--warn-text); font-weight: 600; }
 
+/* Verbatim rulebook quote block — used in the "How the numbers work" wiki so an
+   official rule is shown word-for-word, with its section, not paraphrased. */
+.rule-quote { margin: 8px 0 0; padding: 8px 0 8px 12px; border-left: 3px solid var(--separator); }
+.rule-quote .quote-label { font-size: var(--fs-footnote); color: var(--text-dim); font-weight: 600; }
+.rule-quote .quote-text { font-size: var(--fs-subhead); line-height: 1.45; color: var(--text); font-style: italic; margin-top: 2px; }
+.rule-quote .quote-cite { font-size: var(--fs-footnote); color: var(--text-dim); margin-top: 2px; }
+
 /* ---------- M2: navigation bar on pushed screens ---------- */
 .navbar { display: flex; justify-content: space-between; align-items: center; min-height: 44px; }
 .back-btn, .navbar-action {

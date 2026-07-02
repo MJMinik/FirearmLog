@@ -155,7 +155,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
 
       {match.stages.length > 0 && isSteel && (
         <div className="card">
-          <h2>Stage times <InfoTip title="Steel Challenge scoring">Steel is scored on time — lowest wins. Each string is your raw time plus 3 seconds for every missed plate, capped at 30 seconds (a string whose stop plate you never hit scores the full 30). A stage keeps your best 4 of 5 strings — the single slowest is dropped — except Outer Limits, which is 4 strings with none dropped. Your match total is the sum of your stage times. Full details in "How the numbers work."</InfoTip></h2>
+          <h2>Stage times <InfoTip title="Steel Challenge scoring">Steel is scored on time — lowest wins. Each string is your raw time plus 3 seconds for every missed plate, capped at 30 seconds (a string whose stop plate you never hit scores the full 30). A stage keeps your best 4 of 5 strings — the single slowest is dropped — and Outer Limits keeps your best 3 of 4 (the slowest is still dropped). Your match total is the sum of your stage times. Full details in "How the numbers work."</InfoTip></h2>
           <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers' })}>How the numbers work ›</button>
           {steelTotal != null && (
             <div className="row">
@@ -499,7 +499,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
 
       <div className="card">
         <h2>{scoringType === 'steel' ? 'Stages & strings' : 'Stages'} <InfoTip title="How the numbers work">{scoringType === 'steel'
-          ? <>Steel is scored on time — lowest wins. Enter each string's raw time; if a plate was missed or the stop plate was never hit, tap "+ miss / penalty" on that string. Each miss adds 3 seconds, a string is capped at 30 seconds, and a missed stop plate scores the full 30. A stage keeps your best 4 of 5 strings (the slowest is dropped) — except Outer Limits, which is 4 strings with none dropped. Full math and sources are in "How the numbers work."</>
+          ? <>Steel is scored on time — lowest wins. Enter each string's raw time; if a plate was missed or the stop plate was never hit, tap "+ miss / penalty" on that string. Each miss adds 3 seconds, a string is capped at 30 seconds, and a missed stop plate scores the full 30. A stage keeps your best 4 of 5 strings (the slowest is dropped) — and Outer Limits keeps your best 3 of 4 (the slowest is still dropped). Full math and sources are in "How the numbers work."</>
           : <>Hit factor = points / time. Add a stage's A/C/D/miss breakdown and the points are computed from your hits — A is 5; C is 4 major / 3 minor; D is 2 major / 1 minor — minus 10 for each miss, no-shoot, and procedural, and never below zero (the Points field then becomes read-only). The full math and sources are in "How the numbers work," under More or from a saved match's debrief.</>}</InfoTip></h2>
         {scoringType === 'steel' ? stages.map((st, i) => {
           const expected = steelStringsExpected(st.steelStage);
@@ -554,7 +554,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
               ))}
               {ss.stageTime !== null && (
                 <p className="report-note" style={{ marginTop: 2 }}>
-                  Stage time <InfoTip title="How this is derived">Each string = raw time + 3 seconds per missed plate, capped at 30s (a missed stop plate scores the full 30). The stage keeps the best 4 of 5 strings — the slowest is dropped — except Outer Limits (4 strings, none dropped). Lowest total wins.</InfoTip>: {ss.stageTime}s{ss.droppedIndex !== null ? ` · dropped String ${ss.droppedIndex + 1}` : ''}
+                  Stage time <InfoTip title="How this is derived">Each string = raw time + 3 seconds per missed plate, capped at 30s (a missed stop plate scores the full 30). The stage keeps the best 4 of 5 strings — the slowest is dropped — and Outer Limits keeps the best 3 of its 4 (slowest dropped too). Lowest total wins.</InfoTip>: {ss.stageTime}s{ss.droppedIndex !== null ? ` · dropped String ${ss.droppedIndex + 1}` : ''}
                 </p>
               )}
               <label className="field">Stage notes
