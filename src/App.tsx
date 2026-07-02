@@ -215,7 +215,7 @@ export function App() {
   } else if (view?.kind === 'help') {
     content = <HelpScreen onBack={back} open={push} />;
   } else if (view?.kind === 'numbers') {
-    content = <NumbersGuide onBack={back} />;
+    content = <NumbersGuide onBack={back} section={view.section} />;
   } else if (view?.kind === 'setup') {
     content = <SetupWizard
       onFinish={() => { refresh(); replace(null); }}

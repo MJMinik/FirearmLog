@@ -29,5 +29,5 @@ export type View =
   | { kind: 'practiscore-import' }
   | { kind: 'uspsa-import' }
   | { kind: 'help' }
-  | { kind: 'numbers' }
+  | { kind: 'numbers'; section?: string }
   | { kind: 'setup' };

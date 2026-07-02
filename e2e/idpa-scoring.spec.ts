@@ -39,5 +39,10 @@ test.describe('IDPA scoring (Layer 2)', () => {
     await page.getByRole('button', { name: 'Save Match' }).click();
     await expect(page.getByRole('heading', { name: 'IDPA Test' })).toBeVisible();
     await expect(page.getByText('30s').first()).toBeVisible();
+
+    // Deep-link: the debrief's "How the numbers work" link opens the wiki AT the IDPA section.
+    await page.getByRole('button', { name: /How the numbers work/ }).first().click();
+    await expect(page.getByRole('heading', { name: 'How the numbers work' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'IDPA (time-plus)' })).toBeVisible();
   });
 });

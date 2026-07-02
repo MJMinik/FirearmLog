@@ -56,6 +56,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
   const gunName = firearms.find((f) => f.id === match.firearmId)?.name ?? '—';
   const isSteel = match.scoringType === 'steel';
   const isIdpa = match.scoringType === 'idpa';
+  const wikiSection = isSteel ? 'steel' : isIdpa ? 'idpa' : 'uspsa'; // deep-link target into the wiki
   const insights = analyzeMatch(match.stages, match.powerFactor);
   const steelRows = isSteel ? match.stages.map((st) => ({ st, score: scoreSteelStage(st) })) : [];
   const steelTotal = isSteel ? steelMatchTotal(match.stages) : null;
@@ -123,7 +124,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
       {match.stages.length > 0 && !isSteel && !isIdpa && (
         <div className="card">
           <h2>Stage breakdown <InfoTip title="Stage breakdown">Hit factor is your points divided by your time (higher is better). Stage percent is your score against the stage winner. We flag your toughest stage — where you lost the most ground — and your strongest. Add a stage's A/C/D/miss breakdown (when you log or edit the match) and we'll show what it would have scored with all alphas, plus your % of available points.</InfoTip></h2>
-          <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers' })}>How the numbers work ›</button>
+          <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers', section: wikiSection })}>How the numbers work ›</button>
           {insights.rankedBy !== 'none' && insights.strongest && insights.toughest.length > 0 && (
             <p className="report-note" style={{ marginTop: 0, marginBottom: 10 }}>
               Toughest: {insights.toughest.map((s) => `Stage ${s.number} (${fmtMetric(s, insights.rankedBy)})`).join(', ')}.{' '}
@@ -160,7 +161,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
       {match.stages.length > 0 && isSteel && (
         <div className="card">
           <h2>Stage times <InfoTip title="Steel Challenge scoring">Steel is scored on time — lowest wins. Each string is your raw time plus 3 seconds for every missed plate, capped at 30 seconds (a string whose stop plate you never hit scores the full 30). A stage keeps your best 4 of 5 strings — the single slowest is dropped — and Outer Limits keeps your best 3 of 4 (the slowest is still dropped). Your match total is the sum of your stage times. Full details in "How the numbers work."</InfoTip></h2>
-          <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers' })}>How the numbers work ›</button>
+          <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers', section: wikiSection })}>How the numbers work ›</button>
           {steelTotal != null && (
             <div className="row">
               <span className="label"><strong>Match total</strong><span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--text-dim)' }}>lowest wins</span></span>
@@ -192,7 +193,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
       {match.stages.length > 0 && isIdpa && (
         <div className="card">
           <h2>Stage times <InfoTip title="IDPA scoring">IDPA is time-plus — lowest total wins. Your stage score is your raw time, plus 1 second for each point down (a -1 is 1, a -3 is 3, a miss is 5), plus penalties: a hit on a non-threat is 5s, a procedural is 3s, a flagrant is 10s, and a failure to do right is 20s. Full math and the exact rules are in "How the numbers work."</InfoTip></h2>
-          <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers' })}>How the numbers work ›</button>
+          <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers', section: wikiSection })}>How the numbers work ›</button>
           {idpaTotal != null && (
             <div className="row">
               <span className="label"><strong>Match total</strong><span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--text-dim)' }}>lowest wins</span></span>

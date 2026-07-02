@@ -6,7 +6,7 @@
 // never dressed up as a rulebook figure. Voice: user-focused and factual -- the
 // wiki explains the shooter's numbers, it does NOT talk about itself. Read-only.
 
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
 import {
   USPSA_SCORING_QUOTES, USPSA_CLASS_QUOTES, STEEL_RULE_QUOTES, IDPA_RULE_QUOTES,
 } from '../lib/competition.ts';
@@ -45,7 +45,18 @@ function OurRead() {
   );
 }
 
-export function NumbersGuide({ onBack }: { onBack: () => void }) {
+export function NumbersGuide({ onBack, section }: { onBack: () => void; section?: string }) {
+  // Deep-link: when opened for a specific section (e.g. from a match debrief's "How the
+  // numbers work" link), scroll that card into view. App scrolls to top on open via rAF,
+  // so a short timeout lets the section scroll win.
+  useEffect(() => {
+    if (!section) return;
+    const el = document.getElementById(section);
+    if (!el) return;
+    const t = setTimeout(() => el.scrollIntoView({ block: 'start' }), 60);
+    return () => clearTimeout(t);
+  }, [section]);
+
   // Hit factor is its own rule (Comstock); the rest of the USPSA scoring quotes are the
   // A/C/D/penalty values. Split them so each shows up next to the number it defines.
   const comstock = USPSA_SCORING_QUOTES.filter((q) => /Comstock/i.test(q.section));
@@ -66,7 +77,7 @@ export function NumbersGuide({ onBack }: { onBack: () => void }) {
         guidance, not an official rule.
       </p>
 
-      <div className="card">
+      <div className="card" id="uspsa">
         <h2>Hit factor (USPSA)</h2>
         <TheMath>hit factor = points &divide; time (points per second).</TheMath>
         <p className="note-text">
@@ -196,7 +207,7 @@ export function NumbersGuide({ onBack }: { onBack: () => void }) {
         </p>
       </div>
 
-      <div className="card">
+      <div className="card" id="steel">
         <h2>Steel Challenge (SCSA)</h2>
         <p className="note-text">
           Scored purely on <strong>time — lowest wins</strong>, the opposite of hit factor. No points, no
@@ -224,7 +235,7 @@ export function NumbersGuide({ onBack }: { onBack: () => void }) {
         </p>
       </div>
 
-      <div className="card">
+      <div className="card" id="idpa">
         <h2>IDPA (time-plus)</h2>
         <p className="note-text">
           Scored on <strong>time — lowest total wins</strong>, like Steel, but accuracy is folded in as
