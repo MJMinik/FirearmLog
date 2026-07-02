@@ -6,7 +6,7 @@
 // never dressed up as a rulebook figure. Voice: user-focused and factual -- the
 // wiki explains the shooter's numbers, it does NOT talk about itself. Read-only.
 
-import { useEffect, type ReactNode } from 'react';
+import { useLayoutEffect, type ReactNode } from 'react';
 import {
   USPSA_SCORING_QUOTES, USPSA_CLASS_QUOTES, STEEL_RULE_QUOTES, IDPA_RULE_QUOTES,
 } from '../lib/competition.ts';
@@ -47,22 +47,16 @@ function OurRead() {
 
 export function NumbersGuide({ onBack, section }: { onBack: () => void; section?: string }) {
   // Deep-link: when opened for a specific section (e.g. from a match debrief's "How the
-  // numbers work" link), scroll that card into view. Re-query the element each frame
-  // (never hold a captured node — it can go stale if the guide re-renders) and wait for
-  // layout via rAF, retrying a few frames in case the card mounts a tick late. App no
-  // longer snaps this view to the top when a section is set (see push() in App.tsx), so
-  // there is nothing to race — this replaces the old fragile 60ms setTimeout.
-  useEffect(() => {
+  // numbers work" link), scroll that card into view. A DIRECT scrollIntoView (NOT
+  // requestAnimationFrame): rAF is paused while the tab is backgrounded, which would
+  // silently skip the scroll and leave the reader at the top; scrollIntoView works
+  // regardless of tab visibility. The target card is part of this component's own render,
+  // so it exists by layout time; useLayoutEffect runs before paint, so there is no
+  // flash-of-top. App no longer snaps this view to the top when a section is set (see
+  // push() in App.tsx), so there is nothing to race.
+  useLayoutEffect(() => {
     if (!section) return;
-    let raf = 0;
-    let tries = 0;
-    const tryScroll = () => {
-      const el = document.getElementById(section);
-      if (el) { el.scrollIntoView({ block: 'start' }); return; }
-      if (tries++ < 10) raf = requestAnimationFrame(tryScroll);
-    };
-    raf = requestAnimationFrame(tryScroll);
-    return () => cancelAnimationFrame(raf);
+    document.getElementById(section)?.scrollIntoView({ block: 'start' });
   }, [section]);
 
   // Hit factor is its own rule (Comstock); the rest of the USPSA scoring quotes are the
