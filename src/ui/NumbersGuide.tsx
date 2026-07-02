@@ -47,14 +47,22 @@ function OurRead() {
 
 export function NumbersGuide({ onBack, section }: { onBack: () => void; section?: string }) {
   // Deep-link: when opened for a specific section (e.g. from a match debrief's "How the
-  // numbers work" link), scroll that card into view. App scrolls to top on open via rAF,
-  // so a short timeout lets the section scroll win.
+  // numbers work" link), scroll that card into view. Re-query the element each frame
+  // (never hold a captured node — it can go stale if the guide re-renders) and wait for
+  // layout via rAF, retrying a few frames in case the card mounts a tick late. App no
+  // longer snaps this view to the top when a section is set (see push() in App.tsx), so
+  // there is nothing to race — this replaces the old fragile 60ms setTimeout.
   useEffect(() => {
     if (!section) return;
-    const el = document.getElementById(section);
-    if (!el) return;
-    const t = setTimeout(() => el.scrollIntoView({ block: 'start' }), 60);
-    return () => clearTimeout(t);
+    let raf = 0;
+    let tries = 0;
+    const tryScroll = () => {
+      const el = document.getElementById(section);
+      if (el) { el.scrollIntoView({ block: 'start' }); return; }
+      if (tries++ < 10) raf = requestAnimationFrame(tryScroll);
+    };
+    raf = requestAnimationFrame(tryScroll);
+    return () => cancelAnimationFrame(raf);
   }, [section]);
 
   // Hit factor is its own rule (Comstock); the rest of the USPSA scoring quotes are the

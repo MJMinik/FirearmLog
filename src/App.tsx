@@ -42,7 +42,15 @@ export function App() {
   const scrollTop = () => requestAnimationFrame(() => window.scrollTo(0, 0));
 
   // Views live in browser history so Back works (and never blanks the app).
-  const push = (v: View) => { history.pushState({ view: v }, ''); setViewState(v); scrollTop(); };
+  const push = (v: View) => {
+    history.pushState({ view: v }, '');
+    setViewState(v);
+    // A section-deep-linked wiki view scrolls itself to that section (NumbersGuide);
+    // skipping the snap-to-top here removes the race that intermittently left the
+    // deep-link stuck at the top of the page instead of on the section it targeted.
+    if (v.kind === 'numbers' && v.section) return;
+    scrollTop();
+  };
   const replace = (v: View | null) => { history.replaceState({ view: v }, ''); setViewState(v); };
   const back = () => history.back();
 
