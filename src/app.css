@@ -386,16 +386,16 @@ select.category-pick {
   /* Present like an iOS sheet: the dim fades in (the sheet, its child, fades with
      it) and the card rises. Reduced-motion is handled globally (see the top of this
      file), which neutralizes animation-duration, so this is off for those users. */
-  animation: sheet-fade 0.22s ease-out;
+  animation: sheet-fade 0.3s ease-out;
 }
 .sheet {
   background: var(--bg-card); width: 100%; max-width: 720px;
   border-radius: 16px 16px 0 0; max-height: 90dvh; overflow: auto;
   padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
-  animation: sheet-rise 0.30s cubic-bezier(0.32, 0.72, 0, 1);
+  animation: sheet-rise 0.42s cubic-bezier(0.32, 0.72, 0, 1);
 }
 @keyframes sheet-fade { from { opacity: 0; } }
-@keyframes sheet-rise { from { transform: translateY(16px); } }
+@keyframes sheet-rise { from { transform: translateY(40px); } }
 .sheet-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .sheet-head h3 { font-size: 17px; }
 
