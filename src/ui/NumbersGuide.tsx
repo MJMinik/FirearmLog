@@ -1,7 +1,23 @@
 // "How the numbers work" -- the in-app wiki/explainer: exactly how FirearmLog
 // computes every number on the match debrief, with the source of each rule and
 // honest flags where a figure is a community rule of thumb vs. an official rule.
+// Where a number IS an official rule, we show the EXACT rulebook wording, in quotes,
+// labeled as a direct quote, with its section -- so nothing is paraphrased-as-fact.
 // Read-only; no data, no storage.
+
+import {
+  USPSA_SCORING_QUOTES, USPSA_CLASS_QUOTES, STEEL_RULE_QUOTES,
+} from '../lib/competition.ts';
+
+/** Render a verbatim rulebook quote (source lives in competition.ts, one place). */
+function RuleQuote({ quote, section }: { quote: string; section: string }) {
+  return (
+    <div className="rule-quote">
+      <div className="quote-label">Direct quote — {section}</div>
+      <div className="quote-text">&ldquo;{quote}&rdquo;</div>
+    </div>
+  );
+}
 
 export function NumbersGuide({ onBack }: { onBack: () => void }) {
   return (
@@ -42,9 +58,15 @@ export function NumbersGuide({ onBack }: { onBack: () => void }) {
           and delta values; an alpha is always 5. (Carry Optics and Production always score minor.)
         </p>
         <p className="report-note">
-          Official USPSA scoring (USPSA rulebook). When you enter a stage's A/C/D breakdown,
-          FirearmLog derives the points from these values — so your points can never disagree with
-          your hits.
+          These are the official USPSA scoring values, straight from the rulebook (USPSA Competition
+          Rules, edition 2026-03, at rules.uspsa.org). Here is the exact wording for each number:
+        </p>
+        {USPSA_SCORING_QUOTES.map((q) => (
+          <RuleQuote key={q.section} quote={q.quote} section={q.section} />
+        ))}
+        <p className="report-note">
+          When you enter a stage's A/C/D breakdown, FirearmLog derives the points from these values —
+          so your points can never disagree with your hits.
         </p>
       </div>
 
@@ -85,7 +107,18 @@ export function NumbersGuide({ onBack }: { onBack: () => void }) {
         <div className="row"><span className="label">A</span><span className="value">75&ndash;84.9%</span></div>
         <div className="row"><span className="label">Master</span><span className="value">85&ndash;94.9%</span></div>
         <div className="row"><span className="label">Grand Master</span><span className="value">95%+</span></div>
-        <p className="report-note">Official USPSA classification (USPSA rulebook).</p>
+        <p className="report-note">
+          Official USPSA classification, from the USPSA Classification System document (published at
+          uspsa.org). The exact wording for the two numbers we use:
+        </p>
+        {USPSA_CLASS_QUOTES.map((q) => (
+          <RuleQuote key={q.section} quote={q.quote} section={q.section} />
+        ))}
+        <p className="report-note">
+          Note: USPSA's own bracket lists Grand Master as &ldquo;95 to 110%&rdquo; — the top band runs
+          past 100% because a classifier score can now exceed the reference hit factor. We show
+          &ldquo;95%+&rdquo; as the plain-English band you cross to reach GM; the math is the same.
+        </p>
       </div>
 
       <div className="card">
@@ -100,24 +133,32 @@ export function NumbersGuide({ onBack }: { onBack: () => void }) {
         <div className="row"><span className="label">String maximum</span><span className="value">30.00 s</span></div>
         <div className="row"><span className="label">Stop plate never hit</span><span className="value">scores 30.00 s</span></div>
         <p className="note-text">
-          A stage is your <strong>best 4 of 5 strings</strong> — the single slowest string is dropped —
-          <strong> except Outer Limits</strong>, which is 4 strings with none dropped. Your
+          A stage is your <strong>best 4 of 5 strings</strong> — the single slowest string is dropped.
+          <strong> Outer Limits</strong> is 4 strings, and it works the same way: you keep your
+          <strong> best 3 of 4</strong> (the slowest is still dropped). Your
           <strong> match total</strong> is the sum of your stage times, and the lowest total wins.
         </p>
         <p className="report-note">
-          Official Steel Challenge scoring (SCSA rulebook, scsa.org): 3-second miss penalty, 30-second
-          per-string maximum, best-4-of-5 with Outer Limits the 4-string exception. When you enter your
-          string times, FirearmLog derives your stage and match totals from them — so the numbers can
-          never disagree with what you shot.
+          These are the official Steel Challenge rules, from the Steel Challenge Rules rulebook (edition
+          2026-03, at rules.uspsa.org/scsa). The exact wording for each number:
+        </p>
+        {STEEL_RULE_QUOTES.map((q) => (
+          <RuleQuote key={q.section} quote={q.quote} section={q.section} />
+        ))}
+        <p className="report-note">
+          When you enter your string times, FirearmLog derives your stage and match totals from them — so
+          the numbers can never disagree with what you shot.
         </p>
       </div>
 
       <div className="card">
         <h2>Where these come from</h2>
         <p className="note-text">
-          The USPSA scoring and classification rules are from the official USPSA rulebook, now
-          searchable online at rules.uspsa.org; the Steel Challenge rules are from the official SCSA
-          rulebook at scsa.org. Anything labeled a "rule of thumb" is common coaching guidance from the
+          The USPSA scoring rules are from the official USPSA Competition Rules, now searchable online at
+          rules.uspsa.org; the classification rules are from USPSA's Classification System document at
+          uspsa.org; and the Steel Challenge rules are from the official Steel Challenge Rules at
+          rules.uspsa.org/scsa. Where a number is an official rule we show the rulebook's exact words, in
+          quotes, with its section. Anything labeled a "rule of thumb" is common coaching guidance from the
           shooting community, not an official rule — we flag those so you always know the difference.
         </p>
       </div>
