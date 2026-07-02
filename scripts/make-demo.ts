@@ -298,7 +298,7 @@ for (const dISO of ['2025-08-16', '2026-03-21']) {
 }
 
 // ---- Steel Challenge matches (the new feature, shown in the demo) ----
-const steelStageNames = ['5 to Go', 'Showdown', 'Smoke & Hope', 'Outer Limits', 'Accelerator', 'The Pendulum', 'Speed Option', 'Roundabout'];
+const steelStageNames = ['5 to Go', 'Showdown', 'Smoke & Hope', 'Outer Limits', 'Accelerator', 'Pendulum', 'Speed Option', 'Roundabout'];
 function steelStrings(fast: number, count: 4 | 5): { strings: (number | null)[]; misses: number[]; stops: boolean[] } {
   const strings: (number | null)[] = [];
   const misses: number[] = [];

@@ -296,7 +296,7 @@ export const STEEL_STAGES: { name: string; strings: 4 | 5 }[] = [
   { name: 'Smoke & Hope', strings: 5 },
   { name: 'Outer Limits', strings: 4 },
   { name: 'Accelerator', strings: 5 },
-  { name: 'The Pendulum', strings: 5 },
+  { name: 'Pendulum', strings: 5 },
   { name: 'Speed Option', strings: 5 },
   { name: 'Roundabout', strings: 5 },
 ];
