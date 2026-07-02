@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { seedDemo, gotoTab } from './helpers';
+import { seedDemo, gotoTab, gotoSection } from './helpers';
 
 // The debrief's "How the numbers work ›" link deep-links into the wiki AT the
 // section for that match's scoring type (Steel -> the Steel Challenge card, not the
@@ -39,5 +39,17 @@ test.describe('Wiki deep-link from the debrief', () => {
     await expect(page.getByRole('heading', { name: 'How the numbers work' })).toBeVisible();
     await expect(page.locator('#steel')).toBeInViewport();
     await expect(page.locator('#uspsa')).not.toBeInViewport();
+  });
+
+  // Regression guard for the UN-sectioned path: the fix only skips the snap-to-top when
+  // a section is set, so opening the wiki from the nav (no section) must STILL land at
+  // the top. Pins that the change didn't quietly break the ordinary open.
+  test('the nav "How the numbers work" (no section) still lands at the top', async ({ page }) => {
+    await seedDemo(page);
+    await gotoSection(page, 'How the numbers work');
+
+    await expect(page.getByRole('heading', { name: 'How the numbers work' })).toBeVisible();
+    // No section target -> the first section (USPSA hit factor) is at the top, in view.
+    await expect(page.locator('#uspsa')).toBeInViewport();
   });
 });
