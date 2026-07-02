@@ -2,6 +2,55 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <script>
+      // Boot watchdog (blank-screen self-heal). A stale, HTTP-cached index.html can point
+      // at hashed code files that no longer exist on the server (they 404 after a deploy),
+      // which leaves a blank screen. If the app fails to start, force ONE fresh,
+      // cache-busting reload to fetch a current shell. Guarded via sessionStorage so it
+      // can never loop. (Forward protection only: this helps once a build containing it is
+      // loaded; the real cure is the app-shell precache rework.)
+      (function () {
+        var KEY = 'fl_boot_recovered';
+        function booted() {
+          var r = document.getElementById('root');
+          return !!(r && r.childElementCount > 0);
+        }
+        function recover(reason) {
+          try {
+            if (sessionStorage.getItem(KEY)) return; // already tried once — never loop
+            sessionStorage.setItem(KEY, reason || '1');
+            location.replace(location.pathname + '?r=' + Date.now()); // bypass the cached shell
+          } catch (e) {
+            /* the watchdog must never throw */
+          }
+        }
+        // Fast path: a code file (script/style) failed to load.
+        window.addEventListener(
+          'error',
+          function (e) {
+            var t = e && e.target;
+            if (t && (t.tagName === 'SCRIPT' || t.tagName === 'LINK')) {
+              var u = t.src || t.href || '';
+              if (u.indexOf('/assets/') !== -1) recover('asset');
+            }
+          },
+          true
+        );
+        // Backstop if nothing rendered; clear the guard on a healthy boot.
+        window.addEventListener('load', function () {
+          setTimeout(function () {
+            if (!booted()) recover('timeout');
+          }, 7000);
+          setTimeout(function () {
+            if (booted()) {
+              try {
+                sessionStorage.removeItem(KEY);
+              } catch (e) {}
+            }
+          }, 8000);
+        });
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />

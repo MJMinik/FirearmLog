@@ -2,7 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { installGlobalErrorHandler } from './ui/globalErrorBanner.ts';
-import { installUpdatePrompt } from './ui/updatePrompt.ts';
+import { registerServiceWorker } from './ui/registerSw.ts';
 import './app.css';
 
 // App-wide safety net: surface any escaped error/rejection as a small,
@@ -18,7 +18,10 @@ async function requestPersistentStorage(): Promise<void> {
   try {
     if (!navigator.storage || typeof navigator.storage.persist !== 'function') return;
     // Don't re-prompt if the grant is already in place.
-    if (typeof navigator.storage.persisted === 'function' && (await navigator.storage.persisted())) {
+    if (
+      typeof navigator.storage.persisted === 'function' &&
+      (await navigator.storage.persisted())
+    ) {
       return;
     }
     await navigator.storage.persist();
@@ -31,16 +34,12 @@ void requestPersistentStorage();
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>
+  </React.StrictMode>,
 );
 
-// Offline support — register the service worker (production builds only).
-if ('serviceWorker' in navigator && import.meta.env.PROD) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register(new URL('sw.js', window.location.href).pathname).catch(() => {
-      /* offline support is a bonus, never an error the user sees */
-    });
-    // Offer a one-tap reload when a newer build installs while the app is open.
-    installUpdatePrompt();
-  });
+// Offline support + freshness — register the Workbox service worker (production
+// builds only). Handles precaching the app shell, auto-takeover of new builds, and
+// the "A new version is ready" banner for tabs left open. See ui/registerSw.ts.
+if (import.meta.env.PROD) {
+  registerServiceWorker();
 }
