@@ -43,7 +43,7 @@ const QUICK_TOUR: TourStep[] = [
   {
     title: 'Compete',
     view: { kind: 'match-form' },
-    body: 'Matches and classifiers, your classification progress, and the season view. You can type a match in by hand or pull the results straight from a PractiScore export.',
+    body: 'Matches and classifiers, your classification progress, and the season view. You can type a match in by hand or pull the results straight from a PractiScore export. Every score and number links to "How the numbers work" — the exact math behind it, and the official rule in its own words.',
   },
   {
     title: 'Progress',
