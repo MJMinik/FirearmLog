@@ -6,8 +6,9 @@ import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
-import { DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown,
-  scoringTypeFor, scoreSteelStage, steelMatchTotal, steelStringsExpected, STEEL_STAGES } from '../lib/competition.ts';
+import { DIVISIONS, IDPA_DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown,
+  scoringTypeFor, scoreSteelStage, steelMatchTotal, steelStringsExpected, STEEL_STAGES,
+  scoreIdpaStage, idpaMatchTotal } from '../lib/competition.ts';
 import { MarkThumb } from './MarkThumb.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import type { View } from './nav.ts';
@@ -54,9 +55,12 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
   if (!match) return <div className="screen" />;
   const gunName = firearms.find((f) => f.id === match.firearmId)?.name ?? '—';
   const isSteel = match.scoringType === 'steel';
+  const isIdpa = match.scoringType === 'idpa';
   const insights = analyzeMatch(match.stages, match.powerFactor);
   const steelRows = isSteel ? match.stages.map((st) => ({ st, score: scoreSteelStage(st) })) : [];
   const steelTotal = isSteel ? steelMatchTotal(match.stages) : null;
+  const idpaRows = isIdpa ? match.stages.map((st) => ({ st, score: scoreIdpaStage(st) })) : [];
+  const idpaTotal = isIdpa ? idpaMatchTotal(match.stages) : null;
 
   async function reallyDelete() {
     for (const v of videos) await deleteOne('media', v.id);
@@ -95,7 +99,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
         <h2>Match</h2>
         <div className="row"><span className="label">Date</span><span className="value">{formatDayKey(match.date)}</span></div>
         <div className="row"><span className="label">Type</span><span className="value">{match.matchType}</span></div>
-        <div className="row"><span className="label">Division</span><span className="value">{match.division}{!isSteel && match.powerFactor ? ` · ${match.powerFactor}` : ''}</span></div>
+        <div className="row"><span className="label">Division</span><span className="value">{match.division}{!isSteel && !isIdpa && match.powerFactor ? ` · ${match.powerFactor}` : ''}</span></div>
         <div className="row"><span className="label">Gun</span><span className="value">{gunName}</span></div>
         {match.totalRounds != null && <div className="row"><span className="label">Rounds fired</span><span className="value">{match.totalRounds.toLocaleString()}</span></div>}
         {match.matchPercent != null && <div className="row"><span className="label">Match percent</span><span className="value">{match.matchPercent}%</span></div>}
@@ -116,7 +120,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
         )}
       </div>
 
-      {match.stages.length > 0 && !isSteel && (
+      {match.stages.length > 0 && !isSteel && !isIdpa && (
         <div className="card">
           <h2>Stage breakdown <InfoTip title="Stage breakdown">Hit factor is your points divided by your time (higher is better). Stage percent is your score against the stage winner. We flag your toughest stage — where you lost the most ground — and your strongest. Add a stage's A/C/D/miss breakdown (when you log or edit the match) and we'll show what it would have scored with all alphas, plus your % of available points.</InfoTip></h2>
           <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers' })}>How the numbers work ›</button>
@@ -185,6 +189,35 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
         </div>
       )}
 
+      {match.stages.length > 0 && isIdpa && (
+        <div className="card">
+          <h2>Stage times <InfoTip title="IDPA scoring">IDPA is time-plus — lowest total wins. Your stage score is your raw time, plus 1 second for each point down (a -1 is 1, a -3 is 3, a miss is 5), plus penalties: a hit on a non-threat is 5s, a procedural is 3s, a flagrant is 10s, and a failure to do right is 20s. Full math and the exact rules are in "How the numbers work."</InfoTip></h2>
+          <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers' })}>How the numbers work ›</button>
+          {idpaTotal != null && (
+            <div className="row">
+              <span className="label"><strong>Match total</strong><span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--text-dim)' }}>lowest wins</span></span>
+              <span className="value" style={{ color: 'var(--accent)' }}><strong>{idpaTotal}s</strong></span>
+            </div>
+          )}
+          {idpaRows.map(({ st, score }, i) => (
+            <div className="row" key={i}>
+              <span className="label">
+                Stage {st.number}
+                {st.notes && <div className="row-sub">{st.notes}</div>}
+                {score.rawTime != null && (
+                  <div className="row-sub">
+                    {score.rawTime}s raw
+                    {score.pointsDown > 0 ? ` · ${score.pointsDown} down (+${score.accuracySeconds}s)` : ' · clean hits'}
+                    {score.penaltySeconds > 0 ? ` · +${score.penaltySeconds}s penalties` : ''}
+                  </div>
+                )}
+              </span>
+              <span className="value">{score.stageTime != null ? `${score.stageTime}s` : '—'}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       {videos.length > 0 && (
         <div className="card">
           <h2>Stage Videos &amp; Photos</h2>
@@ -239,6 +272,11 @@ interface StageRow {
   stringMisses: string[];
   stringStopMissed: boolean[];
   stringShowPenalty: boolean[]; // per-string reveal for the miss / stop-plate fields
+  // IDPA input (used only when scoringType is 'idpa'). The shared `time` above is the
+  // raw timer time; these are the points-down zone counts + penalty counts.
+  idpaShowDetail: boolean; // progressive-disclosure reveal for the breakdown + penalties
+  idpaDown0: string; idpaDown1: string; idpaDown3: string; idpaMisses: string;
+  idpaHnt: string; idpaPe: string; idpaFp: string; idpaFtdr: string;
 }
 
 /** The six hit-breakdown keys, with their on-screen labels. */
@@ -266,6 +304,9 @@ function emptyStageRow(): StageRow {
     stringMisses: Array(STEEL_STRINGS_MAX).fill(''),
     stringStopMissed: Array(STEEL_STRINGS_MAX).fill(false),
     stringShowPenalty: Array(STEEL_STRINGS_MAX).fill(false),
+    idpaShowDetail: false,
+    idpaDown0: '', idpaDown1: '', idpaDown3: '', idpaMisses: '',
+    idpaHnt: '', idpaPe: '', idpaFp: '', idpaFtdr: '',
   };
 }
 
@@ -339,6 +380,16 @@ export function MatchForm({ id, onSaved, onCancel }: {
             steelStage: st.steelStage ?? '',
             strings, stringMisses, stringStopMissed,
             stringShowPenalty: stringStopMissed.map((stop, n) => stop || (stringMisses[n] !== '' && Number(stringMisses[n]) > 0)),
+            idpaShowDetail: [st.idpaDown0, st.idpaDown1, st.idpaDown3, st.idpaMisses, st.idpaNonThreatHits,
+              st.idpaProceduralErrors, st.idpaFlagrantPenalties, st.idpaFailureToDoRight].some((v) => v != null),
+            idpaDown0: st.idpaDown0 == null ? '' : String(st.idpaDown0),
+            idpaDown1: st.idpaDown1 == null ? '' : String(st.idpaDown1),
+            idpaDown3: st.idpaDown3 == null ? '' : String(st.idpaDown3),
+            idpaMisses: st.idpaMisses == null ? '' : String(st.idpaMisses),
+            idpaHnt: st.idpaNonThreatHits == null ? '' : String(st.idpaNonThreatHits),
+            idpaPe: st.idpaProceduralErrors == null ? '' : String(st.idpaProceduralErrors),
+            idpaFp: st.idpaFlagrantPenalties == null ? '' : String(st.idpaFlagrantPenalties),
+            idpaFtdr: st.idpaFailureToDoRight == null ? '' : String(st.idpaFailureToDoRight),
           };
         }));
         setExistingMedia(allMedia.filter((x) => x.ownerType === 'match' && x.ownerId === id));
@@ -351,6 +402,13 @@ export function MatchForm({ id, onSaved, onCancel }: {
 
   const num = (t: string): number | null => t.trim() === '' ? null : Number(t);
   const scoringType = scoringTypeFor(matchType);
+  const divisionOptions = scoringType === 'idpa' ? IDPA_DIVISIONS : DIVISIONS;
+  // Keep the division valid for the sport: switching to/from IDPA swaps the division
+  // list, so snap to the first valid division if the current one isn't in it.
+  useEffect(() => {
+    const opts = scoringType === 'idpa' ? IDPA_DIVISIONS : DIVISIONS;
+    setDivision((d) => (opts.includes(d) ? d : opts[0]));
+  }, [scoringType]);
 
   const stageObjs: MatchStage[] = useMemo(() => stages.map((st, i) => {
     if (scoringType === 'steel') {
@@ -365,6 +423,18 @@ export function MatchForm({ id, onSaved, onCancel }: {
         strings: st.strings.slice(0, expected).map(num),
         stringMisses: st.stringMisses.slice(0, expected).map(num),
         stringStopMissed: st.stringStopMissed.slice(0, expected),
+      };
+    }
+    if (scoringType === 'idpa') {
+      // IDPA: raw time is the shared `time`; the zone counts + penalty counts feed
+      // scoreIdpaStage. points/percent aren't used by IDPA scoring.
+      return {
+        number: i + 1,
+        points: null, time: num(st.time), percent: num(st.percent), notes: st.notes.trim(),
+        idpaDown0: num(st.idpaDown0), idpaDown1: num(st.idpaDown1),
+        idpaDown3: num(st.idpaDown3), idpaMisses: num(st.idpaMisses),
+        idpaNonThreatHits: num(st.idpaHnt), idpaProceduralErrors: num(st.idpaPe),
+        idpaFlagrantPenalties: num(st.idpaFp), idpaFailureToDoRight: num(st.idpaFtdr),
       };
     }
     const hb = {
@@ -385,6 +455,9 @@ export function MatchForm({ id, onSaved, onCancel }: {
   const steelTotal = useMemo(
     () => scoringType === 'steel' ? steelMatchTotal(stageObjs) : null,
     [stageObjs, scoringType]);
+  const idpaTotal = useMemo(
+    () => scoringType === 'idpa' ? idpaMatchTotal(stageObjs) : null,
+    [stageObjs, scoringType]);
 
 
   async function save() {
@@ -395,7 +468,10 @@ export function MatchForm({ id, onSaved, onCancel }: {
       num(overallPlace), num(overallOf), num(entryFee),
       ...stageObjs.flatMap((st) => [st.points, st.time, st.percent,
         st.alphas ?? null, st.charlies ?? null, st.deltas ?? null,
-        st.misses ?? null, st.noShoots ?? null, st.procedurals ?? null])];
+        st.misses ?? null, st.noShoots ?? null, st.procedurals ?? null,
+        st.idpaDown0 ?? null, st.idpaDown1 ?? null, st.idpaDown3 ?? null, st.idpaMisses ?? null,
+        st.idpaNonThreatHits ?? null, st.idpaProceduralErrors ?? null,
+        st.idpaFlagrantPenalties ?? null, st.idpaFailureToDoRight ?? null])];
     if (numbers.some((n) => n !== null && !Number.isFinite(n))) {
       setProblem('One of the numbers isn’t a plain number.'); return;
     }
@@ -450,7 +526,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
         </label>
         <label className="field">Division
           <select value={division} onChange={(e) => setDivision(e.target.value)}>
-            {DIVISIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+            {divisionOptions.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
         </label>
         {scoringType !== 'steel' && (
@@ -500,6 +576,8 @@ export function MatchForm({ id, onSaved, onCancel }: {
       <div className="card">
         <h2>{scoringType === 'steel' ? 'Stages & strings' : 'Stages'} <InfoTip title="How the numbers work">{scoringType === 'steel'
           ? <>Steel is scored on time — lowest wins. Enter each string's raw time; if a plate was missed or the stop plate was never hit, tap "+ miss / penalty" on that string. Each miss adds 3 seconds, a string is capped at 30 seconds, and a missed stop plate scores the full 30. A stage keeps your best 4 of 5 strings (the slowest is dropped) — and Outer Limits keeps your best 3 of 4 (the slowest is still dropped). Full math and sources are in "How the numbers work."</>
+          : scoringType === 'idpa'
+          ? <>IDPA is time-plus — lowest total wins. Enter each stage's raw time; tap "+ points down / penalties" to record accuracy (down-1, down-3, misses) and any penalties. Each point down adds 1 second (a -1 is 1, a -3 is 3, a miss is 5); a non-threat hit is 5s, a procedural 3s, a flagrant 10s, and failure to do right 20s. Full math and sources are in "How the numbers work."</>
           : <>Hit factor = points / time. Add a stage's A/C/D/miss breakdown and the points are computed from your hits — A is 5; C is 4 major / 3 minor; D is 2 major / 1 minor — minus 10 for each miss, no-shoot, and procedural, and never below zero (the Points field then becomes read-only). The full math and sources are in "How the numbers work," under More or from a saved match's debrief.</>}</InfoTip></h2>
         {scoringType === 'steel' ? stages.map((st, i) => {
           const expected = steelStringsExpected(st.steelStage);
@@ -555,6 +633,81 @@ export function MatchForm({ id, onSaved, onCancel }: {
               {ss.stageTime !== null && (
                 <p className="report-note" style={{ marginTop: 2 }}>
                   Stage time <InfoTip title="How this is derived">Each string = raw time + 3 seconds per missed plate, capped at 30s (a missed stop plate scores the full 30). The stage keeps the best 4 of 5 strings — the slowest is dropped — and Outer Limits keeps the best 3 of its 4 (slowest dropped too). Lowest total wins.</InfoTip>: {ss.stageTime}s{ss.droppedIndex !== null ? ` · dropped String ${ss.droppedIndex + 1}` : ''}
+                </p>
+              )}
+              <label className="field">Stage notes
+                <input value={st.notes}
+                  onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, notes: e.target.value } : x))} />
+              </label>
+            </div>
+          );
+        }) : scoringType === 'idpa' ? stages.map((st, i) => {
+          const is = scoreIdpaStage({
+            time: num(st.time),
+            idpaDown1: num(st.idpaDown1), idpaDown3: num(st.idpaDown3), idpaMisses: num(st.idpaMisses),
+            idpaNonThreatHits: num(st.idpaHnt), idpaProceduralErrors: num(st.idpaPe),
+            idpaFlagrantPenalties: num(st.idpaFp), idpaFailureToDoRight: num(st.idpaFtdr),
+          });
+          return (
+            <div className="drill-edit" key={i}>
+              <div className="drill-edit-head">
+                <strong>Stage {i + 1}{is.stageTime !== null ? ` — ${is.stageTime}s` : ''}</strong>
+                <button className="icon-btn" aria-label={`Remove stage ${i + 1}`}
+                  onClick={() => setStages((p) => p.filter((_, x) => x !== i))}>✕</button>
+              </div>
+              <label className="field small">Raw time (s)
+                <input type="number" inputMode="decimal" value={st.time}
+                  onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, time: e.target.value } : x))} />
+              </label>
+              {!st.idpaShowDetail && (
+                <button type="button" className="link-btn" style={{ marginTop: 2 }}
+                  onClick={() => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaShowDetail: true } : x))}>
+                  + points down / penalties
+                </button>
+              )}
+              {st.idpaShowDetail && (
+                <>
+                  <p className="report-note" style={{ marginTop: 6, marginBottom: 2 }}>Points down (accuracy)</p>
+                  <div className="drill-edit-fields break-fields">
+                    <label className="field small">Down-1 hits
+                      <input type="number" inputMode="numeric" min="0" value={st.idpaDown1}
+                        onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaDown1: e.target.value } : x))} />
+                    </label>
+                    <label className="field small">Down-3 hits
+                      <input type="number" inputMode="numeric" min="0" value={st.idpaDown3}
+                        onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaDown3: e.target.value } : x))} />
+                    </label>
+                    <label className="field small">Misses
+                      <input type="number" inputMode="numeric" min="0" value={st.idpaMisses}
+                        onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaMisses: e.target.value } : x))} />
+                    </label>
+                  </div>
+                  <p className="report-note" style={{ marginTop: 6, marginBottom: 2 }}>Penalties</p>
+                  <div className="drill-edit-fields break-fields">
+                    <label className="field small">Non-threat hits
+                      <input type="number" inputMode="numeric" min="0" value={st.idpaHnt}
+                        onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaHnt: e.target.value } : x))} />
+                    </label>
+                    <label className="field small">Procedurals (PE)
+                      <input type="number" inputMode="numeric" min="0" value={st.idpaPe}
+                        onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaPe: e.target.value } : x))} />
+                    </label>
+                    <label className="field small">Flagrant
+                      <input type="number" inputMode="numeric" min="0" value={st.idpaFp}
+                        onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaFp: e.target.value } : x))} />
+                    </label>
+                    <label className="field small">Failure to Do Right
+                      <input type="number" inputMode="numeric" min="0" value={st.idpaFtdr}
+                        onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaFtdr: e.target.value } : x))} />
+                    </label>
+                  </div>
+                </>
+              )}
+              {is.stageTime !== null && (
+                <p className="report-note" style={{ marginTop: 2 }}>
+                  Stage time <InfoTip title="How this is derived">Stage = raw time + 1 second per point down (a -1 is 1, a -3 is 3, a miss is 5) + penalties (non-threat 5s, procedural 3s, flagrant 10s, failure to do right 20s). Lowest total wins. Full math and the exact rules are in "How the numbers work."</InfoTip>: {is.stageTime}s
+                  {is.pointsDown > 0 ? ` · ${is.pointsDown} down (+${is.accuracySeconds}s)` : ''}
+                  {is.penaltySeconds > 0 ? ` · +${is.penaltySeconds}s penalties` : ''}
                 </p>
               )}
               <label className="field">Stage notes
@@ -628,6 +781,11 @@ export function MatchForm({ id, onSaved, onCancel }: {
         {scoringType === 'steel' && stages.length > 0 && steelTotal !== null && (
           <p className="report-note" style={{ marginTop: 4 }}>
             Match total: <strong>{steelTotal}s</strong> — lowest wins.
+          </p>
+        )}
+        {scoringType === 'idpa' && stages.length > 0 && idpaTotal !== null && (
+          <p className="report-note" style={{ marginTop: 4 }}>
+            Match total: <strong>{idpaTotal}s</strong> — lowest wins.
           </p>
         )}
         <button className="button secondary"

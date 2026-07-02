@@ -22,6 +22,14 @@ export const DIVISIONS = [
   'Single Stack', 'Revolver', 'PCC', 'Other'
 ];
 
+/** IDPA's 8 divisions (official 2026.2 IDPA Rulebook Sec 8.1.1.1) -- a distinct set from
+ *  USPSA's above. Used for the division picker when a match's scoringType is 'idpa'. */
+export const IDPA_DIVISIONS = [
+  'Stock Service Pistol (SSP)', 'Enhanced Service Pistol (ESP)', 'Custom Defensive Pistol (CDP)',
+  'Compact Carry Pistol (CCP)', 'Revolver (REV)', 'Backup Gun (BUG)', 'Carry Optics (CO)',
+  'Pistol Caliber Carbine (PCC)'
+];
+
 export const POWER_FACTORS = ['Minor', 'Major'];
 
 /** Stage hit factor: points per second. */
