@@ -184,7 +184,7 @@ export function NumbersGuide({ onBack, section }: { onBack: () => void; section?
         <OurRead />
       </div>
 
-      <div className="card">
+      <div className="card" id="classification">
         <h2>Classification (USPSA)</h2>
         <TheMath>
           the average of your <strong>best 6 of your 8 most recent</strong> classifier percentages; when

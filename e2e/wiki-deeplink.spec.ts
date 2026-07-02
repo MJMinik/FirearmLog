@@ -52,4 +52,19 @@ test.describe('Wiki deep-link from the debrief', () => {
     // No section target -> the first section (USPSA hit factor) is at the top, in view.
     await expect(page.locator('#uspsa')).toBeInViewport();
   });
+
+  // The Compete "Classification" card deep-links into the wiki's Classification section
+  // (the most-asked "what do I need for B?" question). Same section-scroll mechanism.
+  test('Compete "How the numbers work" lands on the Classification section', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Compete');
+
+    // The only "How the numbers work" link on Compete is the one on the Classification card.
+    await page.getByRole('button', { name: /How the numbers work/ }).first().click();
+
+    await expect(page.getByRole('heading', { name: 'How the numbers work' })).toBeVisible();
+    await expect(page.locator('#classification')).toBeInViewport();
+    // It deep-linked to the section, not the top of the page.
+    await expect(page.locator('#uspsa')).not.toBeInViewport();
+  });
 });
