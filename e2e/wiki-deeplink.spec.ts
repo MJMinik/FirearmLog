@@ -59,8 +59,10 @@ test.describe('Wiki deep-link from the debrief', () => {
     await seedDemo(page);
     await gotoTab(page, 'Compete');
 
-    // The only "How the numbers work" link on Compete is the one on the Classification card.
-    await page.getByRole('button', { name: /How the numbers work/ }).first().click();
+    // Scope to <main> so we click the Classification card's link, NOT the desktop
+    // sidebar's "How the numbers work" nav item (that one has no section and would land
+    // at the top). Inside <main> on Compete, the card's link is the only such button.
+    await page.getByRole('main').getByRole('button', { name: /How the numbers work/ }).click();
 
     await expect(page.getByRole('heading', { name: 'How the numbers work' })).toBeVisible();
     await expect(page.locator('#classification')).toBeInViewport();
