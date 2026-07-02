@@ -6,7 +6,7 @@
 // Read-only; no data, no storage.
 
 import {
-  USPSA_SCORING_QUOTES, USPSA_CLASS_QUOTES, STEEL_RULE_QUOTES,
+  USPSA_SCORING_QUOTES, USPSA_CLASS_QUOTES, STEEL_RULE_QUOTES, IDPA_RULE_QUOTES,
 } from '../lib/competition.ts';
 
 /** Render a verbatim rulebook quote (source lives in competition.ts, one place). */
@@ -152,12 +152,54 @@ export function NumbersGuide({ onBack }: { onBack: () => void }) {
       </div>
 
       <div className="card">
+        <h2>IDPA scoring (time-plus)</h2>
+        <p className="note-text">
+          IDPA is scored on <strong>time — lowest total wins</strong>, like Steel, but your accuracy
+          is folded in as added seconds instead of points. Your stage score is your
+          <strong> raw time</strong>, plus <strong>1 second for every point down</strong>, plus any
+          penalties. Points down (your accuracy cost):
+        </p>
+        <div className="row"><span className="label">A down-1 hit</span><span className="value">+1 s</span></div>
+        <div className="row"><span className="label">A down-3 hit</span><span className="value">+3 s</span></div>
+        <div className="row"><span className="label">A miss (scored &minus;5)</span><span className="value">+5 s</span></div>
+        <p className="note-text">Penalties (added seconds):</p>
+        <div className="row"><span className="label">Hit on a non-threat</span><span className="value">+5 s each</span></div>
+        <div className="row"><span className="label">Procedural (PE)</span><span className="value">+3 s each</span></div>
+        <div className="row"><span className="label">Flagrant penalty</span><span className="value">+10 s each</span></div>
+        <div className="row"><span className="label">Failure to Do Right</span><span className="value">+20 s</span></div>
+        <p className="note-text">
+          So a stage = <strong>raw time + (points down &times; 1 s) + penalties</strong>, and your
+          match total is the sum of your stage times — lowest wins. Two things that trip people up, so
+          we handle them for you: a <strong>hit on a non-threat is the 5-second penalty only</strong> —
+          it is NOT also counted as points down, so it never double-counts. And there is
+          <strong> no &ldquo;failure to neutralize&rdquo; penalty</strong> anymore — IDPA removed it;
+          not putting enough good hits on a target simply shows up as misses (&minus;5 each), plus a
+          procedural if you fired too few rounds. We built it strictly from the current rulebook because
+          getting scoring subtly wrong is exactly what marks an app as built by someone who doesn't shoot.
+        </p>
+        <p className="report-note">
+          These are the official IDPA rules, from the 2026.2 IDPA Rulebook (idpa.com). The exact wording
+          for each number:
+        </p>
+        {IDPA_RULE_QUOTES.map((q) => (
+          <RuleQuote key={q.section} quote={q.quote} section={q.section} />
+        ))}
+        <p className="report-note">
+          When you enter each stage's raw time, points down, and penalties, FirearmLog derives your stage
+          and match totals from them — so the numbers can never disagree with what you shot. (Your IDPA
+          classification and moving up is coming; it needs the official brackets researched and cited
+          first, and we won't ship guessed thresholds.)
+        </p>
+      </div>
+
+      <div className="card">
         <h2>Where these come from</h2>
         <p className="note-text">
           The USPSA scoring rules are from the official USPSA Competition Rules, now searchable online at
           rules.uspsa.org; the classification rules are from USPSA's Classification System document at
-          uspsa.org; and the Steel Challenge rules are from the official Steel Challenge Rules at
-          rules.uspsa.org/scsa. Where a number is an official rule we show the rulebook's exact words, in
+          uspsa.org; the Steel Challenge rules are from the official Steel Challenge Rules at
+          rules.uspsa.org/scsa; and the IDPA rules are from the 2026.2 IDPA Rulebook at idpa.com.
+          Where a number is an official rule we show the rulebook's exact words, in
           quotes, with its section. Anything labeled a "rule of thumb" is common coaching guidance from the
           shooting community, not an official rule — we flag those so you always know the difference.
         </p>
