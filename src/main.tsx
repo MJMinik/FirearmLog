@@ -2,6 +2,7 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { installGlobalErrorHandler } from './ui/globalErrorBanner.ts';
+import { installUpdatePrompt } from './ui/updatePrompt.ts';
 import './app.css';
 
 // App-wide safety net: surface any escaped error/rejection as a small,
@@ -39,5 +40,7 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
     navigator.serviceWorker.register(new URL('sw.js', window.location.href).pathname).catch(() => {
       /* offline support is a bonus, never an error the user sees */
     });
+    // Offer a one-tap reload when a newer build installs while the app is open.
+    installUpdatePrompt();
   });
 }

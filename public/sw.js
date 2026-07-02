@@ -1,6 +1,6 @@
 // FirearmLog service worker — keeps the app working offline.
 // Bump CACHE_VERSION on each release so users get fresh files.
-const CACHE_VERSION = 'firearmlog-v11';
+const CACHE_VERSION = 'firearmlog-v12';
 
 self.addEventListener('install', (event) => {
   self.skipWaiting();
@@ -33,6 +33,27 @@ self.addEventListener('fetch', (event) => {
           return res;
         })
         .catch(() => caches.match(req).then((hit) => hit || caches.match('./index.html')))
+    );
+    return;
+  }
+
+  // Stable-named data assets (e.g. demo-dataset.bin in public/): network-first, so a new
+  // deploy is never served stale. The app's own code/CSS get fingerprinted filenames — a new
+  // build simply asks for a new name, so cache-first is safe for them below. But files in
+  // public/ keep a FIXED name, so cache-first would pin the first copy forever and hand back
+  // an old demo after a fresh deploy. Fetch these from the network; fall back to the saved
+  // copy only when offline. (Removes the reliance on remembering to bump CACHE_VERSION.)
+  if (new URL(req.url).pathname.endsWith('.bin')) {
+    event.respondWith(
+      fetch(req)
+        .then((res) => {
+          if (res.ok && res.type === 'basic') {
+            const copy = res.clone();
+            caches.open(CACHE_VERSION).then((c) => c.put(req, copy));
+          }
+          return res;
+        })
+        .catch(() => caches.match(req).then((hit) => hit || undefined))
     );
     return;
   }
