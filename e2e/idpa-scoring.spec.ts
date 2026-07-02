@@ -17,10 +17,13 @@ test.describe('IDPA scoring (Layer 2)', () => {
     await page.getByLabel('What this Match is called').fill('IDPA Test');
     await page.getByLabel('Match type').selectOption('IDPA Match');
 
-    // Division picker must now offer IDPA's divisions -- selecting an IDPA-only
-    // division (SSP) fails here if the picker didn't switch off USPSA's list.
-    // exact:true so this matches the "Division" select, not the "Division place" field.
-    await page.getByLabel('Division', { exact: true }).selectOption('Stock Service Pistol (SSP)');
+    // Target the Division <select> by the IDPA-only option it now contains, which also
+    // proves the picker switched off USPSA's list. (getByLabel is unreliable here: plain
+    // 'Division' also matches the "Division place" field, and a wrapped <select>'s
+    // accessible name includes its option text, so an exact 'Division' label match misses.)
+    await page
+      .locator('select', { has: page.locator('option', { hasText: 'Stock Service Pistol (SSP)' }) })
+      .selectOption('Stock Service Pistol (SSP)');
 
     await page.getByRole('button', { name: '+ Add Stage' }).click();
     const block = page.locator('.drill-edit').first();
