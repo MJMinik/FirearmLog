@@ -89,12 +89,36 @@ export function NumbersGuide({ onBack }: { onBack: () => void }) {
       </div>
 
       <div className="card">
+        <h2>Steel Challenge (SCSA) scoring</h2>
+        <p className="note-text">
+          Steel Challenge is scored purely on <strong>time — lowest wins</strong>, the opposite of
+          USPSA's hit factor. There are no points and no power factor.
+        </p>
+        <p className="note-text">Each <strong>string</strong> scores like this:</p>
+        <div className="row"><span className="label">Your raw time</span><span className="value">as run</span></div>
+        <div className="row"><span className="label">Each missed plate</span><span className="value">+3.00 s</span></div>
+        <div className="row"><span className="label">String maximum</span><span className="value">30.00 s</span></div>
+        <div className="row"><span className="label">Stop plate never hit</span><span className="value">scores 30.00 s</span></div>
+        <p className="note-text">
+          A stage is your <strong>best 4 of 5 strings</strong> — the single slowest string is dropped —
+          <strong> except Outer Limits</strong>, which is 4 strings with none dropped. Your
+          <strong> match total</strong> is the sum of your stage times, and the lowest total wins.
+        </p>
+        <p className="report-note">
+          Official Steel Challenge scoring (SCSA rulebook, scsa.org): 3-second miss penalty, 30-second
+          per-string maximum, best-4-of-5 with Outer Limits the 4-string exception. When you enter your
+          string times, FirearmLog derives your stage and match totals from them — so the numbers can
+          never disagree with what you shot.
+        </p>
+      </div>
+
+      <div className="card">
         <h2>Where these come from</h2>
         <p className="note-text">
-          The scoring and classification rules are from the official USPSA rulebook, now searchable
-          online at rules.uspsa.org. Anything labeled a "rule of thumb" is common coaching guidance
-          from the shooting community, not an official rule — we flag those so you always know the
-          difference.
+          The USPSA scoring and classification rules are from the official USPSA rulebook, now
+          searchable online at rules.uspsa.org; the Steel Challenge rules are from the official SCSA
+          rulebook at scsa.org. Anything labeled a "rule of thumb" is common coaching guidance from the
+          shooting community, not an official rule — we flag those so you always know the difference.
         </p>
       </div>
     </div>

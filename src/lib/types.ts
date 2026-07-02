@@ -241,6 +241,13 @@ export interface MatchStage {
   misses?: number | null;
   noShoots?: number | null;
   procedurals?: number | null;
+  // Steel Challenge (SCSA): per-string raw times, optional per-string miss counts,
+  // and stop-plate-missed flags. Scoring is time-only, best-4-of-5 (Outer Limits =
+  // 4 strings, none dropped). All optional; absent on non-Steel stages.
+  strings?: (number | null)[];
+  stringMisses?: (number | null)[];
+  stringStopMissed?: boolean[];
+  steelStage?: string; // which SCSA stage (drives 4- vs 5-string); '' = generic 5-string
 }
 
 export interface Match extends BaseRecord, Imported {
@@ -249,6 +256,9 @@ export interface Match extends BaseRecord, Imported {
   matchType: string;
   division: string;
   powerFactor: string;
+  // Which sport's scoring this match uses. Absent => 'uspsa' (every existing match
+  // and the sync file has no scoringType, so they read as USPSA with zero migration).
+  scoringType?: 'uspsa' | 'idpa' | 'steel';
   firearmId: string;
   totalRounds: number | null;
   overallPlace: number | null;
