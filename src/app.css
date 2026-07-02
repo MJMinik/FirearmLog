@@ -302,6 +302,9 @@ select.category-pick {
 .link-btn { background: none; border: 0; padding: 0 4px; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer;
   /* audit F2: a real tap target, not a 25px sliver, even though it reads as a link */
   display: inline-flex; align-items: center; min-height: var(--touch-min); }
+/* Progressive-disclosure reveal (shared Reveal component) */
+.reveal-toggle { font-weight: 600; }
+.reveal-body { margin-top: 8px; }
 .form-problem { color: var(--danger); margin: -4px 0 12px; font-size: 15px; }
 
 .seg { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; margin-bottom: 12px; }

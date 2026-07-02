@@ -11,6 +11,7 @@ import { DIVISIONS, IDPA_DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor, analy
   scoreIdpaStage, idpaMatchTotal, reconcileTime } from '../lib/competition.ts';
 import { MarkThumb } from './MarkThumb.tsx';
 import { InfoTip } from './InfoTip.tsx';
+import { Reveal } from './Reveal.tsx';
 import type { View } from './nav.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
@@ -620,26 +621,31 @@ export function MatchForm({ id, onSaved, onCancel }: {
       </div>
 
       <div className="card">
-        <h2>Results</h2>
-        <label className="field">Match percent
-          <input type="number" inputMode="decimal" value={matchPercent} onChange={(e) => setMatchPercent(e.target.value)} />
-        </label>
-        <div className="drill-edit-fields">
-          <label className="field small">Division place
-            <input type="number" inputMode="numeric" value={divPlace} onChange={(e) => setDivPlace(e.target.value)} />
+        {/* Progressive disclosure: placement + percent usually arrive AFTER the match (or
+            via a PractiScore import), so they're collapsed — the default match is
+            name/date/type/division/power-factor/gun/stages. Values live in form state,
+            so an unopened block simply saves empty, exactly as leaving them blank did. */}
+        <Reveal label="Results & placement">
+          <label className="field">Match percent
+            <input type="number" inputMode="decimal" value={matchPercent} onChange={(e) => setMatchPercent(e.target.value)} />
           </label>
-          <label className="field small">of
-            <input type="number" inputMode="numeric" value={divOf} onChange={(e) => setDivOf(e.target.value)} />
-          </label>
-        </div>
-        <div className="drill-edit-fields">
-          <label className="field small">Overall place
-            <input type="number" inputMode="numeric" value={overallPlace} onChange={(e) => setOverallPlace(e.target.value)} />
-          </label>
-          <label className="field small">of
-            <input type="number" inputMode="numeric" value={overallOf} onChange={(e) => setOverallOf(e.target.value)} />
-          </label>
-        </div>
+          <div className="drill-edit-fields">
+            <label className="field small">Division place
+              <input type="number" inputMode="numeric" value={divPlace} onChange={(e) => setDivPlace(e.target.value)} />
+            </label>
+            <label className="field small">of
+              <input type="number" inputMode="numeric" value={divOf} onChange={(e) => setDivOf(e.target.value)} />
+            </label>
+          </div>
+          <div className="drill-edit-fields">
+            <label className="field small">Overall place
+              <input type="number" inputMode="numeric" value={overallPlace} onChange={(e) => setOverallPlace(e.target.value)} />
+            </label>
+            <label className="field small">of
+              <input type="number" inputMode="numeric" value={overallOf} onChange={(e) => setOverallOf(e.target.value)} />
+            </label>
+          </div>
+        </Reveal>
       </div>
 
       <div className="card">

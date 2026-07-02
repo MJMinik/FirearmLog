@@ -31,6 +31,7 @@ import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { MediaField, commitMedia } from './MediaField.tsx';
 import type { StagedFile } from './MediaField.tsx';
 import { FormProblem } from './FormProblem.tsx';
+import { Reveal } from './Reveal.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { DrillForm } from './DrillsScreen.tsx';
@@ -945,17 +946,21 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       </div>
 
       <div className="card">
-        <h2>How It Felt (1–10)</h2>
-        {(['focus', 'fundamentals', 'satisfaction'] as const).map((k) => (
-          <div className="row" key={k}>
-            <span className="label" style={{ textTransform: 'capitalize' }}>{k}</span>
-            <select className="category-pick" aria-label={k} value={ratings[k]}
-              onChange={(e) => setRatings((prev) => ({ ...prev, [k]: e.target.value }))}>
-              <option value="">—</option>
-              {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </div>
-        ))}
+        {/* Progressive disclosure: the self-ratings are reflection, not core capture —
+            collapsed by default so a first log is kind-of-work + gun & rounds + save.
+            Values live in `ratings` state, so an unopened block still saves "—". */}
+        <Reveal label="Rate how it felt (1–10)">
+          {(['focus', 'fundamentals', 'satisfaction'] as const).map((k) => (
+            <div className="row" key={k}>
+              <span className="label" style={{ textTransform: 'capitalize' }}>{k}</span>
+              <select className="category-pick" aria-label={k} value={ratings[k]}
+                onChange={(e) => setRatings((prev) => ({ ...prev, [k]: e.target.value }))}>
+                <option value="">—</option>
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+            </div>
+          ))}
+        </Reveal>
       </div>
       </>
       )}

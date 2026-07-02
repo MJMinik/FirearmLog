@@ -7,6 +7,7 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { suggestReferenceMatch, type ReferenceEntry } from '../lib/referenceData.ts';
 import { FormProblem } from './FormProblem.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
+import { Reveal } from './Reveal.tsx';
 
 export function GunForm({ id, onSaved, onCancel }: {
   id?: string; onSaved: (gunId: string) => void; onCancel: () => void;
@@ -119,24 +120,30 @@ export function GunForm({ id, onSaved, onCancel }: {
         <label className="field">Caliber
           <input value={caliber} onChange={(e) => setCaliber(e.target.value)} placeholder="9mm" />
         </label>
-        <label className="field">Serial number
-          <input value={serial} onChange={(e) => setSerial(e.target.value)} />
-        </label>
-        <label className="field">Date acquired
-          <input type="date" value={acquired} onChange={(e) => setAcquired(e.target.value)} />
-        </label>
-        <label className="field">Starting round count
-          <input type="number" inputMode="numeric" min="0" value={startCount} onChange={(e) => setStartCount(e.target.value)} />
-        </label>
-        <label className="field">Deep clean every … rounds (blank = use the linked Maintenance Guide or 10,000)
-          <input type="number" inputMode="numeric" min="1" value={deepClean} onChange={(e) => setDeepClean(e.target.value)} />
-        </label>
-        <label className="field">Recoil spring every … rounds (blank = use the linked Maintenance Guide)
-          <input type="number" inputMode="numeric" min="1" value={recoilSpring} onChange={(e) => setRecoilSpring(e.target.value)} />
-        </label>
         <label className="field">Notes
           <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
+        {/* Progressive disclosure: a newcomer's first gun needs name/make/model/type/
+            caliber (+ a note). Serial, dates, the starting count, and the maintenance
+            intervals (all with safe defaults) live behind a reveal. Values stay in form
+            state, so an unopened block saves the same defaults as leaving them blank. */}
+        <Reveal label="More details">
+          <label className="field">Serial number
+            <input value={serial} onChange={(e) => setSerial(e.target.value)} />
+          </label>
+          <label className="field">Date acquired
+            <input type="date" value={acquired} onChange={(e) => setAcquired(e.target.value)} />
+          </label>
+          <label className="field">Starting round count
+            <input type="number" inputMode="numeric" min="0" value={startCount} onChange={(e) => setStartCount(e.target.value)} />
+          </label>
+          <label className="field">Deep clean every … rounds (blank = use the linked Maintenance Guide or 10,000)
+            <input type="number" inputMode="numeric" min="1" value={deepClean} onChange={(e) => setDeepClean(e.target.value)} />
+          </label>
+          <label className="field">Recoil spring every … rounds (blank = use the linked Maintenance Guide)
+            <input type="number" inputMode="numeric" min="1" value={recoilSpring} onChange={(e) => setRecoilSpring(e.target.value)} />
+          </label>
+        </Reveal>
       </div>
 
       {refSuggestion && (

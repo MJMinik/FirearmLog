@@ -16,6 +16,7 @@ import { ImportFlow } from './ImportFlow.tsx';
 import { SyncCard } from './SyncCard.tsx';
 import { PhotoCleanupCard } from './PhotoCleanupCard.tsx';
 import { InfoTip } from './InfoTip.tsx';
+import { Reveal } from './Reveal.tsx';
 import { Icon } from './Icon.tsx';
 import { ScreenError } from './ScreenState.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
@@ -467,29 +468,33 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
             </div>
             <div className="card">
               <h2>Rounds by Month (last {chartMonths})</h2>
-              <div className="field-row" style={{ marginBottom: 4 }}>
-                <label className="field small">Gun type
-                  <select value={chartFilter.category ?? ''} disabled={!!chartFilter.firearmId}
-                    onChange={(e) => setChartFilter({ category: e.target.value as GunCategory | '', firearmId: '' })}>
-                    <option value="">All types</option>
-                    {GUN_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-                  </select>
-                </label>
-                <label className="field small">One gun
-                  <select value={chartFilter.firearmId ?? ''}
-                    onChange={(e) => setChartFilter({ category: '', firearmId: e.target.value })}>
-                    <option value="">All guns</option>
-                    {firearms.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
-                  </select>
-                </label>
-                <label className="field small">Span
-                  <select value={chartMonths} onChange={(e) => setChartMonths(Number(e.target.value))}>
-                    <option value={6}>6 months</option>
-                    <option value={12}>12 months</option>
-                    <option value={24}>24 months</option>
-                  </select>
-                </label>
-              </div>
+              {/* Progressive disclosure: the chart shows with its defaults (last 12 mo,
+                  all guns); the filter row is one tap away, matching Progress's Trends. */}
+              <Reveal label="Filters">
+                <div className="field-row" style={{ marginBottom: 4 }}>
+                  <label className="field small">Gun type
+                    <select value={chartFilter.category ?? ''} disabled={!!chartFilter.firearmId}
+                      onChange={(e) => setChartFilter({ category: e.target.value as GunCategory | '', firearmId: '' })}>
+                      <option value="">All types</option>
+                      {GUN_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </label>
+                  <label className="field small">One gun
+                    <select value={chartFilter.firearmId ?? ''}
+                      onChange={(e) => setChartFilter({ category: '', firearmId: e.target.value })}>
+                      <option value="">All guns</option>
+                      {firearms.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
+                    </select>
+                  </label>
+                  <label className="field small">Span
+                    <select value={chartMonths} onChange={(e) => setChartMonths(Number(e.target.value))}>
+                      <option value={6}>6 months</option>
+                      <option value={12}>12 months</option>
+                      <option value={24}>24 months</option>
+                    </select>
+                  </label>
+                </div>
+              </Reveal>
               {buckets.every(b => b.total === 0)
                 ? <p className="report-note">No rounds logged yet{(chartFilter.category || chartFilter.firearmId) ? ' for this gun.' : '.'}</p>
                 : <RoundsByMonthChart buckets={buckets} />}

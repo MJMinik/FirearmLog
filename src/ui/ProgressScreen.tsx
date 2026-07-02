@@ -25,6 +25,7 @@ import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { SwipeRow } from './SwipeRow.tsx';
 import { InfoTip } from './InfoTip.tsx';
+import { Reveal } from './Reveal.tsx';
 
 export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open: (v: View) => void }) {
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -290,23 +291,27 @@ function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunct
   return (
     <div className="card">
       <h2>Trends <InfoTip title="Trends">Your rounds and reps over the span you pick. "Dry : live" is dry-fire reps per live round; "malfunctions / 1,000" is your stoppage rate. Filter by gun or gun type.</InfoTip></h2>
-      <div className="chart-filters">
-        <select aria-label="Gun type" value={filter.category ?? ''} disabled={!!filter.firearmId}
-          onChange={(e) => setFilter({ category: e.target.value as GunCategory | '', firearmId: '' })}>
-          <option value="">All types</option>
-          {GUN_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
-        </select>
-        <select aria-label="Gun" value={filter.firearmId ?? ''}
-          onChange={(e) => setFilter({ category: '', firearmId: e.target.value })}>
-          <option value="">All guns</option>
-          {firearms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
-        </select>
-        <select aria-label="Months" value={months} onChange={(e) => setMonths(Number(e.target.value))}>
-          <option value={6}>6 mo</option>
-          <option value={12}>12 mo</option>
-          <option value={24}>24 mo</option>
-        </select>
-      </div>
+      {/* Progressive disclosure: show the chart with its defaults (last 12 mo, all guns)
+          first; the filter row is one tap away rather than clutter above the data. */}
+      <Reveal label="Filters">
+        <div className="chart-filters">
+          <select aria-label="Gun type" value={filter.category ?? ''} disabled={!!filter.firearmId}
+            onChange={(e) => setFilter({ category: e.target.value as GunCategory | '', firearmId: '' })}>
+            <option value="">All types</option>
+            {GUN_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <select aria-label="Gun" value={filter.firearmId ?? ''}
+            onChange={(e) => setFilter({ category: '', firearmId: e.target.value })}>
+            <option value="">All guns</option>
+            {firearms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+          </select>
+          <select aria-label="Months" value={months} onChange={(e) => setMonths(Number(e.target.value))}>
+            <option value={6}>6 mo</option>
+            <option value={12}>12 mo</option>
+            <option value={24}>24 mo</option>
+          </select>
+        </div>
+      </Reveal>
 
       {anyRounds
         ? <RoundsByMonthChart buckets={buckets} />
