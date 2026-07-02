@@ -19,7 +19,8 @@ test.describe('IDPA scoring (Layer 2)', () => {
 
     // Division picker must now offer IDPA's divisions -- selecting an IDPA-only
     // division (SSP) fails here if the picker didn't switch off USPSA's list.
-    await page.getByLabel('Division').selectOption('Stock Service Pistol (SSP)');
+    // exact:true so this matches the "Division" select, not the "Division place" field.
+    await page.getByLabel('Division', { exact: true }).selectOption('Stock Service Pistol (SSP)');
 
     await page.getByRole('button', { name: '+ Add Stage' }).click();
     const block = page.locator('.drill-edit').first();
