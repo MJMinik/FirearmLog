@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Goal } from '../src/lib/types.ts';
-import { goalCategories, goalStats, sortGoals } from '../src/lib/goals.ts';
+import { goalCategories, goalStats, goldenGoal, pinGolden, sortGoals } from '../src/lib/goals.ts';
 
 const goal = (g: Partial<Goal>): Goal => ({
   id: 'go-x', createdAt: 0, updatedAt: 0, text: 'Goal', category: '', target: '',
@@ -26,4 +26,21 @@ test('goalStats counts open and achieved', () => {
 test('goalCategories: distinct, case-insensitive, alphabetical, blanks dropped', () => {
   const goals = [goal({ category: 'Speed' }), goal({ category: 'accuracy' }), goal({ category: 'speed' }), goal({ category: '' })];
   assert.deepEqual(goalCategories(goals), ['accuracy', 'Speed']);
+});
+
+test('goldenGoal resolves the pinned id, or undefined when unset/missing', () => {
+  const goals = [goal({ id: 'a' }), goal({ id: 'b' })];
+  assert.equal(goldenGoal(goals, 'b')?.id, 'b');
+  assert.equal(goldenGoal(goals, undefined), undefined);
+  assert.equal(goldenGoal(goals, ''), undefined);
+  assert.equal(goldenGoal(goals, 'missing'), undefined);
+});
+
+test('pinGolden moves the golden goal to the front, order otherwise unchanged', () => {
+  const goals = [goal({ id: 'a' }), goal({ id: 'b' }), goal({ id: 'c' })];
+  assert.deepEqual(pinGolden(goals, 'c').map((g) => g.id), ['c', 'a', 'b']);
+  // Already first, unset, or missing → same array reference (no-op).
+  assert.equal(pinGolden(goals, 'a'), goals);
+  assert.equal(pinGolden(goals, undefined), goals);
+  assert.equal(pinGolden(goals, 'missing'), goals);
 });

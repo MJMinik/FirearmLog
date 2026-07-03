@@ -694,6 +694,16 @@ select { max-width: 100%; min-width: 0; }
 .swipe-row .goal-row { border-bottom: 0.5px solid var(--separator); }
 .swipe-row:last-child .goal-row { border-bottom: none; }
 .goal-row .checklist-take { align-items: flex-start; }
+/* Golden goal — one pinned north-star goal, highlighted on Goals and echoed on Home. */
+.goal-star {
+  background: none; border: none; cursor: pointer; padding: 0;
+  min-width: var(--touch-min); min-height: var(--touch-min);
+  font-size: 20px; line-height: 1; color: var(--accent);
+  display: flex; align-items: center; justify-content: center;
+}
+.goal-golden { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 8px; }
+.golden-home { border-left: 3px solid var(--accent); }
+.golden-star { color: var(--accent); font-weight: 700; }
 .goal-add { margin-bottom: 4px; }
 
 /* Progress trends filter row */

@@ -345,6 +345,9 @@ export interface AppSettings {
   /** When the user last saved a backup file (Push to File). Drives the Home
    *  backup reminder. Optional — undefined means never backed up. */
   lastBackupAt?: number;
+  /** The one "golden" north-star goal — pinned atop Goals and echoed on Home.
+   *  Holds a Goal id; empty or undefined means none is set. */
+  goldenGoalId?: string;
   legacy?: Record<string, unknown>;
 }
 

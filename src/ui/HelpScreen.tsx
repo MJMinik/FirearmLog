@@ -113,7 +113,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Progress — goals',
-      body: 'On the Progress tab, set targets like "Bill Drill under 2.0s." Add several in a row without leaving the form, check one off when you hit it, and edit or delete any goal later.',
+      body: 'On the Progress tab, set targets like "Bill Drill under 2.0s." Add several in a row without leaving the form, check one off when you hit it, and edit or delete any goal later. Tap the star on a goal to make it your golden goal — it pins to the top and shows on your Home screen.',
     },
     {
       title: 'Progress — skill self-assessment',

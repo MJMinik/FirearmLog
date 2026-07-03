@@ -89,9 +89,9 @@ export function SetupWizard({ onFinish, onCancel }: {
           <p className="report-note" style={{ marginBottom: 12 }}>Welcome! How would you like to start?</p>
 
           <div className="card">
-            <h2>Start fresh</h2>
+            <h2>Set up your gear</h2>
             <p className="report-note" style={{ marginBottom: 12 }}>
-              Begin with an empty log and let's add your gear. You can always add more later from the
+              Add your guns and gear to get started. You can always add more later from the
               Guns, Optics, Ammo, and Magazines screens.
             </p>
             <button className="button" onClick={() => setMode('gear')}>Add my gear</button>

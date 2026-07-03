@@ -3,15 +3,15 @@
 // row without leaving the page, editable anytime).
 import { useEffect, useState } from 'react';
 import type {
-  Classifier, DrillDef, Firearm, Goal, GunCategory, MalfunctionEntry, Match, Session, SkillAssessment
+  AppSettings, Classifier, DrillDef, Firearm, Goal, GunCategory, MalfunctionEntry, Match, Session, SkillAssessment
 } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
-import { deleteOne, getAll, putOne } from '../lib/db.ts';
+import { deleteOne, getAll, getSettings, putOne, putSettings } from '../lib/db.ts';
 import { activeOnly, activeMalfunctions, trashedIdSet } from '../lib/softDelete.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
-import { goalCategories, goalStats, sortGoals } from '../lib/goals.ts';
+import { goalCategories, goalStats, pinGolden, sortGoals } from '../lib/goals.ts';
 import { SKILL_AREAS, assessmentAverage, assessmentsByDate, latestAssessment } from '../lib/skills.ts';
 import {
   allClassifications, formatDrillScore, personalRecords, roundsByMonth, type RoundsFilter
@@ -43,6 +43,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
   const [target, setTarget] = useState('');
   const [editing, setEditing] = useState<Goal | null>(null);
   const [skillSheet, setSkillSheet] = useState<SkillAssessment | 'new' | null>(null);
+  const [goldenId, setGoldenId] = useState<string>('');
 
   useEffect(() => {
     let alive = true;
@@ -60,6 +61,8 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
       setGoals(sortGoals(g)); setSkills(s); setSessions(live); setMatches(m);
       setFirearms(f); setDrills(d); setClassifiers(c);
       setMalfunctions(activeMalfunctions(mf, trashedIds));
+      const settings = await getSettings<AppSettings>();
+      if (alive) setGoldenId(settings?.goldenGoalId ?? '');
     })();
     return () => { alive = false; };
   }, [refreshKey, bump]);
@@ -90,6 +93,16 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
     setBump((b) => b + 1);
   }
 
+  // Golden goal: exactly one, tracked by a single settings pointer (no change to
+  // the Goal records themselves, so "exactly one" can't drift). Tapping the star
+  // on the current golden goal clears it. A deleted golden goal simply leaves a
+  // dangling id that resolves to nothing — harmless, and re-set on next tap.
+  async function toggleGolden(g: Goal) {
+    const next = goldenId === g.id ? '' : g.id;
+    setGoldenId(next);
+    await putSettings<AppSettings>({ goldenGoalId: next });
+  }
+
   const stats = goalStats(goals);
   const cats = goalCategories(goals);
 
@@ -98,7 +111,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
       <h1 className="large-title">Progress</h1>
 
       <div className="card">
-        <h2>Goals <InfoTip title="Goals">Set a target like "Bill Drill under 2.0s." Add several in a row, check one off when you hit it, and edit any goal later.</InfoTip></h2>
+        <h2>Goals <InfoTip title="Goals">Set a target like "Bill Drill under 2.0s." Add several in a row, check one off when you hit it, and edit any goal later. Tap the star to make one your golden goal — it pins to the top here and shows on your Home screen.</InfoTip></h2>
         {stats.total > 0 && (
           <p className="report-note">{stats.open} open · {stats.achieved} achieved</p>
         )}
@@ -130,13 +143,19 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
         {goals.length === 0 && !adding && (
           <p className="report-note">No goals yet. Set a target — "Bill Drill under 2.0s" — and check it off when you get there.</p>
         )}
-        {goals.map((g) => (
+        {pinGolden(goals, goldenId).map((g) => {
+          const isGolden = g.id === goldenId;
+          return (
           <SwipeRow key={g.id} onDelete={() => void deleteGoal(g)} deleteLabel="Delete">
-            <div className="goal-row">
+            <div className={isGolden ? 'goal-row goal-golden' : 'goal-row'}>
+              <button className="goal-star" aria-pressed={isGolden}
+                aria-label={isGolden ? `Remove ${g.text} as your golden goal` : `Make ${g.text} your golden goal`}
+                onClick={() => void toggleGolden(g)}>{isGolden ? '★' : '☆'}</button>
               <label className="checklist-take" style={{ flex: 1 }}>
                 <input type="checkbox" checked={g.achieved} onChange={() => void toggleAchieved(g)} />
                 <span style={g.achieved ? { textDecoration: 'line-through', color: 'var(--text-dim)' } : undefined}>
                   {g.text}
+                  {isGolden && <div className="row-sub" style={{ color: 'var(--accent)' }}>Golden goal</div>}
                   {(g.category || g.target) && (
                     <div className="row-sub">{[g.category, g.target].filter(Boolean).join(' · ')}</div>
                   )}
@@ -148,7 +167,8 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
               <button className="icon-btn" aria-label={`Edit ${g.text}`} onClick={() => setEditing(g)}>✎</button>
             </div>
           </SwipeRow>
-        ))}
+          );
+        })}
       </div>
 
       <SkillsCard skills={skills} onNew={() => setSkillSheet('new')} onEdit={(a) => setSkillSheet(a)} />

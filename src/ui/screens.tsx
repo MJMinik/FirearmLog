@@ -1,7 +1,8 @@
 // Tab screens. Home and Log are live against the database; Compete and
 // Progress arrive in M5 and M7 and say so in plain language.
 import { useEffect, useState, useCallback } from 'react';
-import type { Ammunition, AppSettings, Classifier, DrillDef, Firearm, GunCategory, MaintenanceEntry, Match, Purchase, Reference, Session } from '../lib/types.ts';
+import type { Ammunition, AppSettings, Classifier, DrillDef, Firearm, Goal, GunCategory, MaintenanceEntry, Match, Purchase, Reference, Session } from '../lib/types.ts';
+import { goldenGoal } from '../lib/goals.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
 import { getAll, getOne, getSettings, putOne } from '../lib/db.ts';
 import { maintenanceAlerts, maintenanceStatus, resolveSchedule } from '../lib/maintenance.ts';
@@ -264,6 +265,7 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
   const [chartFilter, setChartFilter] = useState<RoundsFilter>({});
   const [chartMonths, setChartMonths] = useState(12);
   const [backupChanges, setBackupChanges] = useState(0);
+  const [golden, setGolden] = useState<Goal | null>(null);
 
   // Load dismissed alerts from meta store on mount.
   useEffect(() => {
@@ -288,6 +290,23 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
         setBackupChanges(changesSinceBackup(lists.flat(), since));
       } catch {
         setBackupChanges(0); // fail safe: no nudge rather than a broken screen
+      }
+    })();
+  }, [refreshKey]);
+
+  // The pinned "golden goal" echoed on Home. Only an OPEN (not-yet-achieved) goal
+  // shows here — once it's hit, Home stops nudging it (it still lives on Goals).
+  // Guarded so a storage hiccup just hides the card rather than breaking Home.
+  useEffect(() => {
+    void (async () => {
+      try {
+        const settings = await getSettings<AppSettings>();
+        const gid = settings?.goldenGoalId;
+        if (!gid) { setGolden(null); return; }
+        const g = goldenGoal(await getAll<Goal>('goals'), gid);
+        setGolden(g && !g.achieved ? g : null);
+      } catch {
+        setGolden(null);
       }
     })();
   }, [refreshKey]);
@@ -330,8 +349,14 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
       <h1 className="large-title">FirearmLog</h1>
       {empty ? (
         <>
-          <p className="empty">Welcome. Let's get your range history in here.</p>
-          <ImportFlow onImported={onImported} />
+          <p className="empty">Welcome to FirearmLog. Start by adding your first gun — your sessions, gear, and maintenance all attach to one. Then log your first session from here.</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button className="button" onClick={() => open({ kind: 'gun-form' })}>+ Add your first gun</button>
+            <button className="button secondary" onClick={() => open({ kind: 'setup' })}>Just exploring? See it with sample data</button>
+          </div>
+          <Reveal label="Already have data to bring in?">
+            <ImportFlow onImported={onImported} />
+          </Reveal>
         </>
       ) : (
         <>
@@ -398,6 +423,18 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
                   <div className="cap">{d.division}</div>
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* ---- Golden goal: the one pinned north-star, echoed from Progress ---- */}
+          {golden && (
+            <div className="card golden-home" style={{ marginTop: 16 }}>
+              <button className="row-tap" onClick={() => open({ kind: 'session-form', planned: true })}>
+                <span className="label">
+                  <span className="golden-star" aria-hidden="true">★</span> {golden.text}
+                  <div className="row-sub">Your golden goal{golden.target ? ` · ${golden.target}` : ''} — tap to plan a session toward it</div>
+                </span>
+              </button>
             </div>
           )}
 
