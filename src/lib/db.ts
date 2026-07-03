@@ -361,3 +361,21 @@ async function restoreSnapshotInner(
     }
   }
 }
+
+/**
+ * DANGER — permanently erase ALL local data. Clears every object store in ONE
+ * transaction, so it is atomic: any failure rolls the whole thing back and leaves
+ * the data intact (never a half-wiped DB). Serialized via withIoGuard so it can't
+ * overlap a restore/import. After this resolves the log is empty (guns === 0),
+ * which returns the app to first-run. Backups (Push to File) live outside
+ * IndexedDB and are NOT touched. Guarded in the UI by a typed confirmation.
+ * (Hard-gate spec, session 35.)
+ */
+export async function clearAllData(): Promise<void> {
+  return withIoGuard('the erase', async () => {
+    const db = await openDb();
+    const tx = db.transaction([...STORE_NAMES], 'readwrite');
+    for (const name of STORE_NAMES) tx.objectStore(name).clear();
+    await txDone(tx);
+  });
+}

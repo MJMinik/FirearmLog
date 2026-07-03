@@ -353,6 +353,9 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <button className="button" onClick={() => open({ kind: 'gun-form' })}>+ Add your first gun</button>
             <button className="button secondary" onClick={() => open({ kind: 'setup' })}>Just exploring? See it with sample data</button>
+            <p className="report-note" style={{ margin: '0 0 4px' }}>
+              It's just example data to explore — you can clear it and start fresh with your own any time (Tour &amp; Setup → Start over).
+            </p>
           </div>
           <Reveal label="Already have data to bring in?">
             <ImportFlow onImported={onImported} />
