@@ -434,8 +434,11 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
             <div className="card golden-home" style={{ marginTop: 16 }}>
               <button className="row-tap" onClick={() => open({ kind: 'session-form', planned: true })}>
                 <span className="label">
-                  <span className="golden-star" aria-hidden="true">★</span> {golden.text}
-                  <div className="row-sub">Your golden goal{golden.target ? ` · ${golden.target}` : ''} — tap to plan a session toward it</div>
+                  <span className="golden-title">
+                    <span className="golden-star" aria-hidden="true">★</span>
+                    <span className="golden-text">{golden.text}</span>
+                  </span>
+                  <div className="row-sub">Golden goal{golden.target ? ` · ${golden.target}` : ''} · tap to plan a session</div>
                 </span>
               </button>
             </div>

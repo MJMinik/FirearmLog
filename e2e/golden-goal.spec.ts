@@ -27,7 +27,7 @@ test.describe('Golden goal', () => {
     // Home echoes it, above Needs Attention.
     await gotoTab(page, 'Home');
     await expect(page.getByRole('main').getByText('Draw under 1.2s')).toBeVisible();
-    await expect(page.getByRole('main').getByText(/Your golden goal/)).toBeVisible();
+    await expect(page.getByRole('main').getByText(/Golden goal/)).toBeVisible();
 
     // Unstar from Progress → Home no longer shows it.
     await gotoTab(page, 'Progress');

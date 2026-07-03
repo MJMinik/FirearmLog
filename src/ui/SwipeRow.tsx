@@ -9,8 +9,8 @@
 import { useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 
-export function SwipeRow({ onDelete, deleteLabel = 'Delete', desktopButton = false, children }: {
-  onDelete?: () => void; deleteLabel?: string; desktopButton?: boolean; children: ReactNode;
+export function SwipeRow({ onDelete, deleteLabel = 'Delete', desktopButton = false, className = '', children }: {
+  onDelete?: () => void; deleteLabel?: string; desktopButton?: boolean; className?: string; children: ReactNode;
 }) {
   const REVEAL = 104; // wider than the 76px button so the row's value clears it
   const [open, setOpen] = useState(false);
@@ -25,7 +25,7 @@ export function SwipeRow({ onDelete, deleteLabel = 'Delete', desktopButton = fal
   const tx = Math.max(-REVEAL, Math.min(0, (open ? -REVEAL : 0) + drag));
 
   return (
-    <div className={`swipe-row${desktopButton ? ' has-desk-del' : ''}`}>
+    <div className={`swipe-row${desktopButton ? ' has-desk-del' : ''}${className ? ' ' + className : ''}`}>
       <button className="swipe-delete" tabIndex={open ? 0 : -1} aria-hidden={!open}
         onClick={(e) => { e.stopPropagation(); setOpen(false); setDrag(0); onDelete(); }}>
         {deleteLabel}

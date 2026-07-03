@@ -702,8 +702,16 @@ select { max-width: 100%; min-width: 0; }
   display: flex; align-items: center; justify-content: center;
 }
 .goal-golden { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 8px; }
+/* Set the golden goal apart from the rest of the list by a small gap (no hairline). */
+.swipe-row.golden-sep { margin-bottom: 16px; }
+.swipe-row.golden-sep .goal-golden { border-bottom: none; }
+/* Home echo: a compact accent card; the goal text stays on ONE line (ellipsis when
+   long) so a long goal visibly clips — a cue to keep the golden goal short. */
 .golden-home { border-left: 3px solid var(--accent); }
-.golden-star { color: var(--accent); font-weight: 700; }
+.golden-home .label { min-width: 0; }
+.golden-title { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.golden-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.golden-star { color: var(--accent); font-weight: 700; flex-shrink: 0; }
 .goal-add { margin-bottom: 4px; }
 
 /* Progress trends filter row */

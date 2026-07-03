@@ -111,7 +111,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
       <h1 className="large-title">Progress</h1>
 
       <div className="card">
-        <h2>Goals <InfoTip title="Goals">Set a target like "Bill Drill under 2.0s." Add several in a row, check one off when you hit it, and edit any goal later. Your golden goal is the one target you care about most right now — tap the star to pin it to the top here and keep it in front of you on Home.</InfoTip></h2>
+        <h2>Goals <InfoTip title="Goals">Set a target like "Bill Drill under 2.0s." Add several in a row, check one off when you hit it, and edit any goal later. Your golden goal is the one target you care about most right now — tap the star to pin it to the top here and keep it in front of you on Home. It shows on one line on Home, so keep it short — e.g. "USPSA A — 2027".</InfoTip></h2>
         {stats.total > 0 && (
           <p className="report-note">{stats.open} open · {stats.achieved} achieved</p>
         )}
@@ -146,7 +146,8 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
         {pinGolden(goals, goldenId).map((g) => {
           const isGolden = g.id === goldenId;
           return (
-          <SwipeRow key={g.id} onDelete={() => void deleteGoal(g)} deleteLabel="Delete">
+          <SwipeRow key={g.id} onDelete={() => void deleteGoal(g)} deleteLabel="Delete"
+            className={isGolden ? 'golden-sep' : ''}>
             <div className={isGolden ? 'goal-row goal-golden' : 'goal-row'}>
               <button className="goal-star" aria-pressed={isGolden}
                 aria-label={isGolden ? `Remove ${g.text} as your golden goal` : `Make ${g.text} your golden goal`}
