@@ -394,8 +394,13 @@ select.category-pick {
   padding: 16px 16px calc(16px + env(safe-area-inset-bottom));
   animation: sheet-rise 0.52s cubic-bezier(0.32, 0.72, 0, 1);
 }
-@keyframes sheet-fade { from { opacity: 0; } }
-@keyframes sheet-rise { from { transform: translateY(56px); } }
+/* Fade the DIM via background-color (not the element's opacity): opacity-animating a
+   full-screen fixed element promotes it to a compositing layer, and on iOS the top edge
+   (status-bar boundary) rasterizes a frame late — a brief unshaded band. Animating
+   background-color keeps the backdrop a stable, fully-painted layer, so no seam. The
+   sheet still rises + fades on its own (it doesn't span the top, so it's safe). */
+@keyframes sheet-fade { from { background-color: rgba(0, 0, 0, 0); } }
+@keyframes sheet-rise { from { transform: translateY(56px); opacity: 0; } }
 .sheet-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
 .sheet-head h3 { font-size: 17px; }
 
