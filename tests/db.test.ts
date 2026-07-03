@@ -9,7 +9,10 @@ import {
   restoreSnapshot,
   applyAmmoMerge,
   commitClassifiers,
+  clearAllData,
   getAll,
+  getSettings,
+  putSettings,
   validateSnapshotShape,
 } from '../src/lib/db.ts';
 import type { DataSet } from '../src/lib/types.ts';
@@ -101,4 +104,26 @@ test('a second restore/import running concurrently is refused, not interleaved (
   // And the app still works afterward (the guard reset in finally).
   await restoreSnapshot(snap);
   assert.ok(has(await getAll('firearms'), 'g-concurrent'));
+});
+
+// Placed LAST: clearAllData wipes the shared in-memory DB, so it must not run
+// before the other tests that seed their own data above.
+test('clearAllData erases every store and the settings (hard-gate)', async () => {
+  await commitDataSet(dataSetWith({
+    firearms: [{ id: 'g-wipe' }],
+    sessions: [{ id: 's-wipe' }],
+    goals: [{ id: 'go-wipe' }],
+    media: [{ id: 'm-wipe' }],
+  }), { theme: 'dark' });
+  await putSettings({ goldenGoalId: 'go-wipe' });
+  // Sanity: the data (and settings) are present before the wipe.
+  assert.ok(has(await getAll('firearms'), 'g-wipe'));
+  assert.notEqual(await getSettings(), undefined);
+
+  await clearAllData();
+
+  for (const store of ['firearms', 'sessions', 'goals', 'media', 'meta', 'matches', 'classifiers', 'trash'] as const) {
+    assert.equal((await getAll(store)).length, 0, `${store} is empty after clearAllData`);
+  }
+  assert.equal(await getSettings(), undefined, 'settings gone after clearAllData');
 });

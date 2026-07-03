@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { View } from './nav.ts';
 import { Sheet } from './Sheet.tsx';
 import { InstallCard } from './InstallCard.tsx';
+import { clearAllData } from '../lib/db.ts';
 import { APP_VERSION } from '../version.ts';
 
 interface TourStep { title: string; body: string; view?: View }
@@ -204,9 +205,55 @@ function TourModal({ steps, onClose, onGo }: { steps: TourStep[]; onClose: () =>
   );
 }
 
+/** The guarded "Clear all data" wipe: a typed "erase" confirmation gates the
+ *  destructive button. On confirm, clearAllData() wipes every store, then we
+ *  reload to a guaranteed-clean app (empty log → the Setup Wizard reopens). */
+function ClearAllSheet({ onClose }: { onClose: () => void }) {
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const ready = typed.trim().toLowerCase() === 'erase';
+  async function erase() {
+    if (!ready || busy) return;
+    setBusy(true); setErr('');
+    try {
+      await clearAllData();
+      // A full reload guarantees no stale in-memory state survives the wipe;
+      // with an empty log the app returns to first-run on its own.
+      window.location.reload();
+    } catch {
+      setBusy(false);
+      setErr('Could not erase your data. Nothing was changed — please try again.');
+    }
+  }
+  return (
+    <Sheet title="Clear all data" onClose={onClose}>
+      <p className="report-note" style={{ marginBottom: 12 }}>
+        This permanently deletes everything on this device — every gun, session, match, classifier,
+        photo, and setting. There's no undo.
+      </p>
+      <p className="report-note" style={{ marginBottom: 12 }}>
+        Your saved backup files are not affected. If you're not sure, use Push to File to save a
+        backup first — then you can always get this back.
+      </p>
+      {err && <p className="form-problem">{err}</p>}
+      <label className="field">Type <strong>erase</strong> to confirm
+        <input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus autoComplete="off"
+          name="fl-erase-confirm" placeholder="erase" />
+      </label>
+      <button className="button" onClick={onClose} style={{ marginTop: 4 }}>Cancel</button>
+      <div style={{ height: 8 }} />
+      <button className="button danger" disabled={!ready || busy} onClick={() => void erase()}>
+        {busy ? 'Erasing…' : 'Erase everything'}
+      </button>
+    </Sheet>
+  );
+}
+
 export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: View) => void }) {
   const isDesktop = useIsDesktop();
   const [active, setActive] = useState<null | 'quick' | 'full'>(null);
+  const [clearing, setClearing] = useState(false);
   const fullSteps = useMemo(() => buildFullTour(isDesktop), [isDesktop]);
 
   return (
@@ -223,7 +270,7 @@ export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: Vie
         <h2>Tours &amp; setup</h2>
         <p className="report-note" style={{ marginBottom: 10 }}>
           The Quick Tour is a fast lap around the app. The Full Tour is the complete guide, section by
-          section. Set Up imports your old data or starts you fresh.
+          section. Set Up walks you through adding your gear or loading sample data.
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="button" style={{ flex: 1, minWidth: 100 }} onClick={() => setActive('quick')}>Quick Tour</button>
@@ -243,12 +290,23 @@ export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: Vie
         </p>
       </div>
 
+      <div className="card">
+        <h2>Start over</h2>
+        <p className="report-note" style={{ marginBottom: 10 }}>
+          Erase everything on this device and begin from an empty log — handy once you've explored the
+          sample data and want to start your own. It can't be undone, and your saved backup files
+          aren't affected.
+        </p>
+        <button className="button danger" onClick={() => setClearing(true)}>Clear all data…</button>
+      </div>
+
       <p className="report-note" style={{ textAlign: 'center', marginTop: 24 }}>
         FirearmLog v{APP_VERSION}
       </p>
 
       {active === 'quick' && <TourModal steps={QUICK_TOUR} onClose={() => setActive(null)} onGo={(v) => { setActive(null); open(v); }} />}
       {active === 'full' && <TourModal steps={fullSteps} onClose={() => setActive(null)} onGo={(v) => { setActive(null); open(v); }} />}
+      {clearing && <ClearAllSheet onClose={() => setClearing(false)} />}
     </div>
   );
 }
