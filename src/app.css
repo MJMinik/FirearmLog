@@ -701,7 +701,7 @@ select { max-width: 100%; min-width: 0; }
   font-size: 20px; line-height: 1; color: var(--accent);
   display: flex; align-items: center; justify-content: center;
 }
-.goal-golden { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 8px; }
+.goal-golden { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 8px; border-left: 3px solid var(--accent); padding-left: 8px; }
 /* Set the golden goal apart from the rest of the list by a small gap (no hairline). */
 .swipe-row.golden-sep { margin-bottom: 16px; }
 .swipe-row.golden-sep .goal-golden { border-bottom: none; }
