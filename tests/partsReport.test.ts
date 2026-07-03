@@ -49,7 +49,7 @@ test('buildPartsReportHtml includes parts, group headings, totals — and escape
     part({ name: 'Cleaning patch', firearmId: '', quantity: 50 })
   ];
   const html = buildPartsReportHtml({ parts, firearms, today: '2026-06-14' });
-  assert.match(html, /Spare Parts &amp; Inventory/);
+  assert.match(html, /<h1>Parts<\/h1>/);
   assert.match(html, /Glock 47/);
   assert.match(html, /Any \/ Universal/);
   assert.match(html, /Recoil &lt;spring&gt;/); // escaped, not raw

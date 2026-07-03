@@ -151,7 +151,7 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
         <div className="card">
           <h2>Spare Part Costs</h2>
           <p className="report-note" style={{ marginBottom: 8 }}>
-            From Spare Parts &amp; Inventory. Tap one to edit it there.
+            From Parts. Tap one to edit it there.
           </p>
           {costedParts.map((p) => (
             <button className="row-tap" key={p.id} onClick={() => openPart(p.id)}>

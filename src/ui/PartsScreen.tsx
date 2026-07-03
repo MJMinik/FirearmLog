@@ -1,4 +1,4 @@
-// Spare Parts & Inventory — its own section (split out of the Optics screen,
+// Parts — its own section (split out of the Optics screen,
 // Michael's June 14 request). Spare parts (tied to a gun or "Any / Universal")
 // PLUS any optic not currently mounted on a firearm, which lives here as
 // inventory until you assign it to a gun. Includes a printable report.
@@ -62,13 +62,13 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Spare Parts &amp; Inventory <InfoTip title="Spare Parts & Inventory">Spare parts and spare optics on the shelf. What you buy here feeds Costs.</InfoTip></h1>
+      <h1 className="large-title">Parts <InfoTip title="Parts">Spare parts and spare optics on the shelf. What you buy here feeds Costs.</InfoTip></h1>
       <FormProblem problem={problem} />
 
       <button className="button" onClick={() => openPartForm()}>+ Add Part</button>
       {!empty && (
         <button className="button secondary" style={{ marginTop: 8 }} onClick={printReport}>
-          Spare Parts &amp; Inventory Report
+          Parts Report
         </button>
       )}
 

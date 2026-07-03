@@ -47,7 +47,7 @@ const QUICK_TOUR: TourStep[] = [
   },
   {
     title: 'Progress',
-    body: 'The big picture: rounds over time, your dry-to-live mix, goals you can check off, skill self-ratings, a training heatmap, and your personal records. Filter any of it by gun or date range.',
+    body: 'The big picture: rounds over time, your dry-to-live mix, goals you can check off, a skills check, a training grid, and your personal records. Filter any of it by gun or date range.',
   },
   {
     title: 'Your gear and data',
@@ -116,16 +116,16 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
       body: 'On the Progress tab, set targets like "Bill Drill under 2.0s." Add several in a row without leaving the form, check one off when you hit it, and edit or delete any goal later. Tap the star on a goal to make it your golden goal — it pins to the top and shows on your Home screen.',
     },
     {
-      title: 'Progress — skill self-assessment',
-      body: 'Rate yourself 1–10 across the eight skill areas — Draw, Reload, Splits, Transitions, Accuracy, Movement, Mental Game, Recoil Control. Each dated assessment shows your latest snapshot and average, plus a history you can tap into to edit.',
+      title: 'Progress — skills check',
+      body: 'Rate yourself 1–10 across the eight skill areas — Draw, Reload, Splits, Transitions, Accuracy, Movement, Mental Game, Recoil Control. Each dated check shows your latest snapshot and average, plus a history you can tap into to edit.',
     },
     {
       title: 'Progress — trends & filters',
       body: 'Trends charts your rounds over time with a color legend, and shows tiles for live + match rounds, dry-fire reps, your dry-to-live ratio, and malfunctions per 1,000 rounds. Filter everything by gun type, individual gun, and a 6-, 12-, or 24-month span. Classification by division and personal records show here too.',
     },
     {
-      title: 'Progress — heatmap & records',
-      body: 'The training heatmap is a grid of days, darker where you shot more — toggle 26 or 52 weeks, with the months labeled along the bottom, and press a square to see that day\'s count — or flip on "Tap a day to open its session" to jump straight into that day\'s log. Personal records list your best result per drill.',
+      title: 'Progress — training grid & records',
+      body: 'The training grid shows a square per day, darker where you shot more — toggle 26 or 52 weeks, with the months labeled along the bottom, and press a square to see that day\'s count — or flip on "Tap a day to open its session" to jump straight into that day\'s log. Personal records list your best result per drill.',
     },
     {
       title: 'Guns',
@@ -135,7 +135,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Optics, magazines & spare parts',
       view: { kind: 'optics' },
-      body: `Optics, magazines, and spare parts each have their own section — ${at('Optics')}, ${at('Magazines')}, and ${at('Spare Parts & Inventory')}. Parts and optics you buy feed into Costs, and unassigned optics are grouped so you can see what's on the shelf.`,
+      body: `Optics, magazines, and spare parts each have their own section — ${at('Optics')}, ${at('Magazines')}, and ${at('Parts')}. Parts and optics you buy feed into Costs, and unassigned optics are grouped so you can see what's on the shelf.`,
     },
     {
       title: 'Ammo & costs',

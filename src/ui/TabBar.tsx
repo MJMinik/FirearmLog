@@ -32,7 +32,7 @@ const GROUPS: { label: string; sections: SectionDef[] }[] = [
       { target: { kind: 'optics' }, label: 'Optics', icon: 'optic', also: ['optic-form'] },
       { target: { kind: 'magazines' }, label: 'Magazines', icon: 'magazine', also: ['magazine-form'] },
       { target: { kind: 'ammo' }, label: 'Ammo', icon: 'ammo', also: ['ammo-form'] },
-      { target: { kind: 'parts' }, label: 'Spare Parts & Inventory', icon: 'parts', also: ['part-form'] },
+      { target: { kind: 'parts' }, label: 'Parts', icon: 'parts', also: ['part-form'] },
       { target: { kind: 'references' }, label: 'Care Guides', icon: 'reference', also: ['reference-detail', 'reference-form'] }
     ]
   },

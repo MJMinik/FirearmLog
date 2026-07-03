@@ -52,7 +52,7 @@ export function opticLabel(o: Optic): string {
   return [o.make, o.model].filter(Boolean).join(' ').trim() || 'Unnamed optic';
 }
 
-/** Standalone printable HTML page for the Spare Parts & Inventory report. */
+/** Standalone printable HTML page for the Parts report. */
 export function buildPartsReportHtml(opts: {
   parts: Part[]; firearms: Firearm[]; optics?: Optic[]; today: string;
 }): string {
@@ -122,12 +122,12 @@ export function buildPartsReportHtml(opts: {
     ? '<p>Nothing in inventory yet.</p>'
     : `${partsHtml}${opticsHtml}`;
 
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Spare Parts & Inventory — ${escapeHtml(today)}</title><style>${styles}</style></head>
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Parts — ${escapeHtml(today)}</title><style>${styles}</style></head>
   <body>
     <div class="close-bar"><button class="close-btn" onclick="window.close()">← Close &amp; return to FirearmLog</button></div>
-    <div class="app-label">FirearmLog — Spare Parts & Inventory Report</div>
+    <div class="app-label">FirearmLog — Parts Report</div>
     <div class="header">
-      <h1>Spare Parts &amp; Inventory</h1>
+      <h1>Parts</h1>
       <div class="meta">${escapeHtml(formatDayKey(today))}</div>
     </div>
     ${body}

@@ -111,7 +111,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
       <h1 className="large-title">Progress</h1>
 
       <div className="card">
-        <h2>Goals <InfoTip title="Goals">Set a target like "Bill Drill under 2.0s." Add several in a row, check one off when you hit it, and edit any goal later. Tap the star to make one your golden goal — it pins to the top here and shows on your Home screen.</InfoTip></h2>
+        <h2>Goals <InfoTip title="Goals">Set a target like "Bill Drill under 2.0s." Add several in a row, check one off when you hit it, and edit any goal later. Your golden goal is the one target you care about most right now — tap the star to pin it to the top here and keep it in front of you on Home.</InfoTip></h2>
         {stats.total > 0 && (
           <p className="report-note">{stats.open} open · {stats.achieved} achieved</p>
         )}
@@ -232,9 +232,9 @@ function HeatmapCard({ sessions, open }: { sessions: Session[]; open: (v: View) 
   const labelH = labelFont + 4;
   return (
     <div className="card">
-      <h2>Training Heatmap <InfoTip title="Training Heatmap">Each square is a day — darker means more rounds, with the months labeled along the bottom. Switch between the last 26 or 52 weeks; press a square to see that day's count, or turn on "Tap a day to open its session" to jump straight into that day's log.</InfoTip></h2>
+      <h2>Training grid <InfoTip title="Training grid">Each square is a day — darker means more rounds, with the months labeled along the bottom. Switch between the last 26 or 52 weeks; press a square to see that day's count, or turn on "Tap a day to open its session" to jump straight into that day's log.</InfoTip></h2>
       <div className="chart-filters">
-        <select aria-label="Heatmap weeks" value={weeks} onChange={(e) => setWeeks(Number(e.target.value))}>
+        <select aria-label="Training grid weeks" value={weeks} onChange={(e) => setWeeks(Number(e.target.value))}>
           <option value={26}>26 weeks</option>
           <option value={52}>52 weeks</option>
         </select>
@@ -387,8 +387,8 @@ function SkillsCard({ skills, onNew, onEdit }: {
   const history = [...assessmentsByDate(skills)].reverse(); // newest first
   return (
     <div className="card">
-      <h2>Skill Self-Assessment <InfoTip title="Skill Self-Assessment">Rate yourself 1–10 in eight areas now and then. You'll see your latest scores, your average, and how they trend over time.</InfoTip></h2>
-      <button className="button secondary" onClick={onNew}>+ New Assessment</button>
+      <h2>Skills Check <InfoTip title="Skills Check">Rate yourself 1–10 in eight areas now and then. You'll see your latest scores, your average, and how they trend over time.</InfoTip></h2>
+      <button className="button secondary" onClick={onNew}>+ New Check</button>
       {!latest && (
         <p className="report-note">Rate yourself 1–10 across the 8 areas now and then to see your trend.</p>
       )}
@@ -454,7 +454,7 @@ function SkillSheet({ assessment, onClose, onSaved }: {
   }
 
   return (
-    <Sheet title={assessment ? 'Edit Assessment' : 'New Assessment'} onClose={onClose}>
+    <Sheet title={assessment ? 'Edit Check' : 'New Check'} onClose={onClose}>
       <label className="field">Date
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       </label>
