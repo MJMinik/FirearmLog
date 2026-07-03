@@ -438,7 +438,7 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
                     <span className="golden-star" aria-hidden="true">★</span>
                     <span className="golden-text">{golden.text}</span>
                   </span>
-                  <div className="row-sub">Golden goal{golden.target ? ` · ${golden.target}` : ''} · tap to plan a session</div>
+                  <div className="row-sub">Your North Star · tap to plan a session</div>
                 </span>
               </button>
             </div>

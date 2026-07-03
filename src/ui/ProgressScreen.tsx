@@ -111,7 +111,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
       <h1 className="large-title">Progress</h1>
 
       <div className="card">
-        <h2>Goals <InfoTip title="Goals">Set a target like "Bill Drill under 2.0s." Add several in a row, check one off when you hit it, and edit any goal later. Your golden goal is the one target you care about most right now — tap the star to pin it to the top here and keep it in front of you on Home. It shows on one line on Home, so keep it short — e.g. "USPSA A — 2027".</InfoTip></h2>
+        <h2>Goals <InfoTip title="Goals">Set a target like "Bill Drill under 2.0s." Add several in a row, check one off when you hit it, and edit any goal later. Your North Star is the one thing you're ultimately working toward, like "USPSA A — 2027" — tap the star to pin it to the top here and keep it in front of you on Home. Keep it short; it shows on one line.</InfoTip></h2>
         {stats.total > 0 && (
           <p className="report-note">{stats.open} open · {stats.achieved} achieved</p>
         )}
@@ -150,13 +150,13 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
             className={isGolden ? 'golden-sep' : ''}>
             <div className={isGolden ? 'goal-row goal-golden' : 'goal-row'}>
               <button className="goal-star" aria-pressed={isGolden}
-                aria-label={isGolden ? `Remove ${g.text} as your golden goal` : `Make ${g.text} your golden goal`}
+                aria-label={isGolden ? `Remove ${g.text} as your North Star` : `Make ${g.text} your North Star`}
                 onClick={() => void toggleGolden(g)}>{isGolden ? '★' : '☆'}</button>
               <label className="checklist-take" style={{ flex: 1 }}>
                 <input type="checkbox" checked={g.achieved} onChange={() => void toggleAchieved(g)} />
                 <span style={g.achieved ? { textDecoration: 'line-through', color: 'var(--text-dim)' } : undefined}>
                   {g.text}
-                  {isGolden && <div className="row-sub" style={{ color: 'var(--accent)' }}>Golden goal</div>}
+                  {isGolden && <div className="row-sub" style={{ color: 'var(--accent)' }}>North Star</div>}
                   {(g.category || g.target) && (
                     <div className="row-sub">{[g.category, g.target].filter(Boolean).join(' · ')}</div>
                   )}

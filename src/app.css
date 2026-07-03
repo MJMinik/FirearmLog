@@ -706,7 +706,7 @@ select { max-width: 100%; min-width: 0; }
 .swipe-row.golden-sep { margin-bottom: 16px; }
 .swipe-row.golden-sep .goal-golden { border-bottom: none; }
 /* Home echo: a compact accent card; the goal text stays on ONE line (ellipsis when
-   long) so a long goal visibly clips — a cue to keep the golden goal short. */
+   long) so a long goal visibly clips — a cue to keep the North Star short. */
 .golden-home { border-left: 3px solid var(--accent); }
 .golden-home .label { min-width: 0; }
 .golden-title { display: flex; align-items: center; gap: 4px; min-width: 0; }
