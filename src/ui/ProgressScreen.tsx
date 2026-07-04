@@ -202,17 +202,19 @@ function HeatmapCard({ sessions, open }: { sessions: Session[]; open: (v: View) 
   // Audit #20: tapping a day shows its count here — the SVG <title> only worked
   // on desktop hover, so on a phone the "press a square" help did nothing.
   const [selText, setSelText] = useState<string | null>(null);
-  // Opt-in, default off, not remembered across visits (Michael's call): when on,
-  // tapping a day opens that day's session instead of showing its count. One
-  // session opens directly; several show a picker; an empty day falls back to
-  // the count so the tap is never dead.
-  const [openOnTap, setOpenOnTap] = useState(false);
+  // Default (Michael, session 36): tapping a day OPENS that day's session — the
+  // most useful action. One session opens directly; several show a picker; an
+  // empty day falls back to showing its count so the tap is never dead. The
+  // checkbox opts into the quieter "just show the day's count" behaviour (no
+  // navigation). Not remembered across visits.
+  const [showCountOnly, setShowCountOnly] = useState(false);
   const [daySheet, setDaySheet] = useState<Session[] | null>(null);
   function tapCell(c: { date: string; sessions: number; rounds: number }) {
-    if (openOnTap) {
+    if (!showCountOnly) {
       const day = sessionsOnDay(sessions, c.date);
       if (day.length === 1) { open({ kind: 'session-form', id: day[0].id }); return; }
       if (day.length > 1) { setDaySheet(day); return; }
+      // Empty day: fall through to the count so the tap is never dead.
     }
     setSelText(`${formatDayKey(c.date)}: ${c.sessions} session${c.sessions !== 1 ? 's' : ''}, ${c.rounds.toLocaleString()} rounds`);
   }
@@ -233,7 +235,7 @@ function HeatmapCard({ sessions, open }: { sessions: Session[]; open: (v: View) 
   const labelH = labelFont + 4;
   return (
     <div className="card">
-      <h2>Training grid <InfoTip title="Training grid">Each square is a day — darker means more rounds, with the months labeled along the bottom. Switch between the last 26 or 52 weeks; press a square to see that day's count, or turn on "Tap a day to open its session" to jump straight into that day's log.</InfoTip></h2>
+      <h2>Training grid <InfoTip title="Training grid">Each square is a day — darker means more rounds, with the months labeled along the bottom. Switch between the last 26 or 52 weeks; tap a day to open that day's session, or turn on "Just show the day's count" to peek at a day without opening it.</InfoTip></h2>
       <div className="chart-filters">
         <select aria-label="Training grid weeks" value={weeks} onChange={(e) => setWeeks(Number(e.target.value))}>
           <option value={26}>26 weeks</option>
@@ -241,8 +243,8 @@ function HeatmapCard({ sessions, open }: { sessions: Session[]; open: (v: View) 
         </select>
       </div>
       <label className="report-note" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginTop: 4 }}>
-        <input type="checkbox" checked={openOnTap} onChange={(e) => setOpenOnTap(e.target.checked)} />
-        Tap a day to open its session
+        <input type="checkbox" checked={showCountOnly} onChange={(e) => setShowCountOnly(e.target.checked)} />
+        Just show the day's count, don't open the session
       </label>
       <svg viewBox={`0 0 ${w} ${h + labelH}`} width="100%" role="img" aria-label="Training activity heatmap"
         style={{ display: 'block', maxWidth: w, marginTop: 4 }}>
@@ -274,9 +276,9 @@ function HeatmapCard({ sessions, open }: { sessions: Session[]; open: (v: View) 
       {selText
         ? <p className="report-note" aria-live="polite">{selText}</p>
         : <p className="report-note">
-            {openOnTap
-              ? `Tap a day to open its session. Last ${weeks} weeks.`
-              : `Each square is a day; darker = more rounds — tap one for that day. Last ${weeks} weeks.`}
+            {showCountOnly
+              ? `Each square is a day; darker = more rounds — tap one to see its count. Last ${weeks} weeks.`
+              : `Each square is a day; darker = more rounds — tap one to open that day's session. Last ${weeks} weeks.`}
           </p>}
       {daySheet && (
         <Sheet title="That Day" onClose={() => setDaySheet(null)}>
