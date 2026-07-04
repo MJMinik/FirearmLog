@@ -309,7 +309,7 @@ select.category-pick {
 
 .seg { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; margin-bottom: 12px; }
 .seg button {
-  flex: 1; min-height: 40px; border: none; background: none; border-radius: 8px;
+  flex: 1; min-height: 44px; border: none; background: none; border-radius: 8px;
   color: var(--text); font-size: 15px; cursor: pointer;
 }
 .seg button.on { background: var(--bg-card); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
@@ -625,7 +625,7 @@ a.button { text-decoration: none; }
 
 /* ---------- M6.2: overflow guard (the old app's R1 bug class) ---------- */
 /* No dropdown may ever size itself wider than the screen... */
-select { max-width: 100%; min-width: 0; }
+select { max-width: 100%; min-width: 0; min-height: 44px; }
 /* ...and no stray element may widen the page sideways. */
 .screen { overflow-x: hidden; }
 /* Session form ammo rows: dropdown shares the row with the rounds box. */
