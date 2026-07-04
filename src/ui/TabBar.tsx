@@ -59,6 +59,7 @@ const GROUPS: { label: string; sections: SectionDef[] }[] = [
     label: 'App & Data',
     sections: [
       { target: { kind: 'help' }, label: 'Tour & Setup', icon: 'help', also: ['setup'] },
+      { target: { kind: 'settings' }, label: 'Settings', icon: 'settings', also: [] },
       { target: { kind: 'sync' }, label: 'Sync & Backup', icon: 'sync', also: [] },
       { target: { kind: 'import' }, label: 'Import', icon: 'import', also: [] },
       { target: { kind: 'free-space' }, label: 'Free Up Space', icon: 'cleanup', also: [] }

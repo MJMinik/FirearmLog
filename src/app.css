@@ -403,6 +403,26 @@ select.category-pick {
 }
 .stepper-btn:disabled { opacity: 0.4; cursor: default; }
 
+/* Settings row with an iOS-style switch. The whole row is the control (44px+ tap
+   target); the switch is the visual state. */
+.setting-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: 100%; min-height: var(--touch-min); padding: 8px 0;
+  background: none; border: none; text-align: left; cursor: pointer; color: inherit; font: inherit;
+}
+.setting-label { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-body); }
+.setting-sub { font-size: var(--fs-footnote); color: var(--text-dim); line-height: 1.35; font-weight: 400; }
+.switch {
+  position: relative; flex-shrink: 0; width: 51px; height: 31px; border-radius: 16px;
+  background: var(--separator); transition: background 0.2s;
+}
+.switch.on { background: var(--success); } /* iOS switches are green on, regardless of accent */
+.switch-thumb {
+  position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 50%;
+  background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3); transition: transform 0.2s;
+}
+.switch.on .switch-thumb { transform: translateX(20px); }
+
 .icon-btn {
   background: none; border: none; color: var(--text-dim);
   font-size: 17px; min-width: 44px; min-height: 44px; cursor: pointer;

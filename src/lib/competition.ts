@@ -208,7 +208,8 @@ export interface StageScore {
   powerFactor: 'Major' | 'Minor';
   alphas: number; charlies: number; deltas: number;
   misses: number; noShoots: number; procedurals: number;
-  stagePoints: number;          // floored at 0
+  stagePoints: number;          // floored at 0 (after miss/no-shoot/procedural penalties)
+  rawHitPoints: number;         // 5*A + cVal*C + dVal*D — hit-zone points BEFORE penalties
   availablePoints: number;      // 5 * scoring shots (A + C + D + M)
   pctAvailable: number | null;  // stagePoints / availablePoints (0.9 = 90%)
   hitFactor: number | null;     // stagePoints / time
@@ -258,7 +259,7 @@ export function scoreStageHits(
   return {
     powerFactor: major ? 'Major' : 'Minor',
     alphas: A, charlies: C, deltas: D, misses: M, noShoots: NS, procedurals: P,
-    stagePoints, availablePoints, pctAvailable, hitFactor, allAlphaHitFactor, allAlphaDelta,
+    stagePoints, rawHitPoints, availablePoints, pctAvailable, hitFactor, allAlphaHitFactor, allAlphaDelta,
   };
 }
 
@@ -484,4 +485,84 @@ export function scoringTypeFor(matchType: string): 'uspsa' | 'idpa' | 'steel' {
   if (matchType === 'Steel Challenge') return 'steel';
   if (matchType.startsWith('IDPA')) return 'idpa';
   return 'uspsa';
+}
+
+// ---- Match-level speed vs accuracy summary (descriptive; NO composite score) ----
+// The sport produces no single "speed vs accuracy" number, so this returns the two
+// dimensions SEPARATELY, per discipline, from data we already compute — never a blended
+// dial. USPSA: hit-zone points kept (a miss lowers accuracy; no-shoots/procedurals are
+// separate errors, NOT folded in). IDPA: the time-plus seconds split (time / dropped
+// points / penalties). Steel: misses only (accuracy is nearly binary there). `overAccuracy`
+// flags a very clean run (a deliberately conservative threshold) so the UI can ASK — never
+// assert — whether there was room to push the pace. Returns null when nothing is computable
+// (e.g. a USPSA match with no hit breakdown on any stage). Pure; never throws.
+
+export const SPEED_ACCURACY_CLEAN_USPSA = 0.95; // >= 95% of points kept counts as "very clean"
+export const SPEED_ACCURACY_CLEAN_IDPA = 0.05;  // dropped-point seconds < 5% of total time
+
+export type SpeedAccuracy =
+  | { discipline: 'uspsa'; pointsKept: number; pointsDown: number; availablePoints: number;
+      misses: number; noShoots: number; procedurals: number;
+      stagesUsed: number; stagesTotal: number; overAccuracy: boolean }
+  | { discipline: 'idpa'; totalTime: number; timeSeconds: number; downSeconds: number;
+      penaltySeconds: number; stagesUsed: number; stagesTotal: number; overAccuracy: boolean }
+  | { discipline: 'steel'; misses: number; missSeconds: number;
+      stagesUsed: number; stagesTotal: number };
+
+export function matchSpeedAccuracy(
+  stages: MatchStage[], scoringType: 'uspsa' | 'idpa' | 'steel', powerFactor = 'Minor'
+): SpeedAccuracy | null {
+  const all = stages ?? [];
+
+  if (scoringType === 'steel') {
+    let misses = 0, used = 0;
+    for (const st of all) {
+      const s = scoreSteelStage(st);
+      if (s.stageTime !== null) {
+        used++;
+        misses += s.strings.reduce((n, str) => n + (str.capped !== null ? str.misses : 0), 0);
+      }
+    }
+    if (used === 0) return null;
+    return { discipline: 'steel', misses, missSeconds: round2(misses * STEEL_MISS_PENALTY),
+      stagesUsed: used, stagesTotal: all.length };
+  }
+
+  if (scoringType === 'idpa') {
+    let timeSeconds = 0, downSeconds = 0, penaltySeconds = 0, used = 0;
+    for (const st of all) {
+      const s = scoreIdpaStage(st);
+      if (s.stageTime !== null && s.rawTime !== null) {
+        used++;
+        timeSeconds += s.rawTime;
+        downSeconds += s.accuracySeconds;
+        penaltySeconds += s.penaltySeconds;
+      }
+    }
+    if (used === 0) return null;
+    const totalTime = round2(timeSeconds + downSeconds + penaltySeconds);
+    const overAccuracy = used >= 2 && totalTime > 0 && (downSeconds / totalTime) < SPEED_ACCURACY_CLEAN_IDPA;
+    return { discipline: 'idpa', totalTime, timeSeconds: round2(timeSeconds),
+      downSeconds: round2(downSeconds), penaltySeconds: round2(penaltySeconds),
+      stagesUsed: used, stagesTotal: all.length, overAccuracy };
+  }
+
+  // USPSA (hit-factor): accuracy = hit-zone points kept.
+  let rawHit = 0, available = 0, misses = 0, noShoots = 0, procedurals = 0, used = 0;
+  for (const st of all) {
+    const s = scoreStageHits(st, powerFactor, st.time);
+    if (s) {
+      used++;
+      rawHit += s.rawHitPoints;
+      available += s.availablePoints;
+      misses += s.misses;
+      noShoots += s.noShoots;
+      procedurals += s.procedurals;
+    }
+  }
+  if (used === 0 || available === 0) return null;
+  const pointsKept = round4(rawHit / available);
+  const overAccuracy = used >= 2 && pointsKept >= SPEED_ACCURACY_CLEAN_USPSA;
+  return { discipline: 'uspsa', pointsKept, pointsDown: available - rawHit, availablePoints: available,
+    misses, noShoots, procedurals, stagesUsed: used, stagesTotal: all.length, overAccuracy };
 }

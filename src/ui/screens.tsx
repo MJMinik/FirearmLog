@@ -856,6 +856,11 @@ export function MoreScreen({ refreshKey, open }: {
           <span className="label">Tour &amp; Setup</span>
           <span className="value">›</span>
         </button>
+        <button className="row-tap" onClick={() => open({ kind: 'settings' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="settings" size={20} /></span>
+          <span className="label">Settings</span>
+          <span className="value">›</span>
+        </button>
         <button className="row-tap" onClick={() => open({ kind: 'sync' })}>
           <span className="row-ico" aria-hidden="true"><Icon name="sync" size={20} /></span>
           <span className="label">Sync &amp; Backup</span>

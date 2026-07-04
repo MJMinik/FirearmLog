@@ -31,6 +31,7 @@ export type View =
   | { kind: 'help' }
   | { kind: 'numbers'; section?: string }
   | { kind: 'setup' }
+  | { kind: 'settings' }
   | { kind: 'sync' }
   | { kind: 'import' }
   | { kind: 'free-space' }

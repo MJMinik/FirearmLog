@@ -28,6 +28,7 @@ import { HelpScreen } from './ui/HelpScreen.tsx';
 import { NumbersGuide } from './ui/NumbersGuide.tsx';
 import { SetupWizard } from './ui/SetupWizard.tsx';
 import { SyncScreen, ImportScreen, FreeSpaceScreen } from './ui/AppDataScreens.tsx';
+import { SettingsScreen } from './ui/SettingsScreen.tsx';
 import { countAll } from './lib/db.ts';
 import { ErrorBoundary } from './ui/ErrorBoundary.tsx';
 
@@ -234,6 +235,8 @@ export function App() {
     content = <SetupWizard
       onFinish={() => { refresh(); replace(null); }}
       onCancel={back} />;
+  } else if (view?.kind === 'settings') {
+    content = <SettingsScreen onBack={back} />;
   } else if (view?.kind === 'sync') {
     content = <SyncScreen onBack={back} onImported={refresh} />;
   } else if (view?.kind === 'import') {

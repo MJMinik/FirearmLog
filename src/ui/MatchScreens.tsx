@@ -1,14 +1,15 @@
 // Match logging (spec §11): the full match record with stage-by-stage entry,
 // auto hit factors, stage videos, entry fee, and PractiScore link.
 import { useEffect, useMemo, useState } from 'react';
-import type { Firearm, Match, MatchStage, Media } from '../lib/types.ts';
-import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
+import type { AppSettings, Firearm, Match, MatchStage, Media } from '../lib/types.ts';
+import { deleteOne, getAll, getOne, getSettings, putOne, putSettings } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { DIVISIONS, IDPA_DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown,
   scoringTypeFor, scoreSteelStage, steelMatchTotal, steelStringsExpected, STEEL_STAGES,
-  scoreIdpaStage, idpaMatchTotal, reconcileTime } from '../lib/competition.ts';
+  scoreIdpaStage, idpaMatchTotal, reconcileTime, matchSpeedAccuracy } from '../lib/competition.ts';
+import type { SpeedAccuracy } from '../lib/competition.ts';
 import { MarkThumb } from './MarkThumb.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { Reveal } from './Reveal.tsx';
@@ -29,6 +30,63 @@ function fmtMetric(s: { percent: number | null; hitFactor: number | null }, by: 
   return '—';
 }
 
+/**
+ * The descriptive "Speed & Accuracy" read on the match debrief. Two dimensions kept
+ * SEPARATE (the sport has no single blended number) from data we already compute. The
+ * over-accuracy nudge is a reversible question and only shows when coaching remarks are on.
+ */
+function SpeedAccuracyCard({ sa, coachingRemarks, onDisableRemarks }: {
+  sa: SpeedAccuracy; coachingRemarks: boolean; onDisableRemarks: () => void;
+}) {
+  const nudge = sa.discipline !== 'steel' && sa.overAccuracy && coachingRemarks ? (
+    <p className="report-note" style={{ marginTop: 8 }}>
+      You kept almost all your points — on the closer targets, was there room to push the pace?{' '}
+      <button className="link-btn" onClick={onDisableRemarks}>Turn off</button>
+    </p>
+  ) : null;
+
+  if (sa.discipline === 'uspsa') {
+    const errors = [
+      sa.misses ? `${sa.misses} miss${sa.misses > 1 ? 'es' : ''}` : null,
+      sa.noShoots ? `${sa.noShoots} no-shoot${sa.noShoots > 1 ? 's' : ''}` : null,
+      sa.procedurals ? `${sa.procedurals} procedural${sa.procedurals > 1 ? 's' : ''}` : null,
+    ].filter(Boolean).join(', ');
+    return (
+      <div className="card">
+        <h2>Speed &amp; Accuracy <InfoTip title="Speed & Accuracy">Two things, kept separate — the sport has no single "speed vs accuracy" number. Accuracy is the share of the available points you kept; a miss counts against it, while no-shoots and procedurals are separate errors. One match is a small sample, so read it as this match — the real signal is the trend across matches.</InfoTip></h2>
+        <p className="report-note" style={{ marginTop: 0 }}>
+          Accuracy: you kept <strong>{Math.round(sa.pointsKept * 100)}%</strong> of your points ({sa.pointsDown} down)
+          {sa.stagesUsed < sa.stagesTotal ? ` — from ${sa.stagesUsed} of ${sa.stagesTotal} stages` : ''}.
+          {errors ? ` Errors: ${errors}.` : ''}
+        </p>
+        {nudge}
+      </div>
+    );
+  }
+  if (sa.discipline === 'idpa') {
+    return (
+      <div className="card">
+        <h2>Speed &amp; Accuracy <InfoTip title="Speed & Accuracy">IDPA's time-plus scoring already splits your total into three honest parts: the raw time (speed), the seconds added by dropped points (1s each — accuracy), and any penalties. Read it as this match; the real signal is the trend across matches.</InfoTip></h2>
+        <p className="report-note" style={{ marginTop: 0 }}>
+          Your <strong>{sa.totalTime}s</strong>: <strong>{sa.timeSeconds}s</strong> time · <strong>{sa.downSeconds}s</strong> dropped points
+          {sa.penaltySeconds > 0 ? ` · ${sa.penaltySeconds}s penalties` : ''}.
+        </p>
+        {nudge}
+      </div>
+    );
+  }
+  return (
+    <div className="card">
+      <h2>Speed &amp; Accuracy <InfoTip title="Speed & Accuracy">Steel is a time sport — accuracy shows up only as missed plates (3 seconds each). There's no points breakdown to weigh against the clock.</InfoTip></h2>
+      <p className="report-note" style={{ marginTop: 0 }}>
+        {sa.misses > 0
+          ? `${sa.misses} missed plate${sa.misses > 1 ? 's' : ''} added ${sa.missSeconds}s.`
+          : 'Clean — no missed plates.'}
+      </p>
+    </div>
+  );
+}
+
 export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }: {
   id: string; onEdit: () => void; onBack: () => void; onDeleted: () => void; refreshKey: number;
   open: (v: View) => void;
@@ -41,17 +99,20 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
   const [localBump, setLocalBump] = useState(0);
   const [showReconcile, setShowReconcile] = useState(false);
   const [officialTimes, setOfficialTimes] = useState<string[]>([]);
+  const [coachingRemarks, setCoachingRemarks] = useState(true);
 
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const [m, f, media] = await Promise.all([
-        getOne<Match>('matches', id), getAll<Firearm>('firearms'), getAll<Media>('media')
+      const [m, f, media, settings] = await Promise.all([
+        getOne<Match>('matches', id), getAll<Firearm>('firearms'), getAll<Media>('media'),
+        getSettings<AppSettings>()
       ]);
       if (!alive || !m) return;
       setMatch(m);
       setFirearms(f);
       setVideos(media.filter((x) => x.ownerType === 'match' && x.ownerId === id));
+      setCoachingRemarks(settings?.coachingRemarks !== false);
     })();
     return () => { alive = false; };
   }, [id, refreshKey, localBump]);
@@ -62,6 +123,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
   const isIdpa = match.scoringType === 'idpa';
   const wikiSection = isSteel ? 'steel' : isIdpa ? 'idpa' : 'uspsa'; // deep-link target into the wiki
   const insights = analyzeMatch(match.stages, match.powerFactor);
+  const sa = matchSpeedAccuracy(match.stages, match.scoringType ?? 'uspsa', match.powerFactor);
   const steelRows = isSteel ? match.stages.map((st) => ({ st, score: scoreSteelStage(st) })) : [];
   const steelTotal = isSteel ? steelMatchTotal(match.stages) : null;
   const idpaRows = isIdpa ? match.stages.map((st) => ({ st, score: scoreIdpaStage(st) })) : [];
@@ -85,6 +147,11 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
     for (const v of videos) await deleteOne('media', v.id);
     await deleteOne('matches', id);
     onDeleted();
+  }
+
+  async function disableRemarks() {
+    setCoachingRemarks(false); // optimistic; re-enable in Settings
+    await putSettings<AppSettings>({ coachingRemarks: false });
   }
 
   return (
@@ -138,6 +205,8 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
           </a>
         )}
       </div>
+
+      {sa && <SpeedAccuracyCard sa={sa} coachingRemarks={coachingRemarks} onDisableRemarks={() => void disableRemarks()} />}
 
       {match.stages.length > 0 && !isSteel && !isIdpa && (
         <div className="card">

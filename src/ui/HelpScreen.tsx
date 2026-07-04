@@ -8,7 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { View } from './nav.ts';
 import { Sheet } from './Sheet.tsx';
 import { InstallCard } from './InstallCard.tsx';
-import { clearAllData } from '../lib/db.ts';
+import { ClearAllSheet } from './ClearAllSheet.tsx';
 import { APP_VERSION } from '../version.ts';
 
 interface TourStep { title: string; body: string; view?: View }
@@ -53,7 +53,7 @@ const QUICK_TOUR: TourStep[] = [
   {
     title: 'Your gear and data',
     view: { kind: 'guns' },
-    body: 'Everything else is grouped into four sets: Your Gear (guns, optics, magazines, ammo, parts, care guides), Training (drills, how the numbers work), Records (maintenance, malfunctions, costs, reports), and App & Data (Tour & Setup, Sync & Backup, Import, Free Up Space). On a phone they\'re under the More tab; on a computer they\'re down the sidebar.',
+    body: 'Everything else is grouped into four sets: Your Gear (guns, optics, magazines, ammo, parts, care guides), Training (drills, how the numbers work), Records (maintenance, malfunctions, costs, reports), and App & Data (Tour & Setup, Settings, Sync & Backup, Import, Free Up Space). On a phone they\'re under the More tab; on a computer they\'re down the sidebar.',
   },
   {
     title: 'Your data stays yours',
@@ -98,7 +98,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Compete — matches',
       view: { kind: 'match-form' },
-      body: 'The Compete tab holds your matches. Log a match with its type (USPSA Level 1/2/3, Section, State, Area, Nationals, IDPA tiers, Steel Challenge, local), division, power factor, gun, finishes, and stage-by-stage results, plus stage videos. The entry fee you enter is stored on the match itself; the Costs & Purchases screen reads it straight from there as the single source, so a match fee is never double-counted. The season view rolls up this year\'s matches, average finish, percent trend, and total fees. Open a logged match for a stage-by-stage breakdown that flags your toughest and strongest stages, and you can add each stage\'s A/C/D/miss breakdown to see what it would have scored with all A\'s. Pick Steel Challenge as the match type and the stage entry switches to Steel scoring — you enter each string\'s time (and any missed plates), and FirearmLog keeps your best 4 of 5 strings and totals your time, lowest wins. Pick an IDPA match and it switches to IDPA time-plus scoring — enter each stage\'s raw time, points down, and any penalties, and FirearmLog adds them up (1 second per point down, plus the penalties) into a total where the lowest time wins.',
+      body: 'The Compete tab holds your matches. Log a match with its type (USPSA Level 1/2/3, Section, State, Area, Nationals, IDPA tiers, Steel Challenge, local), division, power factor, gun, finishes, and stage-by-stage results, plus stage videos. The entry fee you enter is stored on the match itself; the Costs & Purchases screen reads it straight from there as the single source, so a match fee is never double-counted. The season view rolls up this year\'s matches, average finish, percent trend, and total fees. Open a logged match for a stage-by-stage breakdown that flags your toughest and strongest stages, and you can add each stage\'s A/C/D/miss breakdown to see what it would have scored with all A\'s. The debrief also shows a Speed & Accuracy read — your accuracy and your time as two separate numbers, and an optional question when a match was very clean (you can switch those coaching remarks off in Settings). Pick Steel Challenge as the match type and the stage entry switches to Steel scoring — you enter each string\'s time (and any missed plates), and FirearmLog keeps your best 4 of 5 strings and totals your time, lowest wins. Pick an IDPA match and it switches to IDPA time-plus scoring — enter each stage\'s raw time, points down, and any penalties, and FirearmLog adds them up (1 second per point down, plus the penalties) into a total where the lowest time wins.',
     },
     {
       title: 'Compete — classifiers',
@@ -199,51 +199,6 @@ function TourModal({ steps, onClose, onGo }: { steps: TourStep[]; onClose: () =>
           ? <button className="button" style={{ flex: 1, minHeight: 46 }} onClick={onClose}>Done</button>
           : <button className="button" style={{ flex: 1, minHeight: 46 }} onClick={() => setI(i + 1)}>Next ›</button>}
       </div>
-    </Sheet>
-  );
-}
-
-/** The guarded "Clear all data" wipe: a typed "erase" confirmation gates the
- *  destructive button. On confirm, clearAllData() wipes every store, then we
- *  reload to a guaranteed-clean app (empty log → the Setup Wizard reopens). */
-function ClearAllSheet({ onClose }: { onClose: () => void }) {
-  const [typed, setTyped] = useState('');
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState('');
-  const ready = typed.trim().toLowerCase() === 'erase';
-  async function erase() {
-    if (!ready || busy) return;
-    setBusy(true); setErr('');
-    try {
-      await clearAllData();
-      // A full reload guarantees no stale in-memory state survives the wipe;
-      // with an empty log the app returns to first-run on its own.
-      window.location.reload();
-    } catch {
-      setBusy(false);
-      setErr('Could not erase your data. Nothing was changed — please try again.');
-    }
-  }
-  return (
-    <Sheet title="Clear all data" onClose={onClose}>
-      <p className="report-note" style={{ marginBottom: 12 }}>
-        This permanently deletes everything on this device — every gun, session, match, classifier,
-        photo, and setting. There's no undo.
-      </p>
-      <p className="report-note" style={{ marginBottom: 12 }}>
-        Your saved backup files are not affected. If you're not sure, use Push to File to save a
-        backup first — then you can always get this back.
-      </p>
-      {err && <p className="form-problem">{err}</p>}
-      <label className="field">Type <strong>erase</strong> to confirm
-        <input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus autoComplete="off"
-          name="fl-erase-confirm" placeholder="erase" />
-      </label>
-      <button className="button" onClick={onClose} style={{ marginTop: 4 }}>Cancel</button>
-      <div style={{ height: 8 }} />
-      <button className="button danger" disabled={!ready || busy} onClick={() => void erase()}>
-        {busy ? 'Erasing…' : 'Erase everything'}
-      </button>
     </Sheet>
   );
 }

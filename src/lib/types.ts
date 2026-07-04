@@ -348,6 +348,9 @@ export interface AppSettings {
   /** The one "golden" north-star goal — pinned atop Goals and echoed on Home.
    *  Holds a Goal id; empty or undefined means none is set. */
   goldenGoalId?: string;
+  /** Whether to show the optional coaching remarks (e.g. the match-debrief
+   *  "room to push?" question). Undefined = on; set false to hide them. */
+  coachingRemarks?: boolean;
   legacy?: Record<string, unknown>;
 }
 
