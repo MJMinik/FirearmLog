@@ -6,7 +6,8 @@ import type { CSSProperties } from 'react';
 export type IconName =
   | 'home' | 'log' | 'compete' | 'progress' | 'more'
   | 'gun' | 'optic' | 'ammo' | 'magazine' | 'drills'
-  | 'costs' | 'maintenance' | 'parts' | 'reference' | 'reports' | 'help' | 'malfunction' | 'info';
+  | 'costs' | 'maintenance' | 'parts' | 'reference' | 'reports' | 'help' | 'malfunction' | 'info'
+  | 'sync' | 'import' | 'cleanup';
 
 // 24x24 viewBox line paths.
 const PATHS: Record<IconName, string> = {
@@ -28,6 +29,9 @@ const PATHS: Record<IconName, string> = {
   help:        'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M9.6 9.2a2.5 2.5 0 0 1 4.9.6c0 1.6-2.4 1.9-2.4 3.4 M12 16.8h.01',
   malfunction: 'M12 4.5 20.5 19H3.5z M12 10v4 M12 16.8h.01',
   info:        'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 11v5 M12 7.6h.01',
+  sync:        'M20 11a8 8 0 0 0-13.7-5.3L4 8 M4 4v4h4 M4 13a8 8 0 0 0 13.7 5.3L20 16 M20 20v-4h-4',
+  import:      'M12 3.5v9 M8.5 9 12 12.5 15.5 9 M5 14.5v4.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4.5',
+  cleanup:     'M12 4l1.5 4L18 9.5l-4.5 1.5L12 15l-1.5-4L6 9.5l4.5-1.5z M18 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z',
 };
 
 export function Icon({ name, size = 22, style }: { name: IconName; size?: number; style?: CSSProperties }) {

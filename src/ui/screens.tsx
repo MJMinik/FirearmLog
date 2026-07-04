@@ -14,8 +14,6 @@ import type { ReferenceEntry } from '../lib/referenceData.ts';
 import { formatDayKey } from '../lib/dates.ts';
 import { sessionRounds, roundsForFirearm, dryRepsForFirearm } from '../lib/stats.ts';
 import { ImportFlow } from './ImportFlow.tsx';
-import { SyncCard } from './SyncCard.tsx';
-import { PhotoCleanupCard } from './PhotoCleanupCard.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { Reveal } from './Reveal.tsx';
 import { Icon } from './Icon.tsx';
@@ -765,8 +763,8 @@ function RecentlyDeleted({ trashed, firearms, onRestore, onForget }: {
 }
 
 
-export function MoreScreen({ refreshKey, onImported, open }: {
-  refreshKey: number; onImported: () => void; open: (v: View) => void;
+export function MoreScreen({ refreshKey, open }: {
+  refreshKey: number; open: (v: View) => void;
 }) {
   const { loaded, error, reload } = useData(refreshKey);
   if (error) return <ScreenError onRetry={reload} />;
@@ -858,16 +856,21 @@ export function MoreScreen({ refreshKey, onImported, open }: {
           <span className="label">Tour &amp; Setup</span>
           <span className="value">›</span>
         </button>
-      </div>
-      <SyncCard onPulled={onImported} onBackedUp={onImported} />
-      <PhotoCleanupCard />
-      <div className="card">
-        <h2>Backup &amp; Import</h2>
-        <p className="report-note" style={{ marginBottom: 12 }}>
-          Import your Pistol Tracker backup here. Running it again simply re-applies the same
-          records — it won't double anything up.
-        </p>
-        <ImportFlow onImported={onImported} />
+        <button className="row-tap" onClick={() => open({ kind: 'sync' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="sync" size={20} /></span>
+          <span className="label">Sync &amp; Backup</span>
+          <span className="value">›</span>
+        </button>
+        <button className="row-tap" onClick={() => open({ kind: 'import' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="import" size={20} /></span>
+          <span className="label">Import</span>
+          <span className="value">›</span>
+        </button>
+        <button className="row-tap" onClick={() => open({ kind: 'free-space' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="cleanup" size={20} /></span>
+          <span className="label">Free Up Space</span>
+          <span className="value">›</span>
+        </button>
       </div>
     </div>
   );

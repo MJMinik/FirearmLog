@@ -53,7 +53,7 @@ const QUICK_TOUR: TourStep[] = [
   {
     title: 'Your gear and data',
     view: { kind: 'guns' },
-    body: 'Everything else is grouped into four sets: Your Gear (guns, optics, magazines, ammo, parts, care guides), Training (drills, how the numbers work), Records (maintenance, malfunctions, costs, reports), and App & Data (Tour & Setup, sync, and backups). On a phone they\'re under the More tab; on a computer they\'re down the sidebar.',
+    body: 'Everything else is grouped into four sets: Your Gear (guns, optics, magazines, ammo, parts, care guides), Training (drills, how the numbers work), Records (maintenance, malfunctions, costs, reports), and App & Data (Tour & Setup, Sync & Backup, Import, Free Up Space). On a phone they\'re under the More tab; on a computer they\'re down the sidebar.',
   },
   {
     title: 'Your data stays yours',
@@ -69,8 +69,6 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
   // Where a gear/data section lives, phrased for the current layout.
   const at = (section: string) =>
     isDesktop ? `the ${section} section in the sidebar` : `More → ${section}`;
-  // The catch-all screen that holds Sync, import, and Help.
-  const hub = isDesktop ? 'the Sync & Backup screen (bottom of the sidebar)' : 'the More tab';
 
   return [
     {
@@ -160,7 +158,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Sync — phone & desktop',
-      body: `Sync (on ${hub}) moves a single file between your devices through iCloud Drive or the Files app. Push from the device you just used, pull on the other one. The app tells you plainly when one copy is newer. On that same screen, Free Up Space appears when older full-size photos are taking up room — tap it to shrink them.`,
+      body: `Sync (under ${at('Sync & Backup')}) moves a single file between your devices through iCloud Drive or the Files app. Push from the device you just used, pull on the other one. The app tells you plainly when one copy is newer. ${at('Free Up Space')} makes smaller copies of older full-size photos when they're taking up room.`,
     },
     {
       title: 'Setup & sample data',

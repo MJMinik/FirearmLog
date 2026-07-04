@@ -2,9 +2,12 @@
 // out as a full sidebar with every section visible — feedback C1, spec §4.2.
 // One component, two layouts via CSS; nothing is built twice.
 //
-// The sidebar sections are grouped to match the phone More screen (July 1 2026):
-// Your Gear / Training / Records, then an App & Data group with Tour & Setup and
-// the Sync & Backup screen. Phone and desktop tell the same story.
+// The sidebar sections are grouped to match the phone More screen: Your Gear /
+// Training / Records / App & Data (Tour & Setup, Sync & Backup, Import, Free Up
+// Space), each a direct sidebar entry on desktop and a row under More on the
+// phone. The phone-only "More" tab opens that grouped menu; on desktop the
+// sidebar IS the menu, so the More button is hidden. Phone and desktop tell the
+// same story.
 import { Fragment } from 'react';
 import type { View } from './nav.ts';
 import { Icon } from './Icon.tsx';
@@ -51,6 +54,15 @@ const GROUPS: { label: string; sections: SectionDef[] }[] = [
       { target: { kind: 'costs' }, label: 'Costs & Purchases', icon: 'costs', also: ['purchase-form'] },
       { target: { kind: 'reports' }, label: 'Reports', icon: 'reports', also: [] }
     ]
+  },
+  {
+    label: 'App & Data',
+    sections: [
+      { target: { kind: 'help' }, label: 'Tour & Setup', icon: 'help', also: ['setup'] },
+      { target: { kind: 'sync' }, label: 'Sync & Backup', icon: 'sync', also: [] },
+      { target: { kind: 'import' }, label: 'Import', icon: 'import', also: [] },
+      { target: { kind: 'free-space' }, label: 'Free Up Space', icon: 'cleanup', also: [] }
+    ]
   }
 ];
 
@@ -62,31 +74,27 @@ export function TabBar({ active, onChange, view, onOpen }: {
 }) {
   const sectionOn = (s: SectionDef) =>
     !!view && (view.kind === s.target.kind || s.also.includes(view.kind));
-  // The Tour & Setup screen (and the setup wizard it launches) highlight their
-  // own sidebar entry, in the App & Data group.
-  const tourOn = !!view && (view.kind === 'help' || view.kind === 'setup');
-  // While a sidebar section (or Tour & Setup) is open, that is the highlighted
-  // thing, not whatever tab happens to be underneath it.
-  const anySectionOn = ALL_SECTIONS.some(sectionOn) || tourOn;
+  // While a sidebar section is open (Tour & Setup, Sync & Backup, etc. now live
+  // in the App & Data group), that is the highlighted thing, not whatever tab
+  // happens to be underneath it.
+  const anySectionOn = ALL_SECTIONS.some(sectionOn);
 
-  const tabButton = (t: { id: TabId; label: string; icon: IconName }) => (
+  const tabButton = (t: { id: TabId; label: string; icon: IconName }, extraClass = '') => (
     <button
       key={t.id}
-      className={active === t.id && !anySectionOn ? 'active' : ''}
+      className={[extraClass, active === t.id && !anySectionOn ? 'active' : ''].filter(Boolean).join(' ')}
       aria-current={active === t.id && !anySectionOn ? 'page' : undefined}
       onClick={() => onChange(t.id)}
     >
       <span className="glyph" aria-hidden="true"><Icon name={t.icon} /></span>
-      {t.id === 'more'
-        ? <><span className="label-phone">More</span><span className="label-desk">Sync &amp; Backup</span></>
-        : t.label}
+      {t.label}
     </button>
   );
 
   return (
     <nav className="tabbar" aria-label="Main">
       <div className="side-title" aria-hidden="true">FirearmLog</div>
-      {TABS.map(tabButton)}
+      {TABS.map((t) => tabButton(t))}
       {GROUPS.map((g) => (
         <Fragment key={g.label}>
           <div className="nav-group-label" aria-hidden="true">{g.label}</div>
@@ -100,14 +108,7 @@ export function TabBar({ active, onChange, view, onOpen }: {
           ))}
         </Fragment>
       ))}
-      <div className="nav-group-label" aria-hidden="true">App &amp; Data</div>
-      <button className={`sidebar-only ${tourOn ? 'active' : ''}`}
-        aria-current={tourOn ? 'page' : undefined}
-        onClick={() => onOpen({ kind: 'help' })}>
-        <span className="glyph" aria-hidden="true"><Icon name="help" /></span>
-        Tour &amp; Setup
-      </button>
-      {tabButton({ id: 'more', label: 'More', icon: 'more' })}
+      {tabButton({ id: 'more', label: 'More', icon: 'more' }, 'phone-only')}
     </nav>
   );
 }

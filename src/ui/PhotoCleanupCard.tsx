@@ -28,18 +28,20 @@ type Stage =
   | { name: 'working'; done: number; total: number }
   | { name: 'done'; shrunk: number; savedMB: string };
 
-export function PhotoCleanupCard() {
+export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean } = {}) {
   const [stage, setStage] = useState<Stage>({ name: 'idle' });
   const [hasOversized, setHasOversized] = useState(false);
+  const [checked, setChecked] = useState(false);
 
   // On open, check whether any stored photo is still full-size. If none, the
-  // card hides itself — there's nothing to free up.
+  // card hides itself — there's nothing to free up. On its own screen
+  // (standalone) it stays and shows a plain "nothing to free up" state instead.
   useEffect(() => {
     let alive = true;
     void (async () => {
       const all = await getAll<Media>('media');
       const oversized = all.some((m) => m.kind === 'image' && m.data.byteLength > OVERSIZE_BYTES);
-      if (alive) setHasOversized(oversized);
+      if (alive) { setHasOversized(oversized); setChecked(true); }
     })();
     return () => { alive = false; };
   }, []);
@@ -71,8 +73,21 @@ export function PhotoCleanupCard() {
     }
   }
 
-  // Nothing to free up (and not mid-run / not showing a result): hide the card.
-  if (stage.name === 'idle' && !hasOversized) return null;
+  // Nothing to free up (and not mid-run / not showing a result). Inline on the
+  // More screen the card hides itself; on its own screen it stays and says so.
+  if (stage.name === 'idle' && !hasOversized) {
+    if (!standalone) return null;
+    if (!checked) return <div className="card" aria-hidden="true" style={{ minHeight: 88 }} />;
+    return (
+      <div className="card">
+        <h2>Free Up Space</h2>
+        <p className="report-note">
+          Your photos are already optimized — there's nothing to free up right now. New photos are
+          shrunk automatically as you add them.
+        </p>
+      </div>
+    );
+  }
 
   return (
     <div className="card">

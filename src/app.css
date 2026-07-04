@@ -549,6 +549,9 @@ select.category-pick {
   .tabbar .glyph { font-size: 18px; width: 22px; text-align: center; }
   /* C1: every section gets its own sidebar entry on desktop. */
   .tabbar button.sidebar-only { display: flex; }
+  /* The "More" tab is a phone-only affordance — on desktop the sidebar already
+     lists every section, so the grouped More menu would be redundant. */
+  .tabbar button.phone-only { display: none; }
   .side-title {
     display: block; font-size: 20px; font-weight: 700; color: var(--text);
     padding: 0 14px 14px;

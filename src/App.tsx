@@ -26,6 +26,7 @@ import { UspsaImport } from './ui/UspsaImport.tsx';
 import { HelpScreen } from './ui/HelpScreen.tsx';
 import { NumbersGuide } from './ui/NumbersGuide.tsx';
 import { SetupWizard } from './ui/SetupWizard.tsx';
+import { SyncScreen, ImportScreen, FreeSpaceScreen } from './ui/AppDataScreens.tsx';
 import { countAll } from './lib/db.ts';
 import { ErrorBoundary } from './ui/ErrorBoundary.tsx';
 
@@ -228,8 +229,14 @@ export function App() {
     content = <SetupWizard
       onFinish={() => { refresh(); replace(null); }}
       onCancel={back} />;
+  } else if (view?.kind === 'sync') {
+    content = <SyncScreen onBack={back} onImported={refresh} />;
+  } else if (view?.kind === 'import') {
+    content = <ImportScreen onBack={back} onImported={refresh} />;
+  } else if (view?.kind === 'free-space') {
+    content = <FreeSpaceScreen onBack={back} />;
   } else if (tab === 'home') {
-    content = <HomeScreen refreshKey={refreshKey} onImported={refresh} open={push} onGoBackup={() => setTab('more')} />;
+    content = <HomeScreen refreshKey={refreshKey} onImported={refresh} open={push} onGoBackup={() => push({ kind: 'sync' })} />;
   } else if (tab === 'log') {
     content = <LogScreen refreshKey={refreshKey} open={push} />;
   } else if (tab === 'compete') {
@@ -237,7 +244,7 @@ export function App() {
   } else if (tab === 'progress') {
     content = <ProgressScreen refreshKey={refreshKey} open={push} />;
   } else {
-    content = <MoreScreen refreshKey={refreshKey} onImported={refresh} open={push} />;
+    content = <MoreScreen refreshKey={refreshKey} open={push} />;
   }
 
   // Key the error boundary to the current screen so navigating away from a

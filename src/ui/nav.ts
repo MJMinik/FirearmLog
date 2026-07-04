@@ -30,4 +30,7 @@ export type View =
   | { kind: 'uspsa-import' }
   | { kind: 'help' }
   | { kind: 'numbers'; section?: string }
-  | { kind: 'setup' };
+  | { kind: 'setup' }
+  | { kind: 'sync' }
+  | { kind: 'import' }
+  | { kind: 'free-space' };
