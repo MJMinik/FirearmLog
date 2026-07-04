@@ -385,6 +385,23 @@ select.category-pick {
    inputs bottom-align, nothing knocks out of line. */
 .break-fields .field { display: flex; flex-direction: column; }
 .break-fields .field input { margin-top: auto; }
+/* With the −/+ steppers a single no-wrap row is too wide for a phone, so the
+   hit-breakdown cells wrap; each keeps enough width for its two 44px buttons. */
+.break-fields { flex-wrap: wrap; }
+.break-fields .stepper-field { min-width: 136px; }
+
+/* Count stepper: big −/+ flanking the number for one-handed entry at the bay
+   (mobile wins). The number stays typeable for large counts. */
+.stepper { display: flex; align-items: stretch; gap: 8px; margin-top: 4px; }
+.stepper input { flex: 1; min-width: 0; margin-top: 0; text-align: center; }
+.stepper-btn {
+  flex: none; width: 44px; min-height: 44px;
+  border: 0.5px solid var(--separator); border-radius: 10px;
+  background: var(--bg-card); color: var(--accent-ink);
+  font-size: 22px; font-weight: 600; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+}
+.stepper-btn:disabled { opacity: 0.4; cursor: default; }
 
 .icon-btn {
   background: none; border: none; color: var(--text-dim);

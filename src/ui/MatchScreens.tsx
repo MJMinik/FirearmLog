@@ -12,6 +12,7 @@ import { DIVISIONS, IDPA_DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor, analy
 import { MarkThumb } from './MarkThumb.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { Reveal } from './Reveal.tsx';
+import { Stepper } from './Stepper.tsx';
 import type { View } from './nav.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
@@ -692,10 +693,8 @@ export function MatchForm({ id, onSaved, onCancel }: {
                   )}
                   {st.stringShowPenalty[n] && (
                     <div className="drill-edit-fields break-fields">
-                      <label className="field small">Plates missed
-                        <input type="number" inputMode="numeric" min="0" value={st.stringMisses[n] ?? ''}
-                          onChange={(e) => setStages((p) => p.map((x, m) => m === i ? { ...x, stringMisses: x.stringMisses.map((v, k) => k === n ? e.target.value : v) } : x))} />
-                      </label>
+                      <Stepper label="Plates missed" value={st.stringMisses[n] ?? ''}
+                        onChange={(val) => setStages((p) => p.map((x, m) => m === i ? { ...x, stringMisses: x.stringMisses.map((v, k) => k === n ? val : v) } : x))} />
                       <label className="field small" style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         <input type="checkbox" checked={st.stringStopMissed[n] ?? false} style={{ width: 18, height: 18 }}
                           onChange={(e) => setStages((p) => p.map((x, m) => m === i ? { ...x, stringStopMissed: x.stringStopMissed.map((v, k) => k === n ? e.target.checked : v) } : x))} />
@@ -744,37 +743,23 @@ export function MatchForm({ id, onSaved, onCancel }: {
                 <>
                   <p className="report-note" style={{ marginTop: 6, marginBottom: 2 }}>Points down (accuracy)</p>
                   <div className="drill-edit-fields break-fields">
-                    <label className="field small">Down-1 hits
-                      <input type="number" inputMode="numeric" min="0" value={st.idpaDown1}
-                        onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaDown1: e.target.value } : x))} />
-                    </label>
-                    <label className="field small">Down-3 hits
-                      <input type="number" inputMode="numeric" min="0" value={st.idpaDown3}
-                        onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaDown3: e.target.value } : x))} />
-                    </label>
-                    <label className="field small">Misses
-                      <input type="number" inputMode="numeric" min="0" value={st.idpaMisses}
-                        onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaMisses: e.target.value } : x))} />
-                    </label>
+                    <Stepper label="Down-1 hits" value={st.idpaDown1}
+                      onChange={(v) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaDown1: v } : x))} />
+                    <Stepper label="Down-3 hits" value={st.idpaDown3}
+                      onChange={(v) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaDown3: v } : x))} />
+                    <Stepper label="Misses" value={st.idpaMisses}
+                      onChange={(v) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaMisses: v } : x))} />
                   </div>
                   <p className="report-note" style={{ marginTop: 6, marginBottom: 2 }}>Penalties</p>
                   <div className="drill-edit-fields break-fields">
-                    <label className="field small">Non-threat hits
-                      <input type="number" inputMode="numeric" min="0" value={st.idpaHnt}
-                        onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaHnt: e.target.value } : x))} />
-                    </label>
-                    <label className="field small">Procedurals (PE)
-                      <input type="number" inputMode="numeric" min="0" value={st.idpaPe}
-                        onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaPe: e.target.value } : x))} />
-                    </label>
-                    <label className="field small">Flagrant
-                      <input type="number" inputMode="numeric" min="0" value={st.idpaFp}
-                        onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaFp: e.target.value } : x))} />
-                    </label>
-                    <label className="field small">Failure to Do Right
-                      <input type="number" inputMode="numeric" min="0" value={st.idpaFtdr}
-                        onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaFtdr: e.target.value } : x))} />
-                    </label>
+                    <Stepper label="Non-threat hits" value={st.idpaHnt}
+                      onChange={(v) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaHnt: v } : x))} />
+                    <Stepper label="Procedurals (PE)" value={st.idpaPe}
+                      onChange={(v) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaPe: v } : x))} />
+                    <Stepper label="Flagrant" value={st.idpaFp}
+                      onChange={(v) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaFp: v } : x))} />
+                    <Stepper label="Failure to Do Right" value={st.idpaFtdr}
+                      onChange={(v) => setStages((p) => p.map((x, n) => n === i ? { ...x, idpaFtdr: v } : x))} />
                   </div>
                 </>
               )}
@@ -831,10 +816,8 @@ export function MatchForm({ id, onSaved, onCancel }: {
                 <>
                   <div className="drill-edit-fields break-fields">
                     {BREAK_FIELDS.map(([key, label]) => (
-                      <label className="field small" key={key}>{label}
-                        <input type="number" inputMode="numeric" min="0" value={st[key]}
-                          onChange={(e) => setStages((p) => p.map((x, n) => n === i ? ({ ...x, [key]: e.target.value }) as StageRow : x))} />
-                      </label>
+                      <Stepper key={key} label={label} value={st[key]}
+                        onChange={(v) => setStages((p) => p.map((x, n) => n === i ? ({ ...x, [key]: v }) as StageRow : x))} />
                     ))}
                   </div>
                   {sc && (
