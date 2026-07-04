@@ -151,7 +151,7 @@ export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
               {/* Match rounds stacked on top */}
               {matchH > 0 && (
                 <rect x={x} y={h - matchH - dryH} width={barW} height={matchH}
-                  rx={2} fill="var(--warn)" />
+                  rx={2} fill="var(--cat-match)" />
               )}
               {/* Dry fire reps on top */}
               {dryH > 0 && (
@@ -172,7 +172,7 @@ export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
     </svg>
     <div className="chart-legend">
       <span><i style={{ background: 'var(--accent)' }} />Live rounds</span>
-      <span><i style={{ background: 'var(--warn)' }} />Match rounds</span>
+      <span><i style={{ background: 'var(--cat-match)' }} />Match rounds</span>
       <span><i style={{ background: 'var(--text-dim)', opacity: 0.4 }} />Dry-fire reps</span>
     </div>
     </>

@@ -14,6 +14,8 @@
   --accent: #E8820E;
   --accent-ink: #9A5200;
   --on-accent: #2a1800;
+  --cat-match: #0072B2; /* match/competition series colour — a colourblind-safe blue kept
+                           distinct from live-fire amber (orange/blue = max separation). */
   --separator: rgba(60, 60, 67, 0.18);
   --danger: #ff3b30; /* iOS system red — used for accents, badges, error text, bars */
   --danger-deep: #d70015; /* white-on-this ≈5.4:1 (AA pass) — for solid Delete buttons (audit F1; plain #ff3b30 was 3.55:1) */
@@ -47,6 +49,7 @@
     --text-dim: #98989e;
     --accent: #FF9F0A;      /* iOS system orange (dark) — brighter amber fill on dark */
     --accent-ink: #FFB340;  /* amber text/indicator on dark — 9.5:1 on the dark card */
+    --cat-match: #56B4E9;   /* match series on dark — brighter blue (7.4:1 on the dark card) */
     --separator: rgba(84, 84, 88, 0.6);
     --danger: #ff453a;
     --success: #30d158;
@@ -618,7 +621,7 @@ a.button { text-decoration: none; }
 .dot.practice { background: var(--accent); }                                  /* filled circle — live fire */
 .dot.dry { background: transparent; border: 1.5px solid var(--text-dim); }    /* hollow ring — dry fire */
 .dot.class { background: var(--success); border-radius: 1px; }                /* square — class */
-.dot.match { background: var(--warn); border-radius: 1px; transform: rotate(45deg); } /* diamond — match */
+.dot.match { background: var(--cat-match); border-radius: 1px; transform: rotate(45deg); } /* blue diamond — match */
 
 /* ---------- M6.1: type-ahead suggestions ---------- */
 .suggest-anchor { position: relative; }
