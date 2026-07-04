@@ -388,12 +388,18 @@ select.category-pick {
 /* With the −/+ steppers a single no-wrap row is too wide for a phone, so the
    hit-breakdown cells wrap; each keeps enough width for its two 44px buttons. */
 .break-fields { flex-wrap: wrap; }
-.break-fields .stepper-field { min-width: 136px; }
+.break-fields .stepper-field { min-width: 150px; }
 
 /* Count stepper: big −/+ flanking the number for one-handed entry at the bay
    (mobile wins). The number stays typeable for large counts. */
 .stepper { display: flex; align-items: stretch; gap: 8px; margin-top: 4px; }
-.stepper input { flex: 1; min-width: 0; margin-top: 0; text-align: center; }
+.stepper input { flex: 1; min-width: 2.75em; margin-top: 0; text-align: center; }
+/* We provide our own −/+ buttons, so hide the browser's native number spinners.
+   On desktop those ▲▼ crowded the narrow field and clipped a 2-digit count to one
+   digit; hiding them reclaims the width (phones never showed them). */
+.stepper input[type='number'] { -moz-appearance: textfield; appearance: textfield; }
+.stepper input::-webkit-outer-spin-button,
+.stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .stepper-btn {
   flex: none; width: 44px; min-height: 44px;
   border: 0.5px solid var(--separator); border-radius: 10px;

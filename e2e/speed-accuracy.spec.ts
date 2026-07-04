@@ -33,20 +33,23 @@ test.describe('Speed & Accuracy debrief', () => {
     await expect(page.getByText(/room to push the pace/)).toBeVisible();
   });
 
-  test('turning off coaching remarks hides the question but keeps the numbers', async ({ page }) => {
+  test('the inline "Turn off" hides the question in place but keeps the numbers', async ({ page }) => {
     await seedDemo(page);
     await cleanUspsaMatch(page, 'SA Toggle');
     await expect(page.getByText(/room to push the pace/)).toBeVisible();
 
-    // Turn the remarks off in Settings.
-    await gotoSection(page, 'Settings');
-    await page.getByRole('switch', { name: /Coaching remarks/ }).click();
+    // The nudge carries an inline "Turn off"; using it hides the question in place.
+    await page.getByRole('button', { name: 'Turn off' }).click();
+    await expect(page.getByText(/room to push the pace/)).toHaveCount(0);   // question gone
+    await expect(page.getByText(/kept 100% of your points/)).toBeVisible(); // numbers stay
+  });
 
-    // Back to the match: the accuracy numbers remain, the question is gone.
-    await gotoTab(page, 'Compete');
-    await page.getByText('SA Toggle', { exact: true }).first().click();
-    await expect(page.getByRole('heading', { name: 'Speed & Accuracy' })).toBeVisible();
-    await expect(page.getByText(/kept 100% of your points/)).toBeVisible();
-    await expect(page.getByText(/room to push the pace/)).toHaveCount(0);
+  test('Settings has a coaching-remarks switch that toggles', async ({ page }) => {
+    await seedDemo(page);
+    await gotoSection(page, 'Settings');
+    const sw = page.getByRole('switch', { name: /Coaching remarks/ });
+    await expect(sw).toHaveAttribute('aria-checked', 'true'); // default on
+    await sw.click();
+    await expect(sw).toHaveAttribute('aria-checked', 'false');
   });
 });
