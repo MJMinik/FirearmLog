@@ -1,6 +1,6 @@
 // Competition math and vocabulary (spec §11). Pure logic, fully tested.
 
-import type { MatchStage } from './types.ts';
+import type { Match, MatchStage } from './types.ts';
 
 export const MATCH_TYPES = [
   'USPSA Level 1 (club match)',
@@ -565,4 +565,39 @@ export function matchSpeedAccuracy(
   const overAccuracy = used >= 2 && pointsKept >= SPEED_ACCURACY_CLEAN_USPSA;
   return { discipline: 'uspsa', pointsKept, pointsDown: available - rawHit, availablePoints: available,
     misses, noShoots, procedurals, stagesUsed: used, stagesTotal: all.length, overAccuracy };
+}
+
+// ---- Speed/accuracy TREND across matches (phase 2) ----
+// The board's point: one match is noise; the honest signal is the trend. This plots
+// ACCURACY (USPSA points kept) per match over time — no pace line, because absolute
+// pace isn't comparable across matches (pace enters only via the trend remark). USPSA
+// only for v1 (the cleanest accuracy axis); IDPA/Steel use incompatible scales.
+
+export interface AccuracyTrendPoint {
+  matchId: string;
+  name: string;
+  date: string;       // YYYY-MM-DD
+  pointsKept: number; // 0..1
+}
+export interface AccuracyTrend {
+  points: AccuracyTrendPoint[]; // chronological (oldest → newest); USPSA matches with a hit breakdown
+  /** The recent run has been very clean — a trend-backed (not one-match) basis for the
+   *  "room to push?" remark. Conservative: needs >= 3 recent matches, all >= 95% kept. */
+  consistentlyClean: boolean;
+}
+
+export function matchAccuracyTrend(matches: Match[]): AccuracyTrend {
+  const points: AccuracyTrendPoint[] = [];
+  for (const m of matches ?? []) {
+    if ((m.scoringType ?? 'uspsa') !== 'uspsa') continue;
+    const sa = matchSpeedAccuracy(m.stages, 'uspsa', m.powerFactor);
+    if (sa && sa.discipline === 'uspsa') {
+      points.push({ matchId: m.id, name: m.name || m.date, date: m.date, pointsKept: sa.pointsKept });
+    }
+  }
+  points.sort((a, b) => a.date.localeCompare(b.date));
+  const recent = points.slice(-5);
+  const consistentlyClean = recent.length >= 3
+    && recent.every((p) => p.pointsKept >= SPEED_ACCURACY_CLEAN_USPSA);
+  return { points, consistentlyClean };
 }

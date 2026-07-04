@@ -17,6 +17,7 @@ import {
   allClassifications, formatDrillScore, personalRecords, roundsByMonth, type RoundsFilter
 } from '../lib/dashboard.ts';
 import { bucketTotals, malfunctionsInRange, ratePerThousand, spanStartDate } from '../lib/trends.ts';
+import { matchAccuracyTrend } from '../lib/competition.ts';
 import { buildHeatmap, monthLabels, sessionsOnDay } from '../lib/heatmap.ts';
 import { sessionRounds } from '../lib/stats.ts';
 import type { View } from './nav.ts';
@@ -44,6 +45,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
   const [editing, setEditing] = useState<Goal | null>(null);
   const [skillSheet, setSkillSheet] = useState<SkillAssessment | 'new' | null>(null);
   const [goldenId, setGoldenId] = useState<string>('');
+  const [coachingRemarks, setCoachingRemarks] = useState(true);
 
   useEffect(() => {
     let alive = true;
@@ -62,10 +64,15 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
       setFirearms(f); setDrills(d); setClassifiers(c);
       setMalfunctions(activeMalfunctions(mf, trashedIds));
       const settings = await getSettings<AppSettings>();
-      if (alive) setGoldenId(settings?.goldenGoalId ?? '');
+      if (alive) { setGoldenId(settings?.goldenGoalId ?? ''); setCoachingRemarks(settings?.coachingRemarks !== false); }
     })();
     return () => { alive = false; };
   }, [refreshKey, bump]);
+
+  async function disableRemarks() {
+    setCoachingRemarks(false); // optimistic; re-enable in Settings
+    await putSettings<AppSettings>({ coachingRemarks: false });
+  }
 
   async function addGoal() {
     if (!text.trim()) return;
@@ -176,6 +183,9 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
 
       <TrendsCard sessions={sessions} matches={matches} firearms={firearms}
         drills={drills} classifiers={classifiers} malfunctions={malfunctions} open={open} />
+
+      <SpeedAccuracyTrendCard matches={matches} coachingRemarks={coachingRemarks}
+        onDisableRemarks={() => void disableRemarks()} />
 
       <HeatmapCard sessions={sessions} open={open} />
 
@@ -290,6 +300,53 @@ function HeatmapCard({ sessions, open }: { sessions: Session[]; open: (v: View) 
             </button>
           ))}
         </Sheet>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Speed & Accuracy over time (phase 2). Plots USPSA accuracy (points kept) across
+ * matches — the board's "the real signal is the trend, not one match." No pace line
+ * (raw time isn't comparable across matches); pace enters only as the trend-backed
+ * remark when a clear multi-match pattern holds. Hidden until there are >= 2 matches
+ * with a hit breakdown, so it never clutters a log that can't yet support it.
+ */
+function SpeedAccuracyTrendCard({ matches, coachingRemarks, onDisableRemarks }: {
+  matches: Match[]; coachingRemarks: boolean; onDisableRemarks: () => void;
+}) {
+  const trend = matchAccuracyTrend(matches);
+  const pts = trend.points;
+  if (pts.length < 2) return null;
+
+  const w = 280, h = 120, padX = 8, padY = 14;
+  const vals = pts.map((p) => p.pointsKept * 100);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const range = max - min || 1;
+  const stepX = (w - padX * 2) / (pts.length - 1);
+  const xAt = (i: number) => padX + i * stepX;
+  const yAt = (v: number) => padY + (1 - (v - min) / range) * (h - padY * 2);
+  const line = pts.map((p, i) => `${xAt(i)},${yAt(p.pointsKept * 100)}`).join(' ');
+
+  return (
+    <div className="card">
+      <h2>Speed &amp; Accuracy <InfoTip title="Speed & Accuracy over time">Your USPSA accuracy — the share of available points you kept — across your matches, oldest to newest. One match is a small sample; this is the honest place to read whether you're getting cleaner or looser over a season. There's no pace line on purpose: raw time isn't comparable across different matches, so pace shows up only as a note below, and only when a clear pattern holds.</InfoTip></h2>
+      <p className="report-note" style={{ marginTop: 0 }}>
+        Points kept — {Math.round(min)}% to {Math.round(max)}% across {pts.length} USPSA matches.
+      </p>
+      <svg viewBox={`0 0 ${w} ${h}`} width="100%" style={{ display: 'block', marginTop: 4 }}
+        role="img" aria-label={`Accuracy across ${pts.length} matches — ${Math.round(min)} to ${Math.round(max)} percent of points kept, oldest to newest`}>
+        <polyline points={line} fill="none" stroke="var(--accent-ink)" strokeWidth={1.5}
+          strokeLinejoin="round" strokeLinecap="round" />
+        {pts.map((p, i) => (
+          <circle key={p.matchId} cx={xAt(i)} cy={yAt(p.pointsKept * 100)} r={2.5} fill="var(--accent-ink)" />
+        ))}
+      </svg>
+      {trend.consistentlyClean && coachingRemarks && (
+        <p className="report-note" style={{ marginTop: 8 }}>
+          Your recent matches have all been very clean (95%+ of points kept) — you may consistently have room to push the pace.{' '}
+          <button className="link-btn" onClick={onDisableRemarks}>Turn off</button>
+        </p>
       )}
     </div>
   );
