@@ -291,7 +291,7 @@ export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: Vie
       </div>
 
       <div className="card">
-        <h2>Start over</h2>
+        <h2>Clear all data / Start over</h2>
         <p className="report-note" style={{ marginBottom: 10 }}>
           Erase everything on this device and begin from an empty log — handy once you've explored the
           sample data and want to start your own. It can't be undone, and your saved backup files
