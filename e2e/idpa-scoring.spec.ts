@@ -29,9 +29,9 @@ test.describe('IDPA scoring (Layer 2)', () => {
     const block = page.locator('.drill-edit').first();
     await block.getByLabel('Raw time (s)').fill('20');
     await block.getByRole('button', { name: '+ points down / penalties' }).click();
-    await block.getByLabel('Down-1 hits').fill('2');
-    await block.getByLabel('Non-threat hits').fill('1');
-    await block.getByLabel('Procedurals (PE)').fill('1');
+    await block.getByLabel('Down-1 hits', { exact: true }).fill('2');
+    await block.getByLabel('Non-threat hits', { exact: true }).fill('1');
+    await block.getByLabel('Procedurals (PE)', { exact: true }).fill('1');
 
     // 20 (raw) + 2 (points down) + 5 (non-threat) + 3 (PE) = 30
     await expect(block.getByText(/30s/).first()).toBeVisible();

@@ -18,7 +18,7 @@ test.describe('count stepper', () => {
     const block = page.locator('.drill-edit').first();
     await block.getByRole('button', { name: '+ Add hit breakdown (A/C/D/miss)' }).click();
 
-    const alphas = block.getByLabel('Alphas (A)');
+    const alphas = block.getByLabel('Alphas (A)', { exact: true });
     await expect(alphas).toHaveValue('');
 
     // − is disabled while the count is empty/zero.

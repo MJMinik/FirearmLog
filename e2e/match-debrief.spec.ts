@@ -46,8 +46,8 @@ test.describe('Match-after debrief (Layer 1)', () => {
     const block = page.locator('.drill-edit').first();
     await block.getByLabel('Time (s)').fill('2');
     await block.getByRole('button', { name: /Add hit breakdown/ }).click();
-    await block.getByLabel('Alphas (A)').fill('1');
-    await block.getByLabel('Charlies (C)').fill('1');
+    await block.getByLabel('Alphas (A)', { exact: true }).fill('1');
+    await block.getByLabel('Charlies (C)', { exact: true }).fill('1');
 
     // Points is now derived (read-only) from the hits: 1A(5) + 1C(3) minor = 8.
     await expect(block.getByLabel(/^Points/)).toHaveValue('8');
