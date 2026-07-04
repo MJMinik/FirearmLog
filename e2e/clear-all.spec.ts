@@ -13,7 +13,10 @@ test.describe('Clear all data / Start over', () => {
     await page.getByRole('button', { name: 'Clear all data' }).click();
 
     // The guard sheet is up; the destructive button is disabled until "erase" is typed.
-    await expect(page.getByRole('heading', { name: 'Clear all data' })).toBeVisible();
+    // exact: the card heading is now "Clear all data / Start over", so match only
+    // the confirmation sheet's exact "Clear all data" heading (avoids a strict-mode
+    // clash between the two).
+    await expect(page.getByRole('heading', { name: 'Clear all data', exact: true })).toBeVisible();
     const erase = page.getByRole('button', { name: 'Erase everything' });
     await expect(erase).toBeDisabled();
 
