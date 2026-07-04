@@ -394,7 +394,7 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
             </div>
             {stats.classification ? (
               <div className="stat">
-                <div className="num" style={{ color: 'var(--accent)' }}>
+                <div className="num" style={{ color: 'var(--accent-ink)' }}>
                   {stats.classification.currentClass}
                   <span style={{ fontSize: 15, color: 'var(--text-dim)', marginLeft: 6 }}>
                     {stats.classification.average?.toFixed(1)}%

@@ -156,7 +156,7 @@ export function ReferenceDetail({ id, onBack, onEdit, onCopy, onDeleted, refresh
           {entry.links.map((l) => (
             <a className="row-tap" key={l.url} href={l.url} target="_blank" rel="noreferrer"
               style={{ textDecoration: 'none' }}>
-              <span className="label" style={{ color: 'var(--accent)' }}>{l.label}</span>
+              <span className="label" style={{ color: 'var(--accent-ink)' }}>{l.label}</span>
               <span className="value">↗</span>
             </a>
           ))}

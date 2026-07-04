@@ -120,7 +120,7 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
         <Sheet title="Your Data File Is Ready" onClose={() => pushDone(stage.url)}>
           <p className="report-note" style={{ marginBottom: 10 }}>{stage.summary}</p>
           <p className="report-note" style={{ marginBottom: 10 }}>
-            After you tap the blue button, your iPhone shows a file preview screen.
+            After you tap <strong>Save the File Now</strong> below, your iPhone shows a file preview screen.
             Here's what to do on it:
           </p>
           <ol className="sync-steps">

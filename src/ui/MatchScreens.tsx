@@ -105,7 +105,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
             )}
             {match.matchPercent != null && (
               <div className="stat">
-                <div className="num" style={{ color: 'var(--accent)' }}>{match.matchPercent}%</div>
+                <div className="num" style={{ color: 'var(--accent-ink)' }}>{match.matchPercent}%</div>
                 <div className="cap">Match percent</div>
               </div>
             )}
@@ -132,7 +132,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
         {match.entryFee != null && <div className="row"><span className="label">Entry fee</span><span className="value">${match.entryFee.toFixed(2)}</span></div>}
         {match.practiScoreUrl && (
           <a className="row-tap" href={match.practiScoreUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
-            <span className="label" style={{ color: 'var(--accent)' }}>Results on PractiScore</span>
+            <span className="label" style={{ color: 'var(--accent-ink)' }}>Results on PractiScore</span>
             <span className="value">↗</span>
           </a>
         )}
@@ -153,7 +153,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
               <span className="label">
                 Stage {st.number}
                 {st.isToughest && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--text-dim)' }}>Toughest</span>}
-                {st.isStrongest && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--accent)' }}>Strongest</span>}
+                {st.isStrongest && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--accent-ink)' }}>Strongest</span>}
                 {st.notes && <div className="row-sub">{st.notes}</div>}
                 {st.score && (
                   <div className="row-sub">
@@ -182,7 +182,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
           {steelTotal != null && (
             <div className="row">
               <span className="label"><strong>Match total</strong><span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--text-dim)' }}>lowest wins</span></span>
-              <span className="value" style={{ color: 'var(--accent)' }}><strong>{steelTotal}s</strong></span>
+              <span className="value" style={{ color: 'var(--accent-ink)' }}><strong>{steelTotal}s</strong></span>
             </div>
           )}
           {steelRows.map(({ st, score }, i) => (
@@ -214,7 +214,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
           {idpaTotal != null && (
             <div className="row">
               <span className="label"><strong>Match total</strong><span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--text-dim)' }}>lowest wins</span></span>
-              <span className="value" style={{ color: 'var(--accent)' }}><strong>{idpaTotal}s</strong></span>
+              <span className="value" style={{ color: 'var(--accent-ink)' }}><strong>{idpaTotal}s</strong></span>
             </div>
           )}
           {idpaRows.map(({ st, score }, i) => (

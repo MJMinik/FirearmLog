@@ -55,7 +55,7 @@ export function SetupWizard({ onFinish, onCancel }: {
   const gearRow = (label: string, count: number, add: Adding, accent: boolean) => (
     <button className="row-tap" onClick={() => setAdding(add)}>
       <span className="label">{label}<div className="row-sub">{count} added</div></span>
-      <span className="value" style={accent ? { color: 'var(--accent)', fontWeight: 600 } : undefined}>+ Add ›</span>
+      <span className="value" style={accent ? { color: 'var(--accent-ink)', fontWeight: 600 } : undefined}>+ Add ›</span>
     </button>
   );
 
@@ -114,7 +114,7 @@ export function SetupWizard({ onFinish, onCancel }: {
             onClick={onFinish}
             style={{
               display: 'block', margin: '6px auto 0', padding: 12, minHeight: 44,
-              background: 'none', border: 'none', color: 'var(--accent)',
+              background: 'none', border: 'none', color: 'var(--accent-ink)',
               fontSize: 15, cursor: 'pointer',
             }}
           >

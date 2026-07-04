@@ -51,7 +51,7 @@ export function DrillHistoryScreen({ name, refreshKey, onBack, open }: {
             <div className="card">
               <div className="row" style={{ borderBottom: 'none' }}>
                 <span className="label">Best</span>
-                <span className="value" style={{ color: 'var(--accent)' }}>
+                <span className="value" style={{ color: 'var(--accent-ink)' }}>
                   {formatDrillScore(best, scoring)}
                 </span>
               </div>
@@ -74,7 +74,7 @@ export function DrillHistoryScreen({ name, refreshKey, onBack, open }: {
                 <span className="label">
                   {formatDayKey(a.date)}
                   {best && a === best && (
-                    <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--accent)' }}>Best</span>
+                    <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--accent-ink)' }}>Best</span>
                   )}
                   <div className="row-sub">
                     {[formatDrillScore(a, scoring), a.distance && `${a.distance}`, a.notes].filter(Boolean).join(' · ')}

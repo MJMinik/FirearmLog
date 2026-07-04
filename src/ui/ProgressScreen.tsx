@@ -156,7 +156,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
                 <input type="checkbox" checked={g.achieved} onChange={() => void toggleAchieved(g)} />
                 <span style={g.achieved ? { textDecoration: 'line-through', color: 'var(--text-dim)' } : undefined}>
                   {g.text}
-                  {isGolden && <div className="row-sub" style={{ color: 'var(--accent)' }}>North Star</div>}
+                  {isGolden && <div className="row-sub" style={{ color: 'var(--accent-ink)' }}>North Star</div>}
                   {(g.category || g.target) && (
                     <div className="row-sub">{[g.category, g.target].filter(Boolean).join(' · ')}</div>
                   )}

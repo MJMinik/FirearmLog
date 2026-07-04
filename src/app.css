@@ -5,7 +5,15 @@
   --bg-grouped-header: transparent;
   --text: #000000;
   --text-dim: #6c6c70; /* WCAG AA: ~4.7:1 on the grey app bg (was #8e8e93 ≈ 2.9:1) — audit #D1 */
-  --accent: #0060e6; /* WCAG AA: white-on-accent ≈5.5:1, accent-as-text ≈5.0:1 (was #007aff ≈4.0:1) — audit #D2 */
+  /* Brand amber (T2-1). Two roles, kept apart so contrast is never left to chance:
+     --accent      = FILL/brand on light backgrounds (buttons, chart bars, tints, borders, the mark).
+                     As a graphic it is only ~2.75:1 on white, so it is NEVER used as text.
+     --accent-ink  = the amber TEXT/link/active-nav colour and any graphic indicator that must
+                     meet contrast (focus ring, "today" outline, selection ring) — 5.9:1 on white.
+     --on-accent   = dark ink for TEXT that sits ON an --accent fill (6.2:1 on light amber). */
+  --accent: #E8820E;
+  --accent-ink: #9A5200;
+  --on-accent: #2a1800;
   --separator: rgba(60, 60, 67, 0.18);
   --danger: #ff3b30; /* iOS system red — used for accents, badges, error text, bars */
   --danger-deep: #d70015; /* white-on-this ≈5.4:1 (AA pass) — for solid Delete buttons (audit F1; plain #ff3b30 was 3.55:1) */
@@ -37,7 +45,8 @@
     --bg-card: #1c1c1e;
     --text: #ffffff;
     --text-dim: #98989e;
-    --accent: #0a84ff;
+    --accent: #FF9F0A;      /* iOS system orange (dark) — brighter amber fill on dark */
+    --accent-ink: #FFB340;  /* amber text/indicator on dark — 9.5:1 on the dark card */
     --separator: rgba(84, 84, 88, 0.6);
     --danger: #ff453a;
     --success: #30d158;
@@ -64,7 +73,7 @@ input, select, textarea, button { font-size: 16px; font-family: inherit; }
    controls had stripped the default ring; :focus-visible only shows it for
    keyboard users, never on mouse tap. */
 :focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid var(--accent-ink); /* amber fill is <3:1; ink meets the focus-indicator bar */
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -161,7 +170,7 @@ input, select, textarea, button { font-size: 16px; font-family: inherit; }
   cursor: pointer;
 }
 .update-banner span { flex: 1; }
-.update-banner button.primary { background: var(--accent); }
+.update-banner button.primary { background: var(--accent); color: var(--on-accent); }
 
 .row {
   display: flex;
@@ -194,7 +203,7 @@ input, select, textarea, button { font-size: 16px; font-family: inherit; }
   border: none;
   border-radius: 12px;
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent); /* dark ink — white on amber is only 2.75:1 */
   font-size: var(--fs-body);
   font-weight: 600;
   cursor: pointer;
@@ -202,7 +211,7 @@ input, select, textarea, button { font-size: 16px; font-family: inherit; }
 }
 /* Audit #D10: secondary buttons sit on white cards — give them a visible edge so
    they read as buttons, not links. */
-.button.secondary { background: var(--bg-card); color: var(--accent); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
+.button.secondary { background: var(--bg-card); color: var(--accent-ink); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 .button:disabled { opacity: 0.5; }
 
 .empty {
@@ -228,7 +237,7 @@ input, select, textarea, button { font-size: 16px; font-family: inherit; }
 .badge { font-size: var(--fs-caption); font-weight: 600; border-radius: 6px; padding: 2px 8px; }
 .badge.ok { background: color-mix(in srgb, var(--success) 20%, transparent); color: color-mix(in srgb, var(--success) 45%, black); }
 .badge.bad { background: color-mix(in srgb, var(--danger) 20%, transparent); color: color-mix(in srgb, var(--danger) 60%, black); }
-.badge.info { background: color-mix(in srgb, var(--accent) 18%, transparent); color: color-mix(in srgb, var(--accent) 80%, black); }
+.badge.info { background: color-mix(in srgb, var(--accent) 18%, transparent); color: var(--accent-ink); }
 
 select.category-pick {
   min-height: var(--touch-min);
@@ -268,7 +277,7 @@ select.category-pick {
   gap: 2px;
   cursor: pointer;
 }
-.tabbar button.active { color: var(--accent); }
+.tabbar button.active { color: var(--accent-ink); }
 .tabbar .glyph { font-size: 22px; line-height: 1; }
 
 .report-note { font-size: var(--fs-subhead); line-height: 1.45; color: var(--text-dim); margin-top: 10px; }
@@ -284,7 +293,7 @@ select.category-pick {
 /* ---------- M2: navigation bar on pushed screens ---------- */
 .navbar { display: flex; justify-content: space-between; align-items: center; min-height: 44px; }
 .back-btn, .navbar-action {
-  background: none; border: none; color: var(--accent);
+  background: none; border: none; color: var(--accent-ink);
   font-size: 17px; min-height: 44px; min-width: 44px; padding: 0 4px; cursor: pointer;
 }
 .navbar-action { font-weight: 600; }
@@ -299,7 +308,7 @@ select.category-pick {
 .field textarea { min-height: 80px; }
 .field.small { flex: 1; }
 .field-optional { color: var(--text-dim); font-weight: 400; opacity: 0.75; }
-.link-btn { background: none; border: 0; padding: 0 4px; color: var(--accent); font: inherit; text-decoration: underline; cursor: pointer;
+.link-btn { background: none; border: 0; padding: 0 4px; color: var(--accent-ink); font: inherit; text-decoration: underline; cursor: pointer;
   /* audit F2: a real tap target, not a 25px sliver, even though it reads as a link */
   display: inline-flex; align-items: center; min-height: var(--touch-min); }
 /* Progressive-disclosure reveal (shared Reveal component) */
@@ -319,7 +328,7 @@ select.category-pick {
   font-size: 17px; min-height: 44px; cursor: pointer; padding: 0; opacity: 0.55;
 }
 .gun-toggle.on { opacity: 1; font-weight: 600; }
-.gun-toggle.on::before { content: '✓ '; color: var(--accent); }
+.gun-toggle.on::before { content: '✓ '; color: var(--accent-ink); }
 .rounds-input {
   width: 96px; min-height: 44px; border: 0.5px solid var(--separator); border-radius: 10px;
   background: var(--bg); color: var(--text); padding: 8px 10px; text-align: right;
@@ -335,7 +344,7 @@ select.category-pick {
   font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim);
 }
 .checklist-disclosure-toggle {
-  font-size: 14px; font-weight: 600; color: var(--accent); flex-shrink: 0;
+  font-size: 14px; font-weight: 600; color: var(--accent-ink); flex-shrink: 0;
   display: flex; align-items: center; gap: 4px;
 }
 .checklist-section { margin-bottom: 16px; }
@@ -512,7 +521,7 @@ select.category-pick {
 }
 .markup-colors { display: flex; gap: 10px; margin-bottom: 10px; }
 .markup-swatch { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--border); cursor: pointer; }
-.markup-swatch.on { box-shadow: 0 0 0 3px var(--accent); }
+.markup-swatch.on { box-shadow: 0 0 0 3px var(--accent-ink); }
 .markup-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .markup-row .markup-num { position: static; }
 .markup-row input { flex: 1; }
@@ -585,7 +594,7 @@ a.button { text-decoration: none; }
 @media (prefers-color-scheme: dark) {
   .badge.ok { color: color-mix(in srgb, var(--success) 55%, white); }
   .badge.bad { color: color-mix(in srgb, var(--danger) 60%, white); }
-  .badge.info { color: color-mix(in srgb, var(--accent) 70%, white); }
+  .badge.info { color: var(--accent-ink); }
   .badge.warn-badge { color: color-mix(in srgb, var(--warn) 55%, white); }
 }
 
@@ -599,14 +608,17 @@ a.button { text-decoration: none; }
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
 }
 .cal-cell.empty { background: none; cursor: default; }
-.cal-cell.today { outline: 2px solid var(--accent); }
+.cal-cell.today { outline: 2px solid var(--accent-ink); }
 .cal-cell.busy { font-weight: 600; }
-.cal-dots { display: flex; gap: 3px; min-height: 6px; }
-.dot { width: 6px; height: 6px; border-radius: 50%; }
-.dot.practice { background: var(--accent); }
-.dot.dry { background: var(--text-dim); }
-.dot.class { background: var(--success); }
-.dot.match { background: var(--warn); }
+.cal-dots { display: flex; align-items: center; gap: 3px; min-height: 9px; }
+/* Each session kind carries a distinct SHAPE as well as a colour, so the four are
+   distinguishable without relying on hue (WCAG 1.4.1) — needed now that live-fire
+   amber and match orange are close. The legend below teaches the shapes. */
+.dot { width: 6px; height: 6px; border-radius: 50%; box-sizing: border-box; flex: none; }
+.dot.practice { background: var(--accent); }                                  /* filled circle — live fire */
+.dot.dry { background: transparent; border: 1.5px solid var(--text-dim); }    /* hollow ring — dry fire */
+.dot.class { background: var(--success); border-radius: 1px; }                /* square — class */
+.dot.match { background: var(--warn); border-radius: 1px; transform: rotate(45deg); } /* diamond — match */
 
 /* ---------- M6.1: type-ahead suggestions ---------- */
 .suggest-anchor { position: relative; }
@@ -641,7 +653,7 @@ select { max-width: 100%; min-width: 0; min-height: 44px; }
   background: var(--bg); color: var(--text); border: 0.5px solid var(--separator);
   border-radius: 18px; min-height: 44px; padding: 8px 16px; font-size: 15px; cursor: pointer;
 }
-.chip.on { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+.chip.on { background: var(--accent); color: var(--on-accent); border-color: var(--accent); font-weight: 600; }
 
 /* ---------- C3: Home dashboard ---------- */
 .dash-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin-bottom: 16px; }
@@ -704,7 +716,7 @@ select { max-width: 100%; min-width: 0; min-height: 44px; }
 .goal-star {
   background: none; border: none; cursor: pointer; padding: 0;
   min-width: var(--touch-min); min-height: var(--touch-min);
-  font-size: 20px; line-height: 1; color: var(--accent);
+  font-size: 20px; line-height: 1; color: var(--accent-ink);
   display: flex; align-items: center; justify-content: center;
 }
 .goal-golden { background: color-mix(in srgb, var(--accent) 8%, transparent); border-radius: 8px; border-left: 3px solid var(--accent); padding-left: 8px; }
@@ -717,7 +729,7 @@ select { max-width: 100%; min-width: 0; min-height: 44px; }
 .golden-home .label { min-width: 0; }
 .golden-title { display: flex; align-items: center; gap: 4px; min-width: 0; }
 .golden-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
-.golden-star { color: var(--accent); font-weight: 700; flex-shrink: 0; }
+.golden-star { color: var(--accent-ink); font-weight: 700; flex-shrink: 0; }
 .goal-add { margin-bottom: 4px; }
 
 /* Progress trends filter row */
@@ -733,7 +745,7 @@ select { max-width: 100%; min-width: 0; min-height: 44px; }
 .infotip { display: inline; }
 .infotip-btn {
   appearance: none; border: none; background: none; cursor: pointer;
-  color: var(--accent); font-size: 15px; line-height: 1; vertical-align: middle;
+  color: var(--accent-ink); font-size: 15px; line-height: 1; vertical-align: middle;
   padding: 14px; margin: -14px -6px; border-radius: 50%;
   /* audit F3: guarantee a full 44x44 hit area (the glyph stays small via the
      negative margins, so the heading doesn't bloat). */
