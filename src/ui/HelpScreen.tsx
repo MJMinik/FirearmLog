@@ -100,7 +100,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Compete — matches',
       view: { kind: 'match-form' },
-      body: 'The Compete tab holds your matches. Log a match with its type (USPSA Level 1/2/3, Section, State, Area, Nationals, IDPA tiers, Steel Challenge, local), division, power factor, gun, finishes, and stage-by-stage results, plus stage videos. The entry fee you enter is stored on the match itself; the Costs screen reads it straight from there as the single source, so a match fee is never double-counted. The season view rolls up this year\'s matches, average finish, percent trend, and total fees. Open a logged match for a stage-by-stage breakdown that flags your toughest and strongest stages, and you can add each stage\'s A/C/D/miss breakdown to see what it would have scored with all alphas. Pick Steel Challenge as the match type and the stage entry switches to Steel scoring — you enter each string\'s time (and any missed plates), and FirearmLog keeps your best 4 of 5 strings and totals your time, lowest wins. Pick an IDPA match and it switches to IDPA time-plus scoring — enter each stage\'s raw time, points down, and any penalties, and FirearmLog adds them up (1 second per point down, plus the penalties) into a total where the lowest time wins.',
+      body: 'The Compete tab holds your matches. Log a match with its type (USPSA Level 1/2/3, Section, State, Area, Nationals, IDPA tiers, Steel Challenge, local), division, power factor, gun, finishes, and stage-by-stage results, plus stage videos. The entry fee you enter is stored on the match itself; the Costs & Purchases screen reads it straight from there as the single source, so a match fee is never double-counted. The season view rolls up this year\'s matches, average finish, percent trend, and total fees. Open a logged match for a stage-by-stage breakdown that flags your toughest and strongest stages, and you can add each stage\'s A/C/D/miss breakdown to see what it would have scored with all A\'s. Pick Steel Challenge as the match type and the stage entry switches to Steel scoring — you enter each string\'s time (and any missed plates), and FirearmLog keeps your best 4 of 5 strings and totals your time, lowest wins. Pick an IDPA match and it switches to IDPA time-plus scoring — enter each stage\'s raw time, points down, and any penalties, and FirearmLog adds them up (1 second per point down, plus the penalties) into a total where the lowest time wins.',
     },
     {
       title: 'Compete — classifiers',
@@ -136,12 +136,12 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Optics, magazines & spare parts',
       view: { kind: 'optics' },
-      body: `Optics, magazines, and spare parts each have their own section — ${at('Optics')}, ${at('Magazines')}, and ${at('Parts')}. Parts and optics you buy feed into Costs, and unassigned optics are grouped so you can see what's on the shelf.`,
+      body: `Optics, magazines, and spare parts each have their own section — ${at('Optics')}, ${at('Magazines')}, and ${at('Parts')}. Parts and optics you buy feed into Costs & Purchases, and unassigned optics are grouped so you can see what's on the shelf.`,
     },
     {
       title: 'Ammo & costs',
       view: { kind: 'ammo' },
-      body: `Ammo (under ${at('Ammo')}) tracks your inventory with first-in-first-out cost basis, so the cost of rounds you shoot is figured from what you actually paid; when you add ammo you choose whether you're logging a purchase (it lands in Costs) or just counting rounds you already own. Costs (under ${at('Costs & Purchases')}) pulls everything together — ammo, range fees, match fees, gear, travel — by category and month, with cost per round and spend by gun. Because a range fee lives on its session and a match fee lives on its match, each fee is stored in exactly one place and counted exactly once.`,
+      body: `Ammo (under ${at('Ammo')}) tracks your inventory with first-in-first-out cost basis, so the cost of rounds you shoot is figured from what you actually paid; when you add ammo you choose whether you're logging a purchase (it lands in Costs & Purchases) or just counting rounds you already own. ${at('Costs & Purchases')} pulls everything together — ammo, range fees, match fees, gear, travel — by category and month, with cost per round and spend by gun. Because a range fee lives on its session and a match fee lives on its match, each fee is stored in exactly one place and counted exactly once.`,
     },
     {
       title: 'Maintenance & reference',

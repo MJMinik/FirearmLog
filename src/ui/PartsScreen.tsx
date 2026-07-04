@@ -62,7 +62,7 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Parts <InfoTip title="Parts">Spare parts and spare optics on the shelf. What you buy here feeds Costs.</InfoTip></h1>
+      <h1 className="large-title">Parts <InfoTip title="Parts">Spare parts and spare optics on the shelf. What you buy here feeds Costs &amp; Purchases.</InfoTip></h1>
       <FormProblem problem={problem} />
 
       <button className="button" onClick={() => openPartForm()}>+ Add Part</button>

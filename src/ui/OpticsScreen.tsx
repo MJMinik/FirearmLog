@@ -112,7 +112,7 @@ export function OpticsScreen({ refreshKey, onBack, openOpticForm }: {
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Optics <InfoTip title="Optics">Red dots and scopes. Track each optic, attach it to a gun, and its cost feeds Costs.</InfoTip></h1>
+      <h1 className="large-title">Optics <InfoTip title="Optics">Red dots and scopes. Track each optic, attach it to a gun, and its cost feeds Costs &amp; Purchases.</InfoTip></h1>
 
       <button className="button" onClick={() => openOpticForm()}>+ Add Optic</button>
       {optics.length === 0 && (

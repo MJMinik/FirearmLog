@@ -148,10 +148,10 @@ export function NumbersGuide({ onBack, section }: { onBack: () => void; section?
       </div>
 
       <div className="card">
-        <h2>&ldquo;With all alphas&rdquo;</h2>
+        <h2>&ldquo;With all A&rsquo;s&rdquo;</h2>
         <TheMath>
           (available points &minus; 10&times;(no-shoots + procedurals)) &divide; your time — i.e. every
-          scoring hit turned into an alpha, at the same time you actually ran.
+          scoring hit turned into an A, at the same time you actually ran.
         </TheMath>
         <p className="note-text">
           The hit factor you&rsquo;d have posted with perfect hits — a clean way to see how much accuracy
@@ -159,7 +159,7 @@ export function NumbersGuide({ onBack, section }: { onBack: () => void; section?
         </p>
         <Why>
           it isolates the price of dropped points. It deliberately KEEPS any no-shoots and procedurals you
-          committed, because those aren&rsquo;t accuracy mistakes — an &ldquo;all-alpha&rdquo; run
+          committed, because those aren&rsquo;t accuracy mistakes — an &ldquo;all-A&rsquo;s&rdquo; run
           can&rsquo;t erase them.
         </Why>
         <OurRead />
@@ -186,6 +186,10 @@ export function NumbersGuide({ onBack, section }: { onBack: () => void; section?
 
       <div className="card" id="classification">
         <h2>Classification (USPSA)</h2>
+        <p className="note-text">
+          A <strong>classifier</strong> is a standard stage you shoot; your <strong>classification</strong> is
+          the rank — your class — you earn from your classifier scores.
+        </p>
         <TheMath>
           the average of your <strong>best 6 of your 8 most recent</strong> classifier percentages; when
           that average crosses a band, you move up.
