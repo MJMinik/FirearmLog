@@ -16,8 +16,9 @@ const FIRE_LABEL: Record<DrillDef['fire'], string> = {
   live: 'Live fire', dry: 'Dry fire', both: 'Live & dry'
 };
 
-export function DrillsScreen({ refreshKey, onBack, openForm }: {
+export function DrillsScreen({ refreshKey, onBack, openForm, openHistory }: {
   refreshKey: number; onBack: () => void; openForm: (id?: string) => void;
+  openHistory: (name: string) => void;
 }) {
   const [drills, setDrills] = useState<DrillDef[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -36,7 +37,7 @@ export function DrillsScreen({ refreshKey, onBack, openForm }: {
         <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Drills <InfoTip title="Drills">Your drill library. Each drill is tagged by gun type and dry/live, so the session picker shows the right ones. Tap a drill to read how to run it, or "+ Add Drill" to create your own.</InfoTip></h1>
+      <h1 className="large-title">Drills <InfoTip title="Drills">Your drill library. Each drill is tagged by gun type and dry/live, so the session picker shows the right ones. Tap a drill to read how to run it and see your history on it, or "+ Add Drill" to create your own.</InfoTip></h1>
       <button className="button" onClick={() => openForm()}>+ Add Drill</button>
       {drills.length > 8 && <ListSearch value={q} onChange={setQ} placeholder="Search drills" />}
       <div className="card" style={{ marginTop: 16 }}>
@@ -62,6 +63,9 @@ export function DrillsScreen({ refreshKey, onBack, openForm }: {
                   {d.fullDescription && <p className="note-text">{d.fullDescription}</p>}
                   {d.scoring && <p className="report-note">Scoring: {d.scoring}</p>}
                   {d.requiresHolster && <p className="report-note">Needs a holster.</p>}
+                  <div style={{ marginBottom: 8 }}>
+                    <button className="link-btn" onClick={() => openHistory(d.name)}>View your history ›</button>
+                  </div>
                   <button className="button secondary" onClick={() => openForm(d.id)}>Edit Drill</button>
                 </div>
               )}

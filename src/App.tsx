@@ -12,6 +12,7 @@ import { GunDetail } from './ui/GunDetail.tsx';
 import { GunForm } from './ui/GunForm.tsx';
 import { SessionForm } from './ui/SessionForm.tsx';
 import { DrillsScreen, DrillForm } from './ui/DrillsScreen.tsx';
+import { DrillHistoryScreen } from './ui/DrillHistoryScreen.tsx';
 import { MagazinesScreen, MagazineForm } from './ui/MagazinesScreen.tsx';
 import { ReferenceList, ReferenceDetail, ReferenceForm } from './ui/ReferenceScreens.tsx';
 import { MaintenanceOverview, MaintenanceForm } from './ui/MaintenanceScreens.tsx';
@@ -111,7 +112,11 @@ export function App() {
   } else if (view?.kind === 'drills') {
     content = <DrillsScreen refreshKey={refreshKey}
       onBack={back}
-      openForm={(did) => push({ kind: 'drill-form', id: did })} />;
+      openForm={(did) => push({ kind: 'drill-form', id: did })}
+      openHistory={(dname) => push({ kind: 'drill-history', name: dname })} />;
+  } else if (view?.kind === 'drill-history') {
+    content = <DrillHistoryScreen name={view.name} refreshKey={refreshKey}
+      onBack={back} open={push} />;
   } else if (view?.kind === 'drill-form') {
     const v = view;
     content = <DrillForm id={v.id}

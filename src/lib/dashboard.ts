@@ -275,6 +275,44 @@ export interface PersonalRecord {
   best: (DrillResult & { date: string }) | null;
 }
 
+/** The number a drill is judged by for the given scoring style, or null if this
+ * attempt has nothing scoreable: time drills use the raw time, score drills the
+ * score, and time+score drills the hit-factor (score / time). */
+export function drillMetric(
+  r: Pick<DrillResult, 'time' | 'score'>, scoring: string
+): number | null {
+  if (scoring === 'time') return r.time != null && r.time > 0 ? r.time : null;
+  if (scoring === 'score') return r.score != null ? r.score : null;
+  if (scoring === 'time_score') {
+    return r.score != null && r.time != null && r.time > 0 ? r.score / r.time : null;
+  }
+  return null;
+}
+
+/** True when a lower number is better for this scoring style (time drills). */
+export function drillLowerIsBetter(scoring: string): boolean {
+  return scoring === 'time';
+}
+
+/** The best attempt in a list for the given scoring style, or null if none is
+ * scoreable. Ties keep the earliest-seen attempt. Shared by personalRecords and
+ * drillHistory so "best" is computed one way everywhere. */
+function drillBest<T extends Pick<DrillResult, 'time' | 'score'>>(
+  list: T[], scoring: string
+): T | null {
+  const lower = drillLowerIsBetter(scoring);
+  let best: T | null = null;
+  let bestMetric = 0;
+  for (const r of list) {
+    const m = drillMetric(r, scoring);
+    if (m == null) continue;
+    if (best == null || (lower ? m < bestMetric : m > bestMetric)) {
+      best = r; bestMetric = m;
+    }
+  }
+  return best;
+}
+
 /**
  * One row per distinct drill name the shooter has logged, with the best
  * attempt picked per the drill's scoring style: lowest time, highest score,
@@ -299,25 +337,66 @@ export function personalRecords(
   const prs: PersonalRecord[] = [];
   for (const [name, list] of groups) {
     const scoring = scoringByName.get(name) ?? 'time';
-    let best: (DrillResult & { date: string }) | null = null;
-    if (scoring === 'time') {
-      const timed = list.filter(r => r.time != null && r.time > 0);
-      if (timed.length) best = timed.reduce((a, b) => ((a.time as number) <= (b.time as number) ? a : b));
-    } else if (scoring === 'score') {
-      const scored = list.filter(r => r.score != null);
-      if (scored.length) best = scored.reduce((a, b) => ((a.score as number) >= (b.score as number) ? a : b));
-    } else if (scoring === 'time_score') {
-      const both = list.filter(r => r.score != null && r.time != null && (r.time as number) > 0);
-      if (both.length) {
-        best = both.reduce((a, b) =>
-          ((a.score as number) / (a.time as number)) >= ((b.score as number) / (b.time as number)) ? a : b
-        );
-      }
-    }
-    prs.push({ name, scoring, attempts: list.length, best });
+    prs.push({ name, scoring, attempts: list.length, best: drillBest(list, scoring) });
   }
   prs.sort((a, b) => b.attempts - a.attempts);
   return prs;
+}
+
+// ---- Per-drill history (T3-2): a read-only view over the drill results you
+// already log — every attempt, the best, and the metric for the trend. ----
+
+export interface DrillHistoryAttempt {
+  sessionId: string;
+  date: string; // YYYY-MM-DD
+  time: number | null;
+  score: number | null;
+  maxScore: number | null;
+  distance: string;
+  notes: string;
+  /** The trend number for this attempt (see drillMetric), or null if not scoreable. */
+  metric: number | null;
+}
+
+export interface DrillHistory {
+  name: string;
+  scoring: string;
+  lowerIsBetter: boolean;
+  /** Every attempt, NEWEST first (for the list). */
+  attempts: DrillHistoryAttempt[];
+  /** The best scoreable attempt, or null when nothing is scoreable. */
+  best: DrillHistoryAttempt | null;
+}
+
+/**
+ * The full history of one drill (matched by name) across all given sessions:
+ * every attempt (newest first), the best (same rule as personalRecords), and a
+ * per-attempt metric for the trend. Pure read — no data-model change, no writes.
+ * Sessions should already be de-trashed by the caller.
+ */
+export function drillHistory(
+  sessions: Pick<Session, 'id' | 'date' | 'drills'>[],
+  drillDefs: Pick<DrillDef, 'name' | 'scoring'>[],
+  name: string
+): DrillHistory {
+  const scoring = drillDefs.find(d => d.name === name)?.scoring ?? 'time';
+  const attempts: DrillHistoryAttempt[] = [];
+  for (const s of sessions) {
+    for (const d of s.drills ?? []) {
+      if (d.name !== name) continue;
+      attempts.push({
+        sessionId: s.id, date: s.date,
+        time: d.time, score: d.score, maxScore: d.maxScore,
+        distance: d.distance, notes: d.notes,
+        metric: drillMetric(d, scoring),
+      });
+    }
+  }
+  // Best is computed before sorting (it's a reference into the array); then the
+  // list is ordered newest-first for display (stable YYYY-MM-DD string compare).
+  const best = drillBest(attempts, scoring);
+  attempts.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+  return { name, scoring, lowerIsBetter: drillLowerIsBetter(scoring), attempts, best };
 }
 
 /** Plain-language rendering of a drill result for the given scoring style. */

@@ -175,7 +175,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
       <SkillsCard skills={skills} onNew={() => setSkillSheet('new')} onEdit={(a) => setSkillSheet(a)} />
 
       <TrendsCard sessions={sessions} matches={matches} firearms={firearms}
-        drills={drills} classifiers={classifiers} malfunctions={malfunctions} />
+        drills={drills} classifiers={classifiers} malfunctions={malfunctions} open={open} />
 
       <HeatmapCard sessions={sessions} open={open} />
 
@@ -293,9 +293,10 @@ function HeatmapCard({ sessions, open }: { sessions: Session[]; open: (v: View) 
   );
 }
 
-function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunctions }: {
+function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunctions, open }: {
   sessions: Session[]; matches: Match[]; firearms: Firearm[];
   drills: DrillDef[]; classifiers: Classifier[]; malfunctions: MalfunctionEntry[];
+  open: (v: View) => void;
 }) {
   const [months, setMonths] = useState(12);
   const [filter, setFilter] = useState<RoundsFilter>({});
@@ -367,13 +368,14 @@ function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunct
         <>
           <h2 style={{ marginTop: 12 }}>Personal Records</h2>
           {prs.map((p) => (
-            <div className="pr-row" key={p.name}>
-              <div>
-                <div className="label">{p.name}</div>
+            <button className="pr-row" key={p.name}
+              onClick={() => open({ kind: 'drill-history', name: p.name })}>
+              <span className="label">
+                {p.name}
                 <div className="row-sub">{p.attempts} attempt{p.attempts !== 1 ? 's' : ''}</div>
-              </div>
-              <div className="value">{formatDrillScore(p.best, p.scoring)}</div>
-            </div>
+              </span>
+              <span className="value">{formatDrillScore(p.best, p.scoring)} <span aria-hidden="true">›</span></span>
+            </button>
           ))}
         </>
       )}

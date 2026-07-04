@@ -33,4 +33,5 @@ export type View =
   | { kind: 'setup' }
   | { kind: 'sync' }
   | { kind: 'import' }
-  | { kind: 'free-space' };
+  | { kind: 'free-space' }
+  | { kind: 'drill-history'; name: string };
