@@ -200,6 +200,43 @@ export function dashboardStats(
   };
 }
 
+export interface RangedActivity {
+  liveFireRounds: number;
+  liveSessions: number;
+  drySessions: number;
+}
+
+/**
+ * Live-fire rounds + session counts within a rolling window, for the Home stat tiles.
+ * `cutoff` is an inclusive YYYY-MM-DD lower bound, or null for all-time. All-time keeps the
+ * lifetime odometer (firearm starting counts + everything fired, via totalRounds); a bounded
+ * window counts only rounds actually FIRED in it (live-session rounds + match rounds) — the
+ * honest reading of "rounds in the last N months". Dry-fire counts as sessions, never rounds.
+ * Pure; never throws.
+ */
+export function rangedActivity(
+  firearms: Firearm[], sessions: Session[], matches: Match[], cutoff: string | null
+): RangedActivity {
+  if (cutoff === null) {
+    return {
+      liveFireRounds: totalRounds(firearms, sessions, matches),
+      liveSessions: sessions.filter(s => !s.planned && s.type !== 'dry_fire').length,
+      drySessions: sessions.filter(s => !s.planned && s.type === 'dry_fire').length,
+    };
+  }
+  let liveFireRounds = 0, liveSessions = 0, drySessions = 0;
+  for (const s of sessions ?? []) {
+    if (s.planned || !s.date || s.date < cutoff) continue;
+    if (s.type === 'dry_fire') drySessions++;
+    else { liveSessions++; liveFireRounds += sessionRounds(s); }
+  }
+  for (const m of matches ?? []) {
+    if (!m.date || m.date < cutoff) continue;
+    liveFireRounds += m.totalRounds ?? 0;
+  }
+  return { liveFireRounds, liveSessions, drySessions };
+}
+
 // ---- Firearm status summaries (for the status cards) ----
 
 export interface FirearmStatusSummary {

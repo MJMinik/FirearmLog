@@ -30,7 +30,8 @@ import { softDeleteSession, restoreSession, purgeSession, purgeExpiredSessions }
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { SwipeRow } from './SwipeRow.tsx';
 import type { View } from './nav.ts';
-import { dashboardStats, roundsByMonth, daysSinceLastSession, selfRatingDipping, alertDismissKey, isAlertDismissed, personalRecords, formatDrillScore, allClassifications, changesSinceBackup, BACKUP_REMINDER_THRESHOLD, BACKUP_TRACKED_STORES } from '../lib/dashboard.ts';
+import { dashboardStats, rangedActivity, roundsByMonth, daysSinceLastSession, selfRatingDipping, alertDismissKey, isAlertDismissed, personalRecords, formatDrillScore, allClassifications, changesSinceBackup, BACKUP_REMINDER_THRESHOLD, BACKUP_TRACKED_STORES } from '../lib/dashboard.ts';
+import { spanStartDate } from '../lib/trends.ts';
 import type { MonthBucket, RoundsFilter } from '../lib/dashboard.ts';
 
 function useData(refreshKey: number) {
@@ -262,6 +263,9 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
   const [dismissed, setDismissed] = useState<Record<string, string>>({});
   const [chartFilter, setChartFilter] = useState<RoundsFilter>({});
   const [chartMonths, setChartMonths] = useState(12);
+  // Rolling window for the two activity tiles (Live-fire rounds, Sessions). 'all' keeps
+  // the lifetime odometer; 6/12 count only what was fired/logged in that window.
+  const [statRange, setStatRange] = useState<6 | 12 | 'all'>('all');
   const [backupChanges, setBackupChanges] = useState(0);
   const [golden, setGolden] = useState<Goal | null>(null);
 
@@ -329,6 +333,9 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
   const showBackup = backupChanges >= BACKUP_REMINDER_THRESHOLD;
 
   const stats = dashboardStats(firearms, sessions, matches, classifiers, ammo);
+  const statCutoff = statRange === 'all' ? null : spanStartDate(statRange);
+  const activity = rangedActivity(firearms, sessions, matches, statCutoff);
+  const rangeLabel = statRange === 'all' ? '' : ` · ${statRange} mo`;
   const buckets = roundsByMonth(sessions, matches, chartMonths, new Date(), chartFilter, firearms);
   const trainingGap = daysSinceLastSession(sessions);
   const ratingTrend = selfRatingDipping(sessions);
@@ -372,21 +379,31 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
           </div>
 
           {/* ---- Stat grid ---- */}
-          <div className="stat-grid" style={{ marginTop: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: 16 }}>
+            <label htmlFor="stat-range" className="cap" style={{ color: 'var(--text-dim)' }}>Rounds &amp; sessions</label>
+            <select id="stat-range" value={statRange}
+              onChange={(e) => setStatRange(e.target.value === 'all' ? 'all' : (Number(e.target.value) as 6 | 12))}
+              style={{ width: 'auto' }}>
+              <option value="all">All time</option>
+              <option value="12">Last 12 months</option>
+              <option value="6">Last 6 months</option>
+            </select>
+          </div>
+          <div className="stat-grid" style={{ marginTop: 8 }}>
             <div className="stat">
-              <div className="num">{stats.liveFireRounds.toLocaleString()}</div>
-              <div className="cap">Live-fire rounds</div>
+              <div className="num">{activity.liveFireRounds.toLocaleString()}</div>
+              <div className="cap">Live-fire rounds{rangeLabel}</div>
             </div>
             <div className="stat">
               <div className="num">
-                {stats.liveSessions}
-                {stats.drySessions > 0 && (
+                {activity.liveSessions}
+                {activity.drySessions > 0 && (
                   <span style={{ fontSize: 13, color: 'var(--text-dim)', marginLeft: 6 }}>
-                    +{stats.drySessions} dry
+                    +{activity.drySessions} dry
                   </span>
                 )}
               </div>
-              <div className="cap">Sessions</div>
+              <div className="cap">Sessions{rangeLabel}</div>
             </div>
             <div className="stat">
               <div className="num">{stats.ammoInventory.toLocaleString()}</div>

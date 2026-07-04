@@ -79,7 +79,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Home',
-      body: 'Home is your dashboard. Up top are alerts — a gun due for cleaning, ammo running low, goals you\'re chasing — and you can tap any alert to jump to it. Below are recent sessions, quick stats, and a big Log Session button. Tap a month on the rounds chart to see that month\'s sessions.',
+      body: 'Home is your dashboard. Up top are alerts — a gun due for cleaning, ammo running low, goals you\'re chasing — and you can tap any alert to jump to it. Below are recent sessions, quick stats, and a big Log Session button. The Live-fire rounds and Sessions tiles have a range you can set to the last 6 or 12 months or all time. Tap a month on the rounds chart to see that month\'s sessions.',
     },
     {
       title: 'Logging a session',
