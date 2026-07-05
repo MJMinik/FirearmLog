@@ -121,7 +121,7 @@ export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
   const gap = 4;
   const w = buckets.length * (barW + gap) - gap;
   const h = 140;
-  const axisW = 14; // left margin for the rotated "Rounds fired" axis label
+  const axisW = 40; // left margin: rotated "Rounds fired" label + numeric y-ticks (M6)
 
   // With a lot of months, showing every label crowds them together —
   // thin them out so at most ~12 are drawn, evenly spaced.
@@ -137,6 +137,14 @@ export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
         transform={`rotate(-90 10 ${h / 2})`}>
         Rounds fired
       </text>
+      {/* M6: y-axis ticks so the bar heights read against a numeric scale, not just
+          relative to each other. Peak + midpoint; the 0 baseline is self-evident. */}
+      {[max, Math.round(max / 2)].map((v, k) => (
+        <text key={k} x={axisW - 5} y={h * (1 - v / max) + 3} textAnchor="end"
+          fill="var(--text-dim)" fontSize="10" fontFamily="inherit">
+          {v.toLocaleString()}
+        </text>
+      ))}
       <g transform={`translate(${axisW},0)`}>
         {buckets.map((b, i) => {
           const x = i * (barW + gap);

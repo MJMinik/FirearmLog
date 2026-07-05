@@ -320,6 +320,11 @@ select.category-pick {
   background: var(--bg); color: var(--text); padding: 10px 12px;
 }
 .field textarea { min-height: 80px; }
+/* Native date inputs (Safari desktop + iOS) default to a centered value and an
+   intrinsic min-width wider than the text fields, so a Date row looked off and
+   over-wide. Normalize them to line up with the inputs above and below. */
+.field input[type="date"] { min-width: 0; text-align: left; }
+.field input[type="date"]::-webkit-date-and-time-value { text-align: left; margin: 0; }
 .field.small { flex: 1; }
 .field-optional { color: var(--text-dim); font-weight: 400; opacity: 0.75; }
 .link-btn { background: none; border: 0; padding: 0 4px; color: var(--accent-ink); font: inherit; text-decoration: underline; cursor: pointer;

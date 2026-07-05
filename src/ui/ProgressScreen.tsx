@@ -323,23 +323,30 @@ function SpeedAccuracyTrendCard({ matches, coachingRemarks, onDisableRemarks }: 
   const pts = trend.points;
   if (pts.length < 2) return null;
 
-  const w = 280, h = 120, padX = 8, padY = 14;
+  const w = 280, h = 120, padR = 8, padL = 30, padY = 14;
   const vals = pts.map((p) => p.pointsKept * 100);
   const min = Math.min(...vals), max = Math.max(...vals);
-  const range = max - min || 1;
-  const stepX = (w - padX * 2) / (pts.length - 1);
-  const xAt = (i: number) => padX + i * stepX;
-  const yAt = (v: number) => padY + (1 - (v - min) / range) * (h - padY * 2);
+  // M6: fix the y-domain to a meaningful accuracy band (80–100%) rather than
+  // auto-scaling min→max — auto-scaling made a 94→96% wiggle fill the whole chart and
+  // read as a big swing. Only drop the floor below 80 if a match actually dipped there.
+  const loY = Math.min(80, Math.floor(min / 5) * 5);
+  const hiY = 100;
+  const domain = hiY - loY;
+  const stepX = (w - padL - padR) / (pts.length - 1);
+  const xAt = (i: number) => padL + i * stepX;
+  const yAt = (v: number) => padY + (1 - (v - loY) / domain) * (h - padY * 2);
   const line = pts.map((p, i) => `${xAt(i)},${yAt(p.pointsKept * 100)}`).join(' ');
 
   return (
     <div className="card">
-      <h2>Speed &amp; Accuracy <InfoTip title="Speed & Accuracy over time">Your USPSA accuracy — the share of available points you kept — across your matches, oldest to newest. This is the place to read the trend: one match is a small sample; the run of matches is the signal for whether you're getting cleaner or looser over a season. There's no pace line on purpose: raw time isn't comparable across different matches, so pace shows up only as a note below, and only when a clear pattern holds.</InfoTip></h2>
+      <h2>Accuracy across matches <InfoTip title="Accuracy across matches">Your USPSA accuracy — the share of available points you kept — across your matches, oldest to newest. This is the place to read the trend: one match is a small sample; the run of matches is the signal for whether you're getting cleaner or looser over a season. There's no pace line on purpose: raw time isn't comparable across different matches, so pace shows up only as a note below, and only when a clear pattern holds.</InfoTip></h2>
       <p className="report-note" style={{ marginTop: 0 }}>
         Points kept — {Math.round(min)}% to {Math.round(max)}% across {pts.length} USPSA matches.
       </p>
       <svg viewBox={`0 0 ${w} ${h}`} width="100%" style={{ display: 'block', marginTop: 4 }}
         role="img" aria-label={`Accuracy across ${pts.length} matches — ${Math.round(min)} to ${Math.round(max)} percent of points kept, oldest to newest`}>
+        <text x={padL - 4} y={padY + 3} fontSize={10} fill="var(--text-dim)" textAnchor="end">{hiY}%</text>
+        <text x={padL - 4} y={h - padY + 3} fontSize={10} fill="var(--text-dim)" textAnchor="end">{loY}%</text>
         <polyline points={line} fill="none" stroke="var(--accent-ink)" strokeWidth={1.5}
           strokeLinejoin="round" strokeLinecap="round" />
         {pts.map((p, i) => (

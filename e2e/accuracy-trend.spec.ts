@@ -24,7 +24,7 @@ test.describe('Speed & Accuracy trend (Progress)', () => {
     await cleanMatch(page, 12);
 
     await gotoTab(page, 'Progress');
-    await expect(page.getByRole('heading', { name: 'Speed & Accuracy' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Accuracy across matches' })).toBeVisible();
     await expect(page.getByText(/Points kept —/)).toBeVisible();
   });
 });
