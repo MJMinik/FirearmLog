@@ -13,7 +13,7 @@ test.describe('Class session instructor field', () => {
 
     // Log a class with a brand-new instructor typed into the single field.
     await page.getByRole('button', { name: '+ Log Session' }).click();
-    await page.getByRole('radio', { name: 'Class' }).click();
+    await page.getByRole('button', { name: 'Class', exact: true }).click();
     await page.getByRole('textbox', { name: 'Instructor' }).fill('Test Coach');
     const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
     await gunsCard.locator('button.gun-toggle').first().click();
@@ -23,7 +23,7 @@ test.describe('Class session instructor field', () => {
 
     // New class session: typing in Instructor suggests the name we just used.
     await page.getByRole('button', { name: '+ Log Session' }).click();
-    await page.getByRole('radio', { name: 'Class' }).click();
+    await page.getByRole('button', { name: 'Class', exact: true }).click();
     const instr = page.getByRole('textbox', { name: 'Instructor' });
     await instr.click();
     await instr.fill('Test');

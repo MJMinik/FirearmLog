@@ -10,10 +10,10 @@ test.describe('Sessions', () => {
     await expect(page.getByRole('main').locator('.row-tap').first()).toBeVisible();
 
     // Flip to the calendar view and back.
-    await page.getByRole('radio', { name: 'Calendar' }).click();
-    await expect(page.getByRole('radio', { name: 'Calendar' })).toBeChecked();
-    await page.getByRole('radio', { name: 'List' }).click();
-    await expect(page.getByRole('radio', { name: 'List' })).toBeChecked();
+    await page.getByRole('button', { name: 'Calendar', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Calendar', exact: true })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('button', { name: 'List', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'List', exact: true })).toHaveAttribute('aria-pressed', 'true');
   });
 
   test('logging a live-fire session records it', async ({ page }) => {

@@ -334,10 +334,10 @@ export function AmmoForm({ id, onSaved, onCancel }: {
               through purchase fields they don't need. */}
           <div className="card">
             <h2>What are you doing?</h2>
-            <div className="seg" role="radiogroup" aria-label="Ammo entry mode">
-              <button role="radio" aria-checked={!justCounting} className={!justCounting ? 'on' : ''}
+            <div className="seg" role="group" aria-label="Ammo entry mode">
+              <button type="button" aria-pressed={!justCounting} className={!justCounting ? 'on' : ''}
                 onClick={() => { setJustCounting(false); setQuantity(''); setCostPerRound(''); }}>Logging a purchase</button>
-              <button role="radio" aria-checked={justCounting} className={justCounting ? 'on' : ''}
+              <button type="button" aria-pressed={justCounting} className={justCounting ? 'on' : ''}
                 onClick={() => { setJustCounting(true); setPurchRounds(''); setPurchCost(''); setPurchVendor(''); }}>Just counting what I have</button>
             </div>
             {justCounting && (

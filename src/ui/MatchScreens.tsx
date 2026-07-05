@@ -692,9 +692,9 @@ export function MatchForm({ id, onSaved, onCancel }: {
         {scoringType === 'uspsa' && (
           <>
             <h2>Power Factor</h2>
-            <div className="seg" role="radiogroup" aria-label="Power factor">
+            <div className="seg" role="group" aria-label="Power factor">
               {POWER_FACTORS.map((pf) => (
-                <button key={pf} role="radio" aria-checked={powerFactor === pf}
+                <button key={pf} type="button" aria-pressed={powerFactor === pf}
                   className={powerFactor === pf ? 'on' : ''} onClick={() => setPowerFactor(pf)}>{pf}</button>
               ))}
             </div>

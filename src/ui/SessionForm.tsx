@@ -662,9 +662,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
 
       <div className="card">
         <h2>What Kind of Work</h2>
-        <div className="seg" role="radiogroup" aria-label="Session kind">
+        <div className="seg" role="group" aria-label="Session kind">
           {KINDS.map((k) => (
-            <button key={k.value} role="radio" aria-checked={kind === k.value}
+            <button key={k.value} type="button" aria-pressed={kind === k.value}
               className={kind === k.value ? 'on' : ''} onClick={() => setKind(k.value)}>
               {k.label}
             </button>

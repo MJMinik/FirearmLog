@@ -699,10 +699,10 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
       <LogFilterBar value={filter} onChange={setFilter} firearms={firearms}
         shown={shownSessions.length + shownMatches.length}
         total={sessions.length + matches.length} />
-      <div className="seg" role="radiogroup" aria-label="View" style={{ marginTop: 12 }}>
-        <button role="radio" aria-checked={mode === 'list'} className={mode === 'list' ? 'on' : ''}
+      <div className="seg" role="group" aria-label="View" style={{ marginTop: 12 }}>
+        <button type="button" aria-pressed={mode === 'list'} className={mode === 'list' ? 'on' : ''}
           onClick={() => setMode('list')}>List</button>
-        <button role="radio" aria-checked={mode === 'calendar'} className={mode === 'calendar' ? 'on' : ''}
+        <button type="button" aria-pressed={mode === 'calendar'} className={mode === 'calendar' ? 'on' : ''}
           onClick={() => setMode('calendar')}>Calendar</button>
       </div>
       {mode === 'calendar' ? (

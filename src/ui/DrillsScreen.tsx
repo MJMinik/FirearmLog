@@ -153,9 +153,9 @@ export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, 
             {...noAutofillProps} name="drill-title" />
         </label>
         <h2 style={{ marginTop: 4 }}>Fire Type</h2>
-        <div className="seg" role="radiogroup" aria-label="Fire type">
+        <div className="seg" role="group" aria-label="Fire type">
           {(['live', 'dry', 'both'] as const).map((f) => (
-            <button key={f} role="radio" aria-checked={fire === f}
+            <button key={f} type="button" aria-pressed={fire === f}
               className={fire === f ? 'on' : ''} onClick={() => setFire(f)}>
               {FIRE_LABEL[f]}
             </button>
