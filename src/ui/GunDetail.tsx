@@ -8,6 +8,7 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { dryRepsForFirearm, roundsForFirearm } from '../lib/stats.ts';
 import { maintLabel, maintenanceStatus } from '../lib/maintenance.ts';
 import { NotFound } from './NotFound.tsx';
+import { ScreenError } from './ScreenState.tsx';
 import { isBatteryDue } from '../lib/optics.ts';
 import { buildRefLookup, referencesForCategory, toEntry } from '../lib/referenceData.ts';
 import { formatDayKey } from '../lib/dates.ts';
@@ -38,11 +39,14 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
   const [removing, setRemoving] = useState(false);
   const [hasHistory, setHasHistory] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  const [error, setError] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let alive = true;
+    setError(false);
     void (async () => {
+      try {
       const [g, firearms, sessions, matches, media, maintenance, refs, allOptics] = await Promise.all([
         getOne<Firearm>('firearms', id),
         getAll<Firearm>('firearms'),
@@ -75,10 +79,15 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
       setMaintItems(maintenanceStatus(g, buildRefLookup(refs)(g.referenceId), live, maintenance, firearms, new Date()));
       setHistory(maintenance.filter((m) => m.firearmId === id).sort((a, b) => b.date.localeCompare(a.date)));
       setOptics(allOptics.filter((o) => o.firearmId === id));
+      } catch (e) {
+        console.error('Gun detail load failed', e);
+        if (alive) setError(true);
+      }
     })();
     return () => { alive = false; };
   }, [id, refreshKey, localBump]);
 
+  if (error) return <ScreenError onRetry={() => setLocalBump((n) => n + 1)} />;
   if (notFound) return <NotFound what="This gun no longer exists." onBack={onBack} />;
   if (!gun) return <div className="screen" />;
   const linkedRef = buildRefLookup(customRefs)(gun.referenceId);

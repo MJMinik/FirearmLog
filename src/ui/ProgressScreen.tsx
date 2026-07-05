@@ -29,6 +29,7 @@ import { Icon } from './Icon.tsx';
 import { SwipeRow } from './SwipeRow.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { Reveal } from './Reveal.tsx';
+import { ScreenError } from './ScreenState.tsx';
 
 export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open: (v: View) => void }) {
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -40,6 +41,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
   const [classifiers, setClassifiers] = useState<Classifier[]>([]);
   const [malfunctions, setMalfunctions] = useState<MalfunctionEntry[]>([]);
   const [bump, setBump] = useState(0);
+  const [error, setError] = useState(false);
   const [adding, setAdding] = useState(false);
   const [text, setText] = useState('');
   const [category, setCategory] = useState('');
@@ -52,25 +54,33 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
 
   useEffect(() => {
     let alive = true;
+    setError(false);
     void (async () => {
-      const [g, s, se, m, f, d, c, mf] = await Promise.all([
-        getAll<Goal>('goals'), getAll<SkillAssessment>('skills'), getAll<Session>('sessions'),
-        getAll<Match>('matches'), getAll<Firearm>('firearms'), getAll<DrillDef>('drills'),
-        getAll<Classifier>('classifiers'), getAll<MalfunctionEntry>('malfunctions')
-      ]);
-      if (!alive) return;
-      // App 7: drop trashed sessions and any malfunctions filed against them, so
-      // trends, personal records, and the malfunction rate never count deleted data.
-      const live = activeOnly(se);
-      const trashedIds = trashedIdSet(se);
-      setGoals(sortGoals(g)); setSkills(s); setSessions(live); setMatches(m);
-      setFirearms(f); setDrills(d); setClassifiers(c);
-      setMalfunctions(activeMalfunctions(mf, trashedIds));
-      const settings = await getSettings<AppSettings>();
-      if (alive) { setGoldenId(settings?.goldenGoalId ?? ''); setCoachingRemarks(settings?.coachingRemarks !== false); }
+      try {
+        const [g, s, se, m, f, d, c, mf] = await Promise.all([
+          getAll<Goal>('goals'), getAll<SkillAssessment>('skills'), getAll<Session>('sessions'),
+          getAll<Match>('matches'), getAll<Firearm>('firearms'), getAll<DrillDef>('drills'),
+          getAll<Classifier>('classifiers'), getAll<MalfunctionEntry>('malfunctions')
+        ]);
+        if (!alive) return;
+        // App 7: drop trashed sessions and any malfunctions filed against them, so
+        // trends, personal records, and the malfunction rate never count deleted data.
+        const live = activeOnly(se);
+        const trashedIds = trashedIdSet(se);
+        setGoals(sortGoals(g)); setSkills(s); setSessions(live); setMatches(m);
+        setFirearms(f); setDrills(d); setClassifiers(c);
+        setMalfunctions(activeMalfunctions(mf, trashedIds));
+        const settings = await getSettings<AppSettings>();
+        if (alive) { setGoldenId(settings?.goldenGoalId ?? ''); setCoachingRemarks(settings?.coachingRemarks !== false); }
+      } catch (e) {
+        console.error('Progress load failed', e);
+        if (alive) setError(true);
+      }
     })();
     return () => { alive = false; };
   }, [refreshKey, bump]);
+
+  if (error) return <ScreenError onRetry={() => setBump((n) => n + 1)} />;
 
   async function disableRemarks() {
     setCoachingRemarks(false); // optimistic; re-enable in Settings

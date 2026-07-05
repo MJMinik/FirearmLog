@@ -23,6 +23,7 @@ import { FormProblem } from './FormProblem.tsx';
 import { isOwned } from '../lib/gunStatus.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { labelOrRemoved } from '../lib/lookup.ts';
+import { ScreenError } from './ScreenState.tsx';
 
 interface Bundle {
   firearms: Firearm[]; sessions: Session[]; matches: Match[]; purchases: Purchase[];
@@ -37,28 +38,37 @@ const money = (x: number) => '$' + x.toLocaleString(undefined, { minimumFraction
 export function ReportsScreen({ refreshKey, onBack }: { refreshKey: number; onBack: () => void }) {
   const [data, setData] = useState<Bundle | null>(null);
   const [problem, setProblem] = useState('');
+  const [error, setError] = useState(false);
+  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     let alive = true;
+    setError(false);
     void (async () => {
-      const [firearms, sessions, matches, purchases, ammo, classifiers, malfunctions, maintenance, references, drills, goals, media, parts, magazines] =
-        await Promise.all([
-          getAll<Firearm>('firearms'), getAll<Session>('sessions'), getAll<Match>('matches'),
-          getAll<Purchase>('purchases'), getAll<Ammunition>('ammunition'), getAll<Classifier>('classifiers'),
-          getAll<MalfunctionEntry>('malfunctions'), getAll<MaintenanceEntry>('maintenance'),
-          getAll<Reference>('references'), getAll<DrillDef>('drills'), getAll<Goal>('goals'),
-          getAll<Media>('media'), getAll<Part>('parts'), getAll<Magazine>('magazines')
-        ]);
-      if (!alive) return;
-      // App 7: every report works off live data only — trashed sessions and the
-      // malfunctions filed against them are excluded before anything is built.
-      const liveSessions = activeOnly(sessions);
-      const liveMalfs = activeMalfunctions(malfunctions, trashedIdSet(sessions));
-      setData({ firearms, sessions: liveSessions, matches, purchases, ammo, classifiers, malfunctions: liveMalfs, maintenance, references, drills, goals, media, parts, magazines });
+      try {
+        const [firearms, sessions, matches, purchases, ammo, classifiers, malfunctions, maintenance, references, drills, goals, media, parts, magazines] =
+          await Promise.all([
+            getAll<Firearm>('firearms'), getAll<Session>('sessions'), getAll<Match>('matches'),
+            getAll<Purchase>('purchases'), getAll<Ammunition>('ammunition'), getAll<Classifier>('classifiers'),
+            getAll<MalfunctionEntry>('malfunctions'), getAll<MaintenanceEntry>('maintenance'),
+            getAll<Reference>('references'), getAll<DrillDef>('drills'), getAll<Goal>('goals'),
+            getAll<Media>('media'), getAll<Part>('parts'), getAll<Magazine>('magazines')
+          ]);
+        if (!alive) return;
+        // App 7: every report works off live data only — trashed sessions and the
+        // malfunctions filed against them are excluded before anything is built.
+        const liveSessions = activeOnly(sessions);
+        const liveMalfs = activeMalfunctions(malfunctions, trashedIdSet(sessions));
+        setData({ firearms, sessions: liveSessions, matches, purchases, ammo, classifiers, malfunctions: liveMalfs, maintenance, references, drills, goals, media, parts, magazines });
+      } catch (e) {
+        console.error('Reports load failed', e);
+        if (alive) setError(true);
+      }
     })();
     return () => { alive = false; };
-  }, [refreshKey]);
+  }, [refreshKey, nonce]);
 
+  if (error) return <ScreenError onRetry={() => setNonce((n) => n + 1)} />;
   if (!data) return <div className="screen" />;
   const d = data;
   const year = todayKey().slice(0, 4);

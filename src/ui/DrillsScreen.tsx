@@ -9,6 +9,7 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { ConfirmSheet } from './Sheet.tsx';
+import { ScreenError } from './ScreenState.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 
@@ -23,13 +24,24 @@ export function DrillsScreen({ refreshKey, onBack, openForm, openHistory }: {
   const [drills, setDrills] = useState<DrillDef[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [q, setQ] = useState('');
+  const [error, setError] = useState(false);
+  const [nonce, setNonce] = useState(0);
   useEffect(() => {
     let alive = true;
-    void getAll<DrillDef>('drills').then((d) => {
-      if (alive) setDrills(d.sort((a, b) => a.name.localeCompare(b.name)));
-    });
+    setError(false);
+    void (async () => {
+      try {
+        const d = await getAll<DrillDef>('drills');
+        if (alive) setDrills(d.sort((a, b) => a.name.localeCompare(b.name)));
+      } catch (e) {
+        console.error('Drills load failed', e);
+        if (alive) setError(true);
+      }
+    })();
     return () => { alive = false; };
-  }, [refreshKey]);
+  }, [refreshKey, nonce]);
+
+  if (error) return <ScreenError onRetry={() => setNonce((n) => n + 1)} />;
 
   return (
     <div className="screen">

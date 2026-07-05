@@ -9,6 +9,7 @@ import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { isBatteryDue, normalizeBatteryLog } from '../lib/optics.ts';
 import { recentValues } from '../lib/suggest.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
+import { ScreenError } from './ScreenState.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 import { FormProblem } from './FormProblem.tsx';
@@ -22,20 +23,29 @@ export function OpticsScreen({ refreshKey, onBack, openOpticForm }: {
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [loggingFor, setLoggingFor] = useState<Optic | null>(null);
   const [localBump, setLocalBump] = useState(0);
+  const [error, setError] = useState(false);
   // Audit #11: optics collapse to compact rows and expand on tap, instead of
   // every optic rendering fully expanded into a long wall.
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
-    void Promise.all([getAll<Optic>('optics'), getAll<Firearm>('firearms')])
-      .then(([o, f]) => {
+    setError(false);
+    void (async () => {
+      try {
+        const [o, f] = await Promise.all([getAll<Optic>('optics'), getAll<Firearm>('firearms')]);
         if (!alive) return;
         setOptics(o.sort((a, b) => `${a.make} ${a.model}`.localeCompare(`${b.make} ${b.model}`)));
         setFirearms(f);
-      });
+      } catch (e) {
+        console.error('Optics load failed', e);
+        if (alive) setError(true);
+      }
+    })();
     return () => { alive = false; };
   }, [refreshKey, localBump]);
+
+  if (error) return <ScreenError onRetry={() => setLocalBump((n) => n + 1)} />;
 
   const gunName = (id: string) => firearms.find((f) => f.id === id)?.name;
 

@@ -12,6 +12,7 @@ import { isBatteryDue } from '../lib/optics.ts';
 import { recentValues } from '../lib/suggest.ts';
 import { buildPartsReportHtml, opticLabel } from '../lib/partsReport.ts';
 import { ConfirmSheet } from './Sheet.tsx';
+import { ScreenError } from './ScreenState.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 import { FormProblem } from './FormProblem.tsx';
@@ -27,20 +28,30 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
   const [unassignedOptics, setUnassignedOptics] = useState<Optic[]>([]);
   const [problem, setProblem] = useState('');
   const [q, setQ] = useState('');
+  const [error, setError] = useState(false);
+  const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
     let alive = true;
-    void Promise.all([getAll<Part>('parts'), getAll<Firearm>('firearms'), getAll<Optic>('optics')])
-      .then(([p, f, o]) => {
+    setError(false);
+    void (async () => {
+      try {
+        const [p, f, o] = await Promise.all([getAll<Part>('parts'), getAll<Firearm>('firearms'), getAll<Optic>('optics')]);
         if (!alive) return;
         setParts(p.sort((a, b) => a.name.localeCompare(b.name)));
         setFirearms(f);
         setUnassignedOptics(
           o.filter((op) => !op.firearmId).sort((a, b) => opticLabel(a).localeCompare(opticLabel(b)))
         );
-      });
+      } catch (e) {
+        console.error('Parts load failed', e);
+        if (alive) setError(true);
+      }
+    })();
     return () => { alive = false; };
-  }, [refreshKey]);
+  }, [refreshKey, nonce]);
+
+  if (error) return <ScreenError onRetry={() => setNonce((n) => n + 1)} />;
 
   const gunName = (id: string) => firearms.find((f) => f.id === id)?.name;
 

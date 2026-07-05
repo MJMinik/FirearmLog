@@ -12,6 +12,7 @@ import type { ReferenceEntry } from '../lib/referenceData.ts';
 import { REFERENCES, getReference, isCustomRefId, toEntry } from '../lib/referenceData.ts';
 import type { Firearm } from '../lib/types.ts';
 import { ConfirmSheet } from './Sheet.tsx';
+import { ScreenError } from './ScreenState.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
@@ -21,13 +22,24 @@ export function ReferenceList({ refreshKey, onBack, openDetail, openForm }: {
   openDetail: (id: string) => void; openForm: () => void;
 }) {
   const [custom, setCustom] = useState<Reference[]>([]);
+  const [error, setError] = useState(false);
+  const [nonce, setNonce] = useState(0);
   useEffect(() => {
     let alive = true;
-    void getAll<Reference>('references').then((r) => {
-      if (alive) setCustom(r.sort((a, b) => a.name.localeCompare(b.name)));
-    });
+    setError(false);
+    void (async () => {
+      try {
+        const r = await getAll<Reference>('references');
+        if (alive) setCustom(r.sort((a, b) => a.name.localeCompare(b.name)));
+      } catch (e) {
+        console.error('Care Guides load failed', e);
+        if (alive) setError(true);
+      }
+    })();
     return () => { alive = false; };
-  }, [refreshKey]);
+  }, [refreshKey, nonce]);
+
+  if (error) return <ScreenError onRetry={() => setNonce((n) => n + 1)} />;
 
   const groups: GunCategory[] = ['Pistol', 'Rifle', 'Shotgun'];
   return (

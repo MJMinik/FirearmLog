@@ -7,6 +7,7 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { ConfirmSheet } from './Sheet.tsx';
+import { ScreenError } from './ScreenState.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { ownedGuns } from '../lib/gunStatus.ts';
 
@@ -16,15 +17,26 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
   const [mags, setMags] = useState<Magazine[]>([]);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [q, setQ] = useState('');
+  const [error, setError] = useState(false);
+  const [nonce, setNonce] = useState(0);
   useEffect(() => {
     let alive = true;
-    void Promise.all([getAll<Magazine>('magazines'), getAll<Firearm>('firearms')]).then(([m, f]) => {
-      if (!alive) return;
-      setMags(m.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })));
-      setFirearms(f);
-    });
+    setError(false);
+    void (async () => {
+      try {
+        const [m, f] = await Promise.all([getAll<Magazine>('magazines'), getAll<Firearm>('firearms')]);
+        if (!alive) return;
+        setMags(m.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })));
+        setFirearms(f);
+      } catch (e) {
+        console.error('Magazines load failed', e);
+        if (alive) setError(true);
+      }
+    })();
     return () => { alive = false; };
-  }, [refreshKey]);
+  }, [refreshKey, nonce]);
+
+  if (error) return <ScreenError onRetry={() => setNonce((n) => n + 1)} />;
 
   const gunNames = (ids: string[]) =>
     ids.map((id) => firearms.find((f) => f.id === id)?.name ?? '—').join(', ');

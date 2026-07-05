@@ -22,6 +22,7 @@ import type { StagedFile } from './MediaField.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { NotFound } from './NotFound.tsx';
+import { ScreenError } from './ScreenState.tsx';
 import { Icon } from './Icon.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
 
@@ -103,24 +104,32 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
   const [officialTimes, setOfficialTimes] = useState<string[]>([]);
   const [coachingRemarks, setCoachingRemarks] = useState(true);
   const [notFound, setNotFound] = useState(false);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     let alive = true;
+    setError(false);
     void (async () => {
-      const [m, f, media, settings] = await Promise.all([
-        getOne<Match>('matches', id), getAll<Firearm>('firearms'), getAll<Media>('media'),
-        getSettings<AppSettings>()
-      ]);
-      if (!alive) return;
-      if (!m) { setNotFound(true); return; }
-      setMatch(m);
-      setFirearms(f);
-      setVideos(media.filter((x) => x.ownerType === 'match' && x.ownerId === id));
-      setCoachingRemarks(settings?.coachingRemarks !== false);
+      try {
+        const [m, f, media, settings] = await Promise.all([
+          getOne<Match>('matches', id), getAll<Firearm>('firearms'), getAll<Media>('media'),
+          getSettings<AppSettings>()
+        ]);
+        if (!alive) return;
+        if (!m) { setNotFound(true); return; }
+        setMatch(m);
+        setFirearms(f);
+        setVideos(media.filter((x) => x.ownerType === 'match' && x.ownerId === id));
+        setCoachingRemarks(settings?.coachingRemarks !== false);
+      } catch (e) {
+        console.error('Match detail load failed', e);
+        if (alive) setError(true);
+      }
     })();
     return () => { alive = false; };
   }, [id, refreshKey, localBump]);
 
+  if (error) return <ScreenError onRetry={() => setLocalBump((n) => n + 1)} />;
   if (notFound) return <NotFound what="This match no longer exists." onBack={onBack} />;
   if (!match) return <div className="screen" />;
   const gunName = firearms.find((f) => f.id === match.firearmId)?.name ?? '—';
