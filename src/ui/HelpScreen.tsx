@@ -227,7 +227,7 @@ export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: Vie
         </p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="button" style={{ flex: 1, minWidth: 100 }} onClick={() => setActive('quick')}>Quick Tour</button>
-          <button className="button" style={{ flex: 1, minWidth: 100 }} onClick={() => setActive('full')}>Full Tour</button>
+          <button className="button secondary" style={{ flex: 1, minWidth: 100 }} onClick={() => setActive('full')}>Full Tour</button>
           <button className="button secondary" style={{ flex: 1, minWidth: 100 }} onClick={() => open({ kind: 'setup' })}>Set Up</button>
         </div>
       </div>

@@ -17,7 +17,7 @@ import { ImportFlow } from './ImportFlow.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { Reveal } from './Reveal.tsx';
 import { Icon } from './Icon.tsx';
-import { ScreenError } from './ScreenState.tsx';
+import { ScreenError, ScreenLoading } from './ScreenState.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { isActive, isOwned, isFormer, isRetired, statusBadge } from '../lib/gunStatus.ts';
 import { MonthCalendar } from './Calendar.tsx';
@@ -356,7 +356,7 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
   }, []);
 
   if (error) return <ScreenError onRetry={reload} />;
-  if (!loaded) return <div className="screen" />;
+  if (!loaded) return <ScreenLoading />;
 
   const empty = firearms.length === 0 && sessions.length === 0;
   const refLookup = buildRefLookup(references);
@@ -669,7 +669,7 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
   function onRestore(s: Session) { void restoreSession(s, ammo).then(reload); }
 
   if (error) return <ScreenError onRetry={reload} />;
-  if (!loaded) return <div className="screen" />;
+  if (!loaded) return <ScreenLoading />;
 
   // B6: one filter rules both the list and the calendar.
   const shownSessions = sessions.filter((s) => sessionMatchesFilter(s, filter, firearms));
@@ -822,7 +822,7 @@ export function MoreScreen({ refreshKey, open }: {
 }) {
   const { loaded, error, reload } = useData(refreshKey);
   if (error) return <ScreenError onRetry={reload} />;
-  if (!loaded) return <div className="screen" />;
+  if (!loaded) return <ScreenLoading />;
   return (
     <div className="screen">
       <h1 className="large-title">More</h1>
@@ -872,7 +872,7 @@ export function MoreScreen({ refreshKey, open }: {
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'numbers' })}>
           <span className="row-ico" aria-hidden="true"><Icon name="info" size={20} /></span>
-          <span className="label">How the numbers work</span>
+          <span className="label">The numbers</span>
           <span className="value">›</span>
         </button>
       </div>
@@ -944,7 +944,7 @@ export function GunsScreen({ refreshKey, onBack, open }: {
   const [q, setQ] = useState('');
   const [showFormer, setShowFormer] = useState(false);
   if (error) return <ScreenError onRetry={reload} />;
-  if (!loaded) return <div className="screen" />;
+  if (!loaded) return <ScreenLoading />;
   // Audit #10: active + retired show by default (with badges); guns you no longer
   // own hide behind a toggle. Open a gun to retire/remove or bring it back.
   const anyFormer = firearms.some(isFormer);

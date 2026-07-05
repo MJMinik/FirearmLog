@@ -247,6 +247,20 @@ input, select, textarea, button { font-size: max(16px, 1rem); font-family: inher
   border-radius: 50%; animation: fl-spin 0.8s linear infinite;
 }
 @keyframes fl-spin { to { transform: rotate(360deg); } }
+/* L12: an accessible loading state. ScreenLoading renders a real element the
+   screen reader announces (role="status"); this draws the same spinner it can't
+   get from `:empty::after` anymore (the element now has sr-only text inside). */
+.loading-spinner {
+  position: fixed; top: 50%; left: 50%;
+  width: 28px; height: 28px; margin: -14px 0 0 -14px;
+  border: 3px solid var(--separator); border-top-color: var(--accent);
+  border-radius: 50%; animation: fl-spin 0.8s linear infinite;
+}
+/* Visually-hidden but read aloud — for status text behind an icon/spinner. */
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
 
 /* Audit #D11: badges carry meaning (Due/Soon/Retired/Low) — darken the text against
    the tint so it clears contrast at 12px (was full-hue text on a pale same-hue tint). */
@@ -421,6 +435,10 @@ select.category-pick {
    hit-breakdown cells wrap; each keeps enough width for its two 44px buttons. */
 .break-fields { flex-wrap: wrap; }
 .break-fields .stepper-field { min-width: 150px; }
+/* L6: on a wide (non-phone) viewport a lone stepper would stretch the whole
+   column (~700px); cap it so −/number/+ stay a compact cluster. Phones, which
+   are narrower than the cap, are unaffected. */
+@media (min-width: 600px) { .stepper-field { max-width: 260px; } }
 
 /* Count stepper: big −/+ flanking the number for one-handed entry at the bay
    (mobile wins). The number stays typeable for large counts. */
@@ -539,7 +557,8 @@ select.category-pick {
    reads as a button, not a hard slab. The reveal (REVEAL in SwipeRow) is wider
    than the button so the row's value isn't jammed against it. */
 .swipe-delete {
-  position: absolute; top: 6px; right: 8px; height: calc(100% - 12px); width: 76px;
+  position: absolute; top: 50%; right: 8px; transform: translateY(-50%);
+  height: calc(100% - 12px); min-height: 44px; width: 76px;
   display: flex; align-items: center; justify-content: center;
   border: none; border-radius: 12px;
   background: var(--danger-deep); color: #fff; font-weight: 600;
@@ -792,6 +811,12 @@ select { max-width: 100%; min-width: 0; min-height: 44px; }
 .swipe-row .goal-row { border-bottom: 0.5px solid var(--separator); }
 .swipe-row:last-child .goal-row { border-bottom: none; }
 .goal-row .checklist-take { align-items: flex-start; }
+/* L14: the achieved-checkbox label is now scoped to the checkbox + goal title
+   only; the sub-lines (North Star, category/target, achieved date) sit outside
+   the label so tapping them no longer toggles the goal. Indent to align under
+   the title (20px box + 10px gap). */
+.goal-main { flex: 1; min-width: 0; }
+.goal-subs { padding-left: 30px; }
 /* Golden goal — one pinned north-star goal, highlighted on Goals and echoed on Home. */
 .goal-star {
   background: none; border: none; cursor: pointer; padding: 0;

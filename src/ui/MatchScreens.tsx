@@ -22,7 +22,7 @@ import type { StagedFile } from './MediaField.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { NotFound } from './NotFound.tsx';
-import { ScreenError } from './ScreenState.tsx';
+import { ScreenError, ScreenLoading } from './ScreenState.tsx';
 import { Icon } from './Icon.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
 
@@ -131,7 +131,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
 
   if (error) return <ScreenError onRetry={() => setLocalBump((n) => n + 1)} />;
   if (notFound) return <NotFound what="This match no longer exists." onBack={onBack} />;
-  if (!match) return <div className="screen" />;
+  if (!match) return <ScreenLoading />;
   const gunName = firearms.find((f) => f.id === match.firearmId)?.name ?? '—';
   const isSteel = match.scoringType === 'steel';
   const isIdpa = match.scoringType === 'idpa';

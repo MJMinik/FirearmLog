@@ -3,6 +3,7 @@
 // cost/round shown prefers the FIFO "in the can" number (from linked Ammo
 // Purchases) and falls back to the manually typed figure.
 import { useEffect, useState } from 'react';
+import { ScreenLoading } from './ScreenState.tsx';
 import type { Ammunition, Purchase, Session } from '../lib/types.ts';
 import { applyAmmoMerge, deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { activeOnly } from '../lib/softDelete.ts';
@@ -49,7 +50,7 @@ export function AmmoScreen({ refreshKey, onBack, openForm }: {
   }, [refreshKey, reloadNonce]);
 
   if (error) return <ScreenError onRetry={() => setReloadNonce((n) => n + 1)} />;
-  if (!loaded) return <div className="screen" />;
+  if (!loaded) return <ScreenLoading />;
   const low = new Set(lowAmmo(ammo).map((a) => a.id));
 
   return (

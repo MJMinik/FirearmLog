@@ -4,7 +4,12 @@
 // A quiet placeholder while a screen's data loads. Matches the old
 // `<div className="screen" />` blank, kept as one component for consistency.
 export function ScreenLoading() {
-  return <div className="screen" aria-busy="true" />;
+  return (
+    <div className="screen" role="status" aria-busy="true" aria-live="polite">
+      <span className="loading-spinner" aria-hidden="true" />
+      <span className="sr-only">Loading…</span>
+    </div>
+  );
 }
 
 // A recoverable error card: tells the user their data is safe and offers Retry.

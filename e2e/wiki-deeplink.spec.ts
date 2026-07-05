@@ -44,9 +44,9 @@ test.describe('Wiki deep-link from the debrief', () => {
   // Regression guard for the UN-sectioned path: the fix only skips the snap-to-top when
   // a section is set, so opening the wiki from the nav (no section) must STILL land at
   // the top. Pins that the change didn't quietly break the ordinary open.
-  test('the nav "How the numbers work" (no section) still lands at the top', async ({ page }) => {
+  test('the nav "The numbers" (no section) still lands at the top', async ({ page }) => {
     await seedDemo(page);
-    await gotoSection(page, 'How the numbers work');
+    await gotoSection(page, 'The numbers');
 
     await expect(page.getByRole('heading', { name: 'How the numbers work' })).toBeVisible();
     // No section target -> the first section (USPSA hit factor) is at the top, in view.
@@ -60,7 +60,7 @@ test.describe('Wiki deep-link from the debrief', () => {
     await gotoTab(page, 'Compete');
 
     // Scope to <main> so we click the Classification card's link, NOT the desktop
-    // sidebar's "How the numbers work" nav item (that one has no section and would land
+    // sidebar's "The numbers" nav item (that one has no section and would land
     // at the top). Inside <main> on Compete, the card's link is the only such button.
     await page.getByRole('main').getByRole('button', { name: /How the numbers work/ }).click();
 

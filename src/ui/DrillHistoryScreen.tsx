@@ -3,6 +3,7 @@
 // each tapping through to the session it came from. Read-only view over the
 // drill results you already log; no data-model change.
 import { useEffect, useState } from 'react';
+import { ScreenLoading } from './ScreenState.tsx';
 import type { View } from './nav.ts';
 import type { DrillDef, Session } from '../lib/types.ts';
 import { getAll } from '../lib/db.ts';
@@ -31,7 +32,7 @@ export function DrillHistoryScreen({ name, refreshKey, onBack, open }: {
   }, [name, refreshKey, nonce]);
 
   if (error) return <ScreenError onRetry={() => setNonce((n) => n + 1)} />;
-  if (!history) return <div className="screen" />;
+  if (!history) return <ScreenLoading />;
 
   const { attempts, best, scoring, lowerIsBetter } = history;
 

@@ -3,6 +3,7 @@
 // matches (the single-source rule) — purchases cover everything else. Per-gun
 // spend prorates multi-gun sessions by rounds (the old F2 bug, now unit-tested).
 import { useEffect, useState } from 'react';
+import { ScreenLoading } from './ScreenState.tsx';
 import type { Ammunition, Firearm, Match, Part, Purchase, Session } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { activeOnly } from '../lib/softDelete.ts';
@@ -64,7 +65,7 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
   }, [refreshKey, reloadNonce]);
 
   if (error) return <ScreenError onRetry={() => setReloadNonce((n) => n + 1)} />;
-  if (!loaded) return <div className="screen" />;
+  if (!loaded) return <ScreenLoading />;
 
   const year = todayKey().slice(0, 4);
   const inYear = <T extends { date: string }>(rows: T[]) => rows.filter((r) => (r.date || '').startsWith(year));

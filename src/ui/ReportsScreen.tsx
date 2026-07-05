@@ -23,7 +23,7 @@ import { FormProblem } from './FormProblem.tsx';
 import { isOwned } from '../lib/gunStatus.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { labelOrRemoved } from '../lib/lookup.ts';
-import { ScreenError } from './ScreenState.tsx';
+import { ScreenError, ScreenLoading } from './ScreenState.tsx';
 
 interface Bundle {
   firearms: Firearm[]; sessions: Session[]; matches: Match[]; purchases: Purchase[];
@@ -69,7 +69,7 @@ export function ReportsScreen({ refreshKey, onBack }: { refreshKey: number; onBa
   }, [refreshKey, nonce]);
 
   if (error) return <ScreenError onRetry={() => setNonce((n) => n + 1)} />;
-  if (!data) return <div className="screen" />;
+  if (!data) return <ScreenLoading />;
   const d = data;
   const year = todayKey().slice(0, 4);
   const gunName = (id: string) => d.firearms.find((f) => f.id === id)?.name ?? '—';

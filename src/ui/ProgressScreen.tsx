@@ -142,6 +142,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
             <FormProblem problem={goalProblem} />
             <label className="field">Goal
               <input value={text} {...noAutofillProps} name="fl-goal-text" autoFocus
+                enterKeyHint="done"
                 placeholder="Bill Drill under 2.0 seconds"
                 onChange={(e) => setText(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') void addGoal(); }} />
@@ -174,19 +175,25 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
               <button className="goal-star" aria-pressed={isGolden}
                 aria-label={isGolden ? `Remove ${g.text} as your North Star` : `Make ${g.text} your North Star`}
                 onClick={() => void toggleGolden(g)}>{isGolden ? <Icon name="starFilled" size={18} /> : <Icon name="star" size={18} />}</button>
-              <label className="checklist-take" style={{ flex: 1 }}>
-                <input type="checkbox" checked={g.achieved} onChange={() => void toggleAchieved(g)} />
-                <span style={g.achieved ? { textDecoration: 'line-through', color: 'var(--text-dim)' } : undefined}>
-                  {g.text}
-                  {isGolden && <div className="row-sub" style={{ color: 'var(--accent-ink)' }}>North Star</div>}
-                  {(g.category || g.target) && (
-                    <div className="row-sub">{[g.category, g.target].filter(Boolean).join(' · ')}</div>
-                  )}
-                  {g.achieved && g.dateAchieved && (
-                    <div className="row-sub">Achieved {formatDayKey(g.dateAchieved)}</div>
-                  )}
-                </span>
-              </label>
+              <div className="goal-main">
+                <label className="checklist-take">
+                  <input type="checkbox" checked={g.achieved} onChange={() => void toggleAchieved(g)} />
+                  <span style={g.achieved ? { textDecoration: 'line-through', color: 'var(--text-dim)' } : undefined}>
+                    {g.text}
+                  </span>
+                </label>
+                {(isGolden || g.category || g.target || (g.achieved && g.dateAchieved)) && (
+                  <div className="goal-subs">
+                    {isGolden && <div className="row-sub" style={{ color: 'var(--accent-ink)' }}>North Star</div>}
+                    {(g.category || g.target) && (
+                      <div className="row-sub">{[g.category, g.target].filter(Boolean).join(' · ')}</div>
+                    )}
+                    {g.achieved && g.dateAchieved && (
+                      <div className="row-sub">Achieved {formatDayKey(g.dateAchieved)}</div>
+                    )}
+                  </div>
+                )}
+              </div>
               <button className="icon-btn" aria-label={`Edit ${g.text}`} onClick={() => setEditing(g)}><Icon name="edit" size={18} /></button>
             </div>
           </SwipeRow>

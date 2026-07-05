@@ -3,6 +3,7 @@
 // filterable by gun, type, ammo, magazine, and date — tap one to open its
 // session. Read-only: it only displays existing records, never writes.
 import { useEffect, useMemo, useState } from 'react';
+import { ScreenLoading } from './ScreenState.tsx';
 import type { Ammunition, Firearm, Magazine, MalfunctionEntry, Session } from '../lib/types.ts';
 import { getAll } from '../lib/db.ts';
 import { activeMalfunctions, trashedIdSet } from '../lib/softDelete.ts';
@@ -68,7 +69,7 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
   }
 
   if (error) return <ScreenError onRetry={() => setReloadNonce((n) => n + 1)} />;
-  if (!loaded) return <div className="screen" />;
+  if (!loaded) return <ScreenLoading />;
 
   return (
     <div className="screen">

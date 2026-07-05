@@ -1,6 +1,7 @@
 // The Compete tab (spec §11): matches, classifiers, classification progress,
 // and the season at a glance.
 import { useEffect, useMemo, useState } from 'react';
+import { ScreenLoading } from './ScreenState.tsx';
 import type { Classifier, Match, Media } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
@@ -56,7 +57,7 @@ export function CompeteScreen({ refreshKey, open }: {
   const seasonFees = seasonMatches.reduce((s, m) => s + matchFee(m), 0);
 
   if (error) return <ScreenError onRetry={() => setReloadNonce((n) => n + 1)} />;
-  if (!loaded) return <div className="screen" />;
+  if (!loaded) return <ScreenLoading />;
 
   return (
     <div className="screen">

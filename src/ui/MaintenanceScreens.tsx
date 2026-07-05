@@ -1,5 +1,6 @@
 // Maintenance: the all-guns overview (More → Maintenance) and the log form.
 import { useEffect, useState } from 'react';
+import { ScreenLoading } from './ScreenState.tsx';
 import type { Firearm, MaintenanceEntry, Reference, Session } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { activeOnly } from '../lib/softDelete.ts';
@@ -44,7 +45,7 @@ export function MaintenanceOverview({ refreshKey, onBack, openGun, logFor }: {
   }, [refreshKey, reloadNonce]);
 
   if (error) return <ScreenError onRetry={() => setReloadNonce((n) => n + 1)} />;
-  if (!loaded) return <div className="screen" />;
+  if (!loaded) return <ScreenLoading />;
   const now = new Date();
   const lookup = buildRefLookup(references);
 

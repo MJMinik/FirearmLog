@@ -8,7 +8,7 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { dryRepsForFirearm, roundsForFirearm } from '../lib/stats.ts';
 import { maintLabel, maintenanceStatus } from '../lib/maintenance.ts';
 import { NotFound } from './NotFound.tsx';
-import { ScreenError } from './ScreenState.tsx';
+import { ScreenError, ScreenLoading } from './ScreenState.tsx';
 import { isBatteryDue } from '../lib/optics.ts';
 import { buildRefLookup, referencesForCategory, toEntry } from '../lib/referenceData.ts';
 import { formatDayKey } from '../lib/dates.ts';
@@ -89,7 +89,7 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
 
   if (error) return <ScreenError onRetry={() => setLocalBump((n) => n + 1)} />;
   if (notFound) return <NotFound what="This gun no longer exists." onBack={onBack} />;
-  if (!gun) return <div className="screen" />;
+  if (!gun) return <ScreenLoading />;
   const linkedRef = buildRefLookup(customRefs)(gun.referenceId);
   const customForCategory = customRefs.filter((r) => r.category === gun.category).map(toEntry);
 

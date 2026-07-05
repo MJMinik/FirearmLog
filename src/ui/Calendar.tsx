@@ -60,13 +60,14 @@ export function MonthCalendar({ items, onOpen, onEmptyDay }: {
         {cells.map((d, i) => {
           if (d === null) return <div key={i} className="cal-cell empty" />;
           const key = dayKey(new Date(year, month, d));
+          const dateLabel = new Date(year, month, d).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
           const list = items.get(key) ?? [];
           const present = KIND_ORDER.filter((k) => list.some((x) => x.kind === k));
           return (
             <button key={i}
               className={`cal-cell ${key === todayK ? 'today' : ''} ${list.length ? 'busy' : ''}`}
               onClick={() => tapDay(d)}
-              aria-label={`${key}: ${present.length ? present.map((k) => KIND_LABEL[k]).join(', ') : 'nothing logged'}`}>
+              aria-label={`${dateLabel}: ${present.length ? present.map((k) => KIND_LABEL[k]).join(', ') : 'nothing logged'}`}>
               <span>{d}</span>
               <span className="cal-dots">
                 {list.some((x) => x.kind === 'practice') && <span className="dot practice" />}

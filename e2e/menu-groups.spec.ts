@@ -35,7 +35,7 @@ test.describe('Menu groups', () => {
   // App & Data section, since those are the newly-split screens.
   const dests: { group: string; section: string; heading: string }[] = [
     { group: 'Your Gear', section: 'Guns', heading: 'Guns' },
-    { group: 'Training', section: 'How the numbers work', heading: 'How the numbers work' },
+    { group: 'Training', section: 'The numbers', heading: 'How the numbers work' },
     { group: 'Records', section: 'Malfunctions', heading: 'Malfunctions' },
     { group: 'App & Data', section: 'Tour & Setup', heading: 'Tour & Setup' },
     { group: 'App & Data', section: 'Sync & Backup', heading: 'Sync & Backup' },

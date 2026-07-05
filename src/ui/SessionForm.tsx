@@ -510,7 +510,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         {addingItem[cat] ? (
           <div className="checklist-add">
             <input value={newItemText[cat]} placeholder="Item name — saves for future sessions" autoFocus
-              aria-label={`New ${title} item name`}
+              aria-label={`New ${title} item name`} enterKeyHint="done"
               onChange={(e) => setNewItemText((prev) => ({ ...prev, [cat]: e.target.value }))}
               onKeyDown={(e) => { if (e.key === 'Enter') void addChecklistItem(cat); }} />
             <button className="button secondary" onClick={() => void addChecklistItem(cat)}>Add</button>
@@ -962,7 +962,8 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         {/* Progressive disclosure: the self-ratings are reflection, not core capture —
             collapsed by default so a first log is kind-of-work + gun & rounds + save.
             Values live in `ratings` state, so an unopened block still saves "—". */}
-        <Reveal label="Rate how it felt (1–10)">
+        <Reveal defaultOpen={editing && Object.values(ratings).some((v) => v !== '')}
+          label="Rate how it felt (1–10)">
           {(['focus', 'fundamentals', 'satisfaction'] as const).map((k) => (
             <div className="row" key={k}>
               <span className="label" style={{ textTransform: 'capitalize' }}>{k}</span>
@@ -1059,7 +1060,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               <FormProblem problem={quickProblem} />
               <label className="field">What this drill is called
                 <input value={quickName} autoFocus placeholder="Bill Drill"
-                  aria-label="Drill to add" {...noAutofillProps} name="quick-drill-title"
+                  aria-label="Drill to add" {...noAutofillProps} name="quick-drill-title" enterKeyHint="done"
                   onChange={(e) => setQuickName(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') void saveQuickDrill(); }} />
               </label>

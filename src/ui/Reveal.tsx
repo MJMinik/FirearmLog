@@ -4,7 +4,7 @@
 // toggle reuses the app's existing link-btn affordance; children are unmounted while
 // collapsed (form values live in parent state, so nothing is lost — an unopened section
 // simply saves its defaults, exactly as before the demotion).
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 
 export function Reveal({
   label,
@@ -16,6 +16,11 @@ export function Reveal({
   defaultOpen?: boolean;
 }) {
   const [open, setOpen] = useState(defaultOpen);
+  // L13: when a caller learns (often after an async load) that the section is
+  // already populated, `defaultOpen` flips to true — open the section then. We
+  // only ever force it OPEN, never closed, so the user can still collapse it, and
+  // callers that never pass defaultOpen (the default false) are unaffected.
+  useEffect(() => { if (defaultOpen) setOpen(true); }, [defaultOpen]);
   return (
     <div className="reveal">
       <button

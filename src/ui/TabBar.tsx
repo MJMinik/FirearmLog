@@ -26,7 +26,9 @@ type SectionDef = { target: View; label: string; icon: IconName; also: View['kin
 
 // Desktop-only direct links to the sections that live under More on the phone,
 // grouped exactly like the phone More screen. Nothing is removed vs. the old
-// flat list; "How the numbers work" is added here for phone/desktop parity.
+// flat list; the numbers wiki is here too for phone/desktop parity (shown as the
+// short "The numbers" in this dense sidebar; the phone More screen keeps the full
+// "How the numbers work"). — L4
 const GROUPS: { label: string; sections: SectionDef[] }[] = [
   {
     label: 'Your Gear',
@@ -43,7 +45,7 @@ const GROUPS: { label: string; sections: SectionDef[] }[] = [
     label: 'Training',
     sections: [
       { target: { kind: 'drills' }, label: 'Drills', icon: 'drills', also: ['drill-form'] },
-      { target: { kind: 'numbers' }, label: 'How the numbers work', icon: 'info', also: [] }
+      { target: { kind: 'numbers' }, label: 'The numbers', icon: 'info', also: [] }
     ]
   },
   {
