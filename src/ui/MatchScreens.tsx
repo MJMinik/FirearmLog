@@ -22,6 +22,7 @@ import type { StagedFile } from './MediaField.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { NotFound } from './NotFound.tsx';
+import { Icon } from './Icon.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
 
 /** Format a stage's ranking metric for the debrief read-out. */
@@ -205,7 +206,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
         {match.practiScoreUrl && (
           <a className="row-tap" href={match.practiScoreUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
             <span className="label" style={{ color: 'var(--accent-ink)' }}>Results on PractiScore</span>
-            <span className="value">↗</span>
+            <span className="value"><Icon name="external" size={16} /></span>
           </a>
         )}
       </div>
@@ -757,7 +758,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
               <div className="drill-edit-head">
                 <strong>Stage {i + 1}{ss.stageTime !== null ? ` — ${ss.stageTime}s` : ''}</strong>
                 <button className="icon-btn" aria-label={`Remove stage ${i + 1}`}
-                  onClick={() => setStages((p) => p.filter((_, x) => x !== i))}>✕</button>
+                  onClick={() => setStages((p) => p.filter((_, x) => x !== i))}><Icon name="close" size={18} /></button>
               </div>
               <label className="field">Which Steel stage
                 <select value={st.steelStage}
@@ -816,7 +817,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
               <div className="drill-edit-head">
                 <strong>Stage {i + 1}{is.stageTime !== null ? ` — ${is.stageTime}s` : ''}</strong>
                 <button className="icon-btn" aria-label={`Remove stage ${i + 1}`}
-                  onClick={() => setStages((p) => p.filter((_, x) => x !== i))}>✕</button>
+                  onClick={() => setStages((p) => p.filter((_, x) => x !== i))}><Icon name="close" size={18} /></button>
               </div>
               <label className="field small">Raw time (s)
                 <input type="number" inputMode="decimal" value={st.time}
@@ -876,7 +877,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
               <div className="drill-edit-head">
                 <strong>Stage {i + 1}{hf !== null ? ` — HF ${hf}` : ''}</strong>
                 <button className="icon-btn" aria-label={`Remove stage ${i + 1}`}
-                  onClick={() => setStages((p) => p.filter((_, x) => x !== i))}>✕</button>
+                  onClick={() => setStages((p) => p.filter((_, x) => x !== i))}><Icon name="close" size={18} /></button>
               </div>
               <div className="drill-edit-fields">
                 <label className="field small">Points{sc ? ' (from hits)' : ''}

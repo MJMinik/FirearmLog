@@ -5,6 +5,7 @@
 import { useRef, useState } from 'react';
 import type { PointerEvent } from 'react';
 import { Sheet } from './Sheet.tsx';
+import { Icon } from './Icon.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { newId } from '../lib/id.ts';
 import type { Mark } from '../lib/types.ts';
@@ -85,7 +86,7 @@ export function PhotoMarkup({ url, initial, onSave, onClose }: {
           <input value={mk.label} placeholder="Label (e.g. Bill Drill)" {...noAutofillProps} name="mark-label"
             onChange={(e) => setMarks((m) => m.map((x) => (x.id === mk.id ? { ...x, label: e.target.value } : x)))} />
           <button className="thumb-x" style={{ position: 'static' }} aria-label="Remove circle"
-            onClick={() => setMarks((m) => m.filter((x) => x.id !== mk.id))}>✕</button>
+            onClick={() => setMarks((m) => m.filter((x) => x.id !== mk.id))}><Icon name="close" size={16} /></button>
         </div>
       ))}
       <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>

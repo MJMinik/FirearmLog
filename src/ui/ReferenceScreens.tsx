@@ -3,6 +3,7 @@
 // the gun link picker right beside the built-ins.
 import { useEffect, useState } from 'react';
 import type { GunCategory, Reference } from '../lib/types.ts';
+import { Icon } from './Icon.tsx';
 import { GUN_CATEGORIES } from '../lib/types.ts';
 import { getAll, getOne, putOne, deleteOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
@@ -157,7 +158,7 @@ export function ReferenceDetail({ id, onBack, onEdit, onCopy, onDeleted, refresh
             <a className="row-tap" key={l.url} href={l.url} target="_blank" rel="noreferrer"
               style={{ textDecoration: 'none' }}>
               <span className="label" style={{ color: 'var(--accent-ink)' }}>{l.label}</span>
-              <span className="value">↗</span>
+              <span className="value"><Icon name="external" size={16} /></span>
             </a>
           ))}
         </div>

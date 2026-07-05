@@ -7,7 +7,8 @@ export type IconName =
   | 'home' | 'log' | 'compete' | 'progress' | 'more'
   | 'gun' | 'optic' | 'ammo' | 'magazine' | 'drills'
   | 'costs' | 'maintenance' | 'parts' | 'reference' | 'reports' | 'help' | 'malfunction' | 'info'
-  | 'sync' | 'import' | 'cleanup' | 'settings';
+  | 'sync' | 'import' | 'cleanup' | 'settings'
+  | 'close' | 'edit' | 'star' | 'starFilled' | 'external';
 
 // 24x24 viewBox line paths.
 const PATHS: Record<IconName, string> = {
@@ -33,14 +34,23 @@ const PATHS: Record<IconName, string> = {
   import:      'M12 3.5v9 M8.5 9 12 12.5 15.5 9 M5 14.5v4.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-4.5',
   cleanup:     'M12 4l1.5 4L18 9.5l-4.5 1.5L12 15l-1.5-4L6 9.5l4.5-1.5z M18 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z',
   settings:    'M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6z M12 3v3 M12 18v3 M3 12h3 M18 12h3 M5.6 5.6l2.1 2.1 M16.3 16.3l2.1 2.1 M18.4 5.6l-2.1 2.1 M5.6 18.4l2.1-2.1',
+  close:       'M6 6l12 12 M18 6L6 18',
+  edit:        'M4 20l.6-3.8L15.5 5.3a2 2 0 0 1 2.9 2.9L7.6 19.1 4 20z M13.7 7.1l3.1 3.1',
+  star:        'M12 3.6l2.55 5.17 5.7.83-4.13 4.02.98 5.68L12 16.62l-5.1 2.68.98-5.68L3.75 9.6l5.7-.83z',
+  starFilled:  'M12 3.6l2.55 5.17 5.7.83-4.13 4.02.98 5.68L12 16.62l-5.1 2.68.98-5.68L3.75 9.6l5.7-.83z',
+  external:    'M14 4h6v6 M20 4L10 14 M18 13.5V17a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.5',
 };
 
+// Icons drawn as a solid fill rather than a stroke.
+const FILLED = new Set<IconName>(['starFilled']);
+
 export function Icon({ name, size = 22, style }: { name: IconName; size?: number; style?: CSSProperties }) {
+  const filled = FILLED.has(name);
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none"
       stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round"
       aria-hidden="true" focusable="false" style={style}>
-      <path d={PATHS[name]} />
+      <path d={PATHS[name]} fill={filled ? 'currentColor' : 'none'} stroke={filled ? 'none' : 'currentColor'} />
     </svg>
   );
 }

@@ -11,6 +11,7 @@ import { getAll, putOne, deleteOne } from '../lib/db.ts';
 import { stampNew } from '../lib/stamps.ts';
 import { newId } from '../lib/id.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
+import { Icon } from './Icon.tsx';
 import { MarkThumb } from './MarkThumb.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { NewPhotoSheet } from './NewPhotoSheet.tsx';
@@ -97,7 +98,7 @@ export function MediaField({
                 <MarkThumb media={m} />
               </button>
               <button className="thumb-x" aria-label={`Remove ${m.name}`}
-                onClick={() => setRemovedMedia((p) => [...p, m.id])}>✕</button>
+                onClick={() => setRemovedMedia((p) => [...p, m.id])}><Icon name="close" size={16} /></button>
               <span className="thumb-caption">{m.name}</span>
             </div>
           ))}
@@ -109,7 +110,7 @@ export function MediaField({
                   : <img src={nf.url} alt="New file" />}
               </button>
               <button className="thumb-x" aria-label="Remove new file"
-                onClick={() => setNewFiles((p) => p.filter((_, x) => x !== i))}>✕</button>
+                onClick={() => setNewFiles((p) => p.filter((_, x) => x !== i))}><Icon name="close" size={16} /></button>
               <span className="thumb-caption">{nf.name || 'Tap to name'}</span>
             </div>
           ))}

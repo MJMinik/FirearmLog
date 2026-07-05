@@ -28,6 +28,7 @@ import { reportImageUrls } from './reportImages.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
+import { Icon } from './Icon.tsx';
 import { MediaField, commitMedia } from './MediaField.tsx';
 import type { StagedFile } from './MediaField.tsx';
 import { FormProblem } from './FormProblem.tsx';
@@ -798,7 +799,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                 placeholder="rounds" aria-label={`Rounds of ammo ${i + 1}`} value={r.rounds}
                 onChange={(e) => { setAmmoTouched(true); setAmmoRows((p) => p.map((x, n) => n === i ? { ...x, rounds: e.target.value } : x)); }} />
               <button className="icon-btn" aria-label="Remove ammo row"
-                onClick={() => { setAmmoTouched(true); setAmmoRows((prev) => prev.filter((_, x) => x !== i)); }}>✕</button>
+                onClick={() => { setAmmoTouched(true); setAmmoRows((prev) => prev.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
             </div>
           ))}
           <button className="button secondary" onClick={() => { setAmmoTouched(true); setAmmoRows((prev) => [...prev, { ammoId: '', rounds: '' }]); }}>
@@ -833,7 +834,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             <div className="drill-edit-head">
               <strong>{d.name}</strong>
               <button className="icon-btn" aria-label={`Remove ${d.name}`}
-                onClick={() => setDrills((prev) => prev.filter((_, x) => x !== i))}>✕</button>
+                onClick={() => setDrills((prev) => prev.filter((_, x) => x !== i))}><Icon name="close" size={18} /></button>
             </div>
             <div className="drill-edit-fields">
               <label className="field small">Distance
@@ -883,7 +884,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             <div className="drill-edit-head">
               <strong>{m.type || 'New malfunction'}</strong>
               <button className="icon-btn" aria-label="Remove malfunction"
-                onClick={() => setMalfs((prev) => prev.filter((_, x) => x !== i))}>✕</button>
+                onClick={() => setMalfs((prev) => prev.filter((_, x) => x !== i))}><Icon name="close" size={18} /></button>
             </div>
             <label className="field">What happened
               <select value={m.otherType ? 'Other' : m.type}

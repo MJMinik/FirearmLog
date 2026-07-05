@@ -4,6 +4,7 @@
 // out of a text field can never throw your edits away.
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
+import { Icon } from './Icon.tsx';
 
 // N1: a module-level stack of the currently-open sheets. Each Sheet listens for
 // Escape on `window`, so without this a ConfirmSheet nested inside an edit Sheet
@@ -66,7 +67,7 @@ export function Sheet({ title, onClose, children }: {
       <div className="sheet" role="dialog" aria-modal="true" aria-label={title} ref={sheetRef} tabIndex={-1}>
         <div className="sheet-head">
           <h3>{title}</h3>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">✕</button>
+          <button className="icon-btn" onClick={onClose} aria-label="Close"><Icon name="close" size={18} /></button>
         </div>
         <div className="sheet-body">{children}</div>
       </div>

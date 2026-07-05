@@ -487,7 +487,7 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
               <button className="row-tap" onClick={() => open({ kind: 'session-form', planned: true })}>
                 <span className="label">
                   <span className="golden-title">
-                    <span className="golden-star" aria-hidden="true">★</span>
+                    <span className="golden-star" aria-hidden="true"><Icon name="starFilled" size={16} /></span>
                     <span className="golden-text">{golden.text}</span>
                   </span>
                   <div className="row-sub">Your North Star · tap to plan a session</div>

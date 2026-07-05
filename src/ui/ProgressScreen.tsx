@@ -25,6 +25,7 @@ import { RoundsByMonthChart } from './screens.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { FormProblem } from './FormProblem.tsx';
+import { Icon } from './Icon.tsx';
 import { SwipeRow } from './SwipeRow.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { Reveal } from './Reveal.tsx';
@@ -162,7 +163,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
             <div className={isGolden ? 'goal-row goal-golden' : 'goal-row'}>
               <button className="goal-star" aria-pressed={isGolden}
                 aria-label={isGolden ? `Remove ${g.text} as your North Star` : `Make ${g.text} your North Star`}
-                onClick={() => void toggleGolden(g)}>{isGolden ? '★' : '☆'}</button>
+                onClick={() => void toggleGolden(g)}>{isGolden ? <Icon name="starFilled" size={18} /> : <Icon name="star" size={18} />}</button>
               <label className="checklist-take" style={{ flex: 1 }}>
                 <input type="checkbox" checked={g.achieved} onChange={() => void toggleAchieved(g)} />
                 <span style={g.achieved ? { textDecoration: 'line-through', color: 'var(--text-dim)' } : undefined}>
@@ -176,7 +177,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
                   )}
                 </span>
               </label>
-              <button className="icon-btn" aria-label={`Edit ${g.text}`} onClick={() => setEditing(g)}>✎</button>
+              <button className="icon-btn" aria-label={`Edit ${g.text}`} onClick={() => setEditing(g)}><Icon name="edit" size={18} /></button>
             </div>
           </SwipeRow>
           );
