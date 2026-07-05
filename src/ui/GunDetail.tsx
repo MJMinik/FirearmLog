@@ -7,6 +7,7 @@ import { prepareUploadBytes } from './shrinkImage.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { dryRepsForFirearm, roundsForFirearm } from '../lib/stats.ts';
 import { maintLabel, maintenanceStatus } from '../lib/maintenance.ts';
+import { NotFound } from './NotFound.tsx';
 import { isBatteryDue } from '../lib/optics.ts';
 import { buildRefLookup, referencesForCategory, toEntry } from '../lib/referenceData.ts';
 import { formatDayKey } from '../lib/dates.ts';
@@ -36,6 +37,7 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
   const [localBump, setLocalBump] = useState(0);
   const [removing, setRemoving] = useState(false);
   const [hasHistory, setHasHistory] = useState(false);
+  const [notFound, setNotFound] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -51,7 +53,8 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
         getAll<Reference>('references'),
         getAll<Optic>('optics')
       ]);
-      if (!alive || !g) return;
+      if (!alive) return;
+      if (!g) { setNotFound(true); return; }
       // App 7: stats and maintenance ignore trashed sessions, but the "has
       // history" gate below counts them too — a restorable session still
       // references this gun, so it must not be hard-deletable yet.
@@ -76,6 +79,7 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
     return () => { alive = false; };
   }, [id, refreshKey, localBump]);
 
+  if (notFound) return <NotFound what="This gun no longer exists." onBack={onBack} />;
   if (!gun) return <div className="screen" />;
   const linkedRef = buildRefLookup(customRefs)(gun.referenceId);
   const customForCategory = customRefs.filter((r) => r.category === gun.category).map(toEntry);

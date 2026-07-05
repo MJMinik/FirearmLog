@@ -5,6 +5,13 @@
 import { useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 
+// N1: a module-level stack of the currently-open sheets. Each Sheet listens for
+// Escape on `window`, so without this a ConfirmSheet nested inside an edit Sheet
+// would fire BOTH onClose handlers on a single Esc — silently discarding the
+// parent's context. Only the TOP-most sheet responds to keyboard events; the
+// sheets beneath it stand down until they're on top again.
+const sheetStack: symbol[] = [];
+
 export function Sheet({ title, onClose, children }: {
   title: string; onClose: () => void; children: ReactNode;
 }) {
@@ -15,6 +22,9 @@ export function Sheet({ title, onClose, children }: {
   // keyboard/VoiceOver user can't Tab onto the page behind the "modal". Escape
   // still closes it (so the trap is always escapable — WCAG 2.1.2).
   useEffect(() => {
+    const token = Symbol('sheet');
+    sheetStack.push(token);
+    const isTop = () => sheetStack[sheetStack.length - 1] === token;
     const previouslyFocused = document.activeElement as HTMLElement | null;
     const focusables = (): HTMLElement[] => {
       const el = sheetRef.current;
@@ -27,6 +37,7 @@ export function Sheet({ title, onClose, children }: {
     };
     (focusables()[0] ?? sheetRef.current)?.focus();
     const h = (e: KeyboardEvent) => {
+      if (!isTop()) return; // only the top-most sheet handles the keyboard
       if (e.key === 'Escape') { onClose(); return; }
       if (e.key !== 'Tab') return;
       const items = focusables();
@@ -38,6 +49,8 @@ export function Sheet({ title, onClose, children }: {
     };
     window.addEventListener('keydown', h);
     return () => {
+      const i = sheetStack.indexOf(token);
+      if (i >= 0) sheetStack.splice(i, 1);
       window.removeEventListener('keydown', h);
       previouslyFocused?.focus?.();
     };
@@ -61,16 +74,16 @@ export function Sheet({ title, onClose, children }: {
   );
 }
 
-export function ConfirmSheet({ title, message, confirmLabel, onConfirm, onClose }: {
-  title: string; message: string; confirmLabel: string;
+export function ConfirmSheet({ title, message, confirmLabel, cancelLabel = 'Cancel', onConfirm, onClose }: {
+  title: string; message: string; confirmLabel: string; cancelLabel?: string;
   onConfirm: () => void; onClose: () => void;
 }) {
   return (
     <Sheet title={title} onClose={onClose}>
       <p className="report-note" style={{ marginBottom: 14 }}>{message}</p>
-      {/* Audit #1: the safe choice (Cancel) comes first and is the easy default;
-          the destructive action sits below so it isn't the reflex tap. */}
-      <button className="button" onClick={onClose}>Cancel</button>
+      {/* Audit #1: the safe choice comes first and is the easy default; the
+          destructive action sits below so it isn't the reflex tap. */}
+      <button className="button" onClick={onClose}>{cancelLabel}</button>
       <div style={{ height: 8 }} />
       <button className="button danger" onClick={onConfirm}>{confirmLabel}</button>
     </Sheet>

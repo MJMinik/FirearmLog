@@ -21,6 +21,8 @@ import { MediaField, commitMedia } from './MediaField.tsx';
 import type { StagedFile } from './MediaField.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { FormProblem } from './FormProblem.tsx';
+import { NotFound } from './NotFound.tsx';
+import { useDirtyGuard } from './useDirtyGuard.ts';
 import { pickableGuns } from '../lib/gunStatus.ts';
 
 /** Format a stage's ranking metric for the debrief read-out. */
@@ -100,6 +102,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
   const [showReconcile, setShowReconcile] = useState(false);
   const [officialTimes, setOfficialTimes] = useState<string[]>([]);
   const [coachingRemarks, setCoachingRemarks] = useState(true);
+  const [notFound, setNotFound] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -108,7 +111,8 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
         getOne<Match>('matches', id), getAll<Firearm>('firearms'), getAll<Media>('media'),
         getSettings<AppSettings>()
       ]);
-      if (!alive || !m) return;
+      if (!alive) return;
+      if (!m) { setNotFound(true); return; }
       setMatch(m);
       setFirearms(f);
       setVideos(media.filter((x) => x.ownerType === 'match' && x.ownerId === id));
@@ -117,6 +121,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
     return () => { alive = false; };
   }, [id, refreshKey, localBump]);
 
+  if (notFound) return <NotFound what="This match no longer exists." onBack={onBack} />;
   if (!match) return <div className="screen" />;
   const gunName = firearms.find((f) => f.id === match.firearmId)?.name ?? '—';
   const isSteel = match.scoringType === 'steel';
@@ -477,6 +482,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState('');
+  const [discarding, setDiscarding] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -647,17 +653,30 @@ export function MatchForm({ id, onSaved, onCancel }: {
     }
   }
 
+  // M4: a stray ‹ Cancel shouldn't silently discard a half-filled match.
+  const dirtySig = JSON.stringify([name, date, matchType, division, powerFactor, firearmId,
+    totalRounds, matchPercent, divPlace, divOf, overallPlace, overallOf, entryFee, psUrl, notes,
+    stages, newFiles.length, removedMedia]);
+  // Baseline is captured once data is loaded — for a NEW match that's after the
+  // firearms load (which also auto-selects the first gun), so that auto-select
+  // isn't mistaken for a user edit.
+  const isDirty = useDirtyGuard(dirtySig, editing ? original !== null : firearms.length > 0);
 
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onCancel}>‹ Cancel</button>
+        <button className="back-btn" onClick={() => (isDirty() ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
         <button className="navbar-action" disabled={saving} onClick={() => void save()}>
           {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
       <h1 className="large-title">{editing ? 'Edit Match' : 'Log Match'}</h1>
       <FormProblem problem={problem} />
+      {discarding && (
+        <ConfirmSheet title="Discard changes?" message="Your edits on this screen will be lost."
+          cancelLabel="Keep editing" confirmLabel="Discard"
+          onConfirm={onCancel} onClose={() => setDiscarding(false)} />
+      )}
 
       <div className="card">
         <label className="field">What this match is called

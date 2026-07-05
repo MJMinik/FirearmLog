@@ -1,6 +1,6 @@
 // Tab screens. Home and Log are live against the database; Compete and
 // Progress arrive in M5 and M7 and say so in plain language.
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import type { Ammunition, AppSettings, Classifier, DrillDef, Firearm, Goal, GunCategory, MaintenanceEntry, Match, Purchase, Reference, Session } from '../lib/types.ts';
 import { goldenGoal } from '../lib/goals.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
@@ -233,6 +233,26 @@ function AlertRow({ alert, onTap, onDismiss, onComplete }: {
   onComplete: () => void;
 }) {
   const [showActions, setShowActions] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // M3: an options popover shouldn't stay stuck open over the next row. Dismiss it
+  // on Escape (returning focus to its trigger) or on any tap outside it.
+  useEffect(() => {
+    if (!showActions) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowActions(false); triggerRef.current?.focus(); }
+    };
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!menuRef.current?.contains(t) && !triggerRef.current?.contains(t)) setShowActions(false);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointerdown', onDown);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointerdown', onDown);
+    };
+  }, [showActions]);
   return (
     <div className="alert-row">
       <button className="row-tap" style={{ flex: 1 }} onClick={onTap}>
@@ -244,12 +264,13 @@ function AlertRow({ alert, onTap, onDismiss, onComplete }: {
           {alert.item.level === 'due' ? 'Due' : 'Soon'}
         </span>
       </button>
-      <button className="alert-dismiss-btn" onClick={() => setShowActions(!showActions)}
-        aria-expanded={showActions} aria-label="Dismiss options" title="Dismiss or mark complete">Options ▾</button>
+      <button ref={triggerRef} className="alert-dismiss-btn" onClick={() => setShowActions(!showActions)}
+        aria-expanded={showActions} aria-haspopup="true" aria-label="Dismiss options"
+        title="Dismiss or mark complete">Options ▾</button>
       {showActions && (
-        <div className="alert-actions">
-          <button onClick={() => { onComplete(); setShowActions(false); }}>Log maintenance</button>
-          <button onClick={() => { onDismiss(); setShowActions(false); }}>Dismiss for now</button>
+        <div className="alert-actions" role="menu" ref={menuRef}>
+          <button role="menuitem" onClick={() => { onComplete(); setShowActions(false); }}>Log maintenance</button>
+          <button role="menuitem" onClick={() => { onDismiss(); setShowActions(false); }}>Dismiss for now</button>
         </div>
       )}
     </div>

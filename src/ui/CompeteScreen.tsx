@@ -10,6 +10,7 @@ import { DIVISIONS, classificationProgress } from '../lib/competition.ts';
 import { matchFee } from '../lib/costing.ts';
 import type { View } from './nav.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
+import { useDirtyGuard } from './useDirtyGuard.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { MediaField, commitMedia } from './MediaField.tsx';
@@ -170,6 +171,7 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
   const [notes, setNotes] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState('');
+  const [discarding, setDiscarding] = useState(false);
   const [existingMedia, setExistingMedia] = useState<Media[]>([]);
   const [removedMedia, setRemovedMedia] = useState<string[]>([]);
   const [newFiles, setNewFiles] = useState<StagedFile[]>([]);
@@ -221,14 +223,24 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
   }
 
 
+  // M4: a stray ‹ Cancel shouldn't silently discard a half-filled classifier.
+  const dirtySig = JSON.stringify([code, name, date, division, hf, percent, notes,
+    newFiles.length, removedMedia]);
+  const isDirty = useDirtyGuard(dirtySig, id === undefined || original !== null);
+
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onCancel}>‹ Cancel</button>
+        <button className="back-btn" onClick={() => (isDirty() ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
       <h1 className="large-title">{original ? 'Edit Classifier' : 'Log Classifier'}</h1>
       <FormProblem problem={problem} />
+      {discarding && (
+        <ConfirmSheet title="Discard changes?" message="Your edits on this screen will be lost."
+          cancelLabel="Keep editing" confirmLabel="Discard"
+          onConfirm={onCancel} onClose={() => setDiscarding(false)} />
+      )}
       <div className="card">
         <label className="field">Classifier code
           <input value={code} onChange={(e) => setCode(e.target.value)} placeholder="23-01" />

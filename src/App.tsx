@@ -80,6 +80,18 @@ export function App() {
     return () => { alive = false; };
   }, []);
 
+  // N2: announce each screen to assistive tech. On any navigation, update the
+  // document title from the screen's heading and move focus to that <h1> so
+  // VoiceOver/NVDA read the new context (WCAG 2.4.2/2.4.3). tabIndex=-1 makes the
+  // heading programmatically focusable without adding it to the Tab order;
+  // preventScroll leaves our own scroll-to-top untouched.
+  useEffect(() => {
+    const h1 = document.querySelector<HTMLElement>('.large-title, main h1, .screen h1');
+    const label = h1?.textContent?.trim();
+    document.title = label ? `FirearmLog — ${label}` : 'FirearmLog';
+    if (h1) { h1.setAttribute('tabindex', '-1'); h1.focus({ preventScroll: true }); }
+  }, [view, tab]);
+
   const setTab = (t: TabId) => { replace(null); setTabState(t); scrollTop(); };
   // Desktop sidebar section links (C1): re-clicking the open section is a no-op
   // so it can't stack duplicate history entries.

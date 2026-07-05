@@ -134,6 +134,13 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState('');
+  // M4: this form is large and full of arrays (drills, ammo, malfunctions,
+  // checklist), so instead of a field signature we watch for any user edit via a
+  // bubbled change event. Programmatic loads don't fire input events, so `touched`
+  // flips true only on a real edit. (Edge: a pure button-only add with no field
+  // change — e.g. toggling a gun — isn't caught; the common typed-edit case is.)
+  const [touched, setTouched] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -631,15 +638,20 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
 
 
   return (
-    <div className="screen">
+    <div className="screen" onChange={() => setTouched(true)}>
       <div className="navbar">
-        <button className="back-btn" onClick={onCancel}>‹ Cancel</button>
+        <button className="back-btn" onClick={() => (touched ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
         <button className="navbar-action" disabled={saving} onClick={() => void save()}>
           {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
       <h1 className="large-title">{convert ? 'Log Session (from Plan)' : editing ? 'Edit Session' : planned ? 'Plan Session' : 'Log Session'}</h1>
       <FormProblem problem={problem} />
+      {discarding && (
+        <ConfirmSheet title="Discard changes?" message="Your edits on this screen will be lost."
+          cancelLabel="Keep editing" confirmLabel="Discard"
+          onConfirm={onCancel} onClose={() => setDiscarding(false)} />
+      )}
 
       {editing && original?.planned && !convert && onConvert && (
         <button className="button" onClick={onConvert}>✓ Convert to logged session</button>
