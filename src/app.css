@@ -325,6 +325,13 @@ select.category-pick {
    over-wide. Normalize them to line up with the inputs above and below. */
 .field input[type="date"] { min-width: 0; text-align: left; }
 .field input[type="date"]::-webkit-date-and-time-value { text-align: left; margin: 0; }
+/* iOS date inputs keep an intrinsic width that overflows the field even at width:100%
+   (min-width:0 isn't enough). On touch devices, normalize the native appearance so the
+   box sizes like the text inputs — tapping still opens the iOS date wheel. Desktop keeps
+   its native date control (no overflow there). */
+@media (pointer: coarse) {
+  .field input[type="date"] { -webkit-appearance: none; appearance: none; }
+}
 .field.small { flex: 1; }
 .field-optional { color: var(--text-dim); font-weight: 400; opacity: 0.75; }
 .link-btn { background: none; border: 0; padding: 0 4px; color: var(--accent-ink); font: inherit; text-decoration: underline; cursor: pointer;
