@@ -339,10 +339,17 @@ select.category-pick {
 
 .gun-toggle {
   flex: 1; text-align: left; background: none; border: none; color: var(--text);
-  font-size: 17px; min-height: 44px; cursor: pointer; padding: 0; opacity: 0.55;
+  font-size: 17px; min-height: 44px; cursor: pointer; padding: 0; opacity: 0.9;
+}
+/* Affordance (Michael, session 39): the OFF state used to be plain dim text with no
+   visual cue it was tappable. Show an explicit checkbox in BOTH states — empty when
+   off, checked when on — with a fixed-width box so the label doesn't shift on toggle. */
+.gun-toggle::before {
+  content: '\2610'; color: var(--text-dim); /* ☐ ballot box */
+  display: inline-block; width: 1.4em; text-align: center;
 }
 .gun-toggle.on { opacity: 1; font-weight: 600; }
-.gun-toggle.on::before { content: '✓ '; color: var(--accent-ink); }
+.gun-toggle.on::before { content: '\2713'; color: var(--accent-ink); } /* ✓ check */
 .rounds-input {
   width: 96px; min-height: 44px; border: 1px solid var(--field-border); border-radius: 10px;
   background: var(--bg); color: var(--text); padding: 8px 10px; text-align: right;
