@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  liveSessionsSince, maintenanceAlerts, maintenanceStatus, resolveSchedule, roundsSince
+  liveSessionsSince, maintenanceAlerts, maintenanceStatus, maintLabel, resolveSchedule, roundsSince
 } from '../src/lib/maintenance.ts';
 import type { Firearm, MaintenanceEntry, Session } from '../src/lib/types.ts';
 import { getReference } from '../src/lib/referenceData.ts';
@@ -30,6 +30,15 @@ const maint = (date: string, type: string): MaintenanceEntry => ({
 });
 
 const NOW = new Date(2026, 5, 11);
+
+test('maintLabel: known types keep their label; unmapped ids are humanized, never raw', () => {
+  assert.equal(maintLabel('deep_clean'), 'Deep Clean');
+  assert.equal(maintLabel('recoil_spring'), 'Recoil Spring');
+  // Unmapped (legacy/imported/demo) ids must not reach the user as snake_case.
+  assert.equal(maintLabel('spring_change'), 'Spring change');
+  assert.equal(maintLabel('red_dot_swap'), 'Red dot swap');
+  assert.equal(maintLabel(''), '');
+});
 
 test('roundsSince counts only this gun, after the date, never planned', () => {
   const sessions = [session('2026-01-01', 100), session('2026-02-01', 200), session('2026-03-01', 999, 'practice', true)];

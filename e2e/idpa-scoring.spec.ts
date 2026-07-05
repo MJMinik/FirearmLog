@@ -14,7 +14,7 @@ test.describe('IDPA scoring (Layer 2)', () => {
     await gotoTab(page, 'Compete');
 
     await page.getByRole('button', { name: '+ Log Match' }).click();
-    await page.getByLabel('What this Match is called').fill('IDPA Test');
+    await page.getByLabel('What this match is called').fill('IDPA Test');
     await page.getByLabel('Match type').selectOption('IDPA Match');
 
     // Target the Division <select> by the IDPA-only option it now contains, which also
@@ -36,7 +36,7 @@ test.describe('IDPA scoring (Layer 2)', () => {
     // 20 (raw) + 2 (points down) + 5 (non-threat) + 3 (PE) = 30
     await expect(block.getByText(/30s/).first()).toBeVisible();
 
-    await page.getByRole('button', { name: 'Save Match' }).click();
+    await page.getByRole('button', { name: 'Save match' }).click();
     await expect(page.getByRole('heading', { name: 'IDPA Test' })).toBeVisible();
     await expect(page.getByText('30s').first()).toBeVisible();
 

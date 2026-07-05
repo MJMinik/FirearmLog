@@ -136,7 +136,7 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
         <h2>Purchases</h2>
         {purchases.length > 8 && <ListSearch value={q} onChange={setQ} placeholder="Search purchases" />}
         {purchases.length === 0 ? (
-          <p className="report-note">Nothing logged yet. Ammo, gear, classes, travel — put it here and the totals above keep themselves honest.</p>
+          <p className="report-note">Nothing logged yet. Ammo, gear, classes, travel — put it here and the totals above stay current.</p>
         ) : purchases.filter((p) => matchesQuery(q, p.item, p.category, p.vendor)).map((p) => (
           <button className="row-tap" key={p.id} onClick={() => openForm(p.id)}>
             <span className="label">
@@ -350,7 +350,7 @@ export function PurchaseForm({ id, onSaved, onCancel }: {
         </label>
       </div>
       <button className="button" disabled={saving} onClick={() => void save()}>
-        {saving ? 'Saving…' : editing ? 'Save Changes' : 'Save Purchase'}
+        {saving ? 'Saving…' : editing ? 'Save changes' : 'Save purchase'}
       </button>
       {editing && (
         <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>

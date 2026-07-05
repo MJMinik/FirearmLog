@@ -260,7 +260,7 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
         existingMedia={existingMedia} setExistingMedia={setExistingMedia}
         removedMedia={removedMedia} setRemovedMedia={setRemovedMedia}
         newFiles={newFiles} setNewFiles={setNewFiles} />
-      <button className="button" onClick={() => void save()}>{original ? 'Save Changes' : 'Save Classifier'}</button>
+      <button className="button" onClick={() => void save()}>{original ? 'Save changes' : 'Save classifier'}</button>
       {original && (
         <>
           <div style={{ height: 8 }} />

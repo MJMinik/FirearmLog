@@ -3,7 +3,7 @@ import { seedDemo, gotoTab } from './helpers';
 
 // Removing the redundant "Planned session" toggle (the footgun): a session's
 // planned/logged state is set only by the entry point (+ Plan Session vs
-// + Log Session) and the explicit "Convert to Logged Session" button — never by
+// + Log Session) and the explicit "Convert to logged session" button — never by
 // a stray toggle that converted on Save. This locks that shut: editing a plan
 // and saving must keep it a plan (no silent conversion, no ammo deducted).
 // Runs on desktop + phone (CI). First real run is on the PR.
@@ -34,7 +34,7 @@ test.describe('Planned session has no stray convert toggle', () => {
     // Open it: still a plan (the Convert button shows only for plans), and the
     // removed toggle is still absent.
     await planRow.click();
-    await expect(page.getByRole('button', { name: /Convert to Logged Session/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Convert to logged session/ })).toBeVisible();
     await expect(page.getByRole('button', { name: /Planned session/ })).toHaveCount(0);
 
     // Make an innocuous edit (change the rounds) and save — the exact scenario

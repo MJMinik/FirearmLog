@@ -281,7 +281,7 @@ export function OpticForm({ id, firearmId, onSaved, onCancel }: {
           <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
       </div>
-      <button className="button" onClick={() => void save()}>{original ? 'Save Changes' : 'Add Optic'}</button>
+      <button className="button" onClick={() => void save()}>{original ? 'Save changes' : 'Add Optic'}</button>
       {original && (
         <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>
           Delete Optic

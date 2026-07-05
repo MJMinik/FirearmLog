@@ -28,8 +28,8 @@ test.describe('Goals swipe-to-delete', () => {
     if (isDesktop(page)) {
       // Desktop: no swipe/hover-trash on goals — delete from the Edit sheet.
       await page.getByRole('button', { name: `Edit ${GOAL}` }).click();
-      await page.getByRole('button', { name: 'Delete Goal' }).click(); // opens confirm
-      await page.getByRole('button', { name: 'Delete Goal' }).last().click(); // confirm
+      await page.getByRole('button', { name: 'Delete goal' }).click(); // opens confirm
+      await page.getByRole('button', { name: 'Delete goal' }).last().click(); // confirm
     } else {
       await swipeRowLeft(row);
       await row.getByRole('button', { name: 'Delete' }).click();

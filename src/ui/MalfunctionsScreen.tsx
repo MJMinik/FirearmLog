@@ -165,7 +165,7 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
           <div className="field-row" style={{ marginTop: 4 }}>
             <button className="button" onClick={() => setSheetOpen(false)}>Done</button>
             <button className="button secondary"
-              onClick={() => { setFilter(emptyMalfFilter()); setSheetOpen(false); }}>Clear All</button>
+              onClick={() => { setFilter(emptyMalfFilter()); setSheetOpen(false); }}>Clear all</button>
           </div>
         </Sheet>
       )}

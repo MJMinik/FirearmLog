@@ -5,8 +5,8 @@
 // the SAME add forms the user already knows (GunForm, OpticForm, AmmoForm,
 // MagazineForm) — no new gear-entry code, and no new data-handling code here.
 // Guns are nudged first because optics, ammo, and sessions all attach to a gun.
-// (Importing an old backup file lives under Gear & Data → Backup & Import, not
-// here — it's not part of the new-user first run.)
+// (Importing an old backup file lives under App & Data → Pistol Tracker import,
+// not here — it's not part of the new-user first run.)
 import { useEffect, useState } from 'react';
 import { countAll, restoreSnapshot } from '../lib/db.ts';
 import { parseFlog } from '../lib/flog.ts';

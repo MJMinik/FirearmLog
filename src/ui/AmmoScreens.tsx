@@ -409,7 +409,7 @@ export function AmmoForm({ id, onSaved, onCancel }: {
         </>
       )}
 
-      <button className="button" onClick={() => void save()}>{editing ? 'Save Changes' : 'Save Ammo'}</button>
+      <button className="button" onClick={() => void save()}>{editing ? 'Save changes' : 'Save ammo'}</button>
       {editing && (
         <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>
           Delete Ammo

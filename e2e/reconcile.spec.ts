@@ -13,7 +13,7 @@ test.describe('Score reconciliation (Layer 2)', () => {
     await gotoTab(page, 'Compete');
 
     await page.getByRole('button', { name: '+ Log Match' }).click();
-    await page.getByLabel('What this Match is called').fill('Reconcile Test');
+    await page.getByLabel('What this match is called').fill('Reconcile Test');
     await page.getByLabel('Match type').selectOption('Steel Challenge');
 
     await page.getByRole('button', { name: '+ Add Stage' }).click();
@@ -25,7 +25,7 @@ test.describe('Score reconciliation (Layer 2)', () => {
     await block.getByLabel('String 4 time (s)').fill('4.50');
     await block.getByLabel('String 5 time (s)').fill('6.00');
 
-    await page.getByRole('button', { name: 'Save Match' }).click();
+    await page.getByRole('button', { name: 'Save match' }).click();
     await expect(page.getByRole('heading', { name: 'Reconcile Test' })).toBeVisible();
 
     // The reconcile card is collapsed by default; reveal it.

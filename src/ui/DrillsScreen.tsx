@@ -188,17 +188,17 @@ export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, 
           </button>
         </div>
       </div>
-      <button className="button" onClick={() => void save()}>{original ? 'Save Changes' : 'Add Drill'}</button>
+      <button className="button" onClick={() => void save()}>{original ? 'Save changes' : 'Add Drill'}</button>
       {isCustom && (
         <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>
-          Delete Drill
+          Delete drill
         </button>
       )}
       {confirming && (
         <ConfirmSheet
           title="Delete this drill?"
           message="It's removed from your drill library. Sessions that used it keep their record. There's no undo."
-          confirmLabel="Delete Drill"
+          confirmLabel="Delete drill"
           onConfirm={() => void reallyDelete()}
           onClose={() => setConfirming(false)}
         />

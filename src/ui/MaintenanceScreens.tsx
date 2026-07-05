@@ -161,7 +161,7 @@ export function MaintenanceForm({ gunId, id, onSaved, onCancel }: {
           <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
       </div>
-      <button className="button" onClick={() => void save()}>{editing ? 'Save Changes' : `Save ${maintLabel(type)}`}</button>
+      <button className="button" onClick={() => void save()}>{editing ? 'Save changes' : `Save ${maintLabel(type).toLowerCase()}`}</button>
       {editing && (
         <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>
           Delete Entry

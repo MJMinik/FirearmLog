@@ -289,7 +289,7 @@ export function ReferenceForm({ id, copyFrom, onSaved, onCancel }: {
           <textarea rows={2} value={links} onChange={(e) => setLinks(e.target.value)} placeholder="https://example.com/manual" />
         </label>
       </div>
-      <button className="button" onClick={() => void save()}>{original ? 'Save Changes' : 'Create Guide'}</button>
+      <button className="button" onClick={() => void save()}>{original ? 'Save changes' : 'Create Guide'}</button>
     </div>
   );
 }

@@ -41,7 +41,7 @@ function SpeedAccuracyCard({ sa, coachingRemarks, onDisableRemarks }: {
   const nudge = sa.discipline !== 'steel' && sa.overAccuracy && coachingRemarks ? (
     <p className="report-note" style={{ marginTop: 8 }}>
       You kept almost all your points — on the closer targets, was there room to push the pace?{' '}
-      <button className="link-btn" onClick={onDisableRemarks}>Turn off</button>
+      <button className="link-btn" onClick={onDisableRemarks}>Turn off (Settings)</button>
     </p>
   ) : null;
 
@@ -66,7 +66,7 @@ function SpeedAccuracyCard({ sa, coachingRemarks, onDisableRemarks }: {
   if (sa.discipline === 'idpa') {
     return (
       <div className="card">
-        <h2>Speed &amp; Accuracy <InfoTip title="Speed & Accuracy">IDPA's time-plus scoring already splits your total into three honest parts: the raw time (speed), the seconds added by dropped points (1s each — accuracy), and any penalties. Read it as this match; the real signal is the trend across matches.</InfoTip></h2>
+        <h2>Speed &amp; Accuracy <InfoTip title="Speed & Accuracy">IDPA's time-plus scoring already splits your total into three parts: the raw time (speed), the seconds added by dropped points (1s each — accuracy), and any penalties. Read it as this match; the real signal is the trend across matches.</InfoTip></h2>
         <p className="report-note" style={{ marginTop: 0 }}>
           Your <strong>{sa.totalTime}s</strong>: <strong>{sa.timeSeconds}s</strong> time · <strong>{sa.downSeconds}s</strong> dropped points
           {sa.penaltySeconds > 0 ? ` · ${sa.penaltySeconds}s penalties` : ''}.
@@ -382,12 +382,12 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
         </div>
       )}
 
-      <button className="button danger" onClick={() => setConfirming(true)}>Delete Match</button>
+      <button className="button danger" onClick={() => setConfirming(true)}>Delete match</button>
 
       {confirming && (
         <ConfirmSheet title="Delete this match?"
           message="The match, its stages, and its videos all go. There's no undo."
-          confirmLabel="Delete Match"
+          confirmLabel="Delete match"
           onConfirm={() => void reallyDelete()}
           onClose={() => setConfirming(false)} />
       )}
@@ -652,7 +652,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
       <FormProblem problem={problem} />
 
       <div className="card">
-        <label className="field">What this Match is called
+        <label className="field">What this match is called
           <input value={name} onChange={(e) => setName(e.target.value)} placeholder="June Club Match"
             {...noAutofillProps} name="match-title" />
         </label>
@@ -941,7 +941,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
       </div>
 
       <button className="button" disabled={saving} onClick={() => void save()}>
-        {saving ? 'Saving…' : editing ? 'Save Changes' : 'Save Match'}
+        {saving ? 'Saving…' : editing ? 'Save changes' : 'Save match'}
       </button>
 
     </div>

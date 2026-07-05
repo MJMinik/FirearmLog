@@ -12,7 +12,7 @@ test.describe('count stepper', () => {
     await gotoTab(page, 'Compete');
 
     await page.getByRole('button', { name: '+ Log Match' }).click();
-    await page.getByLabel('What this Match is called').fill('Stepper Test');
+    await page.getByLabel('What this match is called').fill('Stepper Test');
     await page.getByRole('button', { name: '+ Add Stage' }).click();
 
     const block = page.locator('.drill-edit').first();

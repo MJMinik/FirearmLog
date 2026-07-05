@@ -95,7 +95,7 @@ export function LogFilterBar({ value, onChange, firearms, shown, total }: {
             <button className="button" onClick={() => setOpen(false)}>Done</button>
             <button className="button secondary"
               onClick={() => { onChange(emptyLogFilter()); setOpen(false); }}>
-              Clear All
+              Clear all
             </button>
           </div>
         </Sheet>

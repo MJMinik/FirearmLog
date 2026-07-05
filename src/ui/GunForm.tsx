@@ -165,7 +165,7 @@ export function GunForm({ id, onSaved, onCancel }: {
         </div>
       )}
 
-      <button className="button" onClick={() => void save()}>{editing ? 'Save Changes' : 'Add Gun'}</button>
+      <button className="button" onClick={() => void save()}>{editing ? 'Save changes' : 'Add Gun'}</button>
     </div>
   );
 }

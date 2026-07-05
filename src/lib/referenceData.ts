@@ -44,7 +44,7 @@ export const REFERENCES: ReferenceEntry[] = [
       'Inspect magazine springs and followers',
       'Confirm sight screws / optic plate are tight'
     ],
-    guidance: 'Glocks tolerate neglect better than most, but a quick field strip after range trips and a real deep clean by 10,000 rounds keeps them honest. Replace the recoil spring assembly around 10,000 rounds (sooner on compensated or competition guns). Light oil — Glocks run drier than 1911-pattern guns.',
+    guidance: 'Glocks tolerate neglect better than most, but a quick field strip after range trips and a real deep clean by 10,000 rounds keeps them running right. Replace the recoil spring assembly around 10,000 rounds (sooner on compensated or competition guns). Light oil — Glocks run drier than 1911-pattern guns.',
     links: [{ label: 'Glock US support', url: 'https://us.glock.com' }]
   },
   {

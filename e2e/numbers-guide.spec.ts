@@ -10,12 +10,12 @@ test.describe('How the numbers work (wiki)', () => {
     await gotoTab(page, 'Compete');
 
     await page.getByRole('button', { name: '+ Log Match' }).click();
-    await page.getByLabel('What this Match is called').fill('Wiki Link Test');
+    await page.getByLabel('What this match is called').fill('Wiki Link Test');
     await page.getByRole('button', { name: '+ Add Stage' }).click();
     const block = page.locator('.drill-edit').first();
     await block.getByLabel(/^Points/).fill('50');
     await block.getByLabel('Time (s)').fill('10');
-    await page.getByRole('button', { name: 'Save Match' }).click();
+    await page.getByRole('button', { name: 'Save match' }).click();
 
     await expect(page.getByRole('heading', { name: 'Wiki Link Test' })).toBeVisible();
 

@@ -12,7 +12,7 @@ test.describe('Match-after debrief (Layer 1)', () => {
 
     await page.getByRole('button', { name: '+ Log Match' }).click();
     await expect(page.getByRole('heading', { name: 'Log Match' })).toBeVisible();
-    await page.getByLabel('What this Match is called').fill('Debrief Test Match');
+    await page.getByLabel('What this match is called').fill('Debrief Test Match');
 
     // Two stages: stage 1 strong (80pts / 8s = HF 10), stage 2 weak (60 / 12 = HF 5).
     const addStage = page.getByRole('button', { name: '+ Add Stage' });
@@ -24,7 +24,7 @@ test.describe('Match-after debrief (Layer 1)', () => {
     await blocks.nth(1).getByLabel('Points').fill('60');
     await blocks.nth(1).getByLabel('Time (s)').fill('12');
 
-    await page.getByRole('button', { name: 'Save Match' }).click();
+    await page.getByRole('button', { name: 'Save match' }).click();
 
     // We land on the match detail (the debrief).
     await expect(page.getByRole('heading', { name: 'Debrief Test Match' })).toBeVisible();
@@ -40,7 +40,7 @@ test.describe('Match-after debrief (Layer 1)', () => {
     await gotoTab(page, 'Compete');
 
     await page.getByRole('button', { name: '+ Log Match' }).click();
-    await page.getByLabel('What this Match is called').fill('Breakdown Test');
+    await page.getByLabel('What this match is called').fill('Breakdown Test');
 
     await page.getByRole('button', { name: '+ Add Stage' }).click();
     const block = page.locator('.drill-edit').first();
@@ -52,7 +52,7 @@ test.describe('Match-after debrief (Layer 1)', () => {
     // Points is now derived (read-only) from the hits: 1A(5) + 1C(3) minor = 8.
     await expect(block.getByLabel(/^Points/)).toHaveValue('8');
 
-    await page.getByRole('button', { name: 'Save Match' }).click();
+    await page.getByRole('button', { name: 'Save match' }).click();
 
     await expect(page.getByRole('heading', { name: 'Breakdown Test' })).toBeVisible();
     // Minor 1A 1C in 2s = HF 4.0; all alphas = 5.0 (+1.0).

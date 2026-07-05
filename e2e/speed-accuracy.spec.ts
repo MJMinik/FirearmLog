@@ -9,7 +9,7 @@ import { seedDemo, gotoTab, gotoSection } from './helpers';
 async function cleanUspsaMatch(page: import('@playwright/test').Page, name: string) {
   await gotoTab(page, 'Compete');
   await page.getByRole('button', { name: '+ Log Match' }).click();
-  await page.getByLabel('What this Match is called').fill(name);
+  await page.getByLabel('What this match is called').fill(name);
   const addStage = page.getByRole('button', { name: '+ Add Stage' });
   await addStage.click();
   await addStage.click();
@@ -19,7 +19,7 @@ async function cleanUspsaMatch(page: import('@playwright/test').Page, name: stri
     await b.getByRole('button', { name: '+ Add hit breakdown (A/C/D/miss)' }).click();
     await b.getByLabel('Alphas (A)', { exact: true }).fill('10'); // all A's → 100% of points
   }
-  await page.getByRole('button', { name: 'Save Match' }).click();
+  await page.getByRole('button', { name: 'Save match' }).click();
   await expect(page.getByRole('heading', { name })).toBeVisible();
 }
 

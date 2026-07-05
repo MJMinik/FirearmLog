@@ -709,8 +709,8 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
           </p>
           <ol className="report-note" style={{ margin: '0 0 12px', paddingLeft: 22, lineHeight: 1.7 }}>
             <li>Tap <strong>Open This Session</strong> below.</li>
-            <li>Scroll to the bottom of the session and tap <strong>Delete Session</strong>.</li>
-            <li>Tap <strong>Delete Session</strong> once more to confirm.</li>
+            <li>Scroll to the bottom of the session and tap <strong>Delete session</strong>.</li>
+            <li>Tap <strong>Delete session</strong> once more to confirm.</li>
           </ol>
           <p className="report-note" style={{ marginBottom: 14 }}>
             It then moves to <strong>Recently Deleted</strong>, where you can restore it
@@ -729,7 +729,7 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
         <ConfirmSheet
           title="Delete this session for good?"
           message="This permanently removes the session, its photos, and its malfunctions. It can't be undone."
-          confirmLabel="Delete Forever"
+          confirmLabel="Delete forever"
           onConfirm={() => { const s = forget; setForget(null); void purgeSession(s.id).then(reload); }}
           onClose={() => setForget(null)} />
       )}
@@ -770,7 +770,7 @@ function RecentlyDeleted({ trashed, firearms, onRestore, onForget }: {
             </div>
             <div className="trash-actions">
               <button className="button secondary small" onClick={() => onRestore(s)}>Restore</button>
-              <button className="button danger small" onClick={() => onForget(s)}>Delete Forever</button>
+              <button className="button danger small" onClick={() => onForget(s)}>Delete forever</button>
             </div>
           </div>
         );

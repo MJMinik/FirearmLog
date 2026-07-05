@@ -8,12 +8,12 @@ import { seedDemo, gotoTab } from './helpers';
 async function cleanMatch(page: import('@playwright/test').Page, alphas: number) {
   await gotoTab(page, 'Compete');
   await page.getByRole('button', { name: '+ Log Match' }).click();
-  await page.getByLabel('What this Match is called').fill(`Trend ${alphas}`);
+  await page.getByLabel('What this match is called').fill(`Trend ${alphas}`);
   await page.getByRole('button', { name: '+ Add Stage' }).click();
   const b = page.locator('.drill-edit').first();
   await b.getByRole('button', { name: '+ Add hit breakdown (A/C/D/miss)' }).click();
   await b.getByLabel('Alphas (A)', { exact: true }).fill(String(alphas));
-  await page.getByRole('button', { name: 'Save Match' }).click();
+  await page.getByRole('button', { name: 'Save match' }).click();
   await expect(page.getByRole('heading', { name: `Trend ${alphas}` })).toBeVisible();
 }
 

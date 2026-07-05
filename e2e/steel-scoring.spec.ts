@@ -14,7 +14,7 @@ test.describe('Steel Challenge scoring (Layer 2)', () => {
 
     await page.getByRole('button', { name: '+ Log Match' }).click();
     await expect(page.getByRole('heading', { name: 'Log Match' })).toBeVisible();
-    await page.getByLabel('What this Match is called').fill('Steel Test Match');
+    await page.getByLabel('What this match is called').fill('Steel Test Match');
 
     // Choosing the Steel Challenge match type switches the Stages section to Steel.
     await page.getByLabel('Match type').selectOption('Steel Challenge');
@@ -35,7 +35,7 @@ test.describe('Steel Challenge scoring (Layer 2)', () => {
     // Best 4 of 5 = 3.00 + 3.50 + 4.00 + 4.50 = 15.00, dropping string 5.
     await expect(block.getByText(/dropped String 5/)).toBeVisible();
 
-    await page.getByRole('button', { name: 'Save Match' }).click();
+    await page.getByRole('button', { name: 'Save match' }).click();
 
     // The debrief shows the Steel stage-times card and the match total (lowest wins).
     await expect(page.getByRole('heading', { name: 'Steel Test Match' })).toBeVisible();
@@ -49,7 +49,7 @@ test.describe('Steel Challenge scoring (Layer 2)', () => {
     await gotoTab(page, 'Compete');
 
     await page.getByRole('button', { name: '+ Log Match' }).click();
-    await page.getByLabel('What this Match is called').fill('Outer Limits Test');
+    await page.getByLabel('What this match is called').fill('Outer Limits Test');
     await page.getByLabel('Match type').selectOption('Steel Challenge');
 
     await page.getByRole('button', { name: '+ Add Stage' }).click();
@@ -68,7 +68,7 @@ test.describe('Steel Challenge scoring (Layer 2)', () => {
     // Best 3 of 4 count (13.50) and the slowest (String 4) is dropped.
     await expect(block.getByText(/dropped String 4/)).toBeVisible();
 
-    await page.getByRole('button', { name: 'Save Match' }).click();
+    await page.getByRole('button', { name: 'Save match' }).click();
     await expect(page.getByRole('heading', { name: 'Outer Limits Test' })).toBeVisible();
     await expect(page.getByText('13.5s').first()).toBeVisible();
   });

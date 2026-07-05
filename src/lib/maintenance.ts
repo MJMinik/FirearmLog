@@ -20,7 +20,12 @@ export const MAINT_TYPES = [
 ] as const;
 
 export function maintLabel(type: string): string {
-  return MAINT_TYPES.find((t) => t.value === type)?.label ?? type;
+  const known = MAINT_TYPES.find((t) => t.value === type)?.label;
+  if (known) return known;
+  // Humanize any unmapped id (legacy/imported/demo, e.g. 'spring_change' → 'Spring change')
+  // so a raw snake_case id never reaches the user.
+  const words = type.replace(/_+/g, ' ').trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1).toLowerCase() : type;
 }
 
 export type MaintLevel = 'ok' | 'info' | 'warn' | 'due';

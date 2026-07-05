@@ -642,7 +642,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       <FormProblem problem={problem} />
 
       {editing && original?.planned && !convert && onConvert && (
-        <button className="button" onClick={onConvert}>✓ Convert to Logged Session</button>
+        <button className="button" onClick={onConvert}>✓ Convert to logged session</button>
       )}
       {editing && original && (
         <button className="button secondary" onClick={() => void printSessionReport()}>Session Report</button>
@@ -976,19 +976,19 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       </div>
 
       <button className="button" disabled={saving} onClick={() => void save()}>
-        {saving ? 'Saving…' : convert ? 'Log Session' : editing ? 'Save Changes' : 'Save Session'}
+        {saving ? 'Saving…' : convert ? 'Log Session' : editing ? 'Save changes' : 'Save session'}
       </button>
 
       {editing && original && (
         <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>
-          Delete Session
+          Delete session
         </button>
       )}
       {confirming && (
         <ConfirmSheet
           title="Delete this session?"
           message="It moves to Recently Deleted and any ammo it used goes back on the can. You can restore it for 30 days from the Log screen — after that it's gone for good."
-          confirmLabel="Delete Session"
+          confirmLabel="Delete session"
           onConfirm={() => void reallyDelete()}
           onClose={() => setConfirming(false)}
         />

@@ -291,7 +291,7 @@ function HeatmapCard({ sessions, open }: { sessions: Session[]; open: (v: View) 
               : `Each square is a day; darker = more rounds — tap one to open that day's session. Last ${weeks} weeks.`}
           </p>}
       {daySheet && (
-        <Sheet title="That Day" onClose={() => setDaySheet(null)}>
+        <Sheet title="Sessions on this day" onClose={() => setDaySheet(null)}>
           {daySheet.map((s) => (
             <button key={s.id} className="drill-pick-row"
               onClick={() => { setDaySheet(null); open({ kind: 'session-form', id: s.id }); }}>
@@ -330,7 +330,7 @@ function SpeedAccuracyTrendCard({ matches, coachingRemarks, onDisableRemarks }: 
 
   return (
     <div className="card">
-      <h2>Speed &amp; Accuracy <InfoTip title="Speed & Accuracy over time">Your USPSA accuracy — the share of available points you kept — across your matches, oldest to newest. One match is a small sample; this is the honest place to read whether you're getting cleaner or looser over a season. There's no pace line on purpose: raw time isn't comparable across different matches, so pace shows up only as a note below, and only when a clear pattern holds.</InfoTip></h2>
+      <h2>Speed &amp; Accuracy <InfoTip title="Speed & Accuracy over time">Your USPSA accuracy — the share of available points you kept — across your matches, oldest to newest. This is the place to read the trend: one match is a small sample; the run of matches is the signal for whether you're getting cleaner or looser over a season. There's no pace line on purpose: raw time isn't comparable across different matches, so pace shows up only as a note below, and only when a clear pattern holds.</InfoTip></h2>
       <p className="report-note" style={{ marginTop: 0 }}>
         Points kept — {Math.round(min)}% to {Math.round(max)}% across {pts.length} USPSA matches.
       </p>
@@ -345,7 +345,7 @@ function SpeedAccuracyTrendCard({ matches, coachingRemarks, onDisableRemarks }: 
       {trend.consistentlyClean && coachingRemarks && (
         <p className="report-note" style={{ marginTop: 8 }}>
           Your recent matches have all been very clean (95%+ of points kept) — you may consistently have room to push the pace.{' '}
-          <button className="link-btn" onClick={onDisableRemarks}>Turn off</button>
+          <button className="link-btn" onClick={onDisableRemarks}>Turn off (Settings)</button>
         </p>
       )}
     </div>
@@ -532,7 +532,7 @@ function SkillSheet({ assessment, onClose, onSaved }: {
       <label className="field">Notes
         <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </label>
-      <button className="button" onClick={() => void save()}>{assessment ? 'Save Changes' : 'Save Assessment'}</button>
+      <button className="button" onClick={() => void save()}>{assessment ? 'Save changes' : 'Save assessment'}</button>
       {assessment && (
         <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>Delete Assessment</button>
       )}
@@ -575,11 +575,11 @@ function GoalEditSheet({ goal, categories, onClose, onSaved }: {
         <input value={target} {...noAutofillProps} name="fl-goal-target"
           onChange={(e) => setTarget(e.target.value)} />
       </label>
-      <button className="button" onClick={() => void save()}>Save Changes</button>
-      <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>Delete Goal</button>
+      <button className="button" onClick={() => void save()}>Save changes</button>
+      <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>Delete goal</button>
       {confirming && (
         <ConfirmSheet title="Delete this goal?" message="There's no undo."
-          confirmLabel="Delete Goal" onConfirm={() => void reallyDelete()} onClose={() => setConfirming(false)} />
+          confirmLabel="Delete goal" onConfirm={() => void reallyDelete()} onClose={() => setConfirming(false)} />
       )}
     </Sheet>
   );

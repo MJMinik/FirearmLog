@@ -85,7 +85,7 @@ export function MonthCalendar({ items, onOpen, onEmptyDay }: {
         <span className="dot match" style={{ display: 'inline-block', verticalAlign: 'middle' }} /> match
       </p>
       {daySheet && (
-        <Sheet title="That Day" onClose={() => setDaySheet(null)}>
+        <Sheet title="Sessions on this day" onClose={() => setDaySheet(null)}>
           {daySheet.map((it) => (
             <button key={`${it.kind}-${it.id}`} className="drill-pick-row"
               onClick={() => { setDaySheet(null); onOpen(it); }}>

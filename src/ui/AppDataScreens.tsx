@@ -35,7 +35,7 @@ export function ImportScreen({ onBack, onImported }: { onBack: () => void; onImp
   return (
     <ScreenShell title="Import" onBack={onBack}>
       <div className="card">
-        <h2>Backup &amp; Import</h2>
+        <h2>Pistol Tracker import</h2>
         <p className="report-note" style={{ marginBottom: 12 }}>
           Import your Pistol Tracker backup here. Running it again simply re-applies the same
           records — it won't double anything up.
