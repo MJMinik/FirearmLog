@@ -345,6 +345,9 @@ function SpeedAccuracyTrendCard({ matches, coachingRemarks, onDisableRemarks }: 
       </p>
       <svg viewBox={`0 0 ${w} ${h}`} width="100%" style={{ display: 'block', marginTop: 4 }}
         role="img" aria-label={`Accuracy across ${pts.length} matches — ${Math.round(min)} to ${Math.round(max)} percent of points kept, oldest to newest`}>
+        {[hiY, (hiY + loY) / 2, loY].map((gv, k) => (
+          <line key={k} x1={padL} y1={yAt(gv)} x2={w} y2={yAt(gv)} stroke="var(--separator)" strokeWidth={0.5} />
+        ))}
         <text x={padL - 4} y={padY + 3} fontSize={10} fill="var(--text-dim)" textAnchor="end">{hiY}%</text>
         <text x={padL - 4} y={h - padY + 3} fontSize={10} fill="var(--text-dim)" textAnchor="end">{loY}%</text>
         <polyline points={line} fill="none" stroke="var(--accent-ink)" strokeWidth={1.5}

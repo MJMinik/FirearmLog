@@ -121,7 +121,7 @@ export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
   const gap = 4;
   const w = buckets.length * (barW + gap) - gap;
   const h = 140;
-  const axisW = 40; // left margin: rotated "Rounds fired" label + numeric y-ticks (M6)
+  const axisW = 48; // left gutter: rotated "Rounds fired" label + numeric y-ticks (M6)
 
   // With a lot of months, showing every label crowds them together —
   // thin them out so at most ~12 are drawn, evenly spaced.
@@ -129,7 +129,7 @@ export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
 
   return (
     <>
-    <svg viewBox={`0 0 ${w + axisW} ${h + 28}`} width="100%" style={{ display: 'block', marginTop: 8 }}
+    <svg viewBox={`0 -8 ${w + axisW} ${h + 36}`} width="100%" style={{ display: 'block', marginTop: 8 }}
       role="img" aria-label="Rounds by month bar chart">
       {/* Vertical axis label */}
       <text x={10} y={h / 2} textAnchor="middle"
@@ -137,14 +137,22 @@ export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
         transform={`rotate(-90 10 ${h / 2})`}>
         Rounds fired
       </text>
-      {/* M6: y-axis ticks so the bar heights read against a numeric scale, not just
-          relative to each other. Peak + midpoint; the 0 baseline is self-evident. */}
-      {[max, Math.round(max / 2)].map((v, k) => (
-        <text key={k} x={axisW - 5} y={h * (1 - v / max) + 3} textAnchor="end"
-          fill="var(--text-dim)" fontSize="10" fontFamily="inherit">
-          {v.toLocaleString()}
-        </text>
-      ))}
+      {/* M6: y-axis grid lines + numeric ticks so bar heights read against a scale,
+          not just relative to each other. Peak + midpoint; the 0 baseline is the axis.
+          Drawn before the bars so the bars sit on top of the grid. The peak label sits
+          just below its line (the SVG has top padding) so it never clips. */}
+      {[max, Math.round(max / 2)].map((v, k) => {
+        const y = h * (1 - v / max);
+        return (
+          <g key={k}>
+            <line x1={axisW} y1={y} x2={w + axisW} y2={y} stroke="var(--separator)" strokeWidth={0.5} />
+            <text x={axisW - 6} y={y + (k === 0 ? 8 : 3)} textAnchor="end"
+              fill="var(--text-dim)" fontSize="10" fontFamily="inherit">
+              {v.toLocaleString()}
+            </text>
+          </g>
+        );
+      })}
       <g transform={`translate(${axisW},0)`}>
         {buckets.map((b, i) => {
           const x = i * (barW + gap);
