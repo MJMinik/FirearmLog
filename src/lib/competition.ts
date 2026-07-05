@@ -30,17 +30,26 @@ export const IDPA_DIVISIONS = [
   'Pistol Caliber Carbine (PCC)'
 ];
 
-/** SCSA Steel Challenge equipment divisions -- official 2026-03 SCSA Rulebook, Appendix D
- *  (D1-D11), in rulebook order. A distinct set from USPSA's and IDPA's above; used for the
- *  division picker when a match's scoringType is 'steel'. Steel is primarily a rimfire sport,
- *  so a rimfire-less USPSA list was wrong here. We use the equipment-division names exactly as
- *  the rulebook defines them; the optics/iron sub-split (RFPO/RFPI, RFRO/RFRI, PCC Optics/Iron)
- *  is a classification-record distinction, deferred alongside SCSA classification.
- *  Source: https://rules.uspsa.org/scsa/divisions (edition 2026-03, effective 2026-03-01). */
+/** SCSA Steel Challenge competition divisions -- the EXACT names a shooter registers
+ *  and is classified in, taken verbatim from the official SCSA classification records
+ *  (https://scsa.org/classification), cross-checked against the 2026-03 SCSA Rulebook
+ *  Appendix D. A distinct set from USPSA's and IDPA's above; used for the division picker
+ *  when a match's scoringType is 'steel'. Steel is largely a rimfire sport, so the old
+ *  USPSA list (no rimfire) was wrong here.
+ *
+ *  Naming is intentionally NON-uniform -- reproduced exactly as the official source has it,
+ *  not normalized: rimfire pistol/rifle use "Open"/"Iron", PCC uses "Optics"/"Iron", and
+ *  revolver uses "Optical Sight"/"Iron Sight". Rimfire Revolver is PROVISIONAL (Rulebook
+ *  Appendix D11, RRO/RRI; not yet in the classification tables), listed last following the
+ *  records-page rimfire Open/Iron convention. */
 export const STEEL_DIVISIONS = [
-  'Open', 'Limited', 'Rimfire Pistol', 'Production', 'Single Stack',
-  'Revolver', 'Carry Optics', 'Pistol Caliber Carbine', 'Rimfire Rifle',
-  'Limited Optics', 'Rimfire Revolver', 'Other'
+  'Open', 'Limited', 'Limited Optics', 'Production', 'Single Stack', 'Carry Optics',
+  'Optical Sight Revolver', 'Iron Sight Revolver',
+  'PCC Optics', 'PCC Iron',
+  'Rimfire Pistol Open', 'Rimfire Pistol Iron',
+  'Rimfire Rifle Open', 'Rimfire Rifle Iron',
+  'Rimfire Revolver Open', 'Rimfire Revolver Iron',
+  'Other'
 ];
 
 export const POWER_FACTORS = ['Minor', 'Major'];

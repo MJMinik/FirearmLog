@@ -13,18 +13,24 @@ import {
   STEEL_DIVISIONS,
 } from '../src/lib/competition.ts';
 
-test('STEEL_DIVISIONS is the official SCSA 2026-03 Appendix D list (+ Other)', () => {
-  // Source: https://rules.uspsa.org/scsa/divisions (edition 2026-03, D1-D11), in
-  // rulebook order. Guards a domain-critical, cited constant against accidental
-  // edits. Steel is primarily a rimfire sport, so the list MUST carry the rimfire
-  // divisions the USPSA DIVISIONS list omitted -- the whole point of finding H4.
+test('STEEL_DIVISIONS is the exact official SCSA competition-division list', () => {
+  // Verbatim from the official SCSA classification records
+  // (https://scsa.org/classification), cross-checked vs the 2026-03 Rulebook Appendix D.
+  // Guards a domain-critical, cited constant against accidental edits AND against
+  // "helpfully" normalizing the intentionally non-uniform names (rimfire Open/Iron,
+  // PCC Optics/Iron, revolver Optical Sight/Iron Sight).
   assert.deepEqual(STEEL_DIVISIONS, [
-    'Open', 'Limited', 'Rimfire Pistol', 'Production', 'Single Stack',
-    'Revolver', 'Carry Optics', 'Pistol Caliber Carbine', 'Rimfire Rifle',
-    'Limited Optics', 'Rimfire Revolver', 'Other',
+    'Open', 'Limited', 'Limited Optics', 'Production', 'Single Stack', 'Carry Optics',
+    'Optical Sight Revolver', 'Iron Sight Revolver',
+    'PCC Optics', 'PCC Iron',
+    'Rimfire Pistol Open', 'Rimfire Pistol Iron',
+    'Rimfire Rifle Open', 'Rimfire Rifle Iron',
+    'Rimfire Revolver Open', 'Rimfire Revolver Iron',
+    'Other',
   ]);
-  for (const d of ['Rimfire Pistol', 'Rimfire Rifle', 'Rimfire Revolver']) {
-    assert.ok(STEEL_DIVISIONS.includes(d), `Steel list missing rimfire division: ${d}`);
+  // The point of finding H4: rimfire divisions the USPSA DIVISIONS list omitted.
+  for (const d of ['Rimfire Pistol Open', 'Rimfire Rifle Iron', 'Optical Sight Revolver']) {
+    assert.ok(STEEL_DIVISIONS.includes(d), `Steel list missing division: ${d}`);
   }
 });
 
