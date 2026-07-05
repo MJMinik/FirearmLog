@@ -255,6 +255,9 @@ function AlertRow({ alert, onTap, onDismiss, onComplete }: {
   // on Escape (returning focus to its trigger) or on any tap outside it.
   useEffect(() => {
     if (!showActions) return;
+    // F5: on a short screen the menu can open past the viewport bottom — nudge it
+    // into view (minimal scroll; no-op when it already fits).
+    menuRef.current?.scrollIntoView({ block: 'nearest' });
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { setShowActions(false); triggerRef.current?.focus(); }
     };
@@ -281,7 +284,8 @@ function AlertRow({ alert, onTap, onDismiss, onComplete }: {
         </span>
       </button>
       <button ref={triggerRef} className="alert-dismiss-btn" onClick={() => setShowActions(!showActions)}
-        aria-expanded={showActions} aria-haspopup="true" aria-label="Dismiss options"
+        aria-expanded={showActions} aria-haspopup="true"
+        aria-label={`Options for ${alert.gunName}: ${alert.item.label.toLowerCase()}`}
         title="Dismiss or mark complete">Options ▾</button>
       {showActions && (
         <div className="alert-actions" role="menu" ref={menuRef}>
@@ -793,7 +797,7 @@ function RecentlyDeleted({ trashed, firearms, onRestore, onForget }: {
           Recently Deleted
           <div className="row-sub">{trashed.length} session{trashed.length === 1 ? '' : 's'} · kept 30 days</div>
         </span>
-        <span className="value">{open ? '▾' : '▸'}</span>
+        <span className="value"><Icon name={open ? 'chevronDown' : 'chevronRight'} size={16} /></span>
       </button>
       {open && trashed.map((s) => {
         const names = s.guns.map((g) => firearms.find((f) => f.id === g.firearmId)?.name ?? '—').join(', ');

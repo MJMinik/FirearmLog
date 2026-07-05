@@ -50,7 +50,7 @@ export function LogFilterBar({ value, onChange, firearms, shown, total }: {
       {open && (
         <Sheet title="Search & Filter" onClose={() => setOpen(false)}>
           <label className="field">Search everything — places, guns, drills, instructors, match names, notes
-            <input type="search" value={value.query} placeholder="Type to search"
+            <input type="search" value={value.query} placeholder="Type to search" enterKeyHint="search"
               onChange={(e) => set('query', e.target.value)} />
           </label>
           <div className="field-row">

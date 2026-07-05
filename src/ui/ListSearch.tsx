@@ -11,7 +11,7 @@ export function ListSearch({ value, onChange, placeholder }: {
   return (
     <label className="field">
       <input type="search" value={value} placeholder={placeholder ?? 'Search…'}
-        aria-label={placeholder ?? 'Search this list'}
+        aria-label={placeholder ?? 'Search this list'} enterKeyHint="search"
         onChange={(e) => onChange(e.target.value)} />
     </label>
   );

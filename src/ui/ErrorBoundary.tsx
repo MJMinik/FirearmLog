@@ -76,7 +76,7 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, ErrorBound
               <button className="button secondary" style={{ flex: 1, minWidth: 120 }} onClick={() => location.reload()}>Reload</button>
             </div>
             <button className="button secondary" style={{ width: '100%', marginTop: 8 }} onClick={this.copy}>
-              {this.state.copied ? 'Copied ✓' : 'Copy error details'}
+              {this.state.copied ? <>Copied <span aria-hidden="true">✓</span></> : 'Copy error details'}
             </button>
             {this.state.copied && (
               <p className="report-note" style={{ marginTop: 12 }}>

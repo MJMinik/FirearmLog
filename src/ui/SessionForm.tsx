@@ -655,7 +655,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       )}
 
       {editing && original?.planned && !convert && onConvert && (
-        <button className="button" onClick={onConvert}>✓ Convert to logged session</button>
+        <button className="button" onClick={onConvert}><span aria-hidden="true">✓</span> Convert to logged session</button>
       )}
       {editing && original && (
         <button className="button secondary" onClick={() => void printSessionReport()}>Session Report</button>
@@ -666,7 +666,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         <div className="seg" role="group" aria-label="Session kind">
           {KINDS.map((k) => (
             <button key={k.value} type="button" aria-pressed={kind === k.value}
-              className={kind === k.value ? 'on' : ''} onClick={() => setKind(k.value)}>
+              className={kind === k.value ? 'on' : ''} onClick={() => { setKind(k.value); setTouched(true); }}>
               {k.label}
             </button>
           ))}
@@ -696,7 +696,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           return (
             <div className="row" key={f.id}>
               <button className={`gun-toggle ${on ? 'on' : ''}`} aria-pressed={on}
-                onClick={() => syncGun(f.id, rounds[f.id] === undefined)}>
+                onClick={() => { syncGun(f.id, rounds[f.id] === undefined); setTouched(true); }}>
                 {f.name}
               </button>
               {on && (
@@ -715,7 +715,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         <button className="checklist-disclosure" aria-expanded={checklistOpen}
           onClick={() => setChecklistOpen((v) => !v)}>
           <span className="checklist-disclosure-title">Gear Checklist</span>
-          <span className="checklist-disclosure-toggle">{checklistOpen ? 'Hide ▾' : 'Show ▸'}</span>
+          <span className="checklist-disclosure-toggle">{checklistOpen ? 'Hide' : 'Show'} <Icon name={checklistOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
         </button>
         {checklistProgressInfo.toTake > 0 && (
           <>
@@ -724,7 +724,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             </div>
             <p className="report-note">
               {checklistProgressInfo.packed === checklistProgressInfo.toTake
-                ? `✓ All packed (${checklistProgressInfo.packed}/${checklistProgressInfo.toTake})`
+                ? <><span aria-hidden="true">✓</span> All packed ({checklistProgressInfo.packed}/{checklistProgressInfo.toTake})</>
                 : `${checklistProgressInfo.packed} / ${checklistProgressInfo.toTake} packed`}
             </p>
           </>
@@ -764,7 +764,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
 
             <div className="row">
               <button className={`gun-toggle ${checklist.nightMode ? 'on' : ''}`} aria-pressed={checklist.nightMode}
-                onClick={() => setChecklist((cl) => setChecklistMode(cl, 'night', !cl.nightMode, customItems))}>
+                onClick={() => { setChecklist((cl) => setChecklistMode(cl, 'night', !cl.nightMode, customItems)); setTouched(true); }}>
                 Include night-session gear in this checklist
               </button>
             </div>
@@ -772,7 +772,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
 
             <div className="row">
               <button className={`gun-toggle ${checklist.tacticalMode ? 'on' : ''}`} aria-pressed={checklist.tacticalMode}
-                onClick={() => setChecklist((cl) => setChecklistMode(cl, 'tactical', !cl.tacticalMode, customItems))}>
+                onClick={() => { setChecklist((cl) => setChecklistMode(cl, 'tactical', !cl.tacticalMode, customItems)); setTouched(true); }}>
                 Include class / force-on-force gear in this checklist
               </button>
             </div>
@@ -1030,12 +1030,12 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             const on = picked.has(d.id);
             return (
               <button key={d.id} className={`drill-pick-row ${on ? 'on' : ''}`} aria-pressed={on}
-                onClick={() => setPicked((prev) => {
+                onClick={() => { setTouched(true); setPicked((prev) => {
                   const next = new Set(prev);
                   if (next.has(d.id)) next.delete(d.id); else next.add(d.id);
                   return next;
-                })}>
-                <strong>{on ? '☑' : '☐'} {d.name}</strong>
+                }); }}>
+                <strong><span aria-hidden="true">{on ? '☑' : '☐'}</span> {d.name}</strong>
                 {d.briefDescription && <span>{d.briefDescription}</span>}
               </button>
             );

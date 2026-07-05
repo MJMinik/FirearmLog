@@ -5,6 +5,7 @@
 // collapsed (form values live in parent state, so nothing is lost — an unopened section
 // simply saves its defaults, exactly as before the demotion).
 import { useEffect, useState, type ReactNode } from 'react';
+import { Icon } from './Icon';
 
 export function Reveal({
   label,
@@ -29,7 +30,7 @@ export function Reveal({
         aria-expanded={open}
         onClick={() => setOpen((o) => !o)}
       >
-        {label} {open ? '▾' : '▸'}
+        {label} <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} />
       </button>
       {open && <div className="reveal-body">{children}</div>}
     </div>

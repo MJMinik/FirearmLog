@@ -31,6 +31,28 @@ test.describe('Dirty-form discard confirm (M4)', () => {
   });
 });
 
+test.describe('Dirty guard fires on button-only edits (F1)', () => {
+  test('toggling a single gun on marks Log Session dirty (no typed field)', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Log');
+    await page.getByRole('button', { name: '+ Log Session' }).click();
+    await expect(page.getByRole('heading', { name: 'Log Session' })).toBeVisible();
+
+    // Toggle ONE gun on — a pure <button> edit that fires no `change` event, so
+    // before F1 the bubbled-onChange guard never saw it and ‹ Cancel left silently.
+    const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+    await gunsCard.locator('button.gun-toggle').first().click();
+
+    // ‹ Cancel must now confirm before discarding that toggle-only edit.
+    await page.getByRole('main').getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('heading', { name: 'Discard changes?' })).toBeVisible();
+
+    // Keep editing → still on the form (nothing was discarded).
+    await page.getByRole('button', { name: 'Keep editing' }).click();
+    await expect(page.getByRole('heading', { name: 'Log Session' })).toBeVisible();
+  });
+});
+
 test.describe('Not-found states (M7)', () => {
   // Navigate to a detail screen for an id that doesn't exist — exactly what a dead
   // deep-link or a back-nav to a since-deleted record does — via the app's own

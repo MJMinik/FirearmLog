@@ -124,7 +124,7 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
       {sheetOpen && (
         <Sheet title="Search & Filter" onClose={() => setSheetOpen(false)}>
           <label className="field">Search the malfunction's words — type, how you cleared it, notes
-            <input type="search" value={filter.query} placeholder="Type to search"
+            <input type="search" value={filter.query} placeholder="Type to search" enterKeyHint="search"
               onChange={(e) => setField('query', e.target.value)} />
           </label>
           <div className="field-row">

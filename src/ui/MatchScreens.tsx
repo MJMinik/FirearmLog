@@ -341,7 +341,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
                       Stage {i + 1}
                       <div className="row-sub">Ours: {ours != null ? `${ours}s` : '—'}</div>
                       {diff !== null && (matches ? (
-                        <div className="row-sub" style={{ color: 'var(--success)' }}>Matches ✓</div>
+                        <div className="row-sub" style={{ color: 'var(--success)' }}>Matches <span aria-hidden="true">✓</span></div>
                       ) : (
                         <div className="row-sub" style={{ color: 'var(--warn-text)' }}>
                           Off by {diff > 0 ? '+' : ''}{diff}s — {isIdpa
@@ -363,7 +363,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
                     <div className="row-sub">Ours: {ourTotal}s · official: {officialTotal}s</div>
                   </span>
                   <span className="value" style={{ color: totalReconcile.matches ? 'var(--success)' : 'var(--warn-text)' }}>
-                    {totalReconcile.matches ? 'Matches ✓' : `off by ${totalReconcile.diff !== null && totalReconcile.diff > 0 ? '+' : ''}${totalReconcile.diff}s`}
+                    {totalReconcile.matches ? <>Matches <span aria-hidden="true">✓</span></> : `off by ${totalReconcile.diff !== null && totalReconcile.diff > 0 ? '+' : ''}${totalReconcile.diff}s`}
                   </span>
                 </div>
               )}
@@ -705,7 +705,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
             <div className="seg" role="group" aria-label="Power factor">
               {POWER_FACTORS.map((pf) => (
                 <button key={pf} type="button" aria-pressed={powerFactor === pf}
-                  className={powerFactor === pf ? 'on' : ''} onClick={() => setPowerFactor(pf)}>{pf}</button>
+                  className={powerFactor === pf ? 'on' : ''} onClick={() => { setPowerFactor(pf); setTouched(true); }}>{pf}</button>
               ))}
             </div>
           </>

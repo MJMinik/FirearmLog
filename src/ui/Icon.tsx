@@ -8,7 +8,8 @@ export type IconName =
   | 'gun' | 'optic' | 'ammo' | 'magazine' | 'drills'
   | 'costs' | 'maintenance' | 'parts' | 'reference' | 'reports' | 'help' | 'malfunction' | 'info'
   | 'sync' | 'import' | 'cleanup' | 'settings'
-  | 'close' | 'edit' | 'star' | 'starFilled' | 'external';
+  | 'close' | 'edit' | 'star' | 'starFilled' | 'external'
+  | 'chevronRight' | 'chevronDown';
 
 // 24x24 viewBox line paths.
 const PATHS: Record<IconName, string> = {
@@ -39,6 +40,8 @@ const PATHS: Record<IconName, string> = {
   star:        'M12 3.6l2.55 5.17 5.7.83-4.13 4.02.98 5.68L12 16.62l-5.1 2.68.98-5.68L3.75 9.6l5.7-.83z',
   starFilled:  'M12 3.6l2.55 5.17 5.7.83-4.13 4.02.98 5.68L12 16.62l-5.1 2.68.98-5.68L3.75 9.6l5.7-.83z',
   external:    'M14 4h6v6 M20 4L10 14 M18 13.5V17a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3.5',
+  chevronRight:'M9 5l7 7-7 7',
+  chevronDown: 'M5 9l7 7 7-7',
 };
 
 // Icons drawn as a solid fill rather than a stroke.

@@ -181,7 +181,7 @@ input, select, textarea, button { font-size: max(16px, 1rem); font-family: inher
   border: none;
   border-radius: 8px;
   padding: 8px 12px;
-  min-height: 36px;
+  min-height: 44px;
   font-size: var(--fs-footnote);
   cursor: pointer;
 }
