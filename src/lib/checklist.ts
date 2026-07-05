@@ -27,9 +27,12 @@ export const DEFAULT_CHECKLIST_ITEMS: ChecklistCustomItems = {
     { id: 'n6', label: 'Night vision (if applicable)' },
     { id: 'n7', label: 'Dark clothing' }
   ],
+  // N7: reframed from "Tactical" to class / force-on-force training gear (rule 34 —
+  // sport/training frame). Body armor and helmet were dropped from the DEFAULTS (a user
+  // can still add them as custom items); FoF/class-relevant gear stays. Night vision stays
+  // in the Night category — it's legal low-light sport gear and clears Apple/Google policy
+  // (which target sales, auto-fire conversion parts, 30+ mags, and manufacturing, not optics).
   tactical: [
-    { id: 't1', label: 'Plate carrier / body armor' },
-    { id: 't2', label: 'Helmet' },
     { id: 't3', label: 'Eye pro rated for FoF' },
     { id: 't4', label: 'Magazine pouches / chest rig' },
     { id: 't5', label: 'Radio / comms' },
@@ -214,7 +217,7 @@ export function buildChecklistPrintHtml(opts: {
     const items = checklistItemsForCategory(cat, custom).filter((i) => cl.items[i.id]?.take);
     if (!items.length) return '';
     return `<div class="cl-section">
-      <div class="cl-section-title">${icon} ${title}</div>
+      <div class="cl-section-title">${icon ? icon + ' ' : ''}${title}</div>
       ${items.map((item) => {
         const isPacked = cl.items[item.id]?.packed;
         return `<div class="cl-item ${isPacked ? 'packed' : ''}">
@@ -245,7 +248,7 @@ export function buildChecklistPrintHtml(opts: {
     </div>` : ''}
     ${sectionRows('essentials', 'Range Essentials', '🎯')}
     ${cl.nightMode ? sectionRows('night', 'Night Session', '🔦') : ''}
-    ${cl.tacticalMode ? sectionRows('tactical', 'Tactical', '🪖') : ''}
+    ${cl.tacticalMode ? sectionRows('tactical', 'Class / force-on-force gear', '') : ''}
     ${notes ? `<div class="notes-section"><div class="notes-title">Notes</div><div class="notes-body">${escapeHtml(notes)}</div></div>` : ''}
   </body></html>`;
 }

@@ -772,10 +772,10 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             <div className="row">
               <button className={`gun-toggle ${checklist.tacticalMode ? 'on' : ''}`} aria-pressed={checklist.tacticalMode}
                 onClick={() => setChecklist((cl) => setChecklistMode(cl, 'tactical', !cl.tacticalMode, customItems))}>
-                Include tactical gear in this checklist
+                Include class / force-on-force gear in this checklist
               </button>
             </div>
-            {checklist.tacticalMode && checklistSection('tactical', 'Tactical')}
+            {checklist.tacticalMode && checklistSection('tactical', 'Class / force-on-force gear')}
 
             {checklistProgressInfo.toTake > 0 && (
               <button className="button secondary" onClick={printChecklist}>Print Checklist</button>

@@ -1,5 +1,8 @@
 /* FirearmLog design tokens — ALL colors live here as variables (rule V1/V2). */
 :root {
+  /* M5: declare both schemes so native controls (selects, date pickers, scrollbars)
+     follow the OS light/dark setting instead of staying light in dark mode. */
+  color-scheme: light dark;
   --bg: #f2f2f7;
   --bg-card: #ffffff;
   --bg-grouped-header: transparent;
@@ -596,7 +599,9 @@ select.category-pick {
 /* Phone: only the 5 tabs show; the sidebar-only extras stay hidden. */
 .tabbar .sidebar-only, .side-title, .nav-group-label, .nav-divider, .label-desk { display: none; }
 
-@media (min-width: 900px) {
+/* N8: also require a tall-enough viewport, so a landscape phone (wide but short)
+   keeps the bottom tab bar instead of flipping to the desktop sidebar mid-rotation. */
+@media (min-width: 900px) and (min-height: 500px) {
   .tabbar {
     top: 0; bottom: 0; right: auto; width: 220px;
     flex-direction: column; justify-content: flex-start;
