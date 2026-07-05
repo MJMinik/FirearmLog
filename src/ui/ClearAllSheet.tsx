@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { clearAllData } from '../lib/db.ts';
 import { Sheet } from './Sheet.tsx';
+import { FormProblem } from './FormProblem.tsx';
 
 /** The guarded "Clear all data" wipe: a typed "erase" confirmation gates the
  *  destructive button. On confirm, clearAllData() wipes every store, then we
@@ -35,7 +36,7 @@ export function ClearAllSheet({ onClose }: { onClose: () => void }) {
         Your saved backup files are not affected. If you're not sure, use Push to File to save a
         backup first — then you can always get this back.
       </p>
-      {err && <p className="form-problem">{err}</p>}
+      <FormProblem problem={err} />
       <label className="field">Type <strong>erase</strong> to confirm
         <input value={typed} onChange={(e) => setTyped(e.target.value)} autoFocus autoComplete="off"
           name="fl-erase-confirm" placeholder="erase" />

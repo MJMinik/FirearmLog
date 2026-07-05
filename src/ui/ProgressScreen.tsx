@@ -24,6 +24,7 @@ import type { View } from './nav.ts';
 import { RoundsByMonthChart } from './screens.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
+import { FormProblem } from './FormProblem.tsx';
 import { SwipeRow } from './SwipeRow.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { Reveal } from './Reveal.tsx';
@@ -42,6 +43,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
   const [text, setText] = useState('');
   const [category, setCategory] = useState('');
   const [target, setTarget] = useState('');
+  const [goalProblem, setGoalProblem] = useState('');
   const [editing, setEditing] = useState<Goal | null>(null);
   const [skillSheet, setSkillSheet] = useState<SkillAssessment | 'new' | null>(null);
   const [goldenId, setGoldenId] = useState<string>('');
@@ -75,7 +77,8 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
   }
 
   async function addGoal() {
-    if (!text.trim()) return;
+    if (!text.trim()) { setGoalProblem('Enter the goal before saving.'); return; }
+    setGoalProblem('');
     await putOne('goals', stampNew({
       text: text.trim(), category: category.trim(), target: target.trim(),
       achieved: false, dateSet: todayKey(), dateAchieved: ''
@@ -125,6 +128,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
 
         {adding ? (
           <div className="goal-add">
+            <FormProblem problem={goalProblem} />
             <label className="field">Goal
               <input value={text} {...noAutofillProps} name="fl-goal-text" autoFocus
                 placeholder="Bill Drill under 2.0 seconds"
@@ -490,11 +494,12 @@ function SkillSheet({ assessment, onClose, onSaved }: {
   const [date, setDate] = useState(assessment?.date || todayKey());
   const [ratings, setRatings] = useState<Record<string, string>>(() => {
     const r: Record<string, string> = {};
-    for (const a of SKILL_AREAS) r[a.key] = assessment?.ratings[a.key] ? String(assessment.ratings[a.key]) : '5';
+    for (const a of SKILL_AREAS) r[a.key] = assessment?.ratings[a.key] ? String(assessment.ratings[a.key]) : '';
     return r;
   });
   const [notes, setNotes] = useState(assessment?.notes || '');
   const [confirming, setConfirming] = useState(false);
+  const [problem, setProblem] = useState('');
 
   async function save() {
     const r: Record<string, number> = {};
@@ -502,6 +507,7 @@ function SkillSheet({ assessment, onClose, onSaved }: {
       const v = Number(ratings[a.key]);
       if (Number.isFinite(v) && v > 0) r[a.key] = v;
     }
+    if (Object.keys(r).length === 0) { setProblem('Rate at least one area before saving.'); return; }
     if (assessment) {
       await putOne('skills', stampUpdate({ ...assessment, date, ratings: r, notes: notes.trim() }, Date.now()));
     } else {
@@ -517,6 +523,7 @@ function SkillSheet({ assessment, onClose, onSaved }: {
 
   return (
     <Sheet title={assessment ? 'Edit Check' : 'New Check'} onClose={onClose}>
+      <FormProblem problem={problem} />
       <label className="field">Date
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       </label>
@@ -525,6 +532,7 @@ function SkillSheet({ assessment, onClose, onSaved }: {
           <span className="label">{a.label}</span>
           <select className="category-pick" aria-label={a.label} value={ratings[a.key]}
             onChange={(e) => setRatings((prev) => ({ ...prev, [a.key]: e.target.value }))}>
+            <option value="">–</option>
             {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((n) => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
@@ -551,9 +559,10 @@ function GoalEditSheet({ goal, categories, onClose, onSaved }: {
   const [category, setCategory] = useState(goal.category);
   const [target, setTarget] = useState(goal.target);
   const [confirming, setConfirming] = useState(false);
+  const [problem, setProblem] = useState('');
 
   async function save() {
-    if (!text.trim()) return;
+    if (!text.trim()) { setProblem('Enter the goal before saving.'); return; }
     await putOne('goals', stampUpdate({ ...goal, text: text.trim(), category: category.trim(), target: target.trim() }, Date.now()));
     onSaved();
   }
@@ -565,6 +574,7 @@ function GoalEditSheet({ goal, categories, onClose, onSaved }: {
 
   return (
     <Sheet title="Edit Goal" onClose={onClose}>
+      <FormProblem problem={problem} />
       <label className="field">Goal
         <input value={text} {...noAutofillProps} name="fl-goal-text"
           onChange={(e) => setText(e.target.value)} />

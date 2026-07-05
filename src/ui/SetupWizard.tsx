@@ -11,6 +11,7 @@ import { useEffect, useState } from 'react';
 import { countAll, restoreSnapshot } from '../lib/db.ts';
 import { parseFlog } from '../lib/flog.ts';
 import { ConfirmSheet } from './Sheet.tsx';
+import { FormProblem } from './FormProblem.tsx';
 import { GunForm } from './GunForm.tsx';
 import { OpticForm } from './OpticsScreen.tsx';
 import { AmmoForm } from './AmmoScreens.tsx';
@@ -103,7 +104,7 @@ export function SetupWizard({ onFinish, onCancel }: {
               Load a ready-made sample log — guns, sessions, matches, costs, photos, the works —
               so you can see everything the app does. You can start fresh any time to clear it.
             </p>
-            {demoErr && <p className="form-problem">{demoErr}</p>}
+            <FormProblem problem={demoErr} />
             <button className="button secondary" disabled={demoBusy}
               onClick={() => (counts.guns > 0 ? setConfirmDemo(true) : void loadDemo())}>
               {demoBusy ? 'Loading sample data…' : 'See it with sample data'}

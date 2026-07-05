@@ -10,6 +10,7 @@ import { MAINT_TYPES, maintLabel, maintenanceStatus } from '../lib/maintenance.t
 import { buildRefLookup } from '../lib/referenceData.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { ConfirmSheet } from './Sheet.tsx';
+import { FormProblem } from './FormProblem.tsx';
 import { ownedGuns } from '../lib/gunStatus.ts';
 import { ScreenError } from './ScreenState.tsx';
 
@@ -94,12 +95,13 @@ export function MaintenanceForm({ gunId, id, onSaved, onCancel }: {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<MaintenanceEntry | null>(null);
   const [gunName, setGunName] = useState('');
-  const [type, setType] = useState('field_strip');
+  const [type, setType] = useState('');
   const [date, setDate] = useState(todayKey());
   const [performedBy, setPerformedBy] = useState('Self');
   const [parts, setParts] = useState('');
   const [notes, setNotes] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const [problem, setProblem] = useState('');
 
   useEffect(() => {
     void getOne<Firearm>('firearms', gunId).then((g) => { if (g) setGunName(g.name); });
@@ -118,6 +120,9 @@ export function MaintenanceForm({ gunId, id, onSaved, onCancel }: {
   }, [id]);
 
   async function save() {
+    // N4: never log a silent default — an accidental Save would reset the deep-clean
+    // counters. Require an explicit choice of what was done.
+    if (!type) { setProblem('Choose what was done.'); return; }
     const fields = {
       date, firearmId: gunId, type,
       performedBy: performedBy.trim(), partsReplaced: parts.trim(), notes: notes.trim()
@@ -142,9 +147,11 @@ export function MaintenanceForm({ gunId, id, onSaved, onCancel }: {
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
       <h1 className="large-title">{editing ? 'Edit Work' : 'Log Work'}{gunName ? ` — ${gunName}` : ''}</h1>
+      <FormProblem problem={problem} />
       <div className="card">
         <label className="field">What was done
           <select value={type} onChange={(e) => setType(e.target.value)}>
+            <option value="">Choose what was done…</option>
             {MAINT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </label>
@@ -161,7 +168,7 @@ export function MaintenanceForm({ gunId, id, onSaved, onCancel }: {
           <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
       </div>
-      <button className="button" onClick={() => void save()}>{editing ? 'Save changes' : `Save ${maintLabel(type).toLowerCase()}`}</button>
+      <button className="button" onClick={() => void save()}>{editing ? 'Save changes' : (type ? `Save ${maintLabel(type).toLowerCase()}` : 'Save work')}</button>
       {editing && (
         <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>
           Delete Entry

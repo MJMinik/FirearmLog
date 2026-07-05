@@ -607,6 +607,11 @@ export function MatchForm({ id, onSaved, onCancel }: {
     if (saving) return;
     if (!date) { setProblem('Pick a date.'); return; }
     if (!firearmId) { setProblem('Pick a gun.'); return; }
+    // M2: don't save an empty shell — require at least something that identifies the
+    // match (a name, the rounds fired, or one stage). Cancel stays free.
+    if (!name.trim() && !num(totalRounds) && stageObjs.length === 0) {
+      setProblem('Add a name, the rounds fired, or a stage before saving.'); return;
+    }
     const numbers = [num(totalRounds), num(matchPercent), num(divPlace), num(divOf),
       num(overallPlace), num(overallOf), num(entryFee),
       ...stageObjs.flatMap((st) => [st.points, st.time, st.percent,
