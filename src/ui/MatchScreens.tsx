@@ -22,7 +22,6 @@ import type { StagedFile } from './MediaField.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { NotFound } from './NotFound.tsx';
-import { useDirtyGuard } from './useDirtyGuard.ts';
 import { pickableGuns } from '../lib/gunStatus.ts';
 
 /** Format a stage's ranking metric for the debrief read-out. */
@@ -483,6 +482,9 @@ export function MatchForm({ id, onSaved, onCancel }: {
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState('');
   const [discarding, setDiscarding] = useState(false);
+  // M4: watch for any real user edit (bubbled change). Programmatic loads and the
+  // async first-gun auto-select don't fire input events, so this never false-fires.
+  const [touched, setTouched] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -653,19 +655,10 @@ export function MatchForm({ id, onSaved, onCancel }: {
     }
   }
 
-  // M4: a stray ‹ Cancel shouldn't silently discard a half-filled match.
-  const dirtySig = JSON.stringify([name, date, matchType, division, powerFactor, firearmId,
-    totalRounds, matchPercent, divPlace, divOf, overallPlace, overallOf, entryFee, psUrl, notes,
-    stages, newFiles.length, removedMedia]);
-  // Baseline is captured once data is loaded — for a NEW match that's after the
-  // firearms load (which also auto-selects the first gun), so that auto-select
-  // isn't mistaken for a user edit.
-  const isDirty = useDirtyGuard(dirtySig, editing ? original !== null : firearms.length > 0);
-
   return (
-    <div className="screen">
+    <div className="screen" onChange={() => setTouched(true)}>
       <div className="navbar">
-        <button className="back-btn" onClick={() => (isDirty() ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
+        <button className="back-btn" onClick={() => (touched ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
         <button className="navbar-action" disabled={saving} onClick={() => void save()}>
           {saving ? 'Saving…' : 'Save'}
         </button>

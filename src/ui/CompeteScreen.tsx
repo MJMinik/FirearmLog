@@ -10,7 +10,6 @@ import { DIVISIONS, classificationProgress } from '../lib/competition.ts';
 import { matchFee } from '../lib/costing.ts';
 import type { View } from './nav.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
-import { useDirtyGuard } from './useDirtyGuard.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { MediaField, commitMedia } from './MediaField.tsx';
@@ -172,6 +171,7 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState('');
   const [discarding, setDiscarding] = useState(false);
+  const [touched, setTouched] = useState(false); // M4: any real user edit (bubbled change)
   const [existingMedia, setExistingMedia] = useState<Media[]>([]);
   const [removedMedia, setRemovedMedia] = useState<string[]>([]);
   const [newFiles, setNewFiles] = useState<StagedFile[]>([]);
@@ -223,15 +223,10 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
   }
 
 
-  // M4: a stray ‹ Cancel shouldn't silently discard a half-filled classifier.
-  const dirtySig = JSON.stringify([code, name, date, division, hf, percent, notes,
-    newFiles.length, removedMedia]);
-  const isDirty = useDirtyGuard(dirtySig, id === undefined || original !== null);
-
   return (
-    <div className="screen">
+    <div className="screen" onChange={() => setTouched(true)}>
       <div className="navbar">
-        <button className="back-btn" onClick={() => (isDirty() ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
+        <button className="back-btn" onClick={() => (touched ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
       <h1 className="large-title">{original ? 'Edit Classifier' : 'Log Classifier'}</h1>

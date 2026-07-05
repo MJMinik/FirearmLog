@@ -46,13 +46,13 @@ test.describe('Not-found states (M7)', () => {
     await seedDemo(page);
     await navTo(page, { kind: 'gun-detail', id: 'does-not-exist' });
     await expect(page.getByText('This gun no longer exists.')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Back' })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('button', { name: 'Back' })).toBeVisible();
   });
 
   test('a missing match shows a not-found screen', async ({ page }) => {
     await seedDemo(page);
     await navTo(page, { kind: 'match-detail', id: 'does-not-exist' });
     await expect(page.getByText('This match no longer exists.')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Back' })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('button', { name: 'Back' })).toBeVisible();
   });
 });
