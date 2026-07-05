@@ -17,8 +17,10 @@
   --cat-match: #0072B2; /* match/competition series colour — a colourblind-safe blue kept
                            distinct from live-fire amber (orange/blue = max separation). */
   --separator: rgba(60, 60, 67, 0.18);
+  --field-border: #767680; /* input/select/textarea boundary — solid grey ≈4.5:1 on the #fff card (WCAG 1.4.11 ≥3:1); the 0.18-alpha separator was ~1.2:1 and vanished in bright light (audit N6) */
   --danger: #ff3b30; /* iOS system red — used for accents, badges, error text, bars */
   --danger-deep: #d70015; /* white-on-this ≈5.4:1 (AA pass) — for solid Delete buttons (audit F1; plain #ff3b30 was 3.55:1) */
+  --danger-text: #C20012; /* error TEXT on light cards — 6.4:1 on #fff, 5.7:1 on #f2f2f7 (AA pass); plain --danger #ff3b30 was 3.18:1 on the grey bg (audit H2) */
   --success: #34c759;
   --warn: #ff9500;
   --warn-text: #8a5300; /* readable amber for warning TEXT on light cards (AA ~6:1) */
@@ -51,7 +53,9 @@
     --accent-ink: #FFB340;  /* amber text/indicator on dark — 9.5:1 on the dark card */
     --cat-match: #56B4E9;   /* match series on dark — brighter blue (7.4:1 on the dark card) */
     --separator: rgba(84, 84, 88, 0.6);
+    --field-border: #6d6d72; /* dark field boundary — 3.3:1 on the #1c1c1e card (WCAG 1.4.11) */
     --danger: #ff453a;
+    --danger-text: #ff453a; /* dark error text — 6.16:1 on the #1c1c1e card (already AA) */
     --success: #30d158;
     --warn: #ff9f0a;
     --warn-text: #ffb340; /* readable amber for warning TEXT on dark cards */
@@ -305,7 +309,7 @@ select.category-pick {
 .field { display: block; font-size: var(--fs-footnote); color: var(--text-dim); margin-bottom: 12px; }
 .field input, .field select, .field textarea {
   display: block; width: 100%; margin-top: 4px; min-height: 44px;
-  border: 0.5px solid var(--separator); border-radius: 10px;
+  border: 1px solid var(--field-border); border-radius: 10px;
   background: var(--bg); color: var(--text); padding: 10px 12px;
 }
 .field textarea { min-height: 80px; }
@@ -317,7 +321,7 @@ select.category-pick {
 /* Progressive-disclosure reveal (shared Reveal component) */
 .reveal-toggle { font-weight: 600; }
 .reveal-body { margin-top: 8px; }
-.form-problem { color: var(--danger); margin: -4px 0 12px; font-size: 15px; }
+.form-problem { color: var(--danger-text); margin: -4px 0 12px; font-size: 15px; }
 
 .seg { display: flex; background: var(--bg); border-radius: 10px; padding: 3px; margin-bottom: 12px; }
 .seg button {
@@ -333,7 +337,7 @@ select.category-pick {
 .gun-toggle.on { opacity: 1; font-weight: 600; }
 .gun-toggle.on::before { content: '✓ '; color: var(--accent-ink); }
 .rounds-input {
-  width: 96px; min-height: 44px; border: 0.5px solid var(--separator); border-radius: 10px;
+  width: 96px; min-height: 44px; border: 1px solid var(--field-border); border-radius: 10px;
   background: var(--bg); color: var(--text); padding: 8px 10px; text-align: right;
 }
 
@@ -480,7 +484,7 @@ select.category-pick {
 .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
 .photo-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; }
 .note-text { font-size: var(--fs-base); line-height: 1.5; white-space: pre-wrap; }
-.button.danger { background: var(--danger-deep); }
+.button.danger { background: var(--danger-deep); color: #fff; } /* white-on-#d70015 ≈5.4:1 (AA) in both modes — the base .button's dark ink was 3.17:1 (audit H1) */
 
 .row-tap {
   width: 100%; background: none; border: none; color: var(--text); text-align: left;
@@ -566,7 +570,7 @@ select.category-pick {
   box-shadow: 0 0 0 1px rgba(0,0,0,0.35);
 }
 .markup-colors { display: flex; gap: 10px; margin-bottom: 10px; }
-.markup-swatch { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--border); cursor: pointer; }
+.markup-swatch { width: 32px; height: 32px; border-radius: 50%; border: 2px solid var(--separator); cursor: pointer; }
 .markup-swatch.on { box-shadow: 0 0 0 3px var(--accent-ink); }
 .markup-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
 .markup-row .markup-num { position: static; }

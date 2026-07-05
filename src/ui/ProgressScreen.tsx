@@ -252,7 +252,7 @@ function HeatmapCard({ sessions, open }: { sessions: Session[]; open: (v: View) 
           <option value={52}>52 weeks</option>
         </select>
       </div>
-      <label className="report-note" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginTop: 4 }}>
+      <label className="report-note" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginTop: 4, minHeight: 'var(--touch-min)' }}>
         <input type="checkbox" checked={showCountOnly} onChange={(e) => setShowCountOnly(e.target.checked)} />
         Just show the day's count, don't open the session
       </label>
