@@ -6,7 +6,7 @@ import { deleteOne, getAll, getOne, getSettings, putOne, putSettings } from '../
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
-import { DIVISIONS, IDPA_DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown,
+import { DIVISIONS, IDPA_DIVISIONS, STEEL_DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown,
   scoringTypeFor, scoreSteelStage, steelMatchTotal, steelStringsExpected, STEEL_STAGES,
   scoreIdpaStage, idpaMatchTotal, reconcileTime, matchSpeedAccuracy } from '../lib/competition.ts';
 import type { SpeedAccuracy } from '../lib/competition.ts';
@@ -542,11 +542,14 @@ export function MatchForm({ id, onSaved, onCancel }: {
 
   const num = (t: string): number | null => t.trim() === '' ? null : Number(t);
   const scoringType = scoringTypeFor(matchType);
-  const divisionOptions = scoringType === 'idpa' ? IDPA_DIVISIONS : DIVISIONS;
-  // Keep the division valid for the sport: switching to/from IDPA swaps the division
-  // list, so snap to the first valid division if the current one isn't in it.
+  const divisionOptions = scoringType === 'idpa' ? IDPA_DIVISIONS
+    : scoringType === 'steel' ? STEEL_DIVISIONS : DIVISIONS;
+  // Keep the division valid for the sport: switching scoring type swaps the division
+  // list (USPSA / IDPA / Steel), so snap to the first valid division if the current
+  // one isn't in the new list.
   useEffect(() => {
-    const opts = scoringType === 'idpa' ? IDPA_DIVISIONS : DIVISIONS;
+    const opts = scoringType === 'idpa' ? IDPA_DIVISIONS
+      : scoringType === 'steel' ? STEEL_DIVISIONS : DIVISIONS;
     setDivision((d) => (opts.includes(d) ? d : opts[0]));
   }, [scoringType]);
 
@@ -669,7 +672,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
             {divisionOptions.map((d) => <option key={d} value={d}>{d}</option>)}
           </select>
         </label>
-        {scoringType !== 'steel' && (
+        {scoringType === 'uspsa' && (
           <>
             <h2>Power Factor</h2>
             <div className="seg" role="radiogroup" aria-label="Power factor">

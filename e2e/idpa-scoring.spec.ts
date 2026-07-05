@@ -17,6 +17,9 @@ test.describe('IDPA scoring (Layer 2)', () => {
     await page.getByLabel('What this match is called').fill('IDPA Test');
     await page.getByLabel('Match type').selectOption('IDPA Match');
 
+    // M1: Power Factor is a USPSA-only concept, so it must NOT show for IDPA.
+    await expect(page.getByRole('heading', { name: 'Power Factor' })).toHaveCount(0);
+
     // Target the Division <select> by the IDPA-only option it now contains, which also
     // proves the picker switched off USPSA's list. (getByLabel is unreliable here: plain
     // 'Division' also matches the "Division place" field, and a wrapped <select>'s

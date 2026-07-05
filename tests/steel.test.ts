@@ -10,7 +10,23 @@ import {
   steelStringsExpected,
   scoringTypeFor,
   STEEL_MAX_STRING,
+  STEEL_DIVISIONS,
 } from '../src/lib/competition.ts';
+
+test('STEEL_DIVISIONS is the official SCSA 2026-03 Appendix D list (+ Other)', () => {
+  // Source: https://rules.uspsa.org/scsa/divisions (edition 2026-03, D1-D11), in
+  // rulebook order. Guards a domain-critical, cited constant against accidental
+  // edits. Steel is primarily a rimfire sport, so the list MUST carry the rimfire
+  // divisions the USPSA DIVISIONS list omitted -- the whole point of finding H4.
+  assert.deepEqual(STEEL_DIVISIONS, [
+    'Open', 'Limited', 'Rimfire Pistol', 'Production', 'Single Stack',
+    'Revolver', 'Carry Optics', 'Pistol Caliber Carbine', 'Rimfire Rifle',
+    'Limited Optics', 'Rimfire Revolver', 'Other',
+  ]);
+  for (const d of ['Rimfire Pistol', 'Rimfire Rifle', 'Rimfire Revolver']) {
+    assert.ok(STEEL_DIVISIONS.includes(d), `Steel list missing rimfire division: ${d}`);
+  }
+});
 
 test('best 4 of 5: drops the single slowest string', () => {
   const s = scoreSteelStage({ strings: [3.21, 3.44, 3.6, 3.71, 4.9] });

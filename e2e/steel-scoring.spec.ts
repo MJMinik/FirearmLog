@@ -21,6 +21,11 @@ test.describe('Steel Challenge scoring (Layer 2)', () => {
     await expect(page.getByRole('heading', { name: /Stages & strings/ })).toBeVisible();
     // Power Factor doesn't apply to Steel, so it's hidden.
     await expect(page.getByRole('heading', { name: 'Power Factor' })).toHaveCount(0);
+    // H4: the division picker now offers SCSA's own divisions (Steel is a rimfire
+    // sport), not the USPSA list. Prove it by the Steel-only 'Rimfire Pistol' option.
+    await expect(
+      page.locator('select', { has: page.locator('option', { hasText: 'Rimfire Pistol' }) })
+    ).toHaveCount(1);
 
     await page.getByRole('button', { name: '+ Add Stage' }).click();
     const block = page.locator('.drill-edit').first();

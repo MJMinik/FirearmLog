@@ -30,6 +30,19 @@ export const IDPA_DIVISIONS = [
   'Pistol Caliber Carbine (PCC)'
 ];
 
+/** SCSA Steel Challenge equipment divisions -- official 2026-03 SCSA Rulebook, Appendix D
+ *  (D1-D11), in rulebook order. A distinct set from USPSA's and IDPA's above; used for the
+ *  division picker when a match's scoringType is 'steel'. Steel is primarily a rimfire sport,
+ *  so a rimfire-less USPSA list was wrong here. We use the equipment-division names exactly as
+ *  the rulebook defines them; the optics/iron sub-split (RFPO/RFPI, RFRO/RFRI, PCC Optics/Iron)
+ *  is a classification-record distinction, deferred alongside SCSA classification.
+ *  Source: https://rules.uspsa.org/scsa/divisions (edition 2026-03, effective 2026-03-01). */
+export const STEEL_DIVISIONS = [
+  'Open', 'Limited', 'Rimfire Pistol', 'Production', 'Single Stack',
+  'Revolver', 'Carry Optics', 'Pistol Caliber Carbine', 'Rimfire Rifle',
+  'Limited Optics', 'Rimfire Revolver', 'Other'
+];
+
 export const POWER_FACTORS = ['Minor', 'Major'];
 
 /** Stage hit factor: points per second. */
