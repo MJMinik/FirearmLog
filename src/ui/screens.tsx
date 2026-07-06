@@ -17,6 +17,7 @@ import { ImportFlow } from './ImportFlow.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { Reveal } from './Reveal.tsx';
 import { Icon } from './Icon.tsx';
+import { ClassificationGrid } from './ClassificationGrid.tsx';
 import { ScreenError, ScreenLoading } from './ScreenState.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { isActive, isOwned, isFormer, isRetired, statusBadge } from '../lib/gunStatus.ts';
@@ -468,22 +469,8 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
             )}
           </div>
 
-          {/* ---- Multiple divisions: PT showed every division you have classifier scores in ---- */}
-          {divisions.length > 1 && (
-            <div className="stat-grid" style={{ marginTop: 8 }}>
-              {divisions.map(d => (
-                <div className="stat" key={d.division}>
-                  <div className="num">
-                    {d.currentClass}
-                    <span style={{ fontSize: 15, color: 'var(--text-dim)', marginLeft: 6 }}>
-                      {d.average?.toFixed(1)}%
-                    </span>
-                  </div>
-                  <div className="cap">{d.division}</div>
-                </div>
-              ))}
-            </div>
-          )}
+          {/* ---- Multiple divisions: every division you hold a class in (shared with Compete) ---- */}
+          {divisions.length > 1 && <ClassificationGrid divisions={divisions} />}
 
           {/* ---- Golden goal: the one pinned north-star, echoed from Progress ---- */}
           {golden && (

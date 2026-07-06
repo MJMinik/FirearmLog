@@ -210,6 +210,23 @@ input, select, textarea, button { font-size: max(16px, 1rem); font-family: inher
 .stat .num { font-size: var(--fs-stat); font-weight: 700; }
 .stat .cap { font-size: var(--fs-footnote); color: var(--text-dim); margin-top: 2px; }
 
+.classification-grid { margin-top: 8px; }
+/* Selectable classification cell (Compete): a stat that taps to show its detail. */
+.stat-tap {
+  box-sizing: border-box;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  border: 1.5px solid transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color .15s ease;
+}
+.stat-tap.on { border-color: var(--accent-ink); }
+.stat-tap:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+
 .button {
   display: inline-flex;
   align-items: center;

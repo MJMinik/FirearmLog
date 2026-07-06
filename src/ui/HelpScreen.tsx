@@ -103,7 +103,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Compete — classifiers',
       view: { kind: 'classifier-form' },
-      body: 'Log classifier scores with their code, division, hit factor, and percent. You can attach photos and videos to a classifier too — handy if you film your run. The classification view tracks your current percent and what you need for the next class — your C-toward-B progress — using best-6-of-8 style math.',
+      body: 'Log classifier scores with their code, division, hit factor, and percent. You can attach photos and videos to a classifier too — handy if you film your run. The classification view shows every division you hold a class in at a glance — tap one to see its current percent and what you need for the next class (your C-toward-B progress), using best-6-of-8 style math.',
     },
     {
       title: 'Importing results (PractiScore & USPSA)',

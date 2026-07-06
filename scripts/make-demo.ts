@@ -354,6 +354,31 @@ classifierList.forEach(([code, name], i) => {
   });
 });
 
+// A second USPSA division: Limited Optics on the Staccato — climbing through
+// 2025-26, currently a solid B. Fixed percents so the demo's class is stable:
+// best 6 of these 8 average ~63.5% (B band = 60-74.9%).
+const loScores = [55, 58, 60, 62, 64, 66, 68, 61];
+loScores.forEach((pct, i) => {
+  const [code, name] = classifierList[i];
+  const d = new Date(at('2025-08-20') + i * 26 * dayMs);
+  stores.classifiers.push({
+    id: `cl-lo-${i + 1}`, ...stamp(iso(d)), date: iso(d), code, name, division: 'Limited Optics',
+    hitFactor: round(3.5 + r() * 4, 2), percent: pct, notes: '',
+  });
+});
+
+// A third USPSA division: Production on the CZ Shadow 2 — newer here, a C.
+// Best 6 of these 6 average ~49.8% (C band = 40-59.9%).
+const prodScores = [44, 47, 49, 51, 53, 55];
+prodScores.forEach((pct, i) => {
+  const [code, name] = classifierList[i];
+  const d = new Date(at('2025-03-15') + i * 40 * dayMs);
+  stores.classifiers.push({
+    id: `cl-prod-${i + 1}`, ...stamp(iso(d)), date: iso(d), code, name, division: 'Production',
+    hitFactor: round(3 + r() * 3, 2), percent: pct, notes: '',
+  });
+});
+
 // ===================== PURCHASES (ammo FIFO + gear/training/travel) =====================
 let puN = 0;
 const addPurchase = (dateISO: string, category: string, item: string, vendor: string, cost: number, extra: Rec = {}) => {

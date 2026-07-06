@@ -8,7 +8,9 @@ import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { DIVISIONS, classificationProgress } from '../lib/competition.ts';
+import { allClassifications } from '../lib/dashboard.ts';
 import { matchFee } from '../lib/costing.ts';
+import { ClassificationGrid } from './ClassificationGrid.tsx';
 import type { View } from './nav.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { InfoTip } from './InfoTip.tsx';
@@ -49,6 +51,8 @@ export function CompeteScreen({ refreshKey, open }: {
     () => classificationProgress(classifiers.filter((c) => c.division === division)),
     [classifiers, division]
   );
+  // Every division you hold a class in — the at-a-glance grid (shared with Home).
+  const divClasses = useMemo(() => allClassifications(classifiers), [classifiers]);
 
   const thisYear = todayKey().slice(0, 4);
   const seasonMatches = matches.filter((m) => m.date.startsWith(thisYear));
@@ -69,32 +73,28 @@ export function CompeteScreen({ refreshKey, open }: {
       <button className="button secondary" onClick={() => setShowImport(true)}>Import…</button>
 
       <div className="card" style={{ marginTop: 16 }}>
-        <h2>Classification <InfoTip title="Classification">A classifier is a standard stage you shoot; your classification is the rank — your class — you earn from your classifier scores. Your class comes from the average of your best 6 of your last 8 classifier scores in a division. When that average crosses the next band, you move up — C to B and so on.</InfoTip></h2>
+        <h2>Classification <InfoTip title="Classification">A classifier is a standard stage you shoot; your classification is the rank — your class — you earn from your classifier scores. Your class comes from the average of your best 6 of your last 8 classifier scores in a division. Each division is classified on its own, so any division you've logged scores in is shown here — tap one to see its progress. When that average crosses the next band, you move up — C to B and so on.</InfoTip></h2>
         <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers', section: 'classification' })}>How the numbers work ›</button>
-        <div className="row">
-          <span className="label">Division</span>
-          <select className="category-pick" aria-label="Division" value={division}
-            onChange={(e) => setDivision(e.target.value)}>
-            {DIVISIONS.map((d) => <option key={d} value={d}>{d}</option>)}
-          </select>
-        </div>
-        {progress.average === null ? (
+        {divClasses.length === 0 ? (
           <p className="report-note" style={{ marginTop: 8 }}>
-            No classifier scores in {division} yet. Log them as you shoot them and your
-            class average builds here.
+            No classifier scores yet. Log them as you shoot them and your class builds
+            here, division by division.
           </p>
         ) : (
           <>
-            <div className="stat-grid" style={{ marginTop: 10 }}>
-              <div className="stat"><div className="num">{progress.average}%</div><div className="cap">Average (best 6 of last 8)</div></div>
-              <div className="stat"><div className="num">{progress.currentClass}</div><div className="cap">Class</div></div>
-            </div>
-            {progress.next && (
-              <p className="report-note" style={{ marginTop: 10 }}>
-                {progress.next.name} class starts at {progress.next.threshold}% — you need{' '}
-                {(progress.next.threshold - progress.average).toFixed(2)} more points of average.
-                {progress.scoresOnRecord < 4 ? ' (Fewer than 4 scores on record so far — early days.)' : ''}
-              </p>
+            <ClassificationGrid divisions={divClasses} selected={division} onSelect={setDivision} />
+            {progress.average !== null && (
+              progress.next ? (
+                <p className="report-note" style={{ marginTop: 10 }}>
+                  {division}: {progress.next.name} class starts at {progress.next.threshold}% — you need{' '}
+                  {(progress.next.threshold - progress.average).toFixed(2)} more points of average.
+                  {progress.scoresOnRecord < 4 ? ' (Fewer than 4 scores on record so far — early days.)' : ''}
+                </p>
+              ) : (
+                <p className="report-note" style={{ marginTop: 10 }}>
+                  {division}: {progress.currentClass} class at {progress.average}% — top of the ladder.
+                </p>
+              )
             )}
           </>
         )}
