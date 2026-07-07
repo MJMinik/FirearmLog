@@ -351,6 +351,11 @@ export interface AppSettings {
   /** Whether to show the optional coaching remarks (e.g. the match-debrief
    *  "room to push?" question). Undefined = on; set false to hide them. */
   coachingRemarks?: boolean;
+  /** Rung-1 analytics is OPT-OUT: anonymous usage/crash/benchmark data is on by
+   *  default and the log always stays on-device. Undefined/false = participating;
+   *  true = the user has opted out and NOTHING is sent. Read only through
+   *  telemetry.ts (the single send chokepoint). */
+  analyticsOptOut?: boolean;
   legacy?: Record<string, unknown>;
 }
 
