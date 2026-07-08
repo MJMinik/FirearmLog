@@ -4,7 +4,7 @@ import { seedDemo, isDesktop, nav, gotoSection } from './helpers';
 // July 2026: the More screen / sidebar is organized into four labeled groups —
 // Your Gear, Training, Records, App & Data. On the phone the groups are headings
 // on the More screen; on desktop they are labels down the sidebar. Every App &
-// Data destination (Tour & Setup, Sync & Backup, Import, Free Up Space) is now
+// Data destination (Tour & Setup, Sync & Backup, Free Up Space) is now
 // its own screen reached by a chevron row / sidebar entry — the iOS-Settings
 // pattern — so this verifies each opens and renders without crashing on BOTH
 // layouts.
@@ -39,7 +39,6 @@ test.describe('Menu groups', () => {
     { group: 'Records', section: 'Malfunctions', heading: 'Malfunctions' },
     { group: 'App & Data', section: 'Tour & Setup', heading: 'Tour & Setup' },
     { group: 'App & Data', section: 'Sync & Backup', heading: 'Sync & Backup' },
-    { group: 'App & Data', section: 'Import', heading: 'Import' },
     { group: 'App & Data', section: 'Free Up Space', heading: 'Free Up Space' },
   ];
 

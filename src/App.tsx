@@ -256,7 +256,7 @@ export function App() {
   } else if (view?.kind === 'free-space') {
     content = <FreeSpaceScreen onBack={back} />;
   } else if (tab === 'home') {
-    content = <HomeScreen refreshKey={refreshKey} onImported={refresh} open={push} onGoBackup={() => push({ kind: 'sync' })} />;
+    content = <HomeScreen refreshKey={refreshKey} open={push} onGoBackup={() => push({ kind: 'sync' })} />;
   } else if (tab === 'log') {
     content = <LogScreen refreshKey={refreshKey} open={push} />;
   } else if (tab === 'compete') {

@@ -27,16 +27,14 @@ test.describe('First-run empty Home (activation)', () => {
       main.getByRole('button', { name: 'Just exploring? See it with sample data' }),
     ).toBeVisible();
 
-    // The Pistol Tracker importer is NOT shown by default — it's behind the reveal.
+    // The Pistol Tracker importer is fully retired from the user's view
+    // (July 8 2026): no reveal, no import button, anywhere on first-run Home.
     await expect(
       main.getByRole('button', { name: 'Import Pistol Tracker Backup' }),
     ).toHaveCount(0);
-
-    // Tapping the reveal surfaces it — still reachable, just no longer the hero.
-    await main.getByRole('button', { name: 'Already have data to bring in?' }).click();
     await expect(
-      main.getByRole('button', { name: 'Import Pistol Tracker Backup' }),
-    ).toBeVisible();
+      main.getByRole('button', { name: 'Already have data to bring in?' }),
+    ).toHaveCount(0);
   });
 
   test('"Add your first gun" opens the gun form — the first-log path never dead-ends', async ({ page }) => {

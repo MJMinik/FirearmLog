@@ -13,7 +13,6 @@ import { buildRefLookup } from '../lib/referenceData.ts';
 import type { ReferenceEntry } from '../lib/referenceData.ts';
 import { formatDayKey } from '../lib/dates.ts';
 import { sessionRounds, roundsForFirearm, dryRepsForFirearm } from '../lib/stats.ts';
-import { ImportFlow } from './ImportFlow.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { Reveal } from './Reveal.tsx';
 import { Icon } from './Icon.tsx';
@@ -298,8 +297,8 @@ function AlertRow({ alert, onTap, onDismiss, onComplete }: {
   );
 }
 
-export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
-  refreshKey: number; onImported: () => void; open: (v: View) => void; onGoBackup: () => void;
+export function HomeScreen({ refreshKey, open, onGoBackup }: {
+  refreshKey: number; open: (v: View) => void; onGoBackup: () => void;
 }) {
   const { firearms, sessions, matches, maintenance, references, ammo, classifiers, drills, loaded, error, reload } = useData(refreshKey);
   const [dismissed, setDismissed] = useState<Record<string, string>>({});
@@ -404,9 +403,6 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
               It's just example data to explore — you can clear it and start fresh with your own any time (Tour &amp; Setup → Start over).
             </p>
           </div>
-          <Reveal label="Already have data to bring in?">
-            <ImportFlow onImported={onImported} />
-          </Reveal>
         </>
       ) : (
         <>
@@ -913,11 +909,6 @@ export function MoreScreen({ refreshKey, open }: {
         <button className="row-tap" onClick={() => open({ kind: 'sync' })}>
           <span className="row-ico" aria-hidden="true"><Icon name="sync" size={20} /></span>
           <span className="label">Sync &amp; Backup</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'import' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="import" size={20} /></span>
-          <span className="label">Import</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'free-space' })}>
