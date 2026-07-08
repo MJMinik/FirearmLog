@@ -23,7 +23,7 @@ function dataSetWith(over: Record<string, unknown[]>): DataSet {
   const base: Record<string, unknown[]> = {
     firearms: [], sessions: [], drills: [], ammunition: [], purchases: [],
     maintenance: [], malfunctions: [], magazines: [], optics: [], parts: [],
-    goals: [], skills: [], matches: [], classifiers: [], trash: [], media: [],
+    goals: [], skills: [], matches: [], classifiers: [], references: [], trash: [], media: [],
   };
   return { ...base, ...over } as unknown as DataSet;
 }
@@ -126,4 +126,85 @@ test('clearAllData erases every store and the settings (hard-gate)', async () =>
     assert.equal((await getAll(store)).length, 0, `${store} is empty after clearAllData`);
   }
   assert.equal(await getSettings(), undefined, 'settings gone after clearAllData');
+});
+
+// ---- Batch B (code review 2026-07-06): the danger-zone quartet's gates ----
+
+test('B3/M-2: two near-simultaneous putSettings patches BOTH land', async () => {
+  await clearAllData();
+  // Fire both without awaiting in between — the old get-then-put could read the
+  // same "before" and the second write silently dropped the first patch.
+  await Promise.all([
+    putSettings<{ a?: number; b?: number }>({ a: 1 }),
+    putSettings<{ a?: number; b?: number }>({ b: 2 }),
+  ]);
+  const settings = await getSettings<{ a?: number; b?: number }>();
+  assert.equal(settings?.a, 1, 'first patch survived');
+  assert.equal(settings?.b, 2, 'second patch survived');
+});
+
+test('B4/M-4: references travel through commitDataSet (were silently dropped)', async () => {
+  await clearAllData();
+  await commitDataSet(dataSetWith({
+    references: [{ id: 'ref-keep', name: 'Atlas' }],
+    firearms: [{ id: 'g-refs' }],
+  }), undefined);
+  assert.ok(has(await getAll('references'), 'ref-keep'), 'reference row landed');
+});
+
+test('B7: a mid-batch unstorable record rolls the WHOLE restore back (atomicity)', async () => {
+  await clearAllData();
+  await restoreSnapshot(snapshotWith({ firearms: [{ id: 'g-before' }], goals: [{ id: 'goal-before' }] }));
+  // Shape-valid (has an id) but unstorable: IndexedDB cannot clone a function,
+  // so the put throws mid-transaction and IndexedDB aborts the transaction.
+  const poisoned = snapshotWith({
+    firearms: [{ id: 'g-after' }],
+    goals: [{ id: 'goal-bad', oops: () => {} }],
+  });
+  await assert.rejects(restoreSnapshot(poisoned));
+  const firearms = await getAll<{ id: string }>('firearms');
+  const goals = await getAll<{ id: string }>('goals');
+  assert.ok(has(firearms, 'g-before'), 'old gun survived the failed restore');
+  assert.ok(!has(firearms, 'g-after'), 'no partial write from the failed restore');
+  assert.ok(has(goals, 'goal-before'), 'old goal survived the failed restore');
+});
+
+test('B7: a restore interrupted in the media phase never LOSES existing photos', async () => {
+  await clearAllData();
+  const oldMedia = { id: 'md-old', ownerType: 'session', ownerId: 's1', kind: 'image', data: new ArrayBuffer(4) };
+  await restoreSnapshot({ ...snapshotWith({ sessions: [{ id: 's1' }] }), media: [oldMedia] } as Snapshot);
+  // New snapshot: first media record is unstorable → the media phase dies on
+  // record 1, AFTER the regular stores committed. Add-before-delete means the
+  // old photo must still be there (worst case is extras, never loss).
+  const poisoned = {
+    ...snapshotWith({ sessions: [{ id: 's2' }] }),
+    media: [{ id: 'md-bad', oops: () => {} }, { id: 'md-new', ownerType: 'session', ownerId: 's2', kind: 'image', data: new ArrayBuffer(4) }],
+  } as Snapshot;
+  await assert.rejects(restoreSnapshot(poisoned));
+  const media = await getAll<{ id: string }>('media');
+  assert.ok(has(media, 'md-old'), 'existing photo survived the interrupted restore');
+});
+
+test('B6/M-3: a lock held by ANOTHER TAB refuses the restore with the plain message', async () => {
+  await clearAllData();
+  // Simulate the Web Locks API reporting the lock as held elsewhere. Node has a
+  // global navigator without .locks, so patch just the .locks property.
+  const nav = globalThis.navigator as { locks?: unknown };
+  const hadLocks = 'locks' in nav ? nav.locks : undefined;
+  try {
+    Object.defineProperty(globalThis.navigator, 'locks', {
+      configurable: true,
+      value: {
+        request: async (_name: string, _opts: unknown, cb: (lock: unknown) => Promise<unknown>) => cb(null),
+      },
+    });
+    await assert.rejects(
+      restoreSnapshot(snapshotWith({ firearms: [{ id: 'g-locked' }] })),
+      /still finishing/
+    );
+    assert.ok(!has(await getAll<{ id: string }>('firearms'), 'g-locked'), 'nothing written while locked');
+  } finally {
+    if (hadLocks === undefined) delete (globalThis.navigator as { locks?: unknown }).locks;
+    else Object.defineProperty(globalThis.navigator, 'locks', { configurable: true, value: hadLocks });
+  }
 });

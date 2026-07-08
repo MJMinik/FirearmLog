@@ -43,6 +43,23 @@ function openDb(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
+/**
+ * Queue a transaction's writes with an explicit abort-on-throw. IndexedDB only
+ * auto-rolls-back when a REQUEST fails; an exception thrown while queueing
+ * (e.g. DataCloneError on an unstorable value) would otherwise leave the
+ * already-queued writes to auto-commit — a partial batch. Unreachable from real
+ * .flog files (JSON can't carry unstorable values), but the atomicity contract
+ * shouldn't depend on that. (Found by the B7 forced-rollback test.)
+ */
+function queueOrAbort(tx: IDBTransaction, queueWrites: () => void): void {
+  try {
+    queueWrites();
+  } catch (e) {
+    try { tx.abort(); } catch { /* already aborting */ }
+    throw e;
+  }
+}
+
 function txDone(tx: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
     tx.oncomplete = () => resolve();
@@ -51,23 +68,45 @@ function txDone(tx: IDBTransaction): Promise<void> {
   });
 }
 
-// T1-5: serialize the two multi-transaction destructive operations (restore and
-// import). Each writes media across MANY transactions, so two overlapping (e.g. a
-// double-tap, or a Pull fired during an import) could race the add/delete passes.
-// This backstops the UI's own `saving` guards: a second one is refused with a
-// clear message rather than interleaving. Always reset in `finally` so a failure
-// can never leave imports permanently blocked.
+// T1-5: serialize the destructive multi-transaction operations (restore, import,
+// erase, photo cleanup). Each writes media across MANY transactions, so two
+// overlapping (a double-tap, a Load fired during an import — or, worse, the same
+// app open in TWO TABS) could race the add/delete passes. Two layers:
+//  - `ioBusy` refuses overlap within this tab (cheap, synchronous);
+//  - the Web Locks API (B6/M-3) refuses overlap ACROSS tabs sharing this device's
+//    database. `ifAvailable: true` means we never wait on the other tab — a held
+//    lock refuses immediately with the same plain message (no hang, no deadlock;
+//    the browser releases a tab's locks automatically if the tab dies).
+// Older browsers without navigator.locks keep the single-tab guard unchanged.
+// Always reset in `finally` so a failure can never leave writes permanently blocked.
 let ioBusy = false;
+function ioBusyError(what: string): Error {
+  return new Error(`Another import or restore is still finishing — please wait a moment, then try ${what} again.`);
+}
 async function withIoGuard<T>(what: string, fn: () => Promise<T>): Promise<T> {
-  if (ioBusy) {
-    throw new Error(`Another import or restore is still finishing — please wait a moment, then try ${what} again.`);
-  }
+  if (ioBusy) throw ioBusyError(what);
   ioBusy = true;
   try {
+    const locks = typeof navigator !== 'undefined' ? navigator.locks : undefined;
+    if (locks?.request) {
+      return await locks.request('firearmlog-io', { ifAvailable: true }, async (lock) => {
+        if (!lock) throw ioBusyError(what); // another tab holds it
+        return fn();
+      });
+    }
     return await fn();
   } finally {
     ioBusy = false;
   }
+}
+
+/**
+ * B6/M-3: run any destructive maintenance (e.g. the photo cleanup's rewrite
+ * pass) under the SAME exclusion as restore/import, in this tab and across
+ * tabs — so a cleanup can never interleave with a Load from File.
+ */
+export function withExclusiveIo<T>(what: string, fn: () => Promise<T>): Promise<T> {
+  return withIoGuard(what, fn);
 }
 
 export async function getAll<T>(store: StoreName): Promise<T[]> {
@@ -115,11 +154,13 @@ export async function applyAmmoMerge(ops: {
 }): Promise<void> {
   const db = await openDb();
   const tx = db.transaction(['ammunition', 'sessions', 'purchases'], 'readwrite');
-  tx.objectStore('ammunition').put(ops.keptCan);
-  for (const s of ops.sessions) tx.objectStore('sessions').put(s);
-  for (const p of ops.purchases) tx.objectStore('purchases').put(p);
-  if (ops.newPurchase) tx.objectStore('purchases').put(ops.newPurchase);
-  if (ops.deleteCanId) tx.objectStore('ammunition').delete(ops.deleteCanId);
+  queueOrAbort(tx, () => {
+    tx.objectStore('ammunition').put(ops.keptCan);
+    for (const s of ops.sessions) tx.objectStore('sessions').put(s);
+    for (const p of ops.purchases) tx.objectStore('purchases').put(p);
+    if (ops.newPurchase) tx.objectStore('purchases').put(ops.newPurchase);
+    if (ops.deleteCanId) tx.objectStore('ammunition').delete(ops.deleteCanId);
+  });
   await txDone(tx);
 }
 
@@ -132,7 +173,7 @@ export async function commitClassifiers(rows: object[]): Promise<void> {
   const db = await openDb();
   const tx = db.transaction('classifiers', 'readwrite');
   const os = tx.objectStore('classifiers');
-  for (const r of rows) os.put(r);
+  queueOrAbort(tx, () => { for (const r of rows) os.put(r); });
   await txDone(tx);
 }
 
@@ -163,33 +204,36 @@ async function commitDataSetInner(
   onProgress?: (done: number, total: number) => void
 ): Promise<void> {
   const db = await openDb();
-  const stores: StoreName[] = [
-    'firearms', 'sessions', 'drills', 'ammunition', 'purchases',
-    'maintenance', 'malfunctions', 'magazines', 'optics', 'parts',
-    'goals', 'skills', 'matches', 'classifiers', 'trash', 'meta'
-  ];
+  // B4/M-4: derived from the ONE canonical list (STORE_NAMES), not hand-copied —
+  // three hand-maintained copies had drifted, and `references` was silently
+  // dropped on import. Exclusions are deliberate and local: media and drills are
+  // written in their own phases below.
+  const stores: StoreName[] = STORE_NAMES.filter((n) => n !== 'media' && n !== 'drills');
   const tx = db.transaction(stores, 'readwrite');
-  const putAll = (store: StoreName, records: object[]) => {
+  const putAll = (store: StoreName, records: object[] | undefined) => {
     const os = tx.objectStore(store);
-    for (const r of records) os.put(r);
+    for (const r of records ?? []) os.put(r); // a missing section means empty, never a crash
   };
-  putAll('firearms', data.firearms);
-  putAll('sessions', data.sessions);
-  putAll('ammunition', data.ammunition);
-  putAll('purchases', data.purchases);
-  putAll('maintenance', data.maintenance);
-  putAll('malfunctions', data.malfunctions);
-  putAll('magazines', data.magazines);
-  putAll('optics', data.optics);
-  putAll('parts', data.parts);
-  putAll('goals', data.goals);
-  putAll('skills', data.skills);
-  putAll('matches', data.matches);
-  putAll('classifiers', data.classifiers);
-  putAll('trash', data.trash);
-  if (settings !== undefined) {
-    tx.objectStore('meta').put({ key: 'settings', value: settings });
-  }
+  queueOrAbort(tx, () => {
+    putAll('firearms', data.firearms);
+    putAll('sessions', data.sessions);
+    putAll('ammunition', data.ammunition);
+    putAll('purchases', data.purchases);
+    putAll('maintenance', data.maintenance);
+    putAll('malfunctions', data.malfunctions);
+    putAll('magazines', data.magazines);
+    putAll('optics', data.optics);
+    putAll('parts', data.parts);
+    putAll('goals', data.goals);
+    putAll('skills', data.skills);
+    putAll('matches', data.matches);
+    putAll('classifiers', data.classifiers);
+    putAll('references', data.references); // M-4: was silently dropped before
+    putAll('trash', data.trash);
+    if (settings !== undefined) {
+      tx.objectStore('meta').put({ key: 'settings', value: settings });
+    }
+  });
   await txDone(tx);
 
   // Imports replace import-derived drills (IDs starting 'dr-'). Custom drills
@@ -197,10 +241,12 @@ async function commitDataSetInner(
   // (Edits made to imported drills are reset by a re-import — by design.)
   const existingDrills = await getAll<{ id: string }>('drills');
   const dtx0 = db.transaction('drills', 'readwrite');
-  for (const d of existingDrills) {
-    if (d.id.startsWith('dr-')) dtx0.objectStore('drills').delete(d.id);
-  }
-  for (const d of data.drills) dtx0.objectStore('drills').put(d);
+  queueOrAbort(dtx0, () => {
+    for (const d of existingDrills) {
+      if (d.id.startsWith('dr-')) dtx0.objectStore('drills').delete(d.id);
+    }
+    for (const d of data.drills ?? []) dtx0.objectStore('drills').put(d);
+  });
   await txDone(dtx0);
 
   // Re-imports must never duplicate photos OR lose them mid-write (audit CR-2).
@@ -238,20 +284,38 @@ export async function getSettings<T>(): Promise<T | undefined> {
   return row?.value;
 }
 
-/** Merge `patch` into the stored settings record (creating it if needed). */
+/**
+ * Merge `patch` into the stored settings record (creating it if needed).
+ * B3/M-2: the read and the write share ONE readwrite transaction, so two
+ * near-simultaneous patches (e.g. a backup stamp landing while a toggle saves)
+ * can no longer read the same "before" and silently drop each other — IndexedDB
+ * serializes readwrite transactions on the store, so both patches land.
+ */
 export async function putSettings<T extends object>(patch: Partial<T>): Promise<T> {
-  const current = (await getSettings<T>()) ?? ({} as T);
-  const next = { ...current, ...patch };
-  await putOne('meta', { key: 'settings', value: next });
+  const db = await openDb();
+  const tx = db.transaction('meta', 'readwrite');
+  const os = tx.objectStore('meta');
+  const next = await new Promise<T>((resolve, reject) => {
+    const req = os.get('settings');
+    req.onsuccess = () => {
+      try {
+        const current = ((req.result as { value?: T } | undefined)?.value) ?? ({} as T);
+        const merged = { ...current, ...patch } as T;
+        os.put({ key: 'settings', value: merged });
+        resolve(merged);
+      } catch (e) {
+        reject(e); // e.g. an unstorable value — reject, never hang
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+  await txDone(tx);
   return next;
 }
 
-/** Every store except media, for snapshot export. */
-const SNAPSHOT_STORES: StoreName[] = [
-  'firearms', 'sessions', 'drills', 'ammunition', 'purchases',
-  'maintenance', 'malfunctions', 'magazines', 'optics', 'parts',
-  'goals', 'skills', 'matches', 'classifiers', 'references', 'trash', 'meta'
-];
+/** Every store except media (which travels in its own snapshot section) —
+ *  derived from the canonical STORE_NAMES so it can never drift (B4/M-4). */
+const SNAPSHOT_STORES: StoreName[] = STORE_NAMES.filter((n) => n !== 'media');
 
 /** Everything in the database, packaged to travel (spec §7.1). */
 export async function exportSnapshot(): Promise<Snapshot> {
@@ -331,11 +395,13 @@ async function restoreSnapshotInner(
 
   // Regular stores: clear + rewrite atomically (all-or-nothing; rolls back on error).
   const tx = db.transaction([...SNAPSHOT_STORES], 'readwrite');
-  for (const name of SNAPSHOT_STORES) {
-    const os = tx.objectStore(name);
-    os.clear();
-    for (const r of snapshot.stores[name] ?? []) os.put(r as object);
-  }
+  queueOrAbort(tx, () => {
+    for (const name of SNAPSHOT_STORES) {
+      const os = tx.objectStore(name);
+      os.clear();
+      for (const r of snapshot.stores[name] ?? []) os.put(r as object);
+    }
+  });
   await txDone(tx);
 
   // Media: add the new set first (one per transaction — iPhone Safari friendly)…
