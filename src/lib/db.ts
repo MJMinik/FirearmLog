@@ -367,7 +367,7 @@ async function restoreSnapshotInner(
  * transaction, so it is atomic: any failure rolls the whole thing back and leaves
  * the data intact (never a half-wiped DB). Serialized via withIoGuard so it can't
  * overlap a restore/import. After this resolves the log is empty (guns === 0),
- * which returns the app to first-run. Backups (Push to File) live outside
+ * which returns the app to first-run. Backups (Save to File) live outside
  * IndexedDB and are NOT touched. Guarded in the UI by a typed confirmation.
  * (Hard-gate spec, session 35.)
  */

@@ -28,6 +28,7 @@ import { FormProblem } from './FormProblem.tsx';
 import { Icon } from './Icon.tsx';
 import { SwipeRow } from './SwipeRow.tsx';
 import { InfoTip } from './InfoTip.tsx';
+import { openSessionReport } from './sessionReport.ts';
 import { Reveal } from './Reveal.tsx';
 import { ScreenError } from './ScreenState.tsx';
 
@@ -209,7 +210,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
       <SpeedAccuracyTrendCard matches={matches} coachingRemarks={coachingRemarks}
         onDisableRemarks={() => void disableRemarks()} />
 
-      <HeatmapCard sessions={sessions} open={open} />
+      <HeatmapCard sessions={sessions} />
 
       {editing && (
         <GoalEditSheet goal={editing} categories={cats}
@@ -229,22 +230,31 @@ const SESSION_TYPE_LABEL: Record<string, string> = {
   practice: 'Live practice', dry_fire: 'Dry fire', class: 'Class'
 };
 
-function HeatmapCard({ sessions, open }: { sessions: Session[]; open: (v: View) => void }) {
+function HeatmapCard({ sessions }: { sessions: Session[] }) {
   const [weeks, setWeeks] = useState(26);
   // Audit #20: tapping a day shows its count here — the SVG <title> only worked
   // on desktop hover, so on a phone the "press a square" help did nothing.
   const [selText, setSelText] = useState<string | null>(null);
-  // Default (Michael, session 36): tapping a day OPENS that day's session — the
-  // most useful action. One session opens directly; several show a picker; an
-  // empty day falls back to showing its count so the tap is never dead. The
-  // checkbox opts into the quieter "just show the day's count" behaviour (no
-  // navigation). Not remembered across visits.
+  // Default: tapping a day opens that day's Session Report (Michael, July 8
+  // 2026 — supersedes the session-36 open-the-edit-screen default). One session
+  // opens its report directly; several show a picker; an empty day falls back
+  // to showing its count so the tap is never dead. The checkbox opts into the
+  // quieter "just show the day's count" behaviour. Not remembered across visits.
   const [showCountOnly, setShowCountOnly] = useState(false);
   const [daySheet, setDaySheet] = useState<Session[] | null>(null);
+  // Michael, July 8 2026: a day square opens the day's Session Report — the
+  // finished read with the target photos — not the edit screen. Editing still
+  // lives on the Log tab. openReport is called straight from the tap so the
+  // report window opens inside the gesture (iOS popup rule); if the browser
+  // blocks it anyway, the card's note line says so instead of a dead tap.
+  async function openReport(s: Session) {
+    const trouble = await openSessionReport(s);
+    if (trouble) setSelText(trouble);
+  }
   function tapCell(c: { date: string; sessions: number; rounds: number }) {
     if (!showCountOnly) {
       const day = sessionsOnDay(sessions, c.date);
-      if (day.length === 1) { open({ kind: 'session-form', id: day[0].id }); return; }
+      if (day.length === 1) { void openReport(day[0]); return; }
       if (day.length > 1) { setDaySheet(day); return; }
       // Empty day: fall through to the count so the tap is never dead.
     }
@@ -267,7 +277,7 @@ function HeatmapCard({ sessions, open }: { sessions: Session[]; open: (v: View) 
   const labelH = labelFont + 4;
   return (
     <div className="card">
-      <h2>Training grid <InfoTip title="Training grid">Each square is a day — darker means more rounds, with the months labeled along the bottom. Switch between the last 26 or 52 weeks; tap a day to open that day's session, or turn on "Just show the day's count" to peek at a day without opening it.</InfoTip></h2>
+      <h2>Training grid <InfoTip title="Training grid">Each square is a day — darker means more rounds, with the months labeled along the bottom. Switch between the last 26 or 52 weeks. Tap a day to open that day's session report — drills, notes, and target photos on one page — or turn on "Just show the day's count" to peek at a day without opening it. (To change a session, open it from the Log tab.)</InfoTip></h2>
       <div className="chart-filters">
         <select aria-label="Training grid weeks" value={weeks} onChange={(e) => setWeeks(Number(e.target.value))}>
           <option value={26}>26 weeks</option>
@@ -276,7 +286,7 @@ function HeatmapCard({ sessions, open }: { sessions: Session[]; open: (v: View) 
       </div>
       <label className="report-note" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginTop: 4, minHeight: 'var(--touch-min)' }}>
         <input type="checkbox" checked={showCountOnly} onChange={(e) => setShowCountOnly(e.target.checked)} />
-        Just show the day's count, don't open the session
+        Just show the day's count, don't open the report
       </label>
       <svg viewBox={`0 0 ${w} ${h + labelH}`} width="100%" role="img" aria-label="Training activity heatmap"
         style={{ display: 'block', maxWidth: w, marginTop: 4 }}>
@@ -310,13 +320,13 @@ function HeatmapCard({ sessions, open }: { sessions: Session[]; open: (v: View) 
         : <p className="report-note">
             {showCountOnly
               ? `Each square is a day; darker = more rounds — tap one to see its count. Last ${weeks} weeks.`
-              : `Each square is a day; darker = more rounds — tap one to open that day's session. Last ${weeks} weeks.`}
+              : `Each square is a day; darker = more rounds — tap one for that day's session report. Last ${weeks} weeks.`}
           </p>}
       {daySheet && (
         <Sheet title="Sessions on this day" onClose={() => setDaySheet(null)}>
           {daySheet.map((s) => (
             <button key={s.id} className="drill-pick-row"
-              onClick={() => { setDaySheet(null); open({ kind: 'session-form', id: s.id }); }}>
+              onClick={() => { setDaySheet(null); void openReport(s); }}>
               <strong>{formatDayKey(s.date)} · {SESSION_TYPE_LABEL[s.type] ?? s.type}</strong>
               <span>{sessionRounds(s).toLocaleString()} rounds{s.location ? ` · ${s.location}` : ''}</span>
             </button>

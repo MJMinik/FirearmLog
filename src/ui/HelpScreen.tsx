@@ -57,7 +57,7 @@ const QUICK_TOUR: TourStep[] = [
   },
   {
     title: 'Your data stays yours',
-    body: 'Everything is stored on your device — no account, no cloud. Use Sync to push or pull a single file between your phone and computer through iCloud Drive. That\'s it — go log a session!',
+    body: 'Everything is stored on your device — no account, no cloud. Sync saves everything to a single file you then load on your other device through iCloud Drive. That\'s it — go log a session!',
   },
 ];
 
@@ -74,8 +74,8 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Getting around',
       body: isDesktop
-        ? 'On a computer, the left sidebar lists Home, Log, Compete, and Progress at the top, then your sections grouped into Your Gear, Training, Records, and App & Data — each one click away. Use the search button to search across sessions, guns, drills, matches, and notes. Almost anything on screen — a number, a chart bar, a list row — can be clicked to open what\'s behind it.'
-        : 'On a phone, the bar along the bottom has Home, Log, Compete, and Progress, plus More for everything else. Use the search button to search across sessions, guns, drills, matches, and notes. Almost anything on screen — a number, a chart bar, a list row — can be tapped to open what\'s behind it.',
+        ? 'On a computer, the left sidebar lists Home, Log, Compete, and Progress at the top, then your sections grouped into Your Gear, Training, Records, and App & Data — each one click away. Longer lists — sessions, drills, ammo, costs, malfunctions — have a search box at the top to narrow them. Almost anything on screen — a number, a chart bar, a list row — can be clicked to open what\'s behind it.'
+        : 'On a phone, the bar along the bottom has Home, Log, Compete, and Progress, plus More for everything else. Longer lists — sessions, drills, ammo, costs, malfunctions — have a search box at the top to narrow them. Almost anything on screen — a number, a chart bar, a list row — can be tapped to open what\'s behind it.',
     },
     {
       title: 'Home',
@@ -124,7 +124,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Progress — training grid & records',
-      body: 'The training grid shows a square per day, darker where you shot more — toggle 26 or 52 weeks, with the months labeled along the bottom. Tap a square to open that day\'s session — or turn on "Just show the day\'s count" to peek at a day without opening it. Personal records list your best result per drill.',
+      body: 'The training grid shows a square per day, darker where you shot more — toggle 26 or 52 weeks, with the months labeled along the bottom. Tap a square to open that day\'s session report — drills, notes, and target photos on one page — or turn on "Just show the day\'s count" to peek at a day without opening it. (To change a session, open it from the Log.) Personal records list your best result per drill.',
     },
     {
       title: 'Guns',
@@ -158,7 +158,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Sync — phone & desktop',
-      body: `Sync (under ${at('Sync & Backup')}) moves a single file between your devices through iCloud Drive or the Files app. Push from the device you just used, pull on the other one. The app tells you plainly when one copy is newer. ${at('Free Up Space')} makes smaller copies of older full-size photos when they're taking up room.`,
+      body: `Sync (under ${at('Sync & Backup')}) moves a single file between your devices through iCloud Drive or the Files app. Save to the file from the device you just used, then load it on the other one. The app tells you plainly when one copy is newer. ${at('Free Up Space')} makes smaller copies of older full-size photos when they're taking up room.`,
     },
     {
       title: 'Setup & sample data',
@@ -237,7 +237,7 @@ export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: Vie
         <p className="report-note">
           Your log lives only on your own devices — there's no account and no cloud copy. So your
           data is as safe as your backups: every so often, and before you switch phones or update,
-          use <strong>Push to File</strong> (in {isDesktop ? 'Sync & Backup' : 'the More tab'}) to save a
+          use <strong>Save to File</strong> (in {isDesktop ? 'Sync & Backup' : 'the More tab'}) to keep a
           copy to iCloud Drive or Files. That file is your safety net. The Home screen also reminds you
           once you've logged a fair bit since your last backup.
         </p>

@@ -33,7 +33,7 @@ export function ClearAllSheet({ onClose }: { onClose: () => void }) {
         photo, and setting. There's no undo.
       </p>
       <p className="report-note" style={{ marginBottom: 12 }}>
-        Your saved backup files are not affected. If you're not sure, use Push to File to save a
+        Your saved backup files are not affected. If you're not sure, use Save to File to keep a
         backup first — then you can always get this back.
       </p>
       <FormProblem problem={err} />

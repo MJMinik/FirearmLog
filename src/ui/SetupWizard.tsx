@@ -65,9 +65,25 @@ export function SetupWizard({ onFinish, onCancel }: {
     </button>
   );
 
+  // M-6 hardening: the effect above fills hasAnyData asynchronously, and a fast
+  // tap can beat that read — which would replace a real log with the sample,
+  // no confirmation asked (caught by E2E on a slower machine; on CI the read
+  // always won the race). So decide from a FRESH read at tap time. The state
+  // values still short-circuit the common case instantly; if the read itself
+  // fails, fail SAFE and ask anyway — an unnecessary confirm is a shrug, a
+  // skipped one is someone's log.
+  async function demoTapped() {
+    let any = hasAnyData || counts.guns > 0;
+    if (!any) {
+      try { any = (await localLastModified()) > 0; } catch { any = true; }
+    }
+    if (any) setConfirmDemo(true);
+    else await loadDemo();
+  }
+
   // One-tap sample data for testers — loads the bundled demo file straight from
   // the app, so there's nothing to download, save, or pick. Uses the same
-  // validated restore path as a normal Pull.
+  // validated restore path as a normal Load from File.
   async function loadDemo() {
     setConfirmDemo(false); setDemoErr(''); setDemoBusy(true);
     try {
@@ -111,7 +127,7 @@ export function SetupWizard({ onFinish, onCancel }: {
             </p>
             <FormProblem problem={demoErr} />
             <button className="button secondary" disabled={demoBusy}
-              onClick={() => (hasAnyData || counts.guns > 0 ? setConfirmDemo(true) : void loadDemo())}>
+              onClick={() => void demoTapped()}>
               {demoBusy ? 'Loading sample data…' : 'See it with sample data'}
             </button>
           </div>

@@ -7,7 +7,7 @@ import type {
   Magazine, MalfunctionEntry, Media, Session, SessionChecklist
 } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, getSettings, putOne, putSettings } from '../lib/db.ts';
-import { formatDayKey, todayKey } from '../lib/dates.ts';
+import { todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { drillsForContext } from '../lib/drillFilter.ts';
@@ -23,8 +23,7 @@ import {
 import { buildDrillReportHtml, type DrillReportItem } from '../lib/drillReport.ts';
 import { activeOnly } from '../lib/softDelete.ts';
 import { softDeleteSession } from './sessionDelete.ts';
-import { buildReportHtml, type ReportSection } from '../lib/reports.ts';
-import { reportImageUrls } from './reportImages.ts';
+import { openSessionReport } from './sessionReport.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
@@ -353,49 +352,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
 
   async function printSessionReport() {
     if (!original) return;
-    // Open the window inside the tap (so iOS doesn't block it), show a holding
-    // note, then write the page once photos are downscaled. Full-size target
-    // photos would otherwise crash mobile Safari (same fix as the reports hub).
-    const win = window.open('', '_blank');
-    if (!win) { setProblem('Pop-ups blocked — please allow pop-ups and try again.'); return; }
-    win.document.write('<!doctype html><meta charset="utf-8"><body style="font:15px -apple-system,Arial,sans-serif;padding:40px;color:#555">Preparing report…</body>');
-    try {
-    const reps = original.type === 'dry_fire';
-    const gunRows = original.guns.map((g) => ({
-      label: firearms.find((f) => f.id === g.firearmId)?.name ?? '—',
-      value: `${g.rounds} ${reps ? 'reps' : 'rds'}`
-    }));
-    const drillRows = original.drills.map((dr) => [
-      dr.name, dr.distance || '—',
-      dr.time != null ? `${dr.time}s` : '—',
-      dr.score != null ? `${dr.score}${dr.maxScore != null ? '/' + dr.maxScore : ''}` : '—'
-    ]);
-    const malfRows = malfs.map((m) => [
-      m.type || '—', firearms.find((f) => f.id === m.firearmId)?.name ?? '—',
-      m.roundCount.trim() || '—', m.resolution || '', m.notes || ''
-    ]);
-    const photos = await reportImageUrls(existingMedia, 'session', original.id);
-    const sections: ReportSection[] = [
-      { heading: 'Session', rows: [
-        { label: 'Date', value: formatDayKey(original.date) },
-        { label: 'Kind', value: KINDS.find((k) => k.value === original.type)?.label ?? original.type },
-        ...(original.location ? [{ label: 'Where', value: original.location }] : []),
-        ...(original.instructor ? [{ label: 'Instructor', value: original.instructor }] : []),
-        ...(original.rangeFee != null ? [{ label: 'Range fee', value: '$' + original.rangeFee.toFixed(2) }] : [])
-      ] },
-      { heading: 'Guns', rows: gunRows },
-      ...(drillRows.length ? [{ heading: 'Drills', table: { headers: ['Drill', 'Distance', 'Time', 'Score'], rows: drillRows } }] : []),
-      ...(malfRows.length ? [{ heading: 'Malfunctions', table: { headers: ['Type', 'Gun', 'Round', 'Cleared', 'Notes'], rows: malfRows } }] : []),
-      ...(original.notes ? [{ heading: 'Notes', rows: [{ label: '', value: original.notes }] }] : []),
-      ...(photos.length ? [{ heading: 'Photos', images: photos }] : [])
-    ];
-    win.document.open();
-    win.document.write(buildReportHtml(`Session — ${formatDayKey(original.date)}`, original.location || '', sections));
-    win.document.close(); win.focus();
-    setTimeout(() => win.print(), 400);
-    } catch {
-      try { win.document.body.textContent = 'Sorry — could not build this report. Please try again.'; } catch { /* window already closed */ }
-    }
+    // Shared opener (also used by the Progress training grid). It opens the
+    // window inside the tap and builds the page from the SAVED session, then
+    // hands off to the print dialog.
+    const trouble = await openSessionReport(original, { autoPrint: true });
+    if (trouble) setProblem(trouble);
   }
 
   function addPickedDrills() {

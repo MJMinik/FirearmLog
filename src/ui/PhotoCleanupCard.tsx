@@ -9,7 +9,7 @@
 //    photos not yet reached are simply untouched, and re-running is safe (an
 //    already-small photo is skipped because the re-encode isn't smaller).
 //  - Processed one at a time so a phone never holds many decoded images at once.
-//  - The user is told to Push to File (back up) first, and must confirm.
+//  - The user is told to Save to File (back up) first, and must confirm.
 import { useEffect, useState } from 'react';
 import type { Media } from '../lib/types.ts';
 import { getAll, putOne } from '../lib/db.ts';
@@ -95,7 +95,7 @@ export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean 
       <p className="report-note" style={{ marginBottom: 12 }}>
         Make smaller copies of the photos already in your log. They'll still look good on screen
         and in reports, but take far less space and sync faster (videos are left alone).{' '}
-        <strong>Back up first:</strong> use Push to File above before running this — it rewrites your
+        <strong>Back up first:</strong> use Save to File above before running this — it rewrites your
         stored photos and can only be undone by pulling a backup.
       </p>
       {stage.name === 'working' ? (
@@ -105,7 +105,7 @@ export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean 
       ) : stage.name === 'done' ? (
         <p className="report-note">
           Done — shrank {stage.shrunk} photo{stage.shrunk === 1 ? '' : 's'} and saved about{' '}
-          {stage.savedMB} MB. Push to File again to sync the smaller copies to your other device.
+          {stage.savedMB} MB. Save to File again to carry the smaller copies to your other device.
         </p>
       ) : (
         <>
@@ -120,7 +120,7 @@ export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean 
       {stage.name === 'confirm' && (
         <ConfirmSheet
           title="Shrink stored photos?"
-          message="This makes smaller copies of every photo in your log to free up space. Make sure you've backed up first with Push to File. Continue?"
+          message="This makes smaller copies of every photo in your log to free up space. Make sure you've backed up first with Save to File. Continue?"
           confirmLabel="Shrink Photos"
           onConfirm={() => void run()}
           onClose={() => setStage({ name: 'idle' })}

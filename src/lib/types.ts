@@ -342,7 +342,7 @@ export interface AppSettings {
   ownerName: string;
   theme: string;
   checklistCustomItems: ChecklistCustomItems;
-  /** When the user last saved a backup file (Push to File). Drives the Home
+  /** When the user last saved a backup file (Save to File). Drives the Home
    *  backup reminder. Optional — undefined means never backed up. */
   lastBackupAt?: number;
   /** The one "golden" north-star goal — pinned atop Goals and echoed on Home.
