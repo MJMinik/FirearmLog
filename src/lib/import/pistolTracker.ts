@@ -408,7 +408,11 @@ export function importPistolTracker(
     countRow('Skill check-ins', (old.skillAssessments ?? []).length, skills.length),
     countRow('Matches', (old.matches ?? []).length, matches.length),
     countRow('Classifiers', (old.classifiers ?? []).length, classifiers.length),
-    countRow('Trash items', (old.trash ?? []).length, trash.length)
+    countRow('Trash items', (old.trash ?? []).length, trash.length),
+    // B4/M-4: References travel through the import boundary too — the old app
+    // has none today, so this row reads 0 → 0, but it makes any future drop
+    // LOUD in the report instead of silent in the database.
+    countRow('Reference entries', ((old as { references?: unknown[] }).references ?? []).length, data.references.length)
   ];
 
   const guns: GunRow[] = firearms.map(f => {

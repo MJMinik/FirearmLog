@@ -12,7 +12,7 @@
 //  - The user is told to Save to File (back up) first, and must confirm.
 import { useEffect, useState } from 'react';
 import type { Media } from '../lib/types.ts';
-import { getAll, putOne } from '../lib/db.ts';
+import { getAll, putOne, withExclusiveIo } from '../lib/db.ts';
 import { stampUpdate } from '../lib/stamps.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
 import { ConfirmSheet } from './Sheet.tsx';
@@ -49,28 +49,35 @@ export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean 
   async function run() {
     setStage({ name: 'working', done: 0, total: 0 });
     try {
-      const all = await getAll<Media>('media');
-      const images = all.filter((m) => m.kind === 'image');
-      let shrunk = 0;
-      let saved = 0;
-      for (let i = 0; i < images.length; i++) {
-        const m = images[i];
-        setStage({ name: 'working', done: i, total: images.length });
-        const blob = new Blob([m.data], { type: m.mime || 'image/jpeg' });
-        const { data, mime } = await prepareUploadBytes(blob);
-        if (data.byteLength < m.data.byteLength) {
-          saved += m.data.byteLength - data.byteLength;
-          await putOne('media', stampUpdate({ ...m, data, mime }, Date.now()));
-          shrunk += 1;
-        }
-      }
-      setStage({ name: 'done', shrunk, savedMB: (saved / (1024 * 1024)).toFixed(1) });
+      // B6/M-3: the whole rewrite pass runs under the same exclusion as
+      // restore/import — in this tab and across tabs — so a cleanup can never
+      // interleave with a Load from File rewriting the same photos.
+      await withExclusiveIo('the photo cleanup', () => runInner());
     } catch (e) {
       setStage({
         name: 'idle',
-        message: e instanceof Error ? e.message : 'Could not finish — your photos are unchanged.',
+        message: e instanceof Error ? e.message : 'Could not finish — your photos are unchanged.'
       });
     }
+  }
+
+  async function runInner() {
+    const all = await getAll<Media>('media');
+    const images = all.filter((m) => m.kind === 'image');
+    let shrunk = 0;
+    let saved = 0;
+    for (let i = 0; i < images.length; i++) {
+      const m = images[i];
+      setStage({ name: 'working', done: i, total: images.length });
+      const blob = new Blob([m.data], { type: m.mime || 'image/jpeg' });
+      const { data, mime } = await prepareUploadBytes(blob);
+      if (data.byteLength < m.data.byteLength) {
+        saved += m.data.byteLength - data.byteLength;
+        await putOne('media', stampUpdate({ ...m, data, mime }, Date.now()));
+        shrunk += 1;
+      }
+    }
+    setStage({ name: 'done', shrunk, savedMB: (saved / (1024 * 1024)).toFixed(1) });
   }
 
   // Nothing to free up (and not mid-run / not showing a result). Inline on the
