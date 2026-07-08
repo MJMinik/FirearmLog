@@ -13,12 +13,13 @@
 // new Steel scoring shows up in the demo; USPSA club/sectional/area with a few
 // A/C/D stage breakdowns; classifiers trending C -> A; plus ammo (FIFO),
 // costs, maintenance, magazines, optics, parts, goals, and skill assessments.
-// No media (photos) -- keeps the file robust; photo refs are left empty.
+// Media: four real (anonymous) target photos ride on the newest live session.
 
-import { writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { buildFlog, type Snapshot } from '../src/lib/flog.ts';
+import type { Media } from '../src/lib/types.ts';
 
 // ---- deterministic RNG (mulberry32) so the demo is stable across rebuilds ----
 function rng(seed: number) {
@@ -475,7 +476,32 @@ for (const arr of Object.values(stores)) for (const rec of arr) {
   const u = (rec as { updatedAt?: number }).updatedAt;
   if (typeof u === 'number' && u > newest) newest = u;
 }
-const snapshot: Snapshot = { exportedAt: Date.now(), lastModified: newest, stores, media: [] };
+// ===================== TARGET PHOTOS (July 8 2026) =====================
+// Four REAL (and anonymous) portrait target photos — Michael's own, chosen for
+// the sample log so a visitor's "look around" (and the website's session-report
+// screenshot) shows genuine media. Pre-downscaled to the app's own photo size
+// (PHOTO_MAX_EDGE 1600 / q80), ~1 MB total, attached to the newest live session.
+const targetDir = join(dirname(fileURLToPath(import.meta.url)), 'demo-assets', 'targets');
+const photoSession = (stores.sessions as { id: string; date: string; type: string; planned: boolean; targetMediaIds: string[] }[])
+  .filter((se) => se.type !== 'dry_fire' && !se.planned)
+  .sort((a, b) => b.date.localeCompare(a.date))[0];
+const demoMedia: Media[] = ['t1.jpg', 't2.jpg', 't3.jpg', 't4.jpg'].map((f, i) => {
+  const buf = readFileSync(join(targetDir, f));
+  return {
+    id: `md-demo-target-${i + 1}`,
+    ...stamp(photoSession.date),
+    ownerType: 'session' as const,
+    ownerId: photoSession.id,
+    kind: 'image' as const,
+    name: `Target ${i + 1}`,
+    annotations: [],
+    mime: 'image/jpeg',
+    data: buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer,
+  };
+});
+photoSession.targetMediaIds = demoMedia.map((m) => m.id);
+
+const snapshot: Snapshot = { exportedAt: Date.now(), lastModified: newest, stores, media: demoMedia };
 const bytes = buildFlog(snapshot);
 const outPath = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'demo-dataset.bin');
 writeFileSync(outPath, bytes);
