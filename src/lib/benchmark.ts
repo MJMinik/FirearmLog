@@ -32,8 +32,10 @@ export interface BenchmarkContribution {
 
 /** Plausibility bounds per metric — the client half of the junk-data guard
  *  (spec §5B/§7). A value outside these is dropped, never sent, so one fat-
- *  fingered entry can't poison a bucket. The server enforces the same bounds. */
-const METRIC_BOUNDS: Record<BenchmarkMetric, { min: number; max: number }> = {
+ *  fingered entry can't poison a bucket. Exported because the server (the
+ *  Cloudflare Worker in `worker/`) enforces the SAME bounds from this same
+ *  object — one source of truth, so client and server can never disagree. */
+export const METRIC_BOUNDS: Record<BenchmarkMetric, { min: number; max: number }> = {
   classifier_percent: { min: 0, max: 100 }, // USPSA classification is capped at 100%
   accuracy_points_kept: { min: 0, max: 1 }, // a fraction of available points
 };
@@ -41,7 +43,8 @@ const METRIC_BOUNDS: Record<BenchmarkMetric, { min: number; max: number }> = {
 /** True only if the contribution is well-formed AND plausible. Anything false
  *  here must never leave the device. */
 export function isValidContribution(c: BenchmarkContribution): boolean {
-  if (c.scoringType !== 'uspsa' && c.scoringType !== 'idpa' && c.scoringType !== 'steel') return false;
+  if (c.scoringType !== 'uspsa' && c.scoringType !== 'idpa' && c.scoringType !== 'steel')
+    return false;
   if (!c.division) return false;
   if (!c.class) return false;
   if (!GUN_CATEGORIES.includes(c.gunCategory)) return false;

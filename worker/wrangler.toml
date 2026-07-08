@@ -1,0 +1,35 @@
+# FirearmLog benchmark endpoint — Cloudflare Worker configuration.
+#
+# STATUS: INERT (Rung-1 step 3). This Worker is code in the repo only — it is
+# NOT deployed, and nothing in the app calls it. Deployment happens in step 4
+# (danger-zone branch, with Michael's Cloudflare account), which fills in the
+# D1 binding below and configures the edge extras.
+
+name = "firearmlog-benchmarks"
+main = "index.ts"
+compatibility_date = "2026-07-08"
+
+# ── Step 4 checklist (do not fill in before then) ───────────────────────────
+#
+# 1. Create the database and apply the schema:
+#      wrangler d1 create firearmlog-benchmarks
+#      wrangler d1 execute firearmlog-benchmarks --file=schema.sql
+#    then uncomment, pasting the database_id wrangler prints:
+#
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "firearmlog-benchmarks"
+# database_id = "<from wrangler d1 create>"
+#
+# 2. Optional overrides (defaults live in index.ts: k = 50, the app's origins):
+#
+# [vars]
+# K_THRESHOLD = "50"
+# ALLOWED_ORIGINS = "https://mjminik.github.io,https://firearmlog.com,https://www.firearmlog.com,https://firearmlog.app,https://www.firearmlog.app"
+#
+# 3. Per-IP rate limiting is configured at the Cloudflare edge (dashboard →
+#    Security → WAF → rate limiting rules), NOT in Worker code — the Worker
+#    never sees, uses, or stores an IP (build spec §5, anti-abuse honesty).
+#
+# 4. `wrangler deploy`, then the step-4 payload-inspection spike verifies from
+#    a real device that only contract-shaped payloads leave the app.
