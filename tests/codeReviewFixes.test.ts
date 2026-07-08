@@ -9,6 +9,7 @@ test('looseNum parses normal CSV numbers', () => {
   assert.equal(looseNum('1,000'), 1000);
   assert.equal(looseNum(''), null);
   assert.equal(looseNum('abc'), null);
+  assert.equal(looseNum('35a'), null); // L-7: a typo'd entry fee stores null, never NaN
 });
 test('looseNum rejects implausible huge numbers (CR-10)', () => {
   assert.equal(looseNum('1e308'), null);

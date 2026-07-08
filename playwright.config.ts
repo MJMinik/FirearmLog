@@ -3,7 +3,7 @@ import { defineConfig, devices } from '@playwright/test';
 // End-to-end tests for FirearmLog.
 //
 // These drive the REAL app in a real browser, exactly as a shooter would — they
-// complement the 182 unit tests (which cover the pure logic in `src/lib`) by
+// complement the unit suite (which covers the pure logic in `src/lib`) by
 // proving the UI is actually wired up: navigation, the demo loader, adding a
 // gun, logging a session, the retire/return lifecycle, and every screen
 // rendering without crashing.

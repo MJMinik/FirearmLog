@@ -8,7 +8,7 @@
 // (Importing an old backup file lives under App & Data → Pistol Tracker import,
 // not here — it's not part of the new-user first run.)
 import { useEffect, useState } from 'react';
-import { countAll, restoreSnapshot } from '../lib/db.ts';
+import { countAll, localLastModified, restoreSnapshot } from '../lib/db.ts';
 import { parseFlog } from '../lib/flog.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { FormProblem } from './FormProblem.tsx';
@@ -26,6 +26,10 @@ export function SetupWizard({ onFinish, onCancel }: {
   const [mode, setMode] = useState<'choose' | 'gear'>('choose');
   const [adding, setAdding] = useState<Adding>(null);
   const [counts, setCounts] = useState({ guns: 0, optics: 0, ammo: 0, mags: 0 });
+  // M-6: loading sample data REPLACES the device's log, so the confirm gate
+  // must fire on ANY existing record (classifiers, purchases, goals…), not
+  // just guns — a gun-less log is still someone's real data.
+  const [hasAnyData, setHasAnyData] = useState(false);
   const [bump, setBump] = useState(0);
   const [demoBusy, setDemoBusy] = useState(false);
   const [demoErr, setDemoErr] = useState('');
@@ -34,10 +38,11 @@ export function SetupWizard({ onFinish, onCancel }: {
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const [guns, optics, ammo, mags] = await Promise.all([
+      const [guns, optics, ammo, mags, lastChange] = await Promise.all([
         countAll('firearms'), countAll('optics'), countAll('ammunition'), countAll('magazines'),
+        localLastModified(),
       ]);
-      if (alive) setCounts({ guns, optics, ammo, mags });
+      if (alive) { setCounts({ guns, optics, ammo, mags }); setHasAnyData(lastChange > 0); }
     })();
     return () => { alive = false; };
   }, [bump]);
@@ -106,7 +111,7 @@ export function SetupWizard({ onFinish, onCancel }: {
             </p>
             <FormProblem problem={demoErr} />
             <button className="button secondary" disabled={demoBusy}
-              onClick={() => (counts.guns > 0 ? setConfirmDemo(true) : void loadDemo())}>
+              onClick={() => (hasAnyData || counts.guns > 0 ? setConfirmDemo(true) : void loadDemo())}>
               {demoBusy ? 'Loading sample data…' : 'See it with sample data'}
             </button>
           </div>

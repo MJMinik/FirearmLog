@@ -57,6 +57,10 @@ export function UspsaImport({ onCancel, onDone }: {
       }, newId('cl'), now));
       await commitClassifiers(rows);
       onDone();
+    } catch {
+      // Same principle as the PractiScore save: a failed write reports itself
+      // accurately, right here (L-5). The commit is atomic — nothing landed.
+      setProblem("Those scores couldn't be saved. Nothing was written — try again.");
     } finally {
       setSaving(false);
     }
@@ -84,7 +88,7 @@ export function UspsaImport({ onCancel, onDone }: {
               onChange={(e) => setText(e.target.value)} />
           </label>
           <input ref={fileRef} type="file" accept=".csv,.txt,text/csv" style={{ display: 'none' }}
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then((t) => { setText(t); setProblem(''); }); e.target.value = ''; }} />
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then((t) => { setText(t); setProblem(''); }).catch(() => setProblem('That file could not be read. Try loading it again.')); e.target.value = ''; }} />
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <button className="button" style={{ flex: 1 }} disabled={!text.trim()} onClick={readResults}>Read scores</button>
             <button className="button secondary" style={{ flex: 1 }} onClick={() => fileRef.current?.click()}>Load a file</button>

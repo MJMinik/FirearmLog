@@ -9,7 +9,15 @@ export function installGlobalErrorHandler(): void {
 
   let bar: HTMLElement | null = null;
 
-  const show = () => {
+  // A failed database WRITE deserves accurate words — "didn't finish loading"
+  // would be untrue for a save that failed (code review L-5/L-6 wording note).
+  const isWriteError = (err: unknown): boolean => {
+    const name = (err as { name?: string } | null)?.name ?? '';
+    return ['QuotaExceededError', 'TransactionInactiveError', 'ConstraintError',
+      'DataError', 'ReadOnlyError'].includes(name);
+  };
+
+  const show = (err?: unknown) => {
     if (bar) return; // already showing
     bar = document.createElement('div');
     bar.className = 'global-error-banner';
@@ -17,7 +25,9 @@ export function installGlobalErrorHandler(): void {
     bar.setAttribute('aria-live', 'polite');
 
     const text = document.createElement('span');
-    text.textContent = "Something didn't finish loading — your data is safe.";
+    text.textContent = isWriteError(err)
+      ? "Something didn't finish saving — your existing data is safe. Check the entry and try again."
+      : "Something didn't finish loading — your data is safe.";
     bar.appendChild(text);
 
     const dismiss = document.createElement('button');
@@ -35,10 +45,10 @@ export function installGlobalErrorHandler(): void {
 
   window.addEventListener('unhandledrejection', (e) => {
     console.error('Unhandled promise rejection', e.reason);
-    show();
+    show(e.reason);
   });
   window.addEventListener('error', (e) => {
     console.error('Uncaught error', e.error ?? e.message);
-    show();
+    show(e.error);
   });
 }

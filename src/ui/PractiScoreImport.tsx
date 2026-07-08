@@ -18,8 +18,7 @@ import {
 import { FormProblem } from './FormProblem.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
-
-const toNum = (t: string): number | null => (t.trim() === '' ? null : Number(t));
+import { looseNum } from '../lib/csv.ts';
 
 export function PractiScoreImport({ onCancel, onSaved }: {
   onCancel: () => void;
@@ -83,13 +82,19 @@ export function PractiScoreImport({ onCancel, onSaved }: {
         overallPlace: me.overallPlace,
         overallOf: parsed.competitors.length,
         stages: me.stages.map((s) => ({ number: s.number, points: null, time: null, percent: s.percent, notes: '' })),
-        entryFee: toNum(entryFee),
+        // looseNum, not bare Number(): a typo like "35a" must store null, never
+        // NaN — stored NaN poisons cost math and any future aggregate (L-7).
+        entryFee: looseNum(entryFee),
         practiScoreUrl: '',
         notes: me.memberNumber ? `Imported from PractiScore (USPSA# ${me.memberNumber}).` : 'Imported from PractiScore.',
         legacy: { source: 'practiscore', memberNumber: me.memberNumber, classLetter: me.classLetter, matchPoints: me.matchPoints },
       };
       await putOne('matches', stampNew(fields, mid, Date.now()));
       onSaved(mid);
+    } catch {
+      // A failed WRITE gets a local, accurate message — not the global
+      // "didn't finish loading" banner (L-5). Nothing was saved.
+      setProblem("That match couldn't be saved. Nothing was written — try again.");
     } finally {
       setSaving(false);
     }
@@ -120,7 +125,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
               onChange={(e) => setText(e.target.value)} />
           </label>
           <input ref={fileRef} type="file" accept=".csv,.txt,text/csv" style={{ display: 'none' }}
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then((t) => { setText(t); setProblem(''); }); e.target.value = ''; }} />
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then((t) => { setText(t); setProblem(''); }).catch(() => setProblem('That file could not be read. Try loading it again.')); e.target.value = ''; }} />
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <button className="button" style={{ flex: 1 }} disabled={!text.trim()} onClick={readResults}>Read results</button>
             <button className="button secondary" style={{ flex: 1 }} onClick={() => fileRef.current?.click()}>Load a file</button>

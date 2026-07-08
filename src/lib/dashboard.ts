@@ -4,6 +4,7 @@
 
 import type { Session, Match, Ammunition, Firearm, DrillDef, DrillResult, GunCategory } from './types.ts';
 import { sessionRounds, totalRounds } from './stats.ts';
+import { dayKey } from './dates.ts';
 import { classificationProgress } from './competition.ts';
 import type { ClassProgress } from './competition.ts';
 
@@ -118,8 +119,12 @@ export function daysSinceLastSession(
     if (!s.planned && s.date > newest) newest = s.date;
   }
   if (!newest) return null;
+  // Calendar-day arithmetic on day-keys (the repo's dates.ts convention).
+  // Clock math here used to read "-1 days" before noon the morning after a
+  // range day (code review M-7); a future-dated session clamps to 0.
   const last = new Date(newest + 'T12:00:00');
-  return Math.floor((now.getTime() - last.getTime()) / (1000 * 60 * 60 * 24));
+  const today = new Date(dayKey(now) + 'T12:00:00');
+  return Math.max(0, Math.round((today.getTime() - last.getTime()) / (1000 * 60 * 60 * 24)));
 }
 
 // ---- Self-rating trend ----
@@ -212,7 +217,9 @@ export interface RangedActivity {
  * lifetime odometer (firearm starting counts + everything fired, via totalRounds); a bounded
  * window counts only rounds actually FIRED in it (live-session rounds + match rounds) — the
  * honest reading of "rounds in the last N months". Dry-fire counts as sessions, never rounds.
- * Pure; never throws.
+ * Both views count LINKED-firearm rounds only (Michael's rule, code review M-8) — a match or
+ * session gun pointing at a deleted/blank firearm is excluded from both, so a bounded window
+ * can never exceed all-time. Pure; never throws.
  */
 export function rangedActivity(
   firearms: Firearm[], sessions: Session[], matches: Match[], cutoff: string | null
@@ -224,15 +231,21 @@ export function rangedActivity(
       drySessions: sessions.filter(s => !s.planned && s.type === 'dry_fire').length,
     };
   }
+  const owned = new Set((firearms ?? []).map((f) => f.id));
   let liveFireRounds = 0, liveSessions = 0, drySessions = 0;
   for (const s of sessions ?? []) {
     if (s.planned || !s.date || s.date < cutoff) continue;
     if (s.type === 'dry_fire') drySessions++;
-    else { liveSessions++; liveFireRounds += sessionRounds(s); }
+    else {
+      liveSessions++;
+      for (const g of s.guns ?? []) {
+        if (owned.has(g.firearmId)) liveFireRounds += g.rounds || 0;
+      }
+    }
   }
   for (const m of matches ?? []) {
     if (!m.date || m.date < cutoff) continue;
-    liveFireRounds += m.totalRounds ?? 0;
+    if (m.firearmId && owned.has(m.firearmId)) liveFireRounds += m.totalRounds ?? 0;
   }
   return { liveFireRounds, liveSessions, drySessions };
 }

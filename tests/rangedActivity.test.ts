@@ -11,6 +11,7 @@ const match = (o: Record<string, unknown>): Match =>
   ({ id: 'm', date: '2026-06-01', totalRounds: 0, ...o } as unknown as Match);
 
 test('bounded window counts only rounds fired in it (live sessions + match rounds)', () => {
+  const guns = [{ id: 'g' } as unknown as Firearm];
   const sessions = [
     sess({ date: '2026-06-01', type: 'live_fire', guns: [{ firearmId: 'g', rounds: 100 }] }), // in
     sess({ date: '2026-06-02', type: 'dry_fire', guns: [{ firearmId: 'g', rounds: 50 }] }),   // in, dry
@@ -18,13 +19,28 @@ test('bounded window counts only rounds fired in it (live sessions + match round
     sess({ date: '2026-06-03', planned: true, type: 'live_fire', guns: [{ firearmId: 'g', rounds: 7 }] }), // planned
   ];
   const matches = [
-    match({ date: '2026-06-05', totalRounds: 30 }),  // in
-    match({ date: '2025-02-01', totalRounds: 500 }), // out
+    match({ date: '2026-06-05', firearmId: 'g', totalRounds: 30 }),  // in
+    match({ date: '2025-02-01', firearmId: 'g', totalRounds: 500 }), // out
   ];
-  const r = rangedActivity([], sessions, matches, '2026-01-01');
+  const r = rangedActivity(guns, sessions, matches, '2026-01-01');
   assert.equal(r.liveFireRounds, 130); // 100 (session) + 30 (match); dry/planned/out excluded
   assert.equal(r.liveSessions, 1);
   assert.equal(r.drySessions, 1);
+});
+
+test('linked-only rule: a bounded window can never exceed all-time (M-8)', () => {
+  const guns = [{ id: 'g', startingRoundCount: 0 } as unknown as Firearm];
+  const sessions = [
+    sess({ date: '2026-06-01', type: 'live_fire',
+      guns: [{ firearmId: 'g', rounds: 100 }, { firearmId: 'ghost', rounds: 50 }] }),
+  ];
+  // A match pointing at a deleted gun contributes to NEITHER view.
+  const matches = [match({ date: '2026-06-05', firearmId: 'ghost', totalRounds: 150 })];
+  const bounded = rangedActivity(guns, sessions, matches, '2026-01-01');
+  const allTime = rangedActivity(guns, sessions, matches, null);
+  assert.equal(bounded.liveFireRounds, 100); // ghost rounds excluded, same rule as all-time
+  assert.equal(allTime.liveFireRounds, 100);
+  assert.ok(bounded.liveFireRounds <= allTime.liveFireRounds);
 });
 
 test('dry-fire is a session, never counted as rounds', () => {

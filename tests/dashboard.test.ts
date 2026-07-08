@@ -107,8 +107,19 @@ test('daysSinceLastSession ignores planned sessions and picks the latest date', 
     ses({ date: '2026-06-01', planned: false }),
     ses({ date: '2026-06-25', planned: true }) // future planned session shouldn't count
   ];
-  assert.equal(daysSinceLastSession(sessions, now), 18);
+  // Calendar days: June 1 -> June 20 is 19 days, whatever the clock says.
+  // (The old clock-based math read 18 before noon — code review M-7.)
+  assert.equal(daysSinceLastSession(sessions, now), 19);
   assert.equal(daysSinceLastSession([], now), null);
+});
+
+test('daysSinceLastSession: same-day morning reads 0, never -1 (M-7)', () => {
+  const morningAfterLogging = new Date(2026, 5, 20, 8, 0); // 8am, June 20
+  assert.equal(daysSinceLastSession([ses({ date: '2026-06-20', planned: false })], morningAfterLogging), 0);
+  // The literal morning-after case: logged yesterday, checked at 8am today = 1 day.
+  assert.equal(daysSinceLastSession([ses({ date: '2026-06-19', planned: false })], morningAfterLogging), 1);
+  // A future-dated session clamps to 0 rather than going negative.
+  assert.equal(daysSinceLastSession([ses({ date: '2026-06-25', planned: false })], morningAfterLogging), 0);
 });
 
 // ---- selfRatingDipping ----
