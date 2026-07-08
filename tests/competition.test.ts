@@ -44,16 +44,29 @@ test('progress: best 6 of the most recent 8', () => {
   assert.deepEqual(p.next, { name: 'B', threshold: 60 });
 });
 
-test('progress with few scores still averages what exists', () => {
+test('fewer than 4 scores: average shows progress but no class is granted (USPSA min-4)', () => {
   const p = classificationProgress([
     { date: '2026-01-01', percent: 61 },
     { date: '2026-02-01', percent: 63 },
     { date: '2026-03-01', percent: null }
   ]);
   assert.equal(p.average, 62);
-  assert.equal(p.currentClass, 'B');
+  assert.equal(p.currentClass, null); // 2 valid scores — the sport grants no class yet
   assert.equal(p.scoresOnRecord, 2);
-  assert.deepEqual(p.next, { name: 'A', threshold: 75 });
+  assert.deepEqual(p.next, { name: 'A', threshold: 75 }); // progress target still shown
+});
+
+test('exactly 4 scores is the boundary where a class is granted', () => {
+  const scores = [61, 63, 65, 67].map((percent, i) => ({ date: `2026-0${i + 1}-01`, percent }));
+  assert.equal(classificationProgress(scores.slice(0, 3)).currentClass, null);
+  assert.equal(classificationProgress(scores).currentClass, 'B');
+});
+
+test('one hot score cannot mint a GM badge', () => {
+  const p = classificationProgress([{ date: '2026-01-01', percent: 96 }]);
+  assert.equal(p.average, 96);
+  assert.equal(p.currentClass, null);
+  assert.equal(p.next, null); // would-be GM — nothing above to climb toward
 });
 
 test('progress with nothing returns empty', () => {

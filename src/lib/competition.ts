@@ -106,15 +106,22 @@ export function classFor(percent: number): string {
 
 export interface ClassifierScore { date: string; percent: number | null; }
 
+/** USPSA grants no classification until this many valid scores are on record
+ *  ("Earning A Classification", USPSA Classification System). Below it, the
+ *  average still shows progress but no class letter is granted. */
+export const MIN_SCORES_FOR_CLASSIFICATION = 4;
+
 export interface ClassProgress {
   average: number | null;   // best 6 of the most recent 8 scores
   scoresUsed: number[];     // the percents that made the average
   scoresOnRecord: number;   // how many valid scores exist at all
-  currentClass: string | null;
+  currentClass: string | null; // null until MIN_SCORES_FOR_CLASSIFICATION scores exist
   next: { name: string; threshold: number } | null;
 }
 
-/** USPSA-style progress: best 6 of the most recent 8 valid scores. */
+/** USPSA-style progress: best 6 of the most recent 8 valid scores. No class
+ *  is granted below MIN_SCORES_FOR_CLASSIFICATION (the sport's own rule) —
+ *  surfaces show "unclassified" with the score count instead of a letter. */
 export function classificationProgress(scores: ClassifierScore[]): ClassProgress {
   const valid = scores
     .filter((s) => s.percent !== null && Number.isFinite(s.percent))
@@ -125,8 +132,11 @@ export function classificationProgress(scores: ClassifierScore[]): ClassProgress
     return { average: null, scoresUsed: [], scoresOnRecord: 0, currentClass: null, next: null };
   }
   const average = Math.round((used.reduce((s, p) => s + p, 0) / used.length) * 100) / 100;
-  const currentClass = classFor(average);
-  const band = USPSA_CLASSES.findIndex((b) => b.name === currentClass);
+  const wouldBeClass = classFor(average);
+  const currentClass = valid.length >= MIN_SCORES_FOR_CLASSIFICATION ? wouldBeClass : null;
+  // The next-band target is still derived from the would-be class, so the
+  // progress line ("B starts at 60%") keeps working while unclassified.
+  const band = USPSA_CLASSES.findIndex((b) => b.name === wouldBeClass);
   const next = band > 0
     ? { name: USPSA_CLASSES[band - 1].name, threshold: USPSA_CLASSES[band - 1].min }
     : null;

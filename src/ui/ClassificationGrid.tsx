@@ -19,7 +19,7 @@ export function ClassificationGrid({ divisions, selected, onSelect }: {
         const inner = (
           <>
             <div className="num">
-              {d.currentClass}
+              {d.currentClass ?? '—'}
               <span style={{ fontSize: 15, color: 'var(--text-dim)', marginLeft: 6 }}>
                 {d.average?.toFixed(1)}%
               </span>
@@ -36,7 +36,9 @@ export function ClassificationGrid({ divisions, selected, onSelect }: {
             className={`stat stat-tap${selected === d.division ? ' on' : ''}`}
             key={d.division}
             aria-pressed={selected === d.division}
-            aria-label={`${d.division}: ${d.currentClass} class, ${d.average?.toFixed(1)} percent`}
+            aria-label={d.currentClass
+              ? `${d.division}: ${d.currentClass} class, ${d.average?.toFixed(1)} percent`
+              : `${d.division}: unclassified — ${d.scoresOnRecord} of 4 scores, ${d.average?.toFixed(1)} percent`}
             onClick={() => onSelect(d.division)}
           >
             {inner}

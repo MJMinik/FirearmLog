@@ -73,7 +73,7 @@ export function CompeteScreen({ refreshKey, open }: {
       <button className="button secondary" onClick={() => setShowImport(true)}>Import…</button>
 
       <div className="card" style={{ marginTop: 16 }}>
-        <h2>Classification <InfoTip title="Classification">A classifier is a standard stage you shoot; your classification is the rank — your class — you earn from your classifier scores. Your class comes from the average of your best 6 of your last 8 classifier scores in a division. Each division is classified on its own, so any division you've logged scores in is shown here — tap one to see its progress. When that average crosses the next band, you move up — C to B and so on.</InfoTip></h2>
+        <h2>Classification <InfoTip title="Classification">A classifier is a standard stage you shoot; your classification is the rank — your class — you earn from your classifier scores. Your class comes from the average of your best 6 of your last 8 classifier scores in a division. USPSA grants your first class once 4 scores are on record — until then you're unclassified. Each division is classified on its own, so any division you've logged scores in is shown here — tap one to see its progress. When that average crosses the next band, you move up — C to B and so on.</InfoTip></h2>
         <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers', section: 'classification' })}>How the numbers work ›</button>
         {divClasses.length === 0 ? (
           <p className="report-note" style={{ marginTop: 8 }}>
@@ -84,11 +84,15 @@ export function CompeteScreen({ refreshKey, open }: {
           <>
             <ClassificationGrid divisions={divClasses} selected={division} onSelect={setDivision} />
             {progress.average !== null && (
-              progress.next ? (
+              progress.currentClass === null ? (
+                <p className="report-note" style={{ marginTop: 10 }}>
+                  {division}: unclassified so far — {progress.scoresOnRecord} of the 4 scores USPSA
+                  needs to grant a class. Your best-6 average so far is {progress.average}%.
+                </p>
+              ) : progress.next ? (
                 <p className="report-note" style={{ marginTop: 10 }}>
                   {division}: {progress.next.name} class starts at {progress.next.threshold}% — you need{' '}
                   {(progress.next.threshold - progress.average).toFixed(2)} more points of average.
-                  {progress.scoresOnRecord < 4 ? ' (Fewer than 4 scores on record so far — early days.)' : ''}
                 </p>
               ) : (
                 <p className="report-note" style={{ marginTop: 10 }}>

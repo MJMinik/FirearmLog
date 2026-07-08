@@ -454,12 +454,16 @@ export function HomeScreen({ refreshKey, onImported, open, onGoBackup }: {
             {stats.classification ? (
               <div className="stat">
                 <div className="num" style={{ color: 'var(--accent-ink)' }}>
-                  {stats.classification.currentClass}
+                  {stats.classification.currentClass ?? '—'}
                   <span style={{ fontSize: 15, color: 'var(--text-dim)', marginLeft: 6 }}>
                     {stats.classification.average?.toFixed(1)}%
                   </span>
                 </div>
-                <div className="cap">{stats.classification.division} class</div>
+                <div className="cap">
+                  {stats.classification.currentClass
+                    ? `${stats.classification.division} class`
+                    : `${stats.classification.division}: unclassified — ${stats.classification.scoresOnRecord} of 4 scores`}
+                </div>
               </div>
             ) : (
               <div className="stat">

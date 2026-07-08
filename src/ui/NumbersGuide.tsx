@@ -192,7 +192,8 @@ export function NumbersGuide({ onBack, section }: { onBack: () => void; section?
         </p>
         <TheMath>
           the average of your <strong>best 6 of your 8 most recent</strong> classifier percentages; when
-          that average crosses a band, you move up.
+          that average crosses a band, you move up. A class is granted once <strong>4 valid
+          scores</strong> are on record — until then you&rsquo;re unclassified.
         </TheMath>
         <div className="row"><span className="label">C</span><span className="value">40&ndash;59.9%</span></div>
         <div className="row"><span className="label">B</span><span className="value">60&ndash;74.9%</span></div>

@@ -32,3 +32,31 @@ test.describe('Multi-division classification', () => {
     await expect(page.getByRole('main').getByText('Production').first()).toBeVisible();
   });
 });
+
+// H-2 fix (July 2026 code review): USPSA grants no classification until 4
+// valid scores are on record. One hot score must show "unclassified", never a
+// class letter — on the Compete grid cell and in the progress note.
+test.describe('Classification requires 4 scores (USPSA rule)', () => {
+  test('a single hot classifier shows unclassified, not a class letter', async ({ page }) => {
+    await page.goto('/');
+    // Fresh install: skip the wizard, so the log holds exactly what we enter.
+    await page.getByRole('button', { name: /Skip for now/ }).click();
+    await expect(page.getByRole('heading', { name: 'FirearmLog' })).toBeVisible();
+
+    await gotoTab(page, 'Compete');
+    const main = page.getByRole('main');
+    await main.getByRole('button', { name: '+ Log Classifier' }).click();
+    await page.getByLabel('Classifier code').fill('23-01');
+    await page.getByLabel('Percent', { exact: true }).fill('96');
+    await page.getByRole('button', { name: 'Save classifier' }).click();
+
+    // Saving lands back on Home; return to Compete for the read.
+    await gotoTab(page, 'Compete');
+    // The grid cell says unclassified (a 96% single score must NOT read "GM").
+    await expect(
+      main.getByRole('button', { name: /Carry Optics: unclassified — 1 of 4 scores/ }),
+    ).toBeVisible();
+    // And the progress note spells out the path to a first class.
+    await expect(main.getByText(/1 of the 4 scores USPSA/)).toBeVisible();
+  });
+});
