@@ -74,8 +74,8 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Getting around',
       body: isDesktop
-        ? 'On a computer, the left sidebar lists Home, Log, Compete, and Progress at the top, then your sections grouped into Your Gear, Training, Records, and App & Data — each one click away. Longer lists — sessions, drills, ammo, costs, malfunctions — have a search box at the top to narrow them. Almost anything on screen — a number, a chart bar, a list row — can be clicked to open what\'s behind it.'
-        : 'On a phone, the bar along the bottom has Home, Log, Compete, and Progress, plus More for everything else. Longer lists — sessions, drills, ammo, costs, malfunctions — have a search box at the top to narrow them. Almost anything on screen — a number, a chart bar, a list row — can be tapped to open what\'s behind it.',
+        ? 'On a computer, the left sidebar lists Home, Log, Compete, and Progress at the top, then your sections grouped into Your Gear, Training, Records, and App & Data — each one click away. To search your log, open Log and click Search & Filter — it hunts across places, guns, drills, instructors, match names, and notes. Long lists elsewhere (drills, ammo, costs, and more) grow their own search box once they pass a handful of entries. Almost anything on screen — a number, a chart bar, a list row — can be clicked to open what\'s behind it.'
+        : 'On a phone, the bar along the bottom has Home, Log, Compete, and Progress, plus More for everything else. To search your log, open Log and tap Search & Filter — it hunts across places, guns, drills, instructors, match names, and notes. Long lists elsewhere (drills, ammo, costs, and more) grow their own search box once they pass a handful of entries. Almost anything on screen — a number, a chart bar, a list row — can be tapped to open what\'s behind it.',
     },
     {
       title: 'Home',
