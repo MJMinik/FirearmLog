@@ -107,6 +107,10 @@ export interface FifoResult {
   sessionCosts: Record<string, number>;
   /** sessionId → rounds a purchase lot actually covered */
   sessionRoundsCovered: Record<string, number>;
+  /** sessionId → ammoId → rounds a purchase lot actually covered for THAT ammo.
+   *  Lets sessionAmmoCost price the FIFO-uncovered remainder at each ammo's flat
+   *  cost/round (M-9), instead of at $0. */
+  sessionAmmoCovered: Record<string, Record<string, number>>;
   /** ammoId → its lots after consumption (for "what's left in the can" math) */
   lotsBySku: Record<string, Lot[]>;
 }
@@ -133,11 +137,13 @@ export function computeFifoCosts(
 
   const sessionCosts: Record<string, number> = {};
   const sessionRoundsCovered: Record<string, number> = {};
+  const sessionAmmoCovered: Record<string, Record<string, number>> = {};
   const ordered = [...sessions].sort((a, b) =>
     (a.date || '').localeCompare(b.date || '') || a.id.localeCompare(b.id));
   for (const s of ordered) {
     let total = 0;
     let covered = 0;
+    const perAmmo: Record<string, number> = {};
     if (!s.planned) {
       for (const u of s.ammoUsage ?? []) {
         const lots = lotsBySku[u.ammoId];
@@ -149,6 +155,7 @@ export function computeFifoCosts(
           const take = Math.min(lot.remaining, needed);
           total += take * lot.unitCost;
           covered += take;
+          perAmmo[u.ammoId] = (perAmmo[u.ammoId] ?? 0) + take;
           lot.remaining -= take;
           needed -= take;
         }
@@ -156,8 +163,9 @@ export function computeFifoCosts(
     }
     sessionCosts[s.id] = total;
     sessionRoundsCovered[s.id] = covered;
+    sessionAmmoCovered[s.id] = perAmmo;
   }
-  return { sessionCosts, sessionRoundsCovered, lotsBySku };
+  return { sessionCosts, sessionRoundsCovered, sessionAmmoCovered, lotsBySku };
 }
 
 /**
@@ -208,9 +216,12 @@ export function costPerRoundAfterBuy(
 }
 
 /**
- * Ammo cost of one session: FIFO when purchase lots cover it, otherwise the
- * flat cost/round typed on the ammo record (sessions that pre-date purchase
- * tracking).
+ * Ammo cost of one session: FIFO for the rounds purchase lots actually cover,
+ * PLUS each ammo's flat cost/round for any remainder the lots don't reach (M-9).
+ * A fully-covered session is unchanged (FIFO only); a session with no lots at
+ * all falls back entirely to the flat rate (sessions that pre-date purchase
+ * tracking). Before this fix a PARTIALLY-covered session priced its uncovered
+ * rounds at $0 — silently undercounting the cost-per-round shooters quote.
  */
 export function sessionAmmoCost(
   s: CostSessionLike,
@@ -218,13 +229,21 @@ export function sessionAmmoCost(
   ammo: AmmoLike[]
 ): number {
   if (s.planned) return 0;
-  if ((fifo.sessionRoundsCovered[s.id] ?? 0) > 0) return fifo.sessionCosts[s.id] ?? 0;
-  let total = 0;
+  const covered = fifo.sessionAmmoCovered[s.id] ?? {};
+  // Rounds used per ammo (multiple usage lines can name the same ammo).
+  const usedByAmmo: Record<string, number> = {};
   for (const u of s.ammoUsage ?? []) {
-    const a = ammo.find((x) => x.id === u.ammoId);
-    if (a && a.costPerRound > 0) total += (u.rounds || 0) * a.costPerRound;
+    usedByAmmo[u.ammoId] = (usedByAmmo[u.ammoId] ?? 0) + (u.rounds || 0);
   }
-  return total;
+  let remainder = 0;
+  for (const ammoId of Object.keys(usedByAmmo)) {
+    const uncovered = usedByAmmo[ammoId] - (covered[ammoId] ?? 0);
+    if (uncovered > 0) {
+      const a = ammo.find((x) => x.id === ammoId);
+      if (a && a.costPerRound > 0) remainder += uncovered * a.costPerRound;
+    }
+  }
+  return (fifo.sessionCosts[s.id] ?? 0) + remainder;
 }
 
 /**

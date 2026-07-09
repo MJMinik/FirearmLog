@@ -64,7 +64,11 @@ export function App() {
     history.replaceState({ view: null }, '');
     const onPop = (e: PopStateEvent) => {
       const st = e.state as { view?: View | null } | null;
-      setViewState(st?.view ?? null);
+      const v = st?.view ?? null;
+      // D-7: the Import screen was retired. A tab whose history was recorded
+      // before that update could still carry an 'import' view; send that Back
+      // navigation home rather than resurrecting the removed screen.
+      setViewState(v?.kind === 'import' ? null : v);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);

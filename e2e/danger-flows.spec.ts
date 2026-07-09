@@ -89,6 +89,9 @@ test.describe('Danger flows (M-13)', () => {
     // 4. The log is back: Home shows live stats again.
     await gotoTab(page, 'Home');
     await expect(page.getByText('Live-fire rounds')).toBeVisible();
-    await expect(page.getByText(/^0$/).first()).not.toBeVisible().catch(() => {});
+    // (D-5: removed a self-swallowing `.not.toBeVisible().catch(() => {})` that
+    // could never fail. The 'Live-fire rounds' assertion above is the real proof
+    // the restore repopulated the log — the empty first-run Home shows the "Add
+    // your first gun" CTA instead of live stats.)
   });
 });

@@ -59,6 +59,27 @@ test('sessionAmmoCost falls back to the flat cost/round when no lot covers it', 
   assert.equal(sessionAmmoCost(s, fifo, ammo), 50);
 });
 
+test('M-9: partial FIFO coverage prices the remainder at the flat rate — not $0', () => {
+  // A single 100-round lot @ $0.40 ($40); the session shot 200. FIFO covers the
+  // first 100 ($40); the ammo's flat $0.50/rd covers the other 100 ($50) → $90.
+  // Before the fix this returned $40, silently pricing 100 rounds at nothing.
+  const purchase = [{ id: 'pu-9', date: '2026-01-01', category: 'Ammo Purchase', cost: 40, ammoId: 'am-9', rounds: 100 }];
+  const s = { id: 'se-9', date: '2026-02-01', ammoUsage: [{ ammoId: 'am-9', rounds: 200 }] };
+  const ammo = [{ id: 'am-9', quantity: 0, costPerRound: 0.5 }];
+  const fifo = computeFifoCosts(purchase, [s]);
+  assert.equal(fifo.sessionCosts['se-9'], 40);              // 100 × $0.40 covered by the lot
+  assert.equal(fifo.sessionRoundsCovered['se-9'], 100);
+  assert.equal(fifo.sessionAmmoCovered['se-9']['am-9'], 100);
+  assert.equal(sessionAmmoCost(s, fifo, ammo), 90);         // $40 FIFO + 100 × $0.50 flat
+});
+
+test('M-9: a fully FIFO-covered session takes NO flat top-up', () => {
+  // se-mar shoots all 1,000 from lots ($400); the flat rate must be ignored.
+  const ammo = [{ id: 'am-1', quantity: 0, costPerRound: 99 }];
+  const fifo = computeFifoCosts(lots, marchApril);
+  assert.equal(sessionAmmoCost(marchApril[0], fifo, ammo), 400);
+});
+
 test('F2 regression: multi-gun session shares always sum to exactly 1 — never double-counted', () => {
   const s = {
     id: 'se-split', date: '2026-05-02',

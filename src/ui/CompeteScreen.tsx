@@ -7,7 +7,7 @@ import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
-import { DIVISIONS, classificationProgress } from '../lib/competition.ts';
+import { DIVISIONS, MIN_SCORES_FOR_CLASSIFICATION, classificationProgress } from '../lib/competition.ts';
 import { allClassifications } from '../lib/dashboard.ts';
 import { matchFee } from '../lib/costing.ts';
 import { ClassificationGrid } from './ClassificationGrid.tsx';
@@ -86,7 +86,7 @@ export function CompeteScreen({ refreshKey, open }: {
             {progress.average !== null && (
               progress.currentClass === null ? (
                 <p className="report-note" style={{ marginTop: 10 }}>
-                  {division}: unclassified so far — {progress.scoresOnRecord} of the 4 scores USPSA
+                  {division}: unclassified so far — {progress.scoresOnRecord} of the {MIN_SCORES_FOR_CLASSIFICATION} scores USPSA
                   needs to grant a class. Your best-6 average so far is {progress.average}%.
                 </p>
               ) : progress.next ? (

@@ -8,6 +8,7 @@ import { getAll, getOne, getSettings, putOne } from '../lib/db.ts';
 import { maintenanceAlerts, maintenanceStatus, resolveSchedule } from '../lib/maintenance.ts';
 import type { Alert } from '../lib/maintenance.ts';
 import { lowAmmo } from '../lib/costing.ts';
+import { MIN_SCORES_FOR_CLASSIFICATION } from '../lib/competition.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { buildRefLookup } from '../lib/referenceData.ts';
 import type { ReferenceEntry } from '../lib/referenceData.ts';
@@ -458,7 +459,7 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
                 <div className="cap">
                   {stats.classification.currentClass
                     ? `${stats.classification.division} class`
-                    : `${stats.classification.division}: unclassified — ${stats.classification.scoresOnRecord} of 4 scores`}
+                    : `${stats.classification.division}: unclassified — ${stats.classification.scoresOnRecord} of ${MIN_SCORES_FOR_CLASSIFICATION} scores`}
                 </div>
               </div>
             ) : (
