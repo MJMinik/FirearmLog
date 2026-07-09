@@ -238,7 +238,7 @@ export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: Vie
           Your log lives only on your own devices — there's no account and no cloud copy. So your
           data is as safe as your backups: every so often, and before you switch phones or update,
           use <strong>Save to File</strong> (in {isDesktop ? 'Sync & Backup' : 'the More tab'}) to keep a
-          copy to iCloud Drive or Files. That file is your safety net. The Home screen also reminds you
+          copy in iCloud Drive or Files. That file is your safety net. The Home screen also reminds you
           once you've logged a fair bit since your last backup.
         </p>
       </div>

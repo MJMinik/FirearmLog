@@ -30,6 +30,7 @@ import { SetupWizard } from './ui/SetupWizard.tsx';
 import { SyncScreen, ImportScreen, FreeSpaceScreen } from './ui/AppDataScreens.tsx';
 import { SettingsScreen } from './ui/SettingsScreen.tsx';
 import { countAll } from './lib/db.ts';
+import { ensureNorthStar } from './lib/northStar.ts';
 import { ErrorBoundary } from './ui/ErrorBoundary.tsx';
 
 export function App() {
@@ -79,6 +80,21 @@ export function App() {
     })();
     return () => { alive = false; };
   }, []);
+
+  // North Star seed: once the log is real (at least one gun), a brand-new
+  // install gets its one pinned starter goal — see lib/northStar.ts for the
+  // full rules. The call is self-guarding (northStarSeeded) and fail-safe, so
+  // running it on every data change is cheap and idempotent; it returns true
+  // only the single time it creates the goal — one refresh then shows the card
+  // on Home and the pinned row on Progress → Goals immediately.
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const created = await ensureNorthStar();
+      if (alive && created) setRefreshKey((k) => k + 1);
+    })();
+    return () => { alive = false; };
+  }, [refreshKey]);
 
   // N2: announce each screen to assistive tech. On any navigation, update the
   // document title from the screen's heading and move focus to that <h1> so
