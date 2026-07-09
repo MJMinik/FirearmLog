@@ -69,6 +69,29 @@ test('one hot score cannot mint a GM badge', () => {
   assert.equal(p.next, null); // would-be GM — nothing above to climb toward
 });
 
+test('M-10: each classifier score is capped at USPSA\'s 110% ceiling before averaging', () => {
+  // One score computed above the 110% ceiling must count as 110, not 115.
+  const p = classificationProgress([
+    { date: '2026-01-01', percent: 115 }, // over the ceiling → treated as 110
+    { date: '2026-02-01', percent: 110 }, // exactly at the ceiling → unchanged
+    { date: '2026-03-01', percent: 100 },
+    { date: '2026-04-01', percent: 90 },
+  ]);
+  assert.deepEqual(p.scoresUsed, [110, 110, 100, 90]); // the 115 became 110
+  assert.equal(p.average, 102.5); // (110 + 110 + 100 + 90) / 4, not 103.75
+  assert.equal(p.currentClass, 'GM');
+});
+
+test('M-10: a score just under the ceiling (109.9%) is left untouched', () => {
+  const p = classificationProgress([
+    { date: '2026-01-01', percent: 109.9 },
+    { date: '2026-02-01', percent: 90 },
+    { date: '2026-03-01', percent: 80 },
+    { date: '2026-04-01', percent: 70 },
+  ]);
+  assert.equal(p.scoresUsed[0], 109.9); // below the 110 cap → unchanged
+});
+
 test('progress with nothing returns empty', () => {
   const p = classificationProgress([]);
   assert.equal(p.average, null);

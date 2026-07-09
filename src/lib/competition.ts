@@ -85,6 +85,8 @@ export const USPSA_CLASS_QUOTES = [
     'If more than four scores are in the database when the averages are calculated, the best six of the most recent eight valid scores will be used.' },
   { section: 'Classification Bracket Percentages', quote:
     'Grand Master 95 to 110% · Master 85 to 94.9% · A 75 to 84.9% · B 60 to 74.9% · C 40 to 59.9% · D 2 to 40%.' },
+  { section: 'Score Ceiling', quote:
+    'Score Ceiling Increase: From 100% to 110% of HHF.' },
 ] as const;
 
 /** USPSA classification bands. */
@@ -111,6 +113,15 @@ export interface ClassifierScore { date: string; percent: number | null; }
  *  average still shows progress but no class letter is granted. */
 export const MIN_SCORES_FOR_CLASSIFICATION = 4;
 
+/** USPSA caps an individual classifier score at 110% of the classifier's High
+ *  Hit Factor — the official "Score Ceiling Increase: From 100% to 110% of HHF"
+ *  update (USPSA Classification System). A run fast enough to compute higher
+ *  counts as 110%, never more, so the best-6 average can't be inflated past the
+ *  top of the Grand Master band (95–110%). Confirmed against the rulebook before
+ *  implementing (M-10); the retired sub-2% "Flag G" is deliberately NOT applied
+ *  (USPSA retired it April 2025). */
+export const MAX_CLASSIFIER_PERCENT = 110;
+
 export interface ClassProgress {
   average: number | null;   // best 6 of the most recent 8 scores
   scoresUsed: number[];     // the percents that made the average
@@ -126,7 +137,11 @@ export function classificationProgress(scores: ClassifierScore[]): ClassProgress
   const valid = scores
     .filter((s) => s.percent !== null && Number.isFinite(s.percent))
     .sort((a, b) => b.date.localeCompare(a.date));
-  const recent = valid.slice(0, 8).map((s) => s.percent as number);
+  // M-10: apply USPSA's 110% score ceiling to each of the recent scores before
+  // the best-6 average, so a single over-ceiling percent (possible when a
+  // percentage is derived from a hit factor rather than taken from a USPSA
+  // export, which is already capped) can't push the class up.
+  const recent = valid.slice(0, 8).map((s) => Math.min(s.percent as number, MAX_CLASSIFIER_PERCENT));
   const used = [...recent].sort((a, b) => b - a).slice(0, 6);
   if (used.length === 0) {
     return { average: null, scoresUsed: [], scoresOnRecord: 0, currentClass: null, next: null };
