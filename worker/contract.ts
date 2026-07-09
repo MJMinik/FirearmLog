@@ -7,7 +7,7 @@
 // never drift from what the app itself considers valid), and this module adds
 // the server-only rules a hostile client makes necessary:
 //
-//   • strict shape: exactly the schema's seven fields, nothing extra — no
+//   • strict shape: exactly the schema's six fields, nothing extra — no
 //     smuggling data alongside a contribution (no-batching rule, spec §5B)
 //   • string caps + charset allow-lists on the free-string fields, so junk
 //     can't mint unbounded bucket keys or stuff the store
@@ -22,7 +22,7 @@ import type { BenchmarkContribution, BenchmarkMetric } from '../src/lib/benchmar
 
 /** A bracket = a contribution minus its value — the five fields that name a
  *  bucket. What the GET endpoint accepts as a query. */
-export type BenchmarkBracket = Omit<BenchmarkContribution, 'value' | 'appVersion'>;
+export type BenchmarkBracket = Omit<BenchmarkContribution, 'value'>;
 
 /** Histogram resolution per bucket. 50 bins over each metric's plausibility
  *  range is fine-grained enough for percentiles yet stores a fixed, tiny
@@ -31,11 +31,10 @@ export const BIN_COUNT = 50;
 
 /** Division / class arrive as app-canonical strings ("Carry Optics", "C") but
  *  a hostile client can send anything. Printable, bounded, and no `|` (the
- *  bucket-key separator) — see the module comment. */
+ *  bucket-key separator) — see the module comment. A cheap first pass; the
+ *  canonical enum allow-list (isValidContribution → isAllowedBracket) is the
+ *  real gate. */
 const TEXT_RE = /^[A-Za-z0-9 .+/'()-]{1,40}$/;
-
-/** appVersion: semver-ish, bounded. Never part of the bucket key. */
-const VERSION_RE = /^[0-9A-Za-z.+-]{1,32}$/;
 
 const CONTRIBUTION_FIELDS = [
   'scoringType',
@@ -44,7 +43,6 @@ const CONTRIBUTION_FIELDS = [
   'gunCategory',
   'metric',
   'value',
-  'appVersion',
 ] as const;
 
 function isRecord(x: unknown): x is Record<string, unknown> {
@@ -67,7 +65,7 @@ export function parseContribution(raw: unknown): BenchmarkContribution | null {
   for (const k of keys) {
     if (!(CONTRIBUTION_FIELDS as readonly string[]).includes(k)) return null;
   }
-  const { scoringType, division, gunCategory, metric, value, appVersion } = raw;
+  const { scoringType, division, gunCategory, metric, value } = raw;
   const cls = raw['class'];
   if (typeof scoringType !== 'string') return null;
   if (typeof division !== 'string' || !TEXT_RE.test(division)) return null;
@@ -75,9 +73,9 @@ export function parseContribution(raw: unknown): BenchmarkContribution | null {
   if (typeof gunCategory !== 'string') return null;
   if (typeof metric !== 'string' || metricBounds(metric) === null) return null;
   if (typeof value !== 'number') return null;
-  if (typeof appVersion !== 'string' || !VERSION_RE.test(appVersion)) return null;
   // Primitive shape is now proven; the app's own validator enforces the enums
-  // (scoringType, gunCategory) and the plausibility bounds on value.
+  // (scoringType, gunCategory, and the division/class allow-list) and the
+  // plausibility bounds on value — one source of truth, client and server.
   const candidate = {
     scoringType,
     division,
@@ -85,7 +83,6 @@ export function parseContribution(raw: unknown): BenchmarkContribution | null {
     gunCategory,
     metric,
     value,
-    appVersion,
   } as BenchmarkContribution;
   return isValidContribution(candidate) ? candidate : null;
 }
@@ -105,7 +102,6 @@ export function parseBracket(params: URLSearchParams): BenchmarkBracket | null {
     gunCategory: params.get('gunCategory') ?? '',
     metric,
     value: bounds.min,
-    appVersion: '0.0.0',
   });
   if (probe === null) return null;
   return {

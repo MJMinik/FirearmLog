@@ -208,3 +208,20 @@ test('B6/M-3: a lock held by ANOTHER TAB refuses the restore with the plain mess
     else Object.defineProperty(globalThis.navigator, 'locks', { configurable: true, value: hadLocks });
   }
 });
+
+// Appended LAST (it leaves an opt-out flag behind, and clearAllData now honors it):
+// decision 2a / R-4 — an analytics opt-out is a refusal that must survive a reset.
+test('2a/R-4: an analytics opt-out survives Clear All, and ONLY that flag does', async () => {
+  await clearAllData();
+  await commitDataSet(dataSetWith({ firearms: [{ id: 'g-2a' }], goals: [{ id: 'go-2a' }] }), { theme: 'dark' });
+  await putSettings({ analyticsOptOut: true, goldenGoalId: 'go-2a' });
+
+  await clearAllData();
+
+  assert.equal((await getAll('firearms')).length, 0, 'data gone');
+  assert.equal((await getAll('goals')).length, 0, 'goals gone');
+  const settings = await getSettings<{ analyticsOptOut?: boolean; goldenGoalId?: string; theme?: string }>();
+  assert.equal(settings?.analyticsOptOut, true, 'the opt-out refusal survived the wipe');
+  assert.equal(settings?.goldenGoalId, undefined, 'nothing else was carried over');
+  assert.equal(settings?.theme, undefined, 'nothing else was carried over');
+});

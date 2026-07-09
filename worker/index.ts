@@ -26,12 +26,22 @@ import { parseBracket, parseContribution, binParams } from './contract.ts';
 import type { BenchmarkStore, D1Database } from './store.ts';
 import { D1BenchmarkStore } from './store.ts';
 
+/** Cloudflare's Rate Limiting binding (the subset we use). */
+export interface RateLimiter {
+  limit(options: { key: string }): Promise<{ success: boolean }>;
+}
+
 export interface Env {
   DB: D1Database;
   /** Minimum contributors before a bucket is served (k-anonymity). */
   K_THRESHOLD?: string;
   /** Comma-separated origin allow-list for CORS. */
   ALLOWED_ORIGINS?: string;
+  /** Optional Cloudflare Rate Limiting binding (R-8). When configured at deploy,
+   *  the Worker enforces a per-IP POST limit IN CODE — fail-safe even if the
+   *  dashboard WAF rule is ever missed. The IP is used only as a transient rate
+   *  key; it is never stored (the schema has no IP column). */
+  RATE_LIMITER?: RateLimiter;
 }
 
 /** Origins that may call this API from a browser. Overridable via env so the
@@ -78,8 +88,17 @@ async function handleContribution(
   store: BenchmarkStore,
   cors: Record<string, string>,
 ): Promise<Response> {
+  // R-10: reject an oversize body BEFORE buffering it, using the declared length…
+  const declared = Number(request.headers.get('Content-Length'));
+  if (Number.isFinite(declared) && declared > MAX_BODY_BYTES) {
+    return json({ error: 'too_large' }, 413, cors);
+  }
   const text = await request.text();
-  if (text.length > MAX_BODY_BYTES) return json({ error: 'too_large' }, 413, cors);
+  // …then re-check the ACTUAL byte length (Content-Length can lie, and String
+  // length counts UTF-16 code units, not bytes).
+  if (new TextEncoder().encode(text).length > MAX_BODY_BYTES) {
+    return json({ error: 'too_large' }, 413, cors);
+  }
   let raw: unknown;
   try {
     raw = JSON.parse(text);
@@ -154,6 +173,14 @@ async function route(request: Request, env: Env): Promise<Response> {
   if (url.pathname === '/v1/contributions') {
     if (request.method !== 'POST') {
       return json({ error: 'method_not_allowed' }, 405, { ...cors, Allow: 'POST' });
+    }
+    // R-8: code-level per-IP rate limit when the binding is configured — a
+    // fail-safe that stands even if the edge WAF rule is missed. The IP is used
+    // only as a transient key here; nothing about it is ever stored.
+    if (env.RATE_LIMITER) {
+      const key = request.headers.get('CF-Connecting-IP') ?? 'anon';
+      const { success } = await env.RATE_LIMITER.limit({ key });
+      if (!success) return json({ error: 'rate_limited' }, 429, cors);
     }
     return handleContribution(request, new D1BenchmarkStore(env.DB), cors);
   }

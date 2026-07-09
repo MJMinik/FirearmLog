@@ -27,9 +27,17 @@ compatibility_date = "2026-07-08"
 # K_THRESHOLD = "50"
 # ALLOWED_ORIGINS = "https://mjminik.github.io,https://firearmlog.com,https://www.firearmlog.com,https://firearmlog.app,https://www.firearmlog.app"
 #
-# 3. Per-IP rate limiting is configured at the Cloudflare edge (dashboard →
-#    Security → WAF → rate limiting rules), NOT in Worker code — the Worker
-#    never sees, uses, or stores an IP (build spec §5, anti-abuse honesty).
+# 3. Per-IP rate limiting. The Worker enforces a code-level limit when the
+#    RATE_LIMITER binding below is present (R-8 — fail-safe even if the edge rule
+#    is missed); the edge WAF rule (dashboard → Security → WAF → rate limiting)
+#    stays as defense in depth. Either way the IP is only ever a transient rate
+#    key — never stored (the schema has no IP column; build spec §5).
+#
+# [[unsafe.bindings]]
+# name = "RATE_LIMITER"
+# type = "ratelimit"
+# namespace_id = "1001"           # any unique id for this limiter
+# simple = { limit = 60, period = 60 }   # 60 POSTs / minute / IP (tune at deploy)
 #
 # 4. `wrangler deploy`, then the step-4 payload-inspection spike verifies from
 #    a real device that only contract-shaped payloads leave the app.

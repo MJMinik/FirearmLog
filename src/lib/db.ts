@@ -313,6 +313,42 @@ export async function putSettings<T extends object>(patch: Partial<T>): Promise<
   return next;
 }
 
+/**
+ * R-G / D-1: seed the North Star ATOMICALLY — write the starter goal AND merge
+ * the settings guard (northStarSeeded + the pin) in ONE ['goals','meta']
+ * transaction. Before this the two writes were separate transactions, so a crash
+ * in between left a transient orphan goal (it self-healed via the fixed id, but
+ * the window existed and the seeder sat outside the B6 io-lock). One transaction
+ * closes the window: IndexedDB rolls the whole thing back on any failure, so the
+ * seed is all-or-nothing. Mirrors putSettings' read-merge-write on meta, adding
+ * the goal put to the same tx. The caller (northStar.ts) runs this under
+ * withExclusiveIo, so it also can't interleave with a restore/import across tabs.
+ */
+export async function seedGoalWithSettings<T extends object>(
+  goal: object,
+  patch: Partial<T>,
+): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(['goals', 'meta'], 'readwrite');
+  const meta = tx.objectStore('meta');
+  await new Promise<void>((resolve, reject) => {
+    const req = meta.get('settings');
+    req.onsuccess = () => {
+      try {
+        tx.objectStore('goals').put(goal);
+        const current = ((req.result as { value?: T } | undefined)?.value) ?? ({} as T);
+        meta.put({ key: 'settings', value: { ...current, ...patch } as T });
+        resolve();
+      } catch (e) {
+        try { tx.abort(); } catch { /* already aborting */ }
+        reject(e); // e.g. an unstorable value — abort + reject, never a partial write
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+  await txDone(tx);
+}
+
 /** Every store except media (which travels in its own snapshot section) —
  *  derived from the canonical STORE_NAMES so it can never drift (B4/M-4). */
 const SNAPSHOT_STORES: StoreName[] = STORE_NAMES.filter((n) => n !== 'media');
@@ -436,12 +472,34 @@ async function restoreSnapshotInner(
  * which returns the app to first-run. Backups (Save to File) live outside
  * IndexedDB and are NOT touched. Guarded in the UI by a typed confirmation.
  * (Hard-gate spec, session 35.)
+ *
+ * ONE exception survives the wipe (decision 2a / R-4): an analytics OPT-OUT.
+ * An opt-out is a refusal, and a refusal must outlast a factory reset — silently
+ * re-enrolling a user who turned analytics off after "Start fresh" is a consent
+ * inversion. Only that single flag is carried over, inside the same transaction.
  */
 export async function clearAllData(): Promise<void> {
   return withIoGuard('the erase', async () => {
     const db = await openDb();
     const tx = db.transaction([...STORE_NAMES], 'readwrite');
-    for (const name of STORE_NAMES) tx.objectStore(name).clear();
+    const meta = tx.objectStore('meta');
+    await new Promise<void>((resolve, reject) => {
+      const req = meta.get('settings');
+      req.onsuccess = () => {
+        try {
+          const optOut =
+            ((req.result as { value?: { analyticsOptOut?: boolean } } | undefined)?.value)
+              ?.analyticsOptOut === true;
+          for (const name of STORE_NAMES) tx.objectStore(name).clear();
+          if (optOut) meta.put({ key: 'settings', value: { analyticsOptOut: true } });
+          resolve();
+        } catch (e) {
+          try { tx.abort(); } catch { /* already aborting */ }
+          reject(e);
+        }
+      };
+      req.onerror = () => reject(req.error);
+    });
     await txDone(tx);
   });
 }

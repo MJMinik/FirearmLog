@@ -29,8 +29,10 @@ import { NumbersGuide } from './ui/NumbersGuide.tsx';
 import { SetupWizard } from './ui/SetupWizard.tsx';
 import { SyncScreen, ImportScreen, FreeSpaceScreen } from './ui/AppDataScreens.tsx';
 import { SettingsScreen } from './ui/SettingsScreen.tsx';
-import { countAll } from './lib/db.ts';
+import { countAll, getSettings } from './lib/db.ts';
 import { ensureNorthStar } from './lib/northStar.ts';
+import { syncTelemetryEnabled } from './lib/telemetry.ts';
+import type { AppSettings } from './lib/types.ts';
 import { ErrorBoundary } from './ui/ErrorBoundary.tsx';
 
 export function App() {
@@ -92,6 +94,19 @@ export function App() {
     void (async () => {
       const created = await ensureNorthStar();
       if (alive && created) setRefreshKey((k) => k + 1);
+    })();
+    return () => { alive = false; };
+  }, [refreshKey]);
+
+  // Keep the telemetry gate in step with the stored opt-out: on start and after
+  // any data change (a toggle, Load-from-File, an import, Clear All all bump
+  // refreshKey), so the cache can't go stale against what's on disk (R-4). Inert
+  // today — nothing is sent until the step-4 wiring registers a provider.
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const settings = await getSettings<AppSettings>();
+      if (alive) syncTelemetryEnabled(settings);
     })();
     return () => { alive = false; };
   }, [refreshKey]);
