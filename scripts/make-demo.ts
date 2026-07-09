@@ -467,6 +467,36 @@ stores.references.push({
   links: [{ label: 'shadowsystemscorp.com', url: 'https://shadowsystemscorp.com' }],
 });
 
+// ===================== MALFUNCTION ↔ MAGAZINE TAGS =====================
+// Malfunctions carry the magazine when the shooter knew it (added July 9 2026,
+// Michael's catch: the site's malfunction walkthrough says the log knows the
+// magazine behind a malfunction, and the Malfunctions screen filters by
+// magazine — so the sample records should actually demonstrate it. A shooter
+// who SWAPPED the magazine certainly knew which one; otherwise it's a coin
+// flip, since sometimes you just don't know).
+// Runs as a post-pass on a SEPARATE RNG stream so every other demo record
+// stays byte-identical to the previous build — the site's other screenshots
+// still match the sample data exactly.
+const rMag = rng(20260709);
+const magsByGun = new Map<string, string[]>();
+for (const mg of stores.magazines as { id: string; firearmIds: string[] }[]) {
+  for (const fid of mg.firearmIds) {
+    magsByGun.set(fid, [...(magsByGun.get(fid) ?? []), mg.id]);
+  }
+}
+const malfs = stores.malfunctions as { firearmId: string; resolution: string; date: string; magazineId: string | null }[];
+for (const mf of malfs) {
+  const mags = magsByGun.get(mf.firearmId);
+  if (!mags || mags.length === 0) continue;
+  const knewTheMag = mf.resolution === 'Swapped magazine' || rMag() < 0.5;
+  if (knewTheMag) mf.magazineId = mags[Math.floor(rMag() * mags.length)];
+}
+// The site walkthrough opens the NEWEST malfunction — it must be one that knows.
+const newestMf = [...malfs].sort((a, b) => a.date.localeCompare(b.date)).pop();
+if (newestMf && !newestMf.magazineId) {
+  newestMf.magazineId = (magsByGun.get(newestMf.firearmId) ?? [])[0] ?? null;
+}
+
 // ===================== META (owner settings) =====================
 // goldenGoalId 'go-4' = "Reach USPSA A class": the demo ships with a North Star
 // already pinned, so the Home card and the pinned Goals row show in the sample
