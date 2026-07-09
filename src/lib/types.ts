@@ -348,6 +348,11 @@ export interface AppSettings {
   /** The one "golden" north-star goal — pinned atop Goals and echoed on Home.
    *  Holds a Goal id; empty or undefined means none is set. */
   goldenGoalId?: string;
+  /** True once this install has had its ONE starter "Reach A class" goal
+   *  seeded (or an existing pin found and respected) — see lib/northStar.ts.
+   *  Never reset by the app itself; Clear All wipes settings, which is exactly
+   *  why "Start fresh" seeds again. */
+  northStarSeeded?: boolean;
   /** Whether to show the optional coaching remarks (e.g. the match-debrief
    *  "room to push?" question). Undefined = on; set false to hide them. */
   coachingRemarks?: boolean;

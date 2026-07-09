@@ -468,7 +468,11 @@ stores.references.push({
 });
 
 // ===================== META (owner settings) =====================
-stores.meta.push({ key: 'settings', value: { ownerName: 'Demo Shooter', theme: '', checklistCustomItems: { essentials: [], night: [], tactical: [] } } });
+// goldenGoalId 'go-4' = "Reach USPSA A class": the demo ships with a North Star
+// already pinned, so the Home card and the pinned Goals row show in the sample
+// log — and the seeder (lib/northStar.ts) only MARKS the install seeded on top
+// of an existing pin, never adds a second starter goal.
+stores.meta.push({ key: 'settings', value: { ownerName: 'Demo Shooter', theme: '', checklistCustomItems: { essentials: [], night: [], tactical: [] }, goldenGoalId: 'go-4' } });
 
 // ===================== BUILD =====================
 let newest = 0;
