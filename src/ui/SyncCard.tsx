@@ -7,6 +7,7 @@ import { buildFlog, parseFlog } from '../lib/flog.ts';
 import type { Snapshot } from '../lib/flog.ts';
 import { exportSnapshot, getSettings, localLastModified, restoreSnapshot, putSettings } from '../lib/db.ts';
 import type { AppSettings } from '../lib/types.ts';
+import { fileTooLargeMessage, storageShortfallMessage, MAX_FLOG_BYTES } from '../lib/inputLimits.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 
 // iOS/iPadOS is the one platform where a saved file goes through the Files
@@ -75,9 +76,21 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
     // they just closed the sheet). Additive write — records are untouched.
     if (saved) {
       const now = Date.now();
-      void putSettings<AppSettings>({ lastBackupAt: now });
-      setLastSavedAt(now);
-      onBackedUp?.();
+      // S-6: stamp the backup time and clear the Home reminder only AFTER the
+      // write succeeds. It was fire-and-forget before, so a failed settings write
+      // still moved the "last saved" line and cleared the reminder — claiming a
+      // backup we couldn’t record (a charter §1 honesty bug). On failure the
+      // reminder stays up (honest) and the card says so; the file itself has
+      // already downloaded either way.
+      void putSettings<AppSettings>({ lastBackupAt: now })
+        .then(() => {
+          setLastSavedAt(now);
+          onBackedUp?.();
+        })
+        .catch(() => setStage({
+          name: 'idle',
+          message: 'File saved — but I couldn’t record the backup time on this device, so your Home reminder will stay up until the next successful save.',
+        }));
     }
     setStage({
       name: 'idle',
@@ -88,6 +101,11 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
   }
 
   async function filePicked(file: File) {
+    // S-2: refuse an absurdly large file before reading the whole thing into
+    // memory (a multi-gigabyte arrayBuffer read can crash the tab). Generous —
+    // a real .flog never approaches it.
+    const tooBig = fileTooLargeMessage(file.size, MAX_FLOG_BYTES, 'data file');
+    if (tooBig) { setStage({ name: 'idle', message: tooBig }); return; }
     setStage({ name: 'working', message: 'Reading the file…' });
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
@@ -106,6 +124,19 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
   }
 
   async function reallyLoad(snapshot: Snapshot) {
+    // S-3: preflight free space before a whole-log restore. Media is written
+    // add-before-delete (never loses photos), so peak storage briefly holds BOTH
+    // the old and new photos — if the device can’t fit that, say so up front in
+    // plain words instead of dying on a raw QuotaExceededError mid-write. An
+    // unknown estimate never blocks (storageShortfallMessage returns null).
+    const mediaBytes = snapshot.media.reduce(
+      (n, m) => n + ((m as { data?: ArrayBuffer }).data?.byteLength ?? 0), 0);
+    const storage = typeof navigator !== 'undefined' ? navigator.storage : undefined;
+    const estimate = storage && typeof storage.estimate === 'function'
+      ? await storage.estimate().catch(() => null)
+      : null;
+    const spaceMsg = storageShortfallMessage(mediaBytes, estimate);
+    if (spaceMsg) { setStage({ name: 'idle', message: spaceMsg }); return; }
     setStage({ name: 'working', message: 'Bringing the file in…' });
     try {
       await restoreSnapshot(snapshot, (done, total) => {

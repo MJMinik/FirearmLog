@@ -10,8 +10,8 @@
 //
 // Lives in the UI layer because reportImages (canvas downscaling) is
 // browser-only; the pure HTML builder stays in src/lib/reports.ts.
-import type { Firearm, MalfunctionEntry, Media, Session } from '../lib/types.ts';
-import { getAll } from '../lib/db.ts';
+import type { Firearm, MalfunctionEntry, Session } from '../lib/types.ts';
+import { getAll, getMediaForOwner } from '../lib/db.ts';
 import { formatDayKey } from '../lib/dates.ts';
 import { buildReportHtml, type ReportSection } from '../lib/reports.ts';
 import { reportImageUrls } from './reportImages.ts';
@@ -41,10 +41,11 @@ export async function openSessionReport(
     '<!doctype html><meta charset="utf-8"><body style="font:15px -apple-system,Arial,sans-serif;padding:40px;color:#555">Preparing report…</body>'
   );
   try {
-    const [firearms, allMalf, allMedia] = await Promise.all([
+    const [firearms, allMalf, sessionMedia] = await Promise.all([
       getAll<Firearm>('firearms'),
       getAll<MalfunctionEntry>('malfunctions'),
-      getAll<Media>('media'),
+      // S-5: only THIS session's media — not the whole photo/video library.
+      getMediaForOwner('session', session.id),
     ]);
     const reps = session.type === 'dry_fire';
     const gunRows = session.guns.map((g) => ({
@@ -66,7 +67,7 @@ export async function openSessionReport(
         m.resolution || '',
         m.notes || '',
       ]);
-    const photos = await reportImageUrls(allMedia, 'session', session.id);
+    const photos = await reportImageUrls(sessionMedia, 'session', session.id);
     const sections: ReportSection[] = [
       { heading: 'Session', rows: [
         { label: 'Date', value: formatDayKey(session.date) },

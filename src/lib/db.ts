@@ -125,6 +125,42 @@ export async function getOne<T>(store: StoreName, id: string): Promise<T | undef
   return req.result as T | undefined;
 }
 
+/**
+ * S-5 / D-3: read ONLY the media owned by one record, streaming the store with a
+ * cursor so the whole photo/video library never lands in memory at once. The
+ * Session Report used to `getAll('media')` and filter in JS — but each Media
+ * record carries its raw bytes (an ArrayBuffer), so getAll materialises EVERY
+ * photo and video simultaneously; on a large log that is the likeliest iPhone
+ * memory crash (board seat 8). A cursor examines one record at a time and keeps
+ * only this owner's few, so peak memory is one record's bytes plus the matches.
+ *
+ * The media store has no secondary index (schema v1, keyPath 'id' only), so this
+ * is a full scan that filters as it goes — deliberately NOT a new index, which
+ * would be a schema migration (a heavier, structural change) for a per-tap read
+ * whose cost is memory, not a full scan. READ-ONLY: no write path is touched.
+ */
+export async function getMediaForOwner(
+  ownerType: Media['ownerType'],
+  ownerId: string,
+): Promise<Media[]> {
+  const db = await openDb();
+  const tx = db.transaction('media', 'readonly');
+  const out: Media[] = [];
+  await new Promise<void>((resolve, reject) => {
+    const req = tx.objectStore('media').openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) { resolve(); return; }
+      const m = cursor.value as Media;
+      if (m.ownerType === ownerType && m.ownerId === ownerId) out.push(m);
+      cursor.continue();
+    };
+    req.onerror = () => reject(req.error);
+  });
+  await txDone(tx);
+  return out;
+}
+
 export async function putOne<T>(store: StoreName, record: T): Promise<void> {
   const db = await openDb();
   const tx = db.transaction(store, 'readwrite');

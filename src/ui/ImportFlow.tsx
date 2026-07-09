@@ -8,6 +8,7 @@ import {
 } from '../lib/import/pistolTracker.ts';
 import type { VerificationReport } from '../lib/import/pistolTracker.ts';
 import { commitDataSet, countAll } from '../lib/db.ts';
+import { fileTooLargeMessage, MAX_IMPORT_FILE_BYTES } from '../lib/inputLimits.ts';
 
 type Step =
   | { name: 'pick' }
@@ -21,6 +22,9 @@ export function ImportFlow({ onImported }: { onImported: () => void }) {
   const fileRef = useRef<HTMLInputElement>(null);
 
   async function filePicked(file: File) {
+    // S-2: guard the whole-file read at the boundary — the parser stays untouched.
+    const tooBig = fileTooLargeMessage(file.size, MAX_IMPORT_FILE_BYTES, 'file');
+    if (tooBig) { setStep({ name: 'error', message: tooBig }); return; }
     try {
       const old = parseOldFile(await file.text());
       const guns = (old.firearms ?? []).map((f) => ({

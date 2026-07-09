@@ -8,6 +8,7 @@
 import { useRef, useState } from 'react';
 import type { Media } from '../lib/types.ts';
 import { getAll, putOne, deleteOne } from '../lib/db.ts';
+import { MAX_MEDIA_BYTES, humanBytes } from '../lib/inputLimits.ts';
 import { stampNew } from '../lib/stamps.ts';
 import { newId } from '../lib/id.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
@@ -67,6 +68,7 @@ export function MediaField({
 }) {
   const [viewing, setViewing] = useState<Media | null>(null);
   const [editingNew, setEditingNew] = useState<number | null>(null);
+  const [tooBig, setTooBig] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
   const visible = existingMedia.filter((m) => !removedMedia.includes(m.id));
 
@@ -74,12 +76,21 @@ export function MediaField({
     if (!list) return;
     // Read eagerly — the onChange clears the input right after, emptying the
     // live FileList; building this inside a setState updater would lose it.
-    const added: StagedFile[] = Array.from(list).map((file) => ({
+    // S-2: refuse an outsized single file before it's read into memory (photos
+    // are shrunk and videos stored as-is, so one giant file can crash the tab).
+    // Guard at the pick; keep everything else the user chose.
+    const files = Array.from(list);
+    const ok = files.filter((file) => file.size <= MAX_MEDIA_BYTES);
+    const rejected = files.length - ok.length;
+    setTooBig(rejected > 0
+      ? `${rejected} file${rejected > 1 ? 's were' : ' was'} too large to add (over ${humanBytes(MAX_MEDIA_BYTES)} each) — anything else you picked was added.`
+      : '');
+    const added: StagedFile[] = ok.map((file) => ({
       file,
       url: URL.createObjectURL(file),
       kind: file.type.startsWith('video') ? 'video' as const : 'image' as const,
     }));
-    setNewFiles((prev) => [...prev, ...added]);
+    if (added.length) setNewFiles((prev) => [...prev, ...added]);
   }
 
   async function reloadExisting(): Promise<void> {
@@ -119,6 +130,7 @@ export function MediaField({
       <input ref={fileRef} type="file" accept="image/*,video/*" multiple style={{ display: 'none' }}
         onChange={(e) => { filesPicked(e.target.files); e.target.value = ''; }} />
       <button className="button secondary" onClick={() => fileRef.current?.click()}>{addLabel}</button>
+      {tooBig && <p className="report-note" style={{ color: 'var(--danger)' }}>{tooBig}</p>}
       <p className="report-note">Removals only happen when you Save — Cancel really cancels.</p>
       {viewing && (
         <PhotoSheet media={viewing} allowDelete={false} onClose={() => setViewing(null)}

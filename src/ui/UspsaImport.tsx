@@ -12,6 +12,7 @@ import {
   parseUspsaClassifiers, classifierKey, SAMPLE_USPSA_CSV, type UspsaClassifierRow
 } from '../lib/uspsaClassifier.ts';
 import { FormProblem } from './FormProblem.tsx';
+import { textTooLongMessage, fileTooLargeMessage, MAX_IMPORT_FILE_BYTES } from '../lib/inputLimits.ts';
 
 export function UspsaImport({ onCancel, onDone }: {
   onCancel: () => void;
@@ -33,6 +34,9 @@ export function UspsaImport({ onCancel, onDone }: {
 
   function readResults() {
     setProblem('');
+    // S-2: cap the pasted text before the parser walks it (guard at the boundary).
+    const tooLong = textTooLongMessage(text.length);
+    if (tooLong) { setProblem(tooLong); return; }
     try {
       setParsed(parseUspsaClassifiers(text));
     } catch (e) {
@@ -88,7 +92,15 @@ export function UspsaImport({ onCancel, onDone }: {
               onChange={(e) => setText(e.target.value)} />
           </label>
           <input ref={fileRef} type="file" accept=".csv,.txt,text/csv" style={{ display: 'none' }}
-            onChange={(e) => { const f = e.target.files?.[0]; if (f) void f.text().then((t) => { setText(t); setProblem(''); }).catch(() => setProblem('That file could not be read. Try loading it again.')); e.target.value = ''; }} />
+            onChange={(e) => {
+              const f = e.target.files?.[0];
+              if (f) {
+                const tooBig = fileTooLargeMessage(f.size, MAX_IMPORT_FILE_BYTES, 'file');
+                if (tooBig) setProblem(tooBig);
+                else void f.text().then((t) => { setText(t); setProblem(''); }).catch(() => setProblem('That file could not be read. Try loading it again.'));
+              }
+              e.target.value = '';
+            }} />
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <button className="button" style={{ flex: 1 }} disabled={!text.trim()} onClick={readResults}>Read scores</button>
             <button className="button secondary" style={{ flex: 1 }} onClick={() => fileRef.current?.click()}>Load a file</button>

@@ -9,13 +9,18 @@ export function installGlobalErrorHandler(): void {
 
   let bar: HTMLElement | null = null;
 
+  const errName = (err: unknown): string => (err as { name?: string } | null)?.name ?? '';
+
+  // S-3: out-of-space gets its OWN words. "didn't finish saving — check the
+  // entry" is misleading when the real cause is a full device — there's nothing
+  // wrong with the entry, the phone is out of room.
+  const isQuotaError = (err: unknown): boolean => errName(err) === 'QuotaExceededError';
+
   // A failed database WRITE deserves accurate words — "didn't finish loading"
   // would be untrue for a save that failed (code review L-5/L-6 wording note).
-  const isWriteError = (err: unknown): boolean => {
-    const name = (err as { name?: string } | null)?.name ?? '';
-    return ['QuotaExceededError', 'TransactionInactiveError', 'ConstraintError',
-      'DataError', 'ReadOnlyError'].includes(name);
-  };
+  const isWriteError = (err: unknown): boolean =>
+    ['TransactionInactiveError', 'ConstraintError', 'DataError', 'ReadOnlyError']
+      .includes(errName(err));
 
   const show = (err?: unknown) => {
     if (bar) return; // already showing
@@ -25,9 +30,11 @@ export function installGlobalErrorHandler(): void {
     bar.setAttribute('aria-live', 'polite');
 
     const text = document.createElement('span');
-    text.textContent = isWriteError(err)
-      ? "Something didn't finish saving — your existing data is safe. Check the entry and try again."
-      : "Something didn't finish loading — your data is safe.";
+    text.textContent = isQuotaError(err)
+      ? 'This device is out of storage space — free up space and try again. Your existing data is safe.'
+      : isWriteError(err)
+        ? "Something didn't finish saving — your existing data is safe. Check the entry and try again."
+        : "Something didn't finish loading — your data is safe.";
     bar.appendChild(text);
 
     const dismiss = document.createElement('button');

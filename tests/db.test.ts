@@ -11,6 +11,7 @@ import {
   commitClassifiers,
   clearAllData,
   getAll,
+  getMediaForOwner,
   getSettings,
   putSettings,
   validateSnapshotShape,
@@ -183,6 +184,23 @@ test('B7: a restore interrupted in the media phase never LOSES existing photos',
   await assert.rejects(restoreSnapshot(poisoned));
   const media = await getAll<{ id: string }>('media');
   assert.ok(has(media, 'md-old'), 'existing photo survived the interrupted restore');
+});
+
+test('S-5: getMediaForOwner returns only that owner\'s media (not the whole store)', async () => {
+  await clearAllData();
+  await restoreSnapshot({
+    ...snapshotWith({ sessions: [{ id: 's-mm' }] }),
+    media: [
+      { id: 'mm-1', ownerType: 'session', ownerId: 's-mm', kind: 'image', data: new ArrayBuffer(2) },
+      { id: 'mm-2', ownerType: 'session', ownerId: 's-mm', kind: 'image', data: new ArrayBuffer(2) },
+      { id: 'mm-3', ownerType: 'session', ownerId: 's-other', kind: 'image', data: new ArrayBuffer(2) },
+      { id: 'mm-4', ownerType: 'firearm', ownerId: 's-mm', kind: 'image', data: new ArrayBuffer(2) },
+    ],
+  } as Snapshot);
+  const mine = await getMediaForOwner('session', 's-mm');
+  // Only the two rows matching BOTH ownerType and ownerId — a different ownerId
+  // (mm-3) and a different ownerType with the same id (mm-4) are excluded.
+  assert.deepEqual(mine.map((m) => m.id).sort(), ['mm-1', 'mm-2']);
 });
 
 test('B6/M-3: a lock held by ANOTHER TAB refuses the restore with the plain message', async () => {
