@@ -20,6 +20,7 @@ import {
   getSettings,
   putOne,
   putSettings,
+  withExclusiveIo,
 } from '../src/lib/db.ts';
 import { stampNew } from '../src/lib/stamps.ts';
 import type { AppSettings, Goal } from '../src/lib/types.ts';
@@ -52,15 +53,33 @@ test('decision: a live existing pin is respected — mark seeded, add nothing', 
 });
 
 test('decision: a dangling pin (goal deleted) counts as no pin — seed', () => {
+  // Dead pin, and no goals of their own left → a true newcomer state → seed.
   assert.equal(
-    northStarAction({ seeded: undefined, gunCount: 1, goldenGoalId: 'go-gone', goals: [{ id: 'go-other' }] }),
+    northStarAction({ seeded: undefined, gunCount: 1, goldenGoalId: 'go-gone', goals: [] }),
     'seed'
   );
 });
 
-test('decision: a real log with no pin gets the seed', () => {
+test('decision: a real log with guns but no goals of its own gets the seed', () => {
   assert.equal(
-    northStarAction({ seeded: undefined, gunCount: 2, goldenGoalId: undefined, goals: [{ id: 'go-1' }] }),
+    northStarAction({ seeded: undefined, gunCount: 2, goldenGoalId: undefined, goals: [] }),
+    'seed'
+  );
+});
+
+test('decision (R-H): guns + a goal of their own but no pin → none, never a surprise seed', () => {
+  // The user already keeps goals — not a newcomer. Leave them untouched, and
+  // do NOT mark seeded (so clearing their goals later can still seed them).
+  assert.equal(
+    northStarAction({ seeded: undefined, gunCount: 2, goldenGoalId: undefined, goals: [{ id: 'go-mine' }] }),
+    'none'
+  );
+});
+
+test('decision (R-H): only the seed goal present (crash mid-seed) still counts as a newcomer → seed', () => {
+  // The half-written seed goal is not a "goal of their own"; the retry completes.
+  assert.equal(
+    northStarAction({ seeded: undefined, gunCount: 1, goldenGoalId: undefined, goals: [{ id: NORTH_STAR_GOAL_ID }] }),
     'seed'
   );
 });
@@ -185,4 +204,48 @@ test('the seeded flag alone (no pin, no goal) still means never again', async ()
   await putSettings<AppSettings>({ northStarSeeded: true });
   assert.equal(await ensureNorthStar(1234), false);
   assert.equal((await getAll<Goal>('goals')).length, 0);
+});
+
+test('R-H: an existing install with its own goal is left untouched — no seed, not marked', async () => {
+  await wipe();
+  await putOne('firearms', aGun('fa-1'));
+  // A user who already keeps goals (e.g. upgrading into the feature, or a
+  // restored backup) — but has NOT pinned one.
+  const own = stampNew(
+    { text: 'Shoot a match a month', category: 'Practice', target: '12 in 2026', achieved: false, dateSet: '2026-01-01', dateAchieved: '' },
+    'go-mine',
+    1000
+  );
+  await putOne('goals', own);
+
+  assert.equal(await ensureNorthStar(1234), false); // nothing seeded
+  const goals = await getAll<Goal>('goals');
+  assert.equal(goals.length, 1);                    // only their own goal
+  assert.equal(goals[0].id, 'go-mine');             // the North Star was NOT added
+  const settings = await getSettings<AppSettings>();
+  assert.notEqual(settings?.northStarSeeded, true); // one-shot not burned — still eligible later
+});
+
+test('R-G: the seed is refused while a restore holds the io-lock, then runs once it frees', async () => {
+  await wipe();
+  await putOne('firearms', aGun('fa-1'));
+
+  // Hold the exclusive io-lock exactly as a restore/import would.
+  let release: () => void = () => {};
+  const held = new Promise<void>((r) => { release = r; });
+  const restoreHolding = withExclusiveIo('a fake restore', () => held);
+
+  // While the lock is held the seed must refuse and fail SAFE — no goal written.
+  assert.equal(await ensureNorthStar(1234), false);
+  assert.equal((await getAll<Goal>('goals')).length, 0);
+  const mid = await getSettings<AppSettings>();
+  assert.notEqual(mid?.northStarSeeded, true); // not marked either — still eligible
+
+  // Release the lock; the next check seeds normally.
+  release();
+  await restoreHolding;
+  assert.equal(await ensureNorthStar(2000), true);
+  const goals = await getAll<Goal>('goals');
+  assert.equal(goals.length, 1);
+  assert.equal(goals[0].id, NORTH_STAR_GOAL_ID);
 });

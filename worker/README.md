@@ -15,7 +15,7 @@ A deliberately tiny API — three routes, one table:
 
 | Route                    | Does                                                                                                                                                                                                                        |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `POST /v1/contributions` | Accepts ONE anonymous benchmark sample (the fixed 7-field schema), validates it hard, folds it into its bucket's histogram in a single atomic statement. Returns `204` — nothing echoed.                                    |
+| `POST /v1/contributions` | Accepts ONE anonymous benchmark sample (the fixed 6-field schema), validates it hard, folds it into its bucket's histogram in a single atomic statement. Returns `204` — nothing echoed.                                    |
 | `GET /v1/benchmarks?…`   | Returns a bucket's count + histogram **only once at least k (default 50) shooters have contributed**. Below-k and non-existent buckets return the _identical_ `not_enough_data` body, so thin buckets can't even be probed. |
 | `GET /healthz`           | Liveness only; never touches the database.                                                                                                                                                                                  |
 
@@ -28,14 +28,22 @@ the server never knows which shooter asked.
   no column to store one (`schema.sql`).
 - **Nothing per-request is retained.** A contribution becomes `count + 1` and
   one histogram bin `+ 1`, then exists nowhere.
-- **Same bounds as the app.** The server imports the app's own
-  `isValidContribution` + `METRIC_BOUNDS` (`src/lib/benchmark.ts`) — client
-  and server junk-data guards cannot drift apart.
-- **Strict wire contract.** Exactly seven fields, charset/length caps on the
-  free strings, one sample per POST (no batching that could fingerprint).
-- **k-anonymity with small-cell suppression**, unprobeable (see table above).
-- **IPs**: rate limiting is Cloudflare-edge configuration; the Worker never
-  reads or stores an IP.
+- **Same bounds AND the same enum allow-list as the app.** The server imports
+  the app's own `isValidContribution` + `METRIC_BOUNDS` (`src/lib/benchmark.ts`),
+  so `division` and `class` must be real, canonical values (R-B) — a free-text or
+  junk bracket is refused, and client and server guards cannot drift apart.
+- **Strict wire contract.** Exactly six fields, charset/length caps on the free
+  strings, one sample per POST (no batching that could fingerprint). `appVersion`
+  was removed (R-11) — it was never stored and would only have been a
+  re-identification slicing dimension.
+- **k-anonymity means SHOOTERS, not samples.** Each install contributes at most
+  one current-standing sample per bucket (client-side, `summarizeContributions`),
+  so k (default 50) honestly counts ~50 different shooters. Small-cell suppression
+  is unprobeable (see table above).
+- **IPs**: a code-level per-IP rate limit runs when the `RATE_LIMITER` binding is
+  configured (fail-safe even if the edge WAF rule is missed); either way the IP is
+  only a transient rate key and is never read into a response or stored (no IP
+  column exists).
 
 ## Files
 

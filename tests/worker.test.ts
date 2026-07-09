@@ -55,7 +55,6 @@ const contribution = (over: Partial<BenchmarkContribution> = {}): BenchmarkContr
   gunCategory: 'Pistol',
   metric: 'classifier_percent',
   value: 58,
-  appVersion: '1.0.0',
   ...over,
 });
 
@@ -112,7 +111,11 @@ test('division with the bucket-key separator is rejected', () => {
 test('over-long and empty strings are rejected', () => {
   assert.equal(parseContribution(contribution({ division: 'x'.repeat(41) })), null);
   assert.equal(parseContribution(contribution({ class: '' })), null);
-  assert.equal(parseContribution(contribution({ appVersion: 'v'.repeat(33) })), null);
+});
+
+test('R-B: a division/class off the canonical allow-list is rejected', () => {
+  assert.equal(parseContribution(contribution({ division: 'Totally Made Up' })), null);
+  assert.equal(parseContribution(contribution({ class: 'Z' })), null);
 });
 
 test('unknown metric and out-of-bounds value are rejected', () => {
@@ -243,6 +246,27 @@ test('junk POSTs are rejected with the right statuses', async () => {
   assert.equal((await worker.fetch(post([contribution()]), e)).status, 400);
   assert.equal((await worker.fetch(post(contribution({ value: 200 })), e)).status, 400);
   assert.equal((await worker.fetch(post('x'.repeat(3000)), e)).status, 413);
+});
+
+test('R-10: the size gate measures BYTES, not UTF-16 units', async () => {
+  // 1000 three-byte chars = 3000 bytes but String length 1000 (< the 2048 cap):
+  // the old text.length check would have let it through; the byte check rejects it.
+  const res = await worker.fetch(post('✓'.repeat(1000)), env(new FakeD1()));
+  assert.equal(res.status, 413);
+});
+
+test('R-8: the rate-limit binding blocks an over-limit POST and stores nothing', async () => {
+  const denied: Env = { DB: new FakeD1(), K_THRESHOLD: '1', RATE_LIMITER: { limit: async () => ({ success: false }) } };
+  const res = await worker.fetch(post(contribution()), denied);
+  assert.equal(res.status, 429);
+  assert.deepEqual(await res.json(), { error: 'rate_limited' });
+  // GET is not rate-limited; the blocked POST recorded nothing → still thin.
+  assert.deepEqual(await (await worker.fetch(query(), denied)).json(), { status: 'not_enough_data' });
+});
+
+test('R-8: with the binding allowing, the POST proceeds normally', async () => {
+  const allowed: Env = { DB: new FakeD1(), RATE_LIMITER: { limit: async () => ({ success: true }) } };
+  assert.equal((await worker.fetch(post(contribution()), allowed)).status, 204);
 });
 
 test('rejected POSTs store nothing', async () => {
