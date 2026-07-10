@@ -32,6 +32,7 @@ import { SyncScreen, ImportScreen, FreeSpaceScreen } from './ui/AppDataScreens.t
 import { SettingsScreen } from './ui/SettingsScreen.tsx';
 import { countAll, getSettings, probeDb } from './lib/db.ts';
 import { BootErrorScreen } from './ui/BootErrorScreen.tsx';
+import { ensureStockDrills } from './lib/stockDrills.ts';
 import { syncTelemetryEnabled } from './lib/telemetry.ts';
 import type { AppSettings } from './lib/types.ts';
 import { ErrorBoundary } from './ui/ErrorBoundary.tsx';
@@ -141,6 +142,21 @@ export function App() {
   // goal is now ASKED in the Setup Wizard's goal step (lib/northStar.ts) —
   // nothing is pinned to anyone unasked, ever. Existing installs keep whatever
   // they have; the wizard's own guard (northStarSeeded) keeps re-runs quiet.
+
+  // F4: the stock drill library seeds once the log is real (≥1 gun) — see
+  // lib/stockDrills.ts for the rules (once per install; an existing library
+  // is respected, never duplicated; Clear All re-seeds). Self-guarding and
+  // fail-safe, so running it on every data change is cheap and idempotent; it
+  // returns true only the single time it writes — one refresh then shows the
+  // library on Drills and in the session form's picker immediately.
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const created = await ensureStockDrills();
+      if (alive && created) setRefreshKey((k) => k + 1);
+    })();
+    return () => { alive = false; };
+  }, [refreshKey]);
 
   // Keep the telemetry gate in step with the stored opt-out: on start and after
   // any data change (a toggle, Load-from-File, an import, Clear All all bump

@@ -54,6 +54,11 @@ export function DrillsScreen({ refreshKey, onBack, openForm, openHistory }: {
       {drills.length > 8 && <ListSearch value={q} onChange={setQ} placeholder="Search drills" />}
       <div className="card" style={{ marginTop: 16 }}>
         <h2>Drill Library</h2>
+        {/* F5: a real empty state. The stock library (F4) makes this rare, not
+            impossible — a user can delete every drill. */}
+        {drills.length === 0 && (
+          <p className="report-note">No drills yet. Tap <strong>+ Add Drill</strong> to create your own.</p>
+        )}
         {/* Audit #15: tapping a drill expands to its full how-to (brief + full
             description + scoring), so you no longer have to open the edit form
             just to read what a drill is. Edit is a button inside the expansion. */}

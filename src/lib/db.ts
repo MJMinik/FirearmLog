@@ -437,6 +437,40 @@ export async function seedGoalWithSettings<T extends object>(
   await txDone(tx);
 }
 
+/**
+ * F4: seed the stock drill library ATOMICALLY — all 14 drills AND the
+ * `drillsSeeded` settings guard in ONE ['drills','meta'] transaction, exactly
+ * the seedGoalWithSettings shape above (same reasoning: a crash between the
+ * drill writes and the guard write must roll the whole thing back, so the
+ * seed is all-or-nothing; the fixed 'drs-' ids make even a full retry
+ * overwrite, never duplicate). The caller (lib/stockDrills.ts) runs this
+ * under withExclusiveIo, so it can't interleave with a restore across tabs.
+ */
+export async function seedDrillsWithSettings<T extends object>(
+  drills: object[],
+  patch: Partial<T>,
+): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(['drills', 'meta'], 'readwrite');
+  const meta = tx.objectStore('meta');
+  await new Promise<void>((resolve, reject) => {
+    const req = meta.get('settings');
+    req.onsuccess = () => {
+      try {
+        for (const d of drills) tx.objectStore('drills').put(d);
+        const current = ((req.result as { value?: T } | undefined)?.value) ?? ({} as T);
+        meta.put({ key: 'settings', value: { ...current, ...patch } as T });
+        resolve();
+      } catch (e) {
+        try { tx.abort(); } catch { /* already aborting */ }
+        reject(e); // abort + reject, never a partial library
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+  await txDone(tx);
+}
+
 /** Every store except media (which travels in its own snapshot section) —
  *  derived from the canonical STORE_NAMES so it can never drift (B4/M-4). */
 const SNAPSHOT_STORES: StoreName[] = STORE_NAMES.filter((n) => n !== 'media');
