@@ -13,13 +13,16 @@ import { APP_VERSION } from '../version.ts';
 
 interface TourStep { title: string; body: string; view?: View }
 
-/** True on the ≥900px desktop layout (matches the sidebar breakpoint). */
+/** True on the desktop layout — the EXACT media gate the sidebar and menu bar
+ *  use (width and height): a landscape phone is wide but short, keeps the
+ *  bottom tab bar, and must get the phone wording (audit #7). */
+const DESKTOP_MQ = '(min-width: 900px) and (min-height: 500px)';
 function useIsDesktop(): boolean {
   const [desk, setDesk] = useState(
-    () => typeof window !== 'undefined' && window.matchMedia('(min-width: 900px)').matches
+    () => typeof window !== 'undefined' && window.matchMedia(DESKTOP_MQ).matches
   );
   useEffect(() => {
-    const mq = window.matchMedia('(min-width: 900px)');
+    const mq = window.matchMedia(DESKTOP_MQ);
     const onChange = () => setDesk(mq.matches);
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
@@ -30,7 +33,7 @@ function useIsDesktop(): boolean {
 const QUICK_TOUR: TourStep[] = [
   {
     title: 'Welcome to FirearmLog',
-    body: 'Your range, match, and maintenance log — all on your own devices. Move around with the tabs along the bottom (on a computer they become a sidebar on the left). Here\'s a quick lap around the main screens.',
+    body: 'Your range, match, and maintenance log — all on your own devices. Move around with the tabs along the bottom (on a computer they become a sidebar on the left, plus a menu bar across the top). Here\'s a quick lap around the main screens.',
   },
   {
     title: 'Home',
@@ -74,7 +77,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Getting around',
       body: isDesktop
-        ? 'On a computer, the left sidebar lists Home, Log, Compete, and Progress at the top, then your sections grouped into Your Gear, Training, Records, and App & Data — each one click away. To search your log, open Log and click Search & Filter — it hunts across places, guns, drills, instructors, match names, and notes. Long lists elsewhere (drills, ammo, costs, and more) grow their own search box once they pass a handful of entries. Almost anything on screen — a number, a chart bar, a list row — can be clicked to open what\'s behind it.'
+        ? 'On a computer, the left sidebar lists Home, Log, Compete, and Progress at the top, then your sections grouped into Your Gear, Training, Records, and App & Data — each one click away. Across the very top runs a menu bar with the commands: File holds New (session, match, classifier), Save to File, Load from File, your recent records, and the importers; Reports opens any report; Help is where these tours live. A few commands have keyboard shortcuts, shown right on their menu items. Want more room? View → Hide Sidebar tucks the sidebar away, and View → Show Sidebar brings it back. To search your log, open Log and click Search & Filter — it hunts across places, guns, drills, instructors, match names, and notes. Long lists elsewhere (drills, ammo, costs, and more) grow their own search box once they pass a handful of entries. Almost anything on screen — a number, a chart bar, a list row — can be clicked to open what\'s behind it.'
         : 'On a phone, the bar along the bottom has Home, Log, Compete, and Progress, plus More for everything else. To search your log, open Log and tap Search & Filter — it hunts across places, guns, drills, instructors, match names, and notes. Long lists elsewhere (drills, ammo, costs, and more) grow their own search box once they pass a handful of entries. Almost anything on screen — a number, a chart bar, a list row — can be tapped to open what\'s behind it.',
     },
     {
@@ -203,9 +206,15 @@ function TourModal({ steps, onClose, onGo }: { steps: TourStep[]; onClose: () =>
   );
 }
 
-export function HelpScreen({ onBack, open }: { onBack: () => void; open: (v: View) => void }) {
+export function HelpScreen({ onBack, open, initialTour }: {
+  onBack: () => void; open: (v: View) => void;
+  /** Start with a tour already running — how the desktop menu bar's Help >
+   *  Quick/Full Tour items land here mid-tour instead of two clicks away.
+   *  (App remounts this screen per request, so the initializer is enough.) */
+  initialTour?: 'quick' | 'full';
+}) {
   const isDesktop = useIsDesktop();
-  const [active, setActive] = useState<null | 'quick' | 'full'>(null);
+  const [active, setActive] = useState<null | 'quick' | 'full'>(initialTour ?? null);
   const [clearing, setClearing] = useState(false);
   const fullSteps = useMemo(() => buildFullTour(isDesktop), [isDesktop]);
 

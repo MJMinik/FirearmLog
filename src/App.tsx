@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TabBar } from './ui/TabBar.tsx';
+import { MenuBar } from './ui/MenuBar.tsx';
 import { DiscardChangesSheet } from './ui/Sheet.tsx';
 import type { TabId } from './ui/TabBar.tsx';
 import type { View } from './ui/nav.ts';
@@ -193,6 +194,39 @@ export function App() {
   // so it can't stack duplicate history entries.
   const openSection = (v: View) => { if (view?.kind !== v.kind) guardNav(() => push(v)); };
 
+  // Desktop menu bar (MENUBAR_SPEC.md). Menu items navigate through the SAME
+  // guard as the sidebar and tab bar, so a dirty form still gets its
+  // Discard-changes? sheet (F3 parity). Opening the kind that's already on
+  // screen replaces instead of pushing (mirrors openSection's no-stacking rule)
+  // but still applies the new view's params — so Help > Quick Tour works from
+  // the Tour & Setup screen itself.
+  const tourSeq = useRef(0);
+  const menuOpen = (v: View) => {
+    if (v.kind === 'help' && v.tour) tourSeq.current += 1;
+    guardNav(() => {
+      if (view?.kind === v.kind) replace(v); else push(v);
+      // One-shot params (a tour launch, the pop-ups-blocked note) stay OUT of
+      // browser history: Back-then-Forward must re-show the screen, not replay
+      // the moment (audit #6).
+      if ((v.kind === 'help' && v.tour) || (v.kind === 'reports' && v.blocked)) {
+        history.replaceState({ view: { kind: v.kind } }, '');
+      }
+    });
+  };
+
+  // View > Hide Sidebar (desktop). A device-local UI preference — remembered in
+  // localStorage (Michael's decision #6, July 10 2026), deliberately NOT in the
+  // app's settings store: it's about this screen, not the log, and it must never
+  // ride along in a sync file. Guarded — some private-browsing modes throw.
+  const [sidebarHidden, setSidebarHidden] = useState(() => {
+    try { return localStorage.getItem('flog-sidebar-hidden') === '1'; } catch { return false; }
+  });
+  const toggleSidebar = () => setSidebarHidden((h) => {
+    const next = !h;
+    try { localStorage.setItem('flog-sidebar-hidden', next ? '1' : '0'); } catch { /* preference just won't stick */ }
+    return next;
+  });
+
   // F1: a failed boot replaces everything — there is nothing useful to render
   // when no screen can reach its data. Recovery re-checks the wizard/goal
   // effects' work via refresh so the app resumes exactly as a normal open.
@@ -329,7 +363,7 @@ export function App() {
       onCancel={back}
       onSaved={() => { refresh(); replace({ kind: 'parts' }); }} />;
   } else if (view?.kind === 'reports') {
-    content = <ReportsScreen refreshKey={refreshKey} onBack={back} />;
+    content = <ReportsScreen refreshKey={refreshKey} onBack={back} popupBlocked={view.blocked} />;
   } else if (view?.kind === 'classifier-form') {
     const v = view;
     content = <ClassifierForm id={v.id}
@@ -345,7 +379,10 @@ export function App() {
       onCancel={back}
       onDone={() => { refresh(); replace(null); }} />;
   } else if (view?.kind === 'help') {
-    content = <HelpScreen onBack={back} open={push} />;
+    // Keyed per tour request so Help > Quick Tour re-launches even when the
+    // Tour & Setup screen is already open (a fresh mount re-reads initialTour).
+    content = <HelpScreen key={view.tour ? `${view.tour}-${tourSeq.current}` : ''}
+      onBack={back} open={push} initialTour={view.tour} />;
   } else if (view?.kind === 'numbers') {
     content = <NumbersGuide onBack={back} section={view.section} />;
   } else if (view?.kind === 'setup') {
@@ -380,7 +417,12 @@ export function App() {
   const boundaryKey = view ? `${view.kind}:${(view as { id?: string }).id ?? ''}` : tab;
 
   return (
-    <>
+    <div className={`app-shell${sidebarHidden ? ' sidebar-hidden' : ''}`}>
+      {/* Desktop-only menu bar. Hidden by CSS below the desktop breakpoint, and
+          its shortcut listener re-checks the same media gate per keystroke —
+          so even a hardware keyboard on a small viewport stays untouched. */}
+      <MenuBar onGoTab={setTab} onOpenView={menuOpen}
+        sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} />
       {/* Audit #D5: a <main> landmark for screen readers (the nav landmark is the tab bar).
           Audit CR-17/#D16: an error boundary turns a render crash into a friendly reload.
           T1-2: keyed to the current view so navigation recovers from a crash. */}
@@ -394,6 +436,6 @@ export function App() {
           onConfirm={() => { formDirty.current = false; const go = pendingNav; setPendingNav(null); go(); }}
           onClose={() => setPendingNav(null)} />
       )}
-    </>
+    </div>
   );
 }

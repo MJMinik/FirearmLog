@@ -25,10 +25,10 @@ export type View =
   | { kind: 'optic-form'; id?: string; firearmId?: string }
   | { kind: 'parts' }
   | { kind: 'part-form'; id?: string }
-  | { kind: 'reports' }
+  | { kind: 'reports'; blocked?: boolean }
   | { kind: 'practiscore-import' }
   | { kind: 'uspsa-import' }
-  | { kind: 'help' }
+  | { kind: 'help'; tour?: 'quick' | 'full' }
   | { kind: 'numbers'; section?: string }
   | { kind: 'setup' }
   | { kind: 'settings' }
