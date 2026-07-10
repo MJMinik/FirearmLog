@@ -92,6 +92,11 @@ export function App() {
   // the app opens normally. (Re-presents each open; doesn't hard-trap mid-session.
   // Won't fire for Michael — he has guns; the wizard is also in Help → Set Up.)
   useEffect(() => {
+    // While the recovery screen owns the app, don't touch the database at all.
+    // Re-opening here would start a doomed open that gets CACHED — and Try
+    // Again would then join that in-flight failure instead of getting a fresh
+    // attempt (the exact bug E2E run #175 caught on the first Try Again click).
+    if (bootFailed) return;
     let alive = true;
     void (async () => {
       const guns = await countAll('firearms');

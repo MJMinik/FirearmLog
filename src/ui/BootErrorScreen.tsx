@@ -1,11 +1,12 @@
 // F1: the recovery screen shown when the database can't open at startup.
 // Before this existed, a stuck open meant a loading spinner forever — no
 // message, no way out. This screen replaces that dead end with plain language
-// and a real retry (probeDb re-attempts a fresh open; see db.ts).
+// and a real retry (retryDb discards any cached in-flight open and attempts
+// fresh — never joins a doomed one; see db.ts).
 // Copy signed off by Michael, July 10 2026 (first-run fix batch, gate 1).
 
 import { useState } from 'react';
-import { probeDb } from '../lib/db.ts';
+import { retryDb } from '../lib/db.ts';
 
 export function BootErrorScreen({ onRecovered }: { onRecovered: () => void }) {
   const [checking, setChecking] = useState(false);
@@ -13,7 +14,7 @@ export function BootErrorScreen({ onRecovered }: { onRecovered: () => void }) {
   const retry = async () => {
     setChecking(true);
     try {
-      await probeDb();
+      await retryDb();
       onRecovered();
     } catch {
       // Still stuck — stay on this screen, re-enable the button.

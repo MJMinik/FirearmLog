@@ -8,7 +8,7 @@
 // module-level cache starts fresh.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { probeDb } from '../src/lib/db.ts';
+import { probeDb, retryDb } from '../src/lib/db.ts';
 
 // A minimal IDBOpenDBRequest stand-in whose events WE fire (or never fire).
 type FakeRequest = {
@@ -93,4 +93,38 @@ test('after a failure, Try Again gets a fresh open (the cache was cleared)', asy
     return second.req;
   });
   await probeDb(); // resolves — retry works
+});
+
+// The E2E-run-#175 regression: after the boot failure, some OTHER caller (the
+// setup-wizard effect, in the real app) re-opened while things were still
+// broken, re-filling the cache with a new pending, doomed open. probeDb would
+// join that doomed open and fail; Try Again must not. retryDb discards the
+// cached attempt and opens fresh.
+test('retryDb ignores a doomed in-flight open left by another caller', async (t) => {
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  const first = makeFakeRequest();
+  stubIndexedDb(() => first.req);
+  // retryDb (not probeDb) so this test never inherits the healthy open the
+  // previous test left in the module cache — order-independent by design.
+  const boot = retryDb();
+  const settled = assert.rejects(boot, /db-open-timeout/);
+  t.mock.timers.tick(10_000);
+  await settled;
+
+  // A bystander re-opens while the database is STILL stuck: the cache now
+  // holds a fresh pending open that will never settle.
+  const doomed = makeFakeRequest();
+  stubIndexedDb(() => doomed.req);
+  const bystander = probeDb();
+  bystander.catch(() => { /* would reject when its own 10s timer fired */ });
+
+  // Now the blocker goes away (the other tab closes). Try Again must resolve
+  // WITHOUT waiting out the bystander's doomed open — note its timer is never
+  // ticked here, so joining it would hang this test.
+  const third = makeFakeRequest();
+  stubIndexedDb(() => {
+    queueMicrotask(() => third.req.onsuccess?.());
+    return third.req;
+  });
+  await retryDb(); // resolves — a genuinely fresh attempt
 });

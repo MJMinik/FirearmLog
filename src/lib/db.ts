@@ -70,12 +70,29 @@ function openDb(): Promise<IDBDatabase> {
 
 /**
  * F1 boot probe: can the database open at all? The app calls this once at
- * startup (and again from the error screen's Try Again). It shares openDb's
- * cached promise, so a healthy boot costs nothing extra — and because a
- * rejection clears that cache (above), every retry is a genuinely fresh open.
+ * startup. It shares openDb's cached promise, so a healthy boot costs
+ * nothing extra. (The error screen's Try Again uses retryDb below instead —
+ * sharing the cache is exactly wrong there.)
  */
 export function probeDb(): Promise<void> {
   return openDb().then(() => undefined);
+}
+
+/**
+ * F1 Try Again: a retry that is GUARANTEED fresh. probeDb shares the cached
+ * open — right at boot, wrong after a failure: anything that touched the
+ * database between the failure and the click (an effect re-running, future
+ * code) may have re-filled the cache with another doomed in-flight open, and
+ * the click would join that failure instead of re-attempting (caught by E2E
+ * run #175 — the first Try Again click failed; a second would have worked).
+ * Discarding the cache first is safe: an abandoned open that later settles
+ * only resolves its own callers (the cache-clear guard above compares
+ * identity, so it never nulls the newer open), at worst leaving a spare
+ * connection to the same database that closes with the tab.
+ */
+export function retryDb(): Promise<void> {
+  dbPromise = null;
+  return probeDb();
 }
 
 /**
