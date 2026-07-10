@@ -29,7 +29,8 @@ import { NumbersGuide } from './ui/NumbersGuide.tsx';
 import { SetupWizard } from './ui/SetupWizard.tsx';
 import { SyncScreen, ImportScreen, FreeSpaceScreen } from './ui/AppDataScreens.tsx';
 import { SettingsScreen } from './ui/SettingsScreen.tsx';
-import { countAll, getSettings } from './lib/db.ts';
+import { countAll, getSettings, probeDb } from './lib/db.ts';
+import { BootErrorScreen } from './ui/BootErrorScreen.tsx';
 import { ensureNorthStar } from './lib/northStar.ts';
 import { syncTelemetryEnabled } from './lib/telemetry.ts';
 import type { AppSettings } from './lib/types.ts';
@@ -41,6 +42,18 @@ export function App() {
   // Bump this to make every screen re-read the database after a save/import.
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => setRefreshKey((k) => k + 1);
+
+  // F1 boot guard: if the database can't open (stale tab holding a connection,
+  // a pending delete queued ahead of the open), every screen's load would hang
+  // on a spinner forever. Probe once at startup; on failure, replace the whole
+  // app with a plain-language recovery screen instead. The healthy path costs
+  // nothing — the probe shares the same cached open every screen uses anyway.
+  const [bootFailed, setBootFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void probeDb().catch(() => { if (alive) setBootFailed(true); });
+    return () => { alive = false; };
+  }, []);
 
   // Opening a screen or switching tabs should land at the top, not wherever the
   // previous screen happened to be scrolled (the whole document scrolls, on
@@ -83,9 +96,12 @@ export function App() {
     void (async () => {
       const guns = await countAll('firearms');
       if (alive && guns === 0) setViewState({ kind: 'setup' });
-    })();
+    })().catch(() => { /* DB down — the F1 boot guard owns this failure. */ });
     return () => { alive = false; };
-  }, []);
+    // Keyed to bootFailed (not refreshKey) so a recovery from the F1 error
+    // screen re-checks and presents the wizard, while mid-session refreshes
+    // still never re-trap the user. On a healthy boot this runs exactly once.
+  }, [bootFailed]);
 
   // North Star seed: once the log is real (at least one gun), a brand-new
   // install gets its one pinned starter goal — see lib/northStar.ts for the
@@ -111,7 +127,7 @@ export function App() {
     void (async () => {
       const settings = await getSettings<AppSettings>();
       if (alive) syncTelemetryEnabled(settings);
-    })();
+    })().catch(() => { /* DB down — the F1 boot guard owns this failure. */ });
     return () => { alive = false; };
   }, [refreshKey]);
 
@@ -131,6 +147,13 @@ export function App() {
   // Desktop sidebar section links (C1): re-clicking the open section is a no-op
   // so it can't stack duplicate history entries.
   const openSection = (v: View) => { if (view?.kind !== v.kind) push(v); };
+
+  // F1: a failed boot replaces everything — there is nothing useful to render
+  // when no screen can reach its data. Recovery re-checks the wizard/goal
+  // effects' work via refresh so the app resumes exactly as a normal open.
+  if (bootFailed) {
+    return <BootErrorScreen onRecovered={() => { setBootFailed(false); refresh(); }} />;
+  }
 
   let content;
   if (view?.kind === 'guns') {

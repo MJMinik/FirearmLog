@@ -19,10 +19,28 @@ export type StoreName = (typeof STORE_NAMES)[number];
 
 let dbPromise: Promise<IDBDatabase> | null = null;
 
+// F1: how long an indexedDB.open may sit unsettled before we give up on it.
+// The open normally settles in milliseconds; ten seconds is generous enough
+// that a slow first-install upgrade on an old device still fits, while a
+// genuinely stuck open (a stale tab holding a connection, a pending delete
+// queued ahead of us) becomes a rejection the boot guard can recover from
+// instead of a spinner that lives forever.
+const OPEN_TIMEOUT_MS = 10_000;
+
 function openDb(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
   const p = new Promise<IDBDatabase>((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, SCHEMA_VERSION);
+    let blocked = false;
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      reject(new Error(blocked ? 'db-open-blocked' : 'db-open-timeout'));
+    }, OPEN_TIMEOUT_MS);
+    // Fires when another open connection (usually an older tab) blocks this
+    // open. We don't reject immediately — the other tab may close and let the
+    // open proceed — but we remember it so the timeout can say WHY it fired.
+    req.onblocked = () => { blocked = true; };
     req.onupgradeneeded = () => {
       const db = req.result;
       for (const name of STORE_NAMES) {
@@ -31,8 +49,15 @@ function openDb(): Promise<IDBDatabase> {
         }
       }
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    req.onsuccess = () => {
+      clearTimeout(timer);
+      // A success landing AFTER the timeout already rejected would leak an
+      // open connection nothing will ever use — and a leaked connection is
+      // exactly the thing that blocks future opens. Close it instead.
+      if (timedOut) { req.result.close(); return; }
+      resolve(req.result);
+    };
+    req.onerror = () => { clearTimeout(timer); reject(req.error); };
   });
   // T1-4: if the open FAILS (Safari Private Mode, quota exhaustion, a corrupt DB),
   // don't cache the rejected promise forever — that bricks every later call and the
@@ -41,6 +66,16 @@ function openDb(): Promise<IDBDatabase> {
   p.catch(() => { if (dbPromise === p) dbPromise = null; });
   dbPromise = p;
   return dbPromise;
+}
+
+/**
+ * F1 boot probe: can the database open at all? The app calls this once at
+ * startup (and again from the error screen's Try Again). It shares openDb's
+ * cached promise, so a healthy boot costs nothing extra — and because a
+ * rejection clears that cache (above), every retry is a genuinely fresh open.
+ */
+export function probeDb(): Promise<void> {
+  return openDb().then(() => undefined);
 }
 
 /**
