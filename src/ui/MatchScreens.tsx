@@ -464,8 +464,12 @@ function emptyStageRow(): StageRow {
   };
 }
 
-export function MatchForm({ id, onSaved, onCancel }: {
+export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
   id?: string; onSaved: (matchId: string) => void; onCancel: () => void;
+  // F3 parity: reports unsaved-edits state up to App, so the exits App owns
+  // (tab bar, sidebar, browser Back) show the same Discard-changes? guard this
+  // form's own ‹ Cancel uses. Must be reference-stable (useCallback in App).
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Match | null>(null);
@@ -494,7 +498,26 @@ export function MatchForm({ id, onSaved, onCancel }: {
   const [discarding, setDiscarding] = useState(false);
   // M4: watch for any real user edit (bubbled change). Programmatic loads and the
   // async first-gun auto-select don't fire input events, so this never false-fires.
+  // Click-only mutators (add/remove stage, staged-media changes) fire no change
+  // event, so they call setTouched(true) explicitly — same pattern as SessionForm.
   const [touched, setTouched] = useState(false);
+
+  // F3 parity: keep App's dirty flag in step with `touched`, and clear it on
+  // unmount so a stale flag can never guard a navigation after this form is gone.
+  useEffect(() => {
+    onDirtyChange?.(touched);
+    return () => onDirtyChange?.(false);
+  }, [touched, onDirtyChange]);
+
+  // F3 parity: last-resort guard for exits the app can't intercept — closing the
+  // tab, a reload, typing a new URL. Best-effort on iOS Safari/PWA (often skipped);
+  // the in-app exits are the real fix.
+  useEffect(() => {
+    if (!touched) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [touched]);
 
   useEffect(() => {
     let alive = true;
@@ -659,6 +682,9 @@ export function MatchForm({ id, onSaved, onCancel }: {
         await putOne('matches', stampNew(fields, mid, now));
       }
       await commitMedia('match', mid, newFiles, removedMedia, existingMedia.length);
+      // F3 parity: the edits are saved — nothing left to guard. Clear the dirty
+      // flag before onSaved navigates (its replace/back would otherwise hit App's guard).
+      onDirtyChange?.(false);
       onSaved(mid);
     } finally {
       setSaving(false);
@@ -676,7 +702,12 @@ export function MatchForm({ id, onSaved, onCancel }: {
       <h1 className="large-title">{editing ? 'Edit Match' : 'Log Match'}</h1>
       <FormProblem problem={problem} />
       {discarding && (
-        <DiscardChangesSheet onConfirm={onCancel} onClose={() => setDiscarding(false)} />
+        <DiscardChangesSheet
+          // Clear App's dirty flag BEFORE leaving: onCancel is history.back(),
+          // which fires popstate — without this, App's own F3 guard would see a
+          // still-dirty form and show a SECOND sheet on top of this one.
+          onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
+          onClose={() => setDiscarding(false)} />
       )}
 
       <div className="card">
@@ -765,7 +796,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
               <div className="drill-edit-head">
                 <strong>Stage {i + 1}{ss.stageTime !== null ? ` — ${ss.stageTime}s` : ''}</strong>
                 <button className="icon-btn" aria-label={`Remove stage ${i + 1}`}
-                  onClick={() => setStages((p) => p.filter((_, x) => x !== i))}><Icon name="close" size={18} /></button>
+                  onClick={() => { setTouched(true); setStages((p) => p.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
               </div>
               <label className="field">Which Steel stage
                 <select value={st.steelStage}
@@ -824,7 +855,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
               <div className="drill-edit-head">
                 <strong>Stage {i + 1}{is.stageTime !== null ? ` — ${is.stageTime}s` : ''}</strong>
                 <button className="icon-btn" aria-label={`Remove stage ${i + 1}`}
-                  onClick={() => setStages((p) => p.filter((_, x) => x !== i))}><Icon name="close" size={18} /></button>
+                  onClick={() => { setTouched(true); setStages((p) => p.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
               </div>
               <label className="field small">Raw time (s)
                 <input type="number" inputMode="decimal" value={st.time}
@@ -884,7 +915,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
               <div className="drill-edit-head">
                 <strong>Stage {i + 1}{hf !== null ? ` — HF ${hf}` : ''}</strong>
                 <button className="icon-btn" aria-label={`Remove stage ${i + 1}`}
-                  onClick={() => setStages((p) => p.filter((_, x) => x !== i))}><Icon name="close" size={18} /></button>
+                  onClick={() => { setTouched(true); setStages((p) => p.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
               </div>
               <div className="drill-edit-fields">
                 <label className="field small">Points{sc ? ' (from hits)' : ''}
@@ -944,16 +975,18 @@ export function MatchForm({ id, onSaved, onCancel }: {
           </p>
         )}
         <button className="button secondary"
-          onClick={() => setStages((p) => [...p, emptyStageRow()])}>
+          onClick={() => { setTouched(true); setStages((p) => [...p, emptyStageRow()]); }}>
           + Add Stage
         </button>
       </div>
 
+      {/* F3 parity: MediaField's remove buttons mutate staged state by click alone,
+          so the setter wrappers mark the form dirty explicitly. */}
       <MediaField heading="Stage Videos & Photos" addLabel="+ Add Videos or Photos"
         ownerType="match" ownerId={original?.id ?? ''}
         existingMedia={existingMedia} setExistingMedia={setExistingMedia}
-        removedMedia={removedMedia} setRemovedMedia={setRemovedMedia}
-        newFiles={newFiles} setNewFiles={setNewFiles} />
+        removedMedia={removedMedia} setRemovedMedia={(fn) => { setTouched(true); setRemovedMedia(fn); }}
+        newFiles={newFiles} setNewFiles={(fn) => { setTouched(true); setNewFiles(fn); }} />
 
       <div className="card">
         <h2>Wrap-Up</h2>

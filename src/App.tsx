@@ -46,19 +46,21 @@ export function App() {
   const viewRef = useRef<View | null>(null);
   const setView = (v: View | null) => { viewRef.current = v; setViewState(v); };
 
-  // F3: the unsaved-edits guard for the exits App owns. SessionForm reports its
-  // dirty state into this ref (a ref, not state — navigation handlers need the
-  // CURRENT value synchronously, and a flag change must not re-render the app).
-  // When a guarded navigation hits a dirty form, the navigation is parked in
-  // pendingNav and the shared Discard-changes? sheet asks first.
-  const sessionDirty = useRef(false);
+  // F3: the unsaved-edits guard for the exits App owns. The record forms
+  // (SessionForm, MatchForm, ClassifierForm) report their dirty state into this
+  // ref (a ref, not state — navigation handlers need the CURRENT value
+  // synchronously, and a flag change must not re-render the app). Only one form
+  // is ever mounted at a time, and each clears the flag on unmount, so a single
+  // shared ref is safe. When a guarded navigation hits a dirty form, the
+  // navigation is parked in pendingNav and the shared Discard-changes? sheet asks first.
+  const formDirty = useRef(false);
   const [pendingNav, setPendingNav] = useState<null | (() => void)>(null);
   const guardNav = (go: () => void) => {
-    if (sessionDirty.current) setPendingNav(() => go);
+    if (formDirty.current) setPendingNav(() => go);
     else go();
   };
-  // Stable identity so SessionForm's dirty-sync effect doesn't re-run per render.
-  const reportSessionDirty = useCallback((d: boolean) => { sessionDirty.current = d; }, []);
+  // Stable identity so the forms' dirty-sync effects don't re-run per render.
+  const reportFormDirty = useCallback((d: boolean) => { formDirty.current = d; }, []);
   // Bump this to make every screen re-read the database after a save/import.
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => setRefreshKey((k) => k + 1);
@@ -101,9 +103,9 @@ export function App() {
       // on (neutralizing the pop — the screen never changes), then ask. On
       // Discard the guard is disarmed and Back is replayed for real; the
       // replay lands in the branch below and navigates normally.
-      if (sessionDirty.current) {
+      if (formDirty.current) {
         history.pushState({ view: viewRef.current }, '');
-        setPendingNav(() => () => { sessionDirty.current = false; history.back(); });
+        setPendingNav(() => () => { formDirty.current = false; history.back(); });
         return;
       }
       const st = e.state as { view?: View | null } | null;
@@ -220,10 +222,9 @@ export function App() {
     const v = view;
     content = <SessionForm id={v.id} initialPlanned={v.planned} convert={v.convert} initialDate={v.date}
       onCancel={back}
-      onConvert={() => push({ kind: 'session-form', id: v.id, convert: true })}
       onDeleted={() => { refresh(); setTab('log'); }}
       onSaved={() => { refresh(); setTab('log'); }}
-      onDirtyChange={reportSessionDirty} />;
+      onDirtyChange={reportFormDirty} />;
   } else if (view?.kind === 'drills') {
     content = <DrillsScreen refreshKey={refreshKey}
       onBack={back}
@@ -287,7 +288,8 @@ export function App() {
     const v = view;
     content = <MatchForm id={v.id}
       onCancel={back}
-      onSaved={(mid) => { refresh(); replace({ kind: 'match-detail', id: mid }); }} />;
+      onSaved={(mid) => { refresh(); replace({ kind: 'match-detail', id: mid }); }}
+      onDirtyChange={reportFormDirty} />;
   } else if (view?.kind === 'ammo') {
     content = <AmmoScreen refreshKey={refreshKey}
       onBack={back}
@@ -332,7 +334,8 @@ export function App() {
     const v = view;
     content = <ClassifierForm id={v.id}
       onCancel={back}
-      onSaved={() => { refresh(); replace(null); }} />;
+      onSaved={() => { refresh(); replace(null); }}
+      onDirtyChange={reportFormDirty} />;
   } else if (view?.kind === 'practiscore-import') {
     content = <PractiScoreImport
       onCancel={back}
@@ -388,7 +391,7 @@ export function App() {
           Discard disarms the guard and runs the parked navigation. */}
       {pendingNav && (
         <DiscardChangesSheet
-          onConfirm={() => { sessionDirty.current = false; const go = pendingNav; setPendingNav(null); go(); }}
+          onConfirm={() => { formDirty.current = false; const go = pendingNav; setPendingNav(null); go(); }}
           onClose={() => setPendingNav(null)} />
       )}
     </>

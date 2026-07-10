@@ -162,8 +162,12 @@ export function CompeteScreen({ refreshKey, open }: {
   );
 }
 
-export function ClassifierForm({ id, onSaved, onCancel }: {
+export function ClassifierForm({ id, onSaved, onCancel, onDirtyChange }: {
   id?: string; onSaved: () => void; onCancel: () => void;
+  // F3 parity: reports unsaved-edits state up to App, so the exits App owns
+  // (tab bar, sidebar, browser Back) show the same Discard-changes? guard this
+  // form's own ‹ Cancel uses. Must be reference-stable (useCallback in App).
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const [original, setOriginal] = useState<Classifier | null>(null);
   const [code, setCode] = useState('');
@@ -180,6 +184,23 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
   const [existingMedia, setExistingMedia] = useState<Media[]>([]);
   const [removedMedia, setRemovedMedia] = useState<string[]>([]);
   const [newFiles, setNewFiles] = useState<StagedFile[]>([]);
+
+  // F3 parity: keep App's dirty flag in step with `touched`, and clear it on
+  // unmount so a stale flag can never guard a navigation after this form is gone.
+  useEffect(() => {
+    onDirtyChange?.(touched);
+    return () => onDirtyChange?.(false);
+  }, [touched, onDirtyChange]);
+
+  // F3 parity: last-resort guard for exits the app can't intercept — closing the
+  // tab, a reload, typing a new URL. Best-effort on iOS Safari/PWA (often skipped);
+  // the in-app exits are the real fix.
+  useEffect(() => {
+    if (!touched) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [touched]);
 
   useEffect(() => {
     if (id === undefined) return;
@@ -219,11 +240,17 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
     }
     // Photos/videos (staged until Save, like sessions and matches).
     await commitMedia('classifier', cid, newFiles, removedMedia, existingMedia.length);
+    // F3 parity: the edits are saved — nothing left to guard. Clear the dirty
+    // flag before onSaved navigates (its replace would otherwise hit App's guard).
+    onDirtyChange?.(false);
     onSaved();
   }
 
   async function reallyDelete() {
     if (original) await deleteOne('classifiers', original.id);
+    // F3 parity: deleting makes any unsaved edits moot — clear the dirty flag
+    // so onSaved's navigation isn't stopped by App's guard.
+    onDirtyChange?.(false);
     onSaved();
   }
 
@@ -237,7 +264,12 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
       <h1 className="large-title">{original ? 'Edit Classifier' : 'Log Classifier'}</h1>
       <FormProblem problem={problem} />
       {discarding && (
-        <DiscardChangesSheet onConfirm={onCancel} onClose={() => setDiscarding(false)} />
+        <DiscardChangesSheet
+          // Clear App's dirty flag BEFORE leaving: onCancel is history.back(),
+          // which fires popstate — without this, App's own F3 guard would see a
+          // still-dirty form and show a SECOND sheet on top of this one.
+          onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
+          onClose={() => setDiscarding(false)} />
       )}
       <div className="card">
         <label className="field">Classifier code
@@ -265,11 +297,13 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
           <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
       </div>
+      {/* F3 parity: MediaField's remove buttons mutate staged state by click alone,
+          so the setter wrappers mark the form dirty explicitly. */}
       <MediaField heading="Photos & Videos" addLabel="+ Add Photos or Videos"
         ownerType="classifier" ownerId={original?.id ?? ''}
         existingMedia={existingMedia} setExistingMedia={setExistingMedia}
-        removedMedia={removedMedia} setRemovedMedia={setRemovedMedia}
-        newFiles={newFiles} setNewFiles={setNewFiles} />
+        removedMedia={removedMedia} setRemovedMedia={(fn) => { setTouched(true); setRemovedMedia(fn); }}
+        newFiles={newFiles} setNewFiles={(fn) => { setTouched(true); setNewFiles(fn); }} />
       <button className="button" onClick={() => void save()}>{original ? 'Save changes' : 'Save classifier'}</button>
       {original && (
         <>

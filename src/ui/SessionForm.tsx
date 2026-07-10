@@ -70,10 +70,10 @@ const fromRow = (r: DrillRow): DrillResult => ({
   notes: r.notes.trim()
 });
 
-export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved, onCancel, onConvert, onDeleted, onDirtyChange }: {
+export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved, onCancel, onDeleted, onDirtyChange }: {
   id?: string; initialPlanned?: boolean; convert?: boolean; initialDate?: string;
   onSaved: (sessionId: string) => void; onCancel: () => void;
-  onConvert?: () => void; onDeleted?: () => void;
+  onDeleted?: () => void;
   // F3: reports the form's unsaved-edits state up to App, so the exits App owns
   // (tab bar, sidebar, browser Back) can show the same Discard-changes? guard
   // this form's own Cancel button uses. Must be reference-stable (useCallback).
@@ -146,6 +146,15 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   // calls setTouched(true) explicitly, so no edit path can slip past the guard.
   const [touched, setTouched] = useState(false);
   const [discarding, setDiscarding] = useState(false);
+  // Convert-to-logged is an IN-PLACE mode switch, not a navigation: the old
+  // onConvert flow pushed a fresh convert view, which remounted the form,
+  // reloaded the saved record, and silently threw away any unsaved edits. The
+  // local flag keeps every edit on screen; nothing is persisted until Save, so
+  // backing out (guarded — converting counts as an unsaved change) leaves the
+  // plan exactly as it was. The `convert` prop stays supported: a history entry
+  // from the old flow still restores as a convert view.
+  const [convertingNow, setConvertingNow] = useState(false);
+  const converting = !!convert || convertingNow;
 
   // F3: keep App's dirty flag in step with `touched`, and clear it on unmount so
   // a stale flag can never guard a navigation after this form is gone.
@@ -641,7 +650,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
-      <h1 className="large-title">{convert ? 'Log Session (from Plan)' : editing ? 'Edit Session' : planned ? 'Plan Session' : 'Log Session'}</h1>
+      <h1 className="large-title">{converting ? 'Log Session (from Plan)' : editing ? 'Edit Session' : planned ? 'Plan Session' : 'Log Session'}</h1>
       <FormProblem problem={problem} />
       {discarding && (
         <DiscardChangesSheet
@@ -652,8 +661,10 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           onClose={() => setDiscarding(false)} />
       )}
 
-      {editing && original?.planned && !convert && onConvert && (
-        <button className="button" onClick={onConvert}><span aria-hidden="true">✓</span> Convert to logged session</button>
+      {editing && original?.planned && !converting && (
+        <button className="button"
+          onClick={() => { setConvertingNow(true); setPlanned(false); setTouched(true); }}>
+          <span aria-hidden="true">✓</span> Convert to logged session</button>
       )}
       {editing && original && (
         <button className="button secondary" onClick={() => void printSessionReport()}>Session Report</button>
@@ -1003,7 +1014,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       </div>
 
       <button className="button" disabled={saving} onClick={() => void save()}>
-        {saving ? 'Saving…' : convert ? 'Log Session' : editing ? 'Save changes' : 'Save session'}
+        {saving ? 'Saving…' : converting ? 'Log Session' : editing ? 'Save changes' : 'Save session'}
       </button>
 
       {editing && original && (

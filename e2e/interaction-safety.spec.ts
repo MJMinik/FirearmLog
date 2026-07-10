@@ -133,6 +133,81 @@ test.describe('Unsaved-changes guard on every exit (F3)', () => {
   });
 });
 
+test.describe('Unsaved-changes guard parity — Match & Classifier (F3 follow-on)', () => {
+  // F3 wired Log Session's dirty state up to App so tab-bar / sidebar / browser
+  // Back exits get the Discard-changes? sheet. Match and Classifier had the
+  // sheet on their own ‹ Cancel but never reported dirty upward, so those same
+  // exits silently destroyed a half-entered match. This locks the parity shut.
+
+  test('a dirty Log Match guards a tab-bar exit and browser Back', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Compete');
+    await page.getByRole('button', { name: '+ Log Match' }).click();
+    await expect(page.getByRole('heading', { name: 'Log Match' })).toBeVisible();
+    await page.getByLabel('What this match is called').fill('Half-Entered Match');
+
+    // Tab tap → the discard confirm, not a silent exit.
+    await gotoTab(page, 'Home');
+    await expect(page.getByRole('heading', { name: 'Discard changes?' })).toBeVisible();
+    await page.getByRole('button', { name: 'Keep editing' }).click();
+    await expect(page.getByLabel('What this match is called')).toHaveValue('Half-Entered Match');
+
+    // Browser Back → the pop is neutralized and the confirm appears.
+    await page.goBack();
+    await expect(page.getByRole('heading', { name: 'Discard changes?' })).toBeVisible();
+    await page.getByRole('button', { name: 'Keep editing' }).click();
+    await expect(page.getByLabel('What this match is called')).toHaveValue('Half-Entered Match');
+
+    // Tab tap again → Discard → really leaves.
+    await gotoTab(page, 'Home');
+    await page.getByRole('button', { name: 'Discard' }).click();
+    await expect(page.getByRole('heading', { name: 'Log Match' })).toHaveCount(0);
+    await expect(page.getByText('Live-fire rounds')).toBeVisible();
+  });
+
+  test('a click-only Match edit (+ Add Stage) arms the guard', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Compete');
+    await page.getByRole('button', { name: '+ Log Match' }).click();
+    await expect(page.getByRole('heading', { name: 'Log Match' })).toBeVisible();
+
+    // A pure <button> edit — no change event bubbles, so before this fix the
+    // bubbled-onChange watcher never saw it.
+    await page.getByRole('button', { name: '+ Add Stage' }).click();
+    await page.getByRole('main').getByRole('button', { name: 'Cancel' }).click();
+    await expect(page.getByRole('heading', { name: 'Discard changes?' })).toBeVisible();
+    await page.getByRole('button', { name: 'Discard' }).click();
+    await expect(page.getByRole('heading', { name: 'Log Match' })).toHaveCount(0);
+  });
+
+  test('a dirty Log Classifier guards browser Back; a pristine one leaves freely', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Compete');
+
+    // Pristine: Back leaves with no guard.
+    await page.getByRole('main').getByRole('button', { name: '+ Log Classifier' }).click();
+    await expect(page.getByRole('heading', { name: 'Log Classifier' })).toBeVisible();
+    await page.goBack();
+    // Wait for the form to actually leave FIRST — asserting no-sheet before the
+    // popstate lands would pass vacuously in that instant.
+    await expect(page.getByRole('heading', { name: 'Log Classifier' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Discard changes?' })).toHaveCount(0);
+
+    // Dirty: type a code, then Back → the confirm; Keep editing preserves it.
+    await page.getByRole('main').getByRole('button', { name: '+ Log Classifier' }).click();
+    await page.getByLabel('Classifier code').fill('23-01');
+    await page.goBack();
+    await expect(page.getByRole('heading', { name: 'Discard changes?' })).toBeVisible();
+    await page.getByRole('button', { name: 'Keep editing' }).click();
+    await expect(page.getByLabel('Classifier code')).toHaveValue('23-01');
+
+    // Back again → Discard → really leaves.
+    await page.goBack();
+    await page.getByRole('button', { name: 'Discard' }).click();
+    await expect(page.getByRole('heading', { name: 'Log Classifier' })).toHaveCount(0);
+  });
+});
+
 test.describe('Not-found states (M7)', () => {
   // Navigate to a detail screen for an id that doesn't exist — exactly what a dead
   // deep-link or a back-nav to a since-deleted record does — via the app's own
