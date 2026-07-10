@@ -2,12 +2,11 @@ import { test, expect } from '@playwright/test';
 import { seedDemo, gotoSection } from './helpers';
 
 test.describe('Setup wizard', () => {
-  test('"Start fresh" opens the add-your-gear checklist', async ({ page }) => {
+  test('first run leads with the checklist; step 1 opens the gun form', async ({ page }) => {
     await page.goto('/');
-    await page.getByRole('button', { name: 'Add my gear' }).click();
-    await expect(page.getByRole('heading', { name: 'Add your gear' })).toBeVisible();
-    // The gear checklist nudges a gun first.
-    await expect(page.getByText('Guns', { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("Let's get you set up — three steps:")).toBeVisible();
+    await page.getByRole('main').getByRole('button', { name: '1. Add a gun' }).click();
+    await expect(page.getByRole('heading', { name: 'New Gun' })).toBeVisible();
   });
 
   test('loading sample data on top of existing data asks for confirmation', async ({ page }) => {

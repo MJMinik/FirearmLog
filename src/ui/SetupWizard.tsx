@@ -26,6 +26,49 @@ import { MagazineForm } from './MagazinesScreen.tsx';
 
 type Adding = 'gun' | 'optic' | 'ammo' | 'mag' | null;
 
+// Step 3b (signed July 10 2026): the first-run 1-2-3 checklist. Shown on the
+// welcome screen (step 1 active) and above the goal step (step 2 active); Home
+// carries the same three steps until the first session exists. Display-only
+// except the ACTIVE step, which is the tap target for what to do next.
+export function SetupSteps({ gunDone, goalDone, active, onActive, step3Sub }: {
+  gunDone: boolean; goalDone: boolean; active: 1 | 2 | 3; onActive?: () => void;
+  step3Sub?: string;
+}) {
+  const row = (n: 1 | 2 | 3, label: string, done: boolean, sub?: string) => {
+    const isActive = n === active && !done;
+    const body = (
+      <span className="label" style={{
+        fontWeight: isActive ? 600 : 400,
+        color: done || isActive ? undefined : 'var(--text-dim)',
+      }}>
+        <span aria-hidden="true" style={{
+          display: 'inline-block', width: 22,
+          color: done ? 'var(--accent-ink)' : 'var(--text-dim)',
+        }}>{done ? '✓' : '○'}</span>
+        {label}
+        {sub && <div className="row-sub" style={{ marginLeft: 22 }}>{sub}</div>}
+      </span>
+    );
+    if (isActive && onActive) {
+      return (
+        <button className="row-tap" onClick={onActive}>
+          {body}
+          <span className="value" style={{ color: 'var(--accent-ink)', fontWeight: 600 }}>›</span>
+        </button>
+      );
+    }
+    return <div style={{ display: 'flex', padding: '10px 0' }}>{body}</div>;
+  };
+  return (
+    <>
+      {row(1, '1. Add a gun', gunDone)}
+      {row(2, '2. Pick a goal', goalDone)}
+      {row(3, '3. Log your first session', false,
+        step3Sub ?? 'You\'ll do this from Home after your next range trip')}
+    </>
+  );
+}
+
 export function SetupWizard({ onFinish, onCancel }: {
   onFinish: () => void; // mark setup done + return to Home
   onCancel: () => void; // leave without choosing (re-run case)
@@ -48,6 +91,10 @@ export function SetupWizard({ onFinish, onCancel }: {
   const [goalBusy, setGoalBusy] = useState(false);
   const [goalErr, setGoalErr] = useState('');
 
+  // Step 3b: gate the welcome variant on a completed read, so a re-runner with
+  // data never sees a flash of the first-run checklist before counts arrive.
+  const [countsLoaded, setCountsLoaded] = useState(false);
+
   useEffect(() => {
     let alive = true;
     void (async () => {
@@ -55,13 +102,20 @@ export function SetupWizard({ onFinish, onCancel }: {
         countAll('firearms'), countAll('optics'), countAll('ammunition'), countAll('magazines'),
         localLastModified(),
       ]);
-      if (alive) { setCounts({ guns, optics, ammo, mags }); setHasAnyData(lastChange > 0); }
+      if (alive) { setCounts({ guns, optics, ammo, mags }); setHasAnyData(lastChange > 0); setCountsLoaded(true); }
     })();
     return () => { alive = false; };
   }, [bump]);
 
-  // Adding gear: show the real form, then come back to the checklist.
-  const afterAdd = () => { setAdding(null); setBump((b) => b + 1); };
+  // Adding gear: show the real form, then come back to the checklist. Step 3b:
+  // a gun added from the WELCOME checklist advances straight to the goal step
+  // (gearDone decides from a fresh read — or finishes if the question isn't
+  // needed); gear added from the gear list returns there, as before.
+  const afterAdd = () => {
+    const fromWelcome = mode === 'choose' && adding === 'gun';
+    setAdding(null); setBump((b) => b + 1);
+    if (fromWelcome) void gearDone();
+  };
   const cancelAdd = () => setAdding(null);
   if (adding === 'gun') return <GunForm onSaved={afterAdd} onCancel={cancelAdd} />;
   if (adding === 'optic') return <OpticForm onSaved={afterAdd} onCancel={cancelAdd} />;
@@ -150,6 +204,35 @@ export function SetupWizard({ onFinish, onCancel }: {
     }
   }
 
+  // One sample-data card, used by both welcome variants (first-run + re-run).
+  const demoCard = (
+    <div className="card">
+      <h2>Just want to look around?</h2>
+      <p className="report-note" style={{ marginBottom: 12 }}>
+        Load a ready-made sample log — guns, sessions, matches, costs, photos, the works —
+        so you can see everything the app does. You can start fresh any time to clear it.
+      </p>
+      <FormProblem problem={demoErr} />
+      <button className="button secondary" disabled={demoBusy}
+        onClick={() => void demoTapped()}>
+        {demoBusy ? 'Loading sample data…' : 'See it with sample data'}
+      </button>
+    </div>
+  );
+
+  const skipLink = (
+    <button
+      onClick={onFinish}
+      style={{
+        display: 'block', margin: '6px auto 0', padding: 12, minHeight: 44,
+        background: 'none', border: 'none', color: 'var(--accent-ink)',
+        fontSize: 15, cursor: 'pointer',
+      }}
+    >
+      Skip for now — I'm just looking around
+    </button>
+  );
+
   return (
     <div className="screen">
       <div className="navbar">
@@ -159,8 +242,27 @@ export function SetupWizard({ onFinish, onCancel }: {
       </div>
       <h1 className="large-title">Set up FirearmLog</h1>
 
-      {mode === 'choose' && (
+      {mode === 'choose' && countsLoaded && counts.guns === 0 && (
         <>
+          {/* Step 3b: the first-run welcome — the three steps up front, step 1
+              as the tap target, so a brand-new user knows what happens next. */}
+          <p className="report-note" style={{ marginBottom: 12 }}>Let's get you set up — three steps:</p>
+
+          <div className="card">
+            <SetupSteps gunDone={false} goalDone={false} active={1}
+              onActive={() => setAdding('gun')} />
+          </div>
+
+          {demoCard}
+          {skipLink}
+        </>
+      )}
+
+      {mode === 'choose' && countsLoaded && counts.guns > 0 && (
+        <>
+          {/* The re-run welcome (Help → Set Up with a real log): the classic
+              two doors — more gear, or sample data. The first-run checklist
+              would read as nagging here (the steps are already done). */}
           <p className="report-note" style={{ marginBottom: 12 }}>Welcome! How would you like to start?</p>
 
           <div className="card">
@@ -172,29 +274,8 @@ export function SetupWizard({ onFinish, onCancel }: {
             <button className="button" onClick={() => setMode('gear')}>Add my gear</button>
           </div>
 
-          <div className="card">
-            <h2>Just want to look around?</h2>
-            <p className="report-note" style={{ marginBottom: 12 }}>
-              Load a ready-made sample log — guns, sessions, matches, costs, photos, the works —
-              so you can see everything the app does. You can start fresh any time to clear it.
-            </p>
-            <FormProblem problem={demoErr} />
-            <button className="button secondary" disabled={demoBusy}
-              onClick={() => void demoTapped()}>
-              {demoBusy ? 'Loading sample data…' : 'See it with sample data'}
-            </button>
-          </div>
-
-          <button
-            onClick={onFinish}
-            style={{
-              display: 'block', margin: '6px auto 0', padding: 12, minHeight: 44,
-              background: 'none', border: 'none', color: 'var(--accent-ink)',
-              fontSize: 15, cursor: 'pointer',
-            }}
-          >
-            Skip for now — I'm just looking around
-          </button>
+          {demoCard}
+          {skipLink}
         </>
       )}
 
@@ -218,6 +299,16 @@ export function SetupWizard({ onFinish, onCancel }: {
 
       {mode === 'goal' && (
         <>
+          {/* Step 3b: the checklist rides along — box 1 just earned its check,
+              step 2 is where the user stands now. */}
+          <div className="card">
+            <SetupSteps gunDone goalDone={false} active={2} />
+            <button className="row-tap" onClick={() => setMode('gear')}>
+              <span className="label" style={{ color: 'var(--text-dim)' }}>Add more gear — optics, ammo, magazines</span>
+              <span className="value">›</span>
+            </button>
+          </div>
+
           <div className="card">
             <h2>What are you working toward?</h2>
             <p className="report-note" style={{ marginBottom: 8 }}>

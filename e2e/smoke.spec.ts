@@ -5,9 +5,12 @@ test.describe('Smoke', () => {
   test('a fresh install opens on the Setup Wizard with the start options', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Set up FirearmLog' })).toBeVisible();
-    // First run is for new users: start fresh or explore sample data. (Importing
-    // an old backup lives under Gear & Data, not in the first-run wizard.)
-    await expect(page.getByRole('button', { name: 'Add my gear' })).toBeVisible();
+    // First run is for new users: the 1-2-3 checklist (step 3b) or the sample
+    // data door. (Importing an old backup lives under Gear & Data, not here.)
+    await expect(page.getByText("Let's get you set up — three steps:")).toBeVisible();
+    await expect(page.getByRole('main').getByRole('button', { name: '1. Add a gun' })).toBeVisible();
+    await expect(page.getByText('2. Pick a goal')).toBeVisible();
+    await expect(page.getByText('3. Log your first session')).toBeVisible();
     await expect(page.getByRole('button', { name: 'See it with sample data' })).toBeVisible();
   });
 

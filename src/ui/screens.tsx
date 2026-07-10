@@ -18,6 +18,7 @@ import { InfoTip } from './InfoTip.tsx';
 import { Reveal } from './Reveal.tsx';
 import { Icon } from './Icon.tsx';
 import { ClassificationGrid } from './ClassificationGrid.tsx';
+import { SetupSteps } from './SetupWizard.tsx';
 import { ScreenError, ScreenLoading } from './ScreenState.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { isActive, isOwned, isFormer, isRetired, statusBadge } from '../lib/gunStatus.ts';
@@ -310,6 +311,7 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
   const [statRange, setStatRange] = useState<6 | 12 | 'all'>('all');
   const [backupChanges, setBackupChanges] = useState(0);
   const [golden, setGolden] = useState<Goal | null>(null);
+  const [setupGoalDone, setSetupGoalDone] = useState(false);
 
   // Load dismissed alerts from meta store on mount.
   useEffect(() => {
@@ -341,13 +343,18 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
   // The pinned "golden goal" echoed on Home. Only an OPEN (not-yet-achieved) goal
   // shows here — once it's hit, Home stops nudging it (it still lives on Goals).
   // Guarded so a storage hiccup just hides the card rather than breaking Home.
+  // Step 3b: the same read decides the checklist's box 2 — "Pick a goal" counts
+  // as done once the setup question was answered (any answer, incl. skip) or the
+  // user has goals of their own. Fail-safe: an error leaves it unchecked.
   useEffect(() => {
     void (async () => {
       try {
         const settings = await getSettings<AppSettings>();
+        const goals = await getAll<Goal>('goals');
+        setSetupGoalDone(settings?.northStarSeeded === true || goals.length > 0);
         const gid = settings?.goldenGoalId;
         if (!gid) { setGolden(null); return; }
-        const g = goldenGoal(await getAll<Goal>('goals'), gid);
+        const g = goldenGoal(goals, gid);
         setGolden(g && !g.achieved ? g : null);
       } catch {
         setGolden(null);
@@ -417,17 +424,17 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
             <button className="button secondary" style={{ flex: 1 }} onClick={() => open({ kind: 'session-form', planned: true })}>+ Plan Session</button>
           </div>
 
-          {/* ---- F2: the guided handoff to the first session. Purely
-               data-derived (guns exist, no session yet) — no stored flag, so it
-               can never get stuck on. It disappears forever the moment the
-               first session exists: earned, not dismissed. ---- */}
+          {/* ---- F2 + Step 3b: the guided handoff to the first session — the
+               same 1-2-3 checklist the setup wizard showed, with step 3 as the
+               tap target. Purely data-derived (guns exist, no session yet) — no
+               stored flag, so it can never get stuck on. It disappears forever
+               the moment the first session exists: earned, not dismissed. ---- */}
           {firearms.length > 0 && sessions.length === 0 && (
             <div className="card" style={{ marginTop: 16 }}>
               <h2>You're set up.</h2>
-              <p className="report-note" style={{ margin: 0 }}>
-                After your next range trip, tap <strong>+ Log Session</strong> to
-                log your first one. Everything on this screen builds from your sessions.
-              </p>
+              <SetupSteps gunDone goalDone={setupGoalDone} active={3}
+                onActive={() => open({ kind: 'session-form' })}
+                step3Sub="After your next range trip, tap here to log it" />
             </div>
           )}
 

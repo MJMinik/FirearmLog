@@ -8,29 +8,27 @@ import { seedDemo, gotoTab, gotoSection } from './helpers';
 // exists. Unit tests prove the decision + writer; these prove the wiring —
 // the wizard step, the Progress pin row, the Home card, and the handoff.
 
-// Walk the wizard's gear path with one real gun, then tap Done — the exact
-// flow that earns the goal question.
+// Walk the first-run checklist with one real gun: tap step 1, save the gun —
+// the wizard advances to the goal step (step 3b) on its own.
 async function wizardAddGunAndDone(page: Page): Promise<void> {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Add my gear' }).click();
-  // Scoped to main: the desktop sidebar also has a "Guns" button (the recorded
-  // selector lesson — sidebar duplicates content labels; bit E2E #179).
-  await page.getByRole('main').getByRole('button', { name: /^Guns/ }).click();
+  await expect(page.getByText("Let's get you set up — three steps:")).toBeVisible();
+  await page.getByRole('main').getByRole('button', { name: '1. Add a gun' }).click();
   await expect(page.getByRole('heading', { name: 'New Gun' })).toBeVisible();
   await page.getByRole('textbox', { name: 'What this Gun is called' }).fill('First Pistol');
   await page.getByRole('textbox', { name: 'Caliber' }).fill('9mm');
   await page.getByRole('button', { name: 'Add Gun', exact: true }).click();
-  // Back on the checklist with the gun counted, then finish.
-  await expect(page.getByRole('heading', { name: 'Add your gear' })).toBeVisible();
-  await page.getByRole('button', { name: "Done — you're ready to log" }).click();
 }
 
 test.describe('Setup goal (F10): asked, not assigned', () => {
   test('a preset becomes the pinned North Star on Progress and the Home card', async ({ page }) => {
     await wizardAddGunAndDone(page);
 
-    // The goal question appears for the true newcomer.
+    // The goal question appears for the true newcomer — with the checklist
+    // riding along: box 1 checked, step 2 where they stand (step 3b).
     await expect(page.getByRole('heading', { name: 'What are you working toward?' })).toBeVisible();
+    await expect(page.getByText('1. Add a gun')).toBeVisible();
+    await expect(page.getByText('2. Pick a goal')).toBeVisible();
     await page.getByRole('button', { name: 'Shoot tighter groups' }).click();
 
     // Lands on Home with the chosen goal echoed as the North Star card.
@@ -58,6 +56,15 @@ test.describe('Setup goal (F10): asked, not assigned', () => {
     await gotoTab(page, 'Progress');
     await expect(main.getByText('Bill Drill under 2.0 seconds')).toBeVisible();
     await expect(main.getByText('North Star', { exact: true })).toBeVisible();
+  });
+
+  test('Add more gear from the goal step opens the gear list; Done returns to the question', async ({ page }) => {
+    await wizardAddGunAndDone(page);
+    await expect(page.getByRole('heading', { name: 'What are you working toward?' })).toBeVisible();
+    await page.getByRole('button', { name: 'Add more gear — optics, ammo, magazines' }).click();
+    await expect(page.getByRole('heading', { name: 'Add your gear' })).toBeVisible();
+    await page.getByRole('button', { name: "Done — you're ready to log" }).click();
+    await expect(page.getByRole('heading', { name: 'What are you working toward?' })).toBeVisible();
   });
 
   test('write my own requires text before saving', async ({ page }) => {
@@ -128,10 +135,17 @@ test.describe('Guided handoff (F2): Home points at the first session', () => {
     await wizardAddGunAndDone(page);
     await page.getByRole('button', { name: 'Skip for now' }).click();
 
-    // Guns but no sessions yet: the pointer card is up.
+    // Guns but no sessions yet: the checklist card is up with steps 1–2 done
+    // and step 3 as the tap target (step 3b, decision 1+2: Home carries the
+    // scoreboard; a skipped goal still checks box 2).
     const main = page.getByRole('main');
     await expect(main.getByRole('heading', { name: "You're set up." })).toBeVisible();
-    await expect(main.getByText('Everything on this screen builds from your sessions.')).toBeVisible();
+    await expect(main.getByText('2. Pick a goal')).toBeVisible();
+
+    // Step 3's row is the action: it opens Log Session directly.
+    await main.getByRole('button', { name: '3. Log your first session' }).click();
+    await expect(page.getByRole('heading', { name: 'Guns & Rounds' })).toBeVisible();
+    await page.getByRole('button', { name: '‹ Cancel' }).click();
 
     // Log the first session (same minimal flow the sessions spec uses).
     await main.getByRole('button', { name: '+ Log Session' }).click();
