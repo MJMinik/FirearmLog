@@ -8,8 +8,8 @@
 // F10 (session 55): finishing the gear path asks a true newcomer what they're
 // working toward (goal presets + write-your-own + skip) instead of the old
 // boot-time auto-assigned "Reach A class" — see lib/northStar.ts.
-// (The retained Pistol Tracker import code is un-routed as of July 8 2026 —
-// not here — it's not part of the new-user first run.)
+// (The legacy migration importer lives in lib/import/ with no user-facing
+// surface — F11 removed its last screen; it's not part of any first run.)
 import { useEffect, useState } from 'react';
 import { countAll, getAll, getSettings, localLastModified, restoreSnapshot } from '../lib/db.ts';
 import { parseFlog } from '../lib/flog.ts';

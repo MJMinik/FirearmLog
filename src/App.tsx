@@ -28,7 +28,7 @@ import { UspsaImport } from './ui/UspsaImport.tsx';
 import { HelpScreen } from './ui/HelpScreen.tsx';
 import { NumbersGuide } from './ui/NumbersGuide.tsx';
 import { SetupWizard } from './ui/SetupWizard.tsx';
-import { SyncScreen, ImportScreen, FreeSpaceScreen } from './ui/AppDataScreens.tsx';
+import { SyncScreen, FreeSpaceScreen } from './ui/AppDataScreens.tsx';
 import { SettingsScreen } from './ui/SettingsScreen.tsx';
 import { countAll, getSettings, probeDb } from './lib/db.ts';
 import { BootErrorScreen } from './ui/BootErrorScreen.tsx';
@@ -108,10 +108,10 @@ export function App() {
       }
       const st = e.state as { view?: View | null } | null;
       const v = st?.view ?? null;
-      // D-7: the Import screen was retired. A tab whose history was recorded
-      // before that update could still carry an 'import' view; send that Back
-      // navigation home rather than resurrecting the removed screen.
-      setView(v?.kind === 'import' ? null : v);
+      // (F11: the retired Import screen's history special-case is gone with
+      // its view kind — a stale history entry with an unknown kind simply
+      // falls through the route chain and renders the active tab. Safe.)
+      setView(v);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -358,8 +358,6 @@ export function App() {
     content = <SettingsScreen onBack={back} />;
   } else if (view?.kind === 'sync') {
     content = <SyncScreen onBack={back} onImported={refresh} />;
-  } else if (view?.kind === 'import') {
-    content = <ImportScreen onBack={back} onImported={refresh} />;
   } else if (view?.kind === 'free-space') {
     content = <FreeSpaceScreen onBack={back} />;
   } else if (tab === 'home') {

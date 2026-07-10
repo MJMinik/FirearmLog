@@ -49,4 +49,16 @@ test.describe('Menu groups', () => {
       await expect(page.getByText('Something went wrong')).toHaveCount(0);
     });
   }
+
+  // F11 (rule 46): the old Import screen is gone and nothing may offer it —
+  // no "Import" entry in the sidebar or on the More screen, ever again.
+  test('App & Data offers no Import entry (F11)', async ({ page }) => {
+    if (!isDesktop(page)) {
+      await nav(page).getByRole('button', { name: 'More' }).first().click();
+      // Wait for the More screen to render so the zero-count is non-vacuous.
+      await expect(page.getByRole('main').getByRole('button', { name: 'Tour & Setup' })).toBeVisible();
+      await expect(page.getByRole('main').getByRole('button', { name: 'Import', exact: true })).toHaveCount(0);
+    }
+    await expect(nav(page).getByRole('button', { name: 'Import', exact: true })).toHaveCount(0);
+  });
 });

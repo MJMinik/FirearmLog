@@ -1,4 +1,4 @@
-// Magazines: carried over from Pistol Tracker, now editable.
+// Magazines: the user's magazine list, fully editable.
 import { useEffect, useState } from 'react';
 import type { Firearm, Magazine } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';

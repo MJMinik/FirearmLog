@@ -6,7 +6,7 @@ test.describe('Smoke', () => {
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'Set up FirearmLog' })).toBeVisible();
     // First run is for new users: the 1-2-3 checklist (step 3b) or the sample
-    // data door. (Importing an old backup lives under Gear & Data, not here.)
+    // data door. (Restoring a backup lives under Sync & Backup, not here.)
     await expect(page.getByText("Let's get you set up — three steps:")).toBeVisible();
     await expect(page.getByRole('main').getByRole('button', { name: '1. Add a gun' })).toBeVisible();
     await expect(page.getByText('2. Pick a goal')).toBeVisible();

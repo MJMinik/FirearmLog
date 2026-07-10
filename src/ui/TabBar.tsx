@@ -3,8 +3,8 @@
 // One component, two layouts via CSS; nothing is built twice.
 //
 // The sidebar sections are grouped to match the phone More screen: Your Gear /
-// Training / Records / App & Data (Tour & Setup, Sync & Backup, Import, Free Up
-// Space), each a direct sidebar entry on desktop and a row under More on the
+// Training / Records / App & Data (Tour & Setup, Settings, Sync & Backup, Free
+// Up Space), each a direct sidebar entry on desktop and a row under More on the
 // phone. The phone-only "More" tab opens that grouped menu; on desktop the
 // sidebar IS the menu, so the More button is hidden. Phone and desktop tell the
 // same story.
