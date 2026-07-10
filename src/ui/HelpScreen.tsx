@@ -93,7 +93,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Drills',
       view: { kind: 'drills' },
-      body: `The drill library lives under ${at('Drills')}. Each drill knows which gun types it's for and whether it's dry-fire, live-fire, or both — that's how the session picker filters them. A drill has a short and an expandable full description, a scoring type, and a par or max score. When a session has drills, "Print Drills" makes a score sheet of them — a planned session prints blank boxes to fill in at the range, and a logged session prints the same table with your recorded results.`,
+      body: `The drill library lives under ${at('Drills')}. FirearmLog starts you with a set of common pistol drills — Bill Drill, Dot Torture, El Presidente, and more — which you can edit, delete, or add to. Each drill knows which gun types it's for and whether it's dry-fire, live-fire, or both — that's how the session picker filters them. A drill has a short and an expandable full description, a scoring type, and a par or max score. When a session has drills, "Print Drills" makes a score sheet of them — a planned session prints blank boxes to fill in at the range, and a logged session prints the same table with your recorded results.`,
     },
     {
       title: 'Compete — matches',

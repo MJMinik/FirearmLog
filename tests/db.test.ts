@@ -62,6 +62,20 @@ test('commitDataSet replaces imported (dr-) drills but keeps custom (drx-) drill
   assert.ok(has(drills, 'drx-custom'), 'custom drill survived the re-import');
 });
 
+test('commitDataSet keeps stock (drs-) drills — the F4 prefix survives the dr- cleanup', async () => {
+  // Pin the fact the whole scheme leans on: 'drs-…' does NOT start with 'dr-'
+  // (third character is 's', not '-'), so the re-import cleanup spares it.
+  assert.equal('drs-bill-drill'.startsWith('dr-'), false);
+  await commitDataSet(dataSetWith({ drills: [{ id: 'dr-old' }] }), undefined);
+  const { seedDrillsWithSettings } = await import('../src/lib/db.ts');
+  await seedDrillsWithSettings([{ id: 'drs-bill-drill' }], { drillsSeeded: true });
+  // A re-import replaces dr- drills; the stock drill must ride through.
+  await commitDataSet(dataSetWith({ drills: [{ id: 'dr-new' }] }), undefined);
+  const drills = await getAll<{ id: string }>('drills');
+  assert.ok(has(drills, 'drs-bill-drill'), 'stock drill survived the re-import');
+  assert.ok(has(drills, 'dr-new') && !has(drills, 'dr-old'));
+});
+
 test('applyAmmoMerge lands the kept can and repointed rows atomically', async () => {
   await applyAmmoMerge({
     keptCan: { id: 'can-keep', label: 'Kept' },

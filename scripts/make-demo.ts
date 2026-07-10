@@ -19,6 +19,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { buildFlog, type Snapshot } from '../src/lib/flog.ts';
+import { STOCK_DRILLS, stockDrillId } from '../src/lib/stockDrills.ts';
 import type { Media } from '../src/lib/types.ts';
 
 // ---- deterministic RNG (mulberry32) so the demo is stable across rebuilds ----
@@ -121,31 +122,26 @@ for (const a of ammo) {
 const cf9 = ['am-blazer115', 'am-fed124', 'am-aa147', 'am-sig124'];
 
 // ===================== DRILLS =====================
-const drills: [string, 'live' | 'dry' | 'both', string, string, string][] = [
-  ['Bill Drill', 'live', 'time', '6 shots from the holster at 7 yards, all A.', 'Draw and fire six rounds at one target at 7 yd. Goal: all A, sub-2.0s. Builds recoil control and splits.'],
-  ['Failure Drill', 'both', 'time', 'Two to the body, one to the head.', 'Mozambique: 2 body + 1 head from the holster. Trains transitions to a smaller target under speed.'],
-  ['El Presidente', 'live', 'time', 'Classic 12-round test with a turn and reload.', 'Back to targets, turn, 2 each on 3 targets, reload, 2 each again. 10 yd. The all-around test.'],
-  ['Dot Torture', 'live', 'points', '50 rounds, 50 dots, fundamentals under pressure.', 'Slow-fire accuracy standard across draws, one-hand, and transitions. Score out of 50.'],
-  ['Doubles / Hammers', 'both', 'time', 'Controlled pairs, recoil management.', 'Pairs on one target — hammers (one sight picture) and doubles (two). Chase flat, fast splits.'],
-  ['Draw to First Shot', 'both', 'time', 'Holster to first A.', 'Par-time draws to an A at 7 yd. The single highest-value speed skill.'],
-  ['Reload Practice', 'dry', 'time', 'Slide-lock and in-battery reloads.', 'Dry reload reps to a par time. Index the mag well, insert, drive out. Build to sub-1.2s.'],
-  ['Transitions', 'both', 'time', 'Target-to-target eye/gun speed.', 'Two to six targets, move the eyes first. Trains snappy, accurate transitions.'],
-  ['Precision Slow Fire', 'live', 'points', 'Group work at distance.', 'Slow, perfect reps at 15–25 yd. Rebuilds trigger control when speed erodes it.'],
-  ['Accelerator (Steel)', 'live', 'time', 'SCSA-style plate stage practice.', 'Five plates, best-of runs. Trains the Steel Challenge rhythm and transitions.'],
-  ['1-Reload-1', 'both', 'time', 'One shot, reload, one shot.', 'Isolates the reload against the clock. 7 yd, par time to both A hits.'],
-  ['Blake Drill', 'live', 'time', 'Six shots across three targets.', 'One each on three targets, then back — chase transition speed with control.'],
-  ['Box Drill', 'both', 'time', 'Body-body then head-head across two targets.', 'Two targets: bodies then heads. Trains transition + elevation change.'],
-  ['Wide Transitions', 'both', 'time', 'Big swings between targets.', 'Trains eye lead and grip stability across wide arrays.'],
-];
-for (const [name, fire, scoring, brief, full] of drills) {
+// F4 (session 55): the library is SHIPPED APP CONTENT now — the single source
+// is src/lib/stockDrills.ts and the demo imports it (DRY: the two can never
+// drift). Demo drills carry the same fixed 'drs-' stock ids, and the demo
+// settings carry `drillsSeeded` so loading the sample can't double-seed.
+for (const d of STOCK_DRILLS) {
+  // RNG-stream preservation: the old `fire !== 'dry' || chance(0.5)` only
+  // ROLLED for dry drills (short-circuit). The flag is deliberate in the
+  // stock library now, but that roll must still happen in the same spot, or
+  // every random value downstream shifts and the whole regenerated demo
+  // churns for no reason.
+  if (d.fire === 'dry') void chance(0.5);
   stores.drills.push({
-    id: `drx-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`,
-    ...stamp('2025-01-04'), name, gunCategories: ['Pistol'], fire, briefDescription: brief,
-    fullDescription: full, scoring, requiresHolster: fire !== 'dry' || chance(0.5), tags: [],
+    id: stockDrillId(d.name),
+    ...stamp('2025-01-04'), name: d.name, gunCategories: ['Pistol'], fire: d.fire,
+    briefDescription: d.brief, fullDescription: d.full, scoring: d.scoring,
+    requiresHolster: d.holster, tags: [],
   });
 }
-const liveDrills = drills.filter((d) => d[1] !== 'dry').map((d) => d[0]);
-const dryDrills = drills.filter((d) => d[1] !== 'live').map((d) => d[0]);
+const liveDrills = STOCK_DRILLS.filter((d) => d.fire !== 'dry').map((d) => d.name);
+const dryDrills = STOCK_DRILLS.filter((d) => d.fire !== 'live').map((d) => d.name);
 const distances = ['5 yd', '7 yd', '10 yd', '12 yd', '15 yd', '25 yd'];
 
 // ===================== SESSIONS (≈110 over ~18 months) =====================
@@ -502,7 +498,10 @@ if (newestMf && !newestMf.magazineId) {
 // already pinned, so the Home card and the pinned Goals row show in the sample
 // log. (F10, session 55: the wizard's goal question also stays quiet on top of
 // this — an install with goals of its own is never asked, see lib/northStar.ts.)
-stores.meta.push({ key: 'settings', value: { ownerName: 'Demo Shooter', theme: '', checklistCustomItems: { essentials: [], night: [], tactical: [] }, goldenGoalId: 'go-4' } });
+// F4: drillsSeeded rides in the demo settings — the sample log ships WITH the
+// stock library (drs- ids above), so the app-side seeder must see "already
+// seeded" and never pile a second copy on top.
+stores.meta.push({ key: 'settings', value: { ownerName: 'Demo Shooter', theme: '', checklistCustomItems: { essentials: [], night: [], tactical: [] }, goldenGoalId: 'go-4', drillsSeeded: true } });
 
 // ===================== BUILD =====================
 let newest = 0;

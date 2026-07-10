@@ -19,7 +19,7 @@ test.describe('First-run empty Home (activation)', () => {
     await skipToEmptyHome(page);
     const main = page.getByRole('main');
 
-    await expect(main.getByRole('heading', { name: 'FirearmLog' })).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();
 
     // The two newcomer-first actions are the heroes.
     await expect(main.getByRole('button', { name: '+ Add your first gun' })).toBeVisible();

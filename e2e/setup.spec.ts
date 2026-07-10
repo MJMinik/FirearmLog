@@ -22,6 +22,6 @@ test.describe('Setup wizard', () => {
     await expect(page.getByRole('heading', { name: 'Load sample data?' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Load sample data' }).click();
-    await expect(page.getByRole('heading', { name: 'FirearmLog' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible({ timeout: 20_000 });
   });
 });
