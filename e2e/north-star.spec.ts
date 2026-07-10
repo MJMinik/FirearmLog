@@ -13,7 +13,9 @@ import { seedDemo, gotoTab, gotoSection } from './helpers';
 async function wizardAddGunAndDone(page: Page): Promise<void> {
   await page.goto('/');
   await page.getByRole('button', { name: 'Add my gear' }).click();
-  await page.getByRole('button', { name: /^Guns/ }).click();
+  // Scoped to main: the desktop sidebar also has a "Guns" button (the recorded
+  // selector lesson — sidebar duplicates content labels; bit E2E #179).
+  await page.getByRole('main').getByRole('button', { name: /^Guns/ }).click();
   await expect(page.getByRole('heading', { name: 'New Gun' })).toBeVisible();
   await page.getByRole('textbox', { name: 'What this Gun is called' }).fill('First Pistol');
   await page.getByRole('textbox', { name: 'Caliber' }).fill('9mm');
