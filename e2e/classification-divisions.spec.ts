@@ -41,7 +41,7 @@ test.describe('Classification requires 4 scores (USPSA rule)', () => {
     await page.goto('/');
     // Fresh install: skip the wizard, so the log holds exactly what we enter.
     await page.getByRole('button', { name: /Skip for now/ }).click();
-    await expect(page.getByRole('heading', { name: 'FirearmLog' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();
 
     await gotoTab(page, 'Compete');
     const main = page.getByRole('main');

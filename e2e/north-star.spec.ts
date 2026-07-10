@@ -83,17 +83,17 @@ test.describe('Setup goal (F10): asked, not assigned', () => {
 
     // Home, with no North Star card; Progress has no goals.
     const main = page.getByRole('main');
-    await expect(main.getByRole('heading', { name: 'FirearmLog' })).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();
     await expect(main.getByText('Your North Star', { exact: false })).toHaveCount(0);
     await gotoTab(page, 'Progress');
     await expect(main.getByText('No goals yet', { exact: false })).toBeVisible();
 
     // Re-running setup from Help must not re-ask — skip was the answer.
     await gotoSection(page, 'Tour & Setup');
-    await page.getByRole('button', { name: 'Set Up' }).click();
+    await page.getByRole('main').getByRole('button', { name: 'Set Up' }).click();
     await page.getByRole('button', { name: 'Add my gear' }).click();
     await page.getByRole('button', { name: "Done — you're ready to log" }).click();
-    await expect(main.getByRole('heading', { name: 'FirearmLog' })).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'What are you working toward?' })).toHaveCount(0);
   });
 
@@ -162,10 +162,10 @@ test.describe('Guided handoff (F2): Home points at the first session', () => {
 
     // Earned, not dismissed: the pointer is gone, and stays gone on reload.
     await gotoTab(page, 'Home');
-    await expect(main.getByRole('heading', { name: 'FirearmLog' })).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();
     await expect(main.getByRole('heading', { name: "You're set up." })).toHaveCount(0);
     await page.reload();
-    await expect(main.getByRole('heading', { name: 'FirearmLog' })).toBeVisible();
+    await expect(main.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();
     await expect(main.getByRole('heading', { name: "You're set up." })).toHaveCount(0);
   });
 

@@ -7,6 +7,12 @@ import { seedDemo, gotoSection, gotoTab } from './helpers';
 // duplicates on top of the demo's own copy, and the Drills screen has a real
 // empty state behind it all. Unit tests prove the seeding rules; these prove
 // the wiring on the live app.
+//
+// Selector notes (from the pre-push fresh-eyes audit): drill rows are BUTTONS
+// whose accessible name contains the drill name plus sub-text, so we match by
+// role+name (substring), never getByText({exact}) — a drill name is never an
+// element's entire text. And Home's h1 is asserted with exact:true because
+// "FirearmLog" substring-matches the wizard's "Set up FirearmLog" heading.
 
 // First gun via the first-run checklist (step 3b), skipping the goal step.
 async function addFirstGun(page: Page): Promise<void> {
@@ -18,7 +24,7 @@ async function addFirstGun(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Add Gun', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'What are you working toward?' })).toBeVisible();
   await page.getByRole('button', { name: 'Skip for now' }).click();
-  await expect(page.getByRole('main').getByRole('heading', { name: 'FirearmLog' })).toBeVisible();
+  await expect(page.getByRole('main').getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();
 }
 
 test.describe('Stock drill library (F4) + Drills empty state (F5)', () => {
@@ -26,10 +32,10 @@ test.describe('Stock drill library (F4) + Drills empty state (F5)', () => {
     await addFirstGun(page);
     await gotoSection(page, 'Drills');
     const main = page.getByRole('main');
-    await expect(main.getByText('Bill Drill', { exact: true })).toBeVisible();
-    await expect(main.getByText('Dot Torture', { exact: true })).toBeVisible();
-    await expect(main.getByText('El Presidente', { exact: true })).toBeVisible();
-    await expect(main.getByText('Wide Transitions', { exact: true })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Bill Drill' })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Dot Torture' })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'El Presidente' })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Wide Transitions' })).toBeVisible();
   });
 
   test('the session form drill picker offers the stock drills', async ({ page }) => {
@@ -39,7 +45,7 @@ test.describe('Stock drill library (F4) + Drills empty state (F5)', () => {
     // reads its drill list on mount (it doesn't re-read on refresh), so
     // entering it in the same beat as the seed would be a race, not a test.
     await gotoSection(page, 'Drills');
-    await expect(main.getByText('Bill Drill', { exact: true })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Bill Drill' })).toBeVisible();
     await gotoTab(page, 'Home');
     await main.getByRole('button', { name: '3. Log your first session' }).click();
 
@@ -51,8 +57,8 @@ test.describe('Stock drill library (F4) + Drills empty state (F5)', () => {
     await drillsCard.getByRole('button', { name: '+ Add Drill' }).click();
     const sheet = page.getByRole('dialog', { name: 'Pick Drills' });
     await expect(sheet).toBeVisible();
-    await expect(sheet.getByText('Bill Drill', { exact: true })).toBeVisible();
-    await expect(sheet.getByText('Draw to First Shot', { exact: true })).toBeVisible();
+    await expect(sheet.getByRole('button', { name: 'Bill Drill' })).toBeVisible();
+    await expect(sheet.getByRole('button', { name: 'Draw to First Shot' })).toBeVisible();
   });
 
   test('an empty device stays empty, and Drills shows the F5 empty state', async ({ page }) => {
@@ -75,7 +81,7 @@ test.describe('Stock drill library (F4) + Drills empty state (F5)', () => {
     await main.getByRole('button', { name: '+ Add Drill' }).click();
     await page.getByRole('textbox', { name: 'What this Drill is called' }).fill('My Own Drill');
     await page.locator('.navbar-action').click(); // Save
-    await expect(main.getByText('My Own Drill', { exact: true })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'My Own Drill' })).toBeVisible();
 
     // Clear All (typed confirmation) → back to first-run → new first gun.
     await gotoSection(page, 'Tour & Setup');
@@ -86,7 +92,7 @@ test.describe('Stock drill library (F4) + Drills empty state (F5)', () => {
     await addFirstGun(page);
 
     await gotoSection(page, 'Drills');
-    await expect(main.getByText('Bill Drill', { exact: true })).toBeVisible(); // stock is back
+    await expect(main.getByRole('button', { name: 'Bill Drill' })).toBeVisible(); // stock is back
     await expect(main.getByText('My Own Drill')).toHaveCount(0); // custom cleared with the wipe
   });
 
@@ -95,7 +101,7 @@ test.describe('Stock drill library (F4) + Drills empty state (F5)', () => {
     await gotoSection(page, 'Drills');
     const main = page.getByRole('main');
     // Exactly one of each — the demo's copy, with no second set seeded on top.
-    await expect(main.getByText('Bill Drill', { exact: true })).toHaveCount(1);
-    await expect(main.getByText('Dot Torture', { exact: true })).toHaveCount(1);
+    await expect(main.getByRole('button', { name: 'Bill Drill' })).toHaveCount(1);
+    await expect(main.getByRole('button', { name: 'Dot Torture' })).toHaveCount(1);
   });
 });

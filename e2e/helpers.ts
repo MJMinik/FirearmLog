@@ -70,6 +70,6 @@ export async function seedDemo(page: Page): Promise<void> {
   await expect(demoBtn).toBeVisible();
   await demoBtn.click();
   // Once the restore finishes we land on Home, which shows live stats.
-  await expect(page.getByRole('heading', { name: 'FirearmLog' })).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Live-fire rounds')).toBeVisible();
 }
