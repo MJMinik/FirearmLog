@@ -30,7 +30,7 @@ test.describe('Setup goal (F10): asked, not assigned', () => {
     await expect(page.getByText('1. Add a gun')).toBeVisible();
     await expect(page.getByText('2. Pick a goal')).toBeVisible();
     // The active step points at the choices sitting below it.
-    await expect(page.getByText('Pick one from the list below ↓')).toBeVisible();
+    await expect(page.getByText('Pick a goal from one below (or write your own) ↓')).toBeVisible();
     await page.getByRole('button', { name: 'Shoot tighter groups' }).click();
 
     // Lands on Home with the chosen goal echoed as the North Star card.
@@ -152,7 +152,9 @@ test.describe('Guided handoff (F2): Home points at the first session', () => {
     await page.getByRole('button', { name: '‹ Cancel' }).click();
 
     // Log the first session (same minimal flow the sessions spec uses).
-    await main.getByRole('button', { name: '+ Log Session' }).click();
+    // exact: true — the checklist row's sub mentions "+ Log Session", so a
+    // substring match would also hit the row (bit E2E #182, both projects).
+    await main.getByRole('button', { name: '+ Log Session', exact: true }).click();
     const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
     await gunsCard.locator('button.gun-toggle').first().click();
     await gunsCard.getByRole('spinbutton').first().fill('50');

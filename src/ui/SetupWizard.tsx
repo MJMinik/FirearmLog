@@ -305,7 +305,7 @@ export function SetupWizard({ onFinish, onCancel }: {
               "current" didn't say WHERE the goal list was). */}
           <div className="card">
             <SetupSteps gunDone goalDone={false} active={2}
-              step2Sub="Pick one from the list below ↓" />
+              step2Sub="Pick a goal from one below (or write your own) ↓" />
             <button className="row-tap" onClick={() => setMode('gear')}>
               <span className="label" style={{ color: 'var(--text-dim)' }}>Add more gear — optics, ammo, magazines</span>
               <span className="value">›</span>
