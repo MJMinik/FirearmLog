@@ -417,6 +417,20 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
             <button className="button secondary" style={{ flex: 1 }} onClick={() => open({ kind: 'session-form', planned: true })}>+ Plan Session</button>
           </div>
 
+          {/* ---- F2: the guided handoff to the first session. Purely
+               data-derived (guns exist, no session yet) — no stored flag, so it
+               can never get stuck on. It disappears forever the moment the
+               first session exists: earned, not dismissed. ---- */}
+          {firearms.length > 0 && sessions.length === 0 && (
+            <div className="card" style={{ marginTop: 16 }}>
+              <h2>You're set up.</h2>
+              <p className="report-note" style={{ margin: 0 }}>
+                After your next range trip, tap <strong>+ Log Session</strong> to
+                log your first one. Everything on this screen builds from your sessions.
+              </p>
+            </div>
+          )}
+
           {/* ---- Stat grid ---- */}
           <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 8, marginTop: 16 }}>
             <label htmlFor="stat-range" className="cap" style={{ color: 'var(--text-dim)' }}>Rounds &amp; sessions</label>

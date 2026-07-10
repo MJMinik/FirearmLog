@@ -500,8 +500,8 @@ if (newestMf && !newestMf.magazineId) {
 // ===================== META (owner settings) =====================
 // goldenGoalId 'go-4' = "Reach USPSA A class": the demo ships with a North Star
 // already pinned, so the Home card and the pinned Goals row show in the sample
-// log — and the seeder (lib/northStar.ts) only MARKS the install seeded on top
-// of an existing pin, never adds a second starter goal.
+// log. (F10, session 55: the wizard's goal question also stays quiet on top of
+// this — an install with goals of its own is never asked, see lib/northStar.ts.)
 stores.meta.push({ key: 'settings', value: { ownerName: 'Demo Shooter', theme: '', checklistCustomItems: { essentials: [], night: [], tactical: [] }, goldenGoalId: 'go-4' } });
 
 // ===================== BUILD =====================

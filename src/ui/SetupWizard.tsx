@@ -5,13 +5,20 @@
 // the SAME add forms the user already knows (GunForm, OpticForm, AmmoForm,
 // MagazineForm) — no new gear-entry code, and no new data-handling code here.
 // Guns are nudged first because optics, ammo, and sessions all attach to a gun.
+// F10 (session 55): finishing the gear path asks a true newcomer what they're
+// working toward (goal presets + write-your-own + skip) instead of the old
+// boot-time auto-assigned "Reach A class" — see lib/northStar.ts.
 // (The retained Pistol Tracker import code is un-routed as of July 8 2026 —
 // not here — it's not part of the new-user first run.)
 import { useEffect, useState } from 'react';
-import { countAll, localLastModified, restoreSnapshot } from '../lib/db.ts';
+import { countAll, getAll, getSettings, localLastModified, restoreSnapshot } from '../lib/db.ts';
 import { parseFlog } from '../lib/flog.ts';
+import { applySetupGoal, goalStepNeeded, SETUP_GOAL_PRESETS } from '../lib/northStar.ts';
+import type { SetupGoalChoice } from '../lib/northStar.ts';
+import type { AppSettings, Goal } from '../lib/types.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { FormProblem } from './FormProblem.tsx';
+import { noAutofillProps } from './SuggestField.tsx';
 import { GunForm } from './GunForm.tsx';
 import { OpticForm } from './OpticsScreen.tsx';
 import { AmmoForm } from './AmmoScreens.tsx';
@@ -23,7 +30,7 @@ export function SetupWizard({ onFinish, onCancel }: {
   onFinish: () => void; // mark setup done + return to Home
   onCancel: () => void; // leave without choosing (re-run case)
 }) {
-  const [mode, setMode] = useState<'choose' | 'gear'>('choose');
+  const [mode, setMode] = useState<'choose' | 'gear' | 'goal'>('choose');
   const [adding, setAdding] = useState<Adding>(null);
   const [counts, setCounts] = useState({ guns: 0, optics: 0, ammo: 0, mags: 0 });
   // M-6: loading sample data REPLACES the device's log, so the confirm gate
@@ -34,6 +41,12 @@ export function SetupWizard({ onFinish, onCancel }: {
   const [demoBusy, setDemoBusy] = useState(false);
   const [demoErr, setDemoErr] = useState('');
   const [confirmDemo, setConfirmDemo] = useState(false);
+  // F10: the goal step's state — the write-my-own reveal and its text, plus
+  // busy/error so a failed save shows and can be retried instead of vanishing.
+  const [goalCustom, setGoalCustom] = useState(false);
+  const [goalText, setGoalText] = useState('');
+  const [goalBusy, setGoalBusy] = useState(false);
+  const [goalErr, setGoalErr] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -81,6 +94,45 @@ export function SetupWizard({ onFinish, onCancel }: {
     else await loadDemo();
   }
 
+  // F10: "Done" on the gear checklist. Whether the goal question appears is
+  // decided from a FRESH read (mirrors demoTapped's hardening — cached state
+  // can lag): ask only a true newcomer — at least one gun, no goals, and the
+  // question never answered before (northStarSeeded covers old auto-seed
+  // installs too, so nobody is re-asked). Any read failure fails OPEN — finish
+  // the wizard rather than trap the user on a question we can't safely decide.
+  async function gearDone() {
+    try {
+      const [settings, guns, goals] = await Promise.all([
+        getSettings<AppSettings>(), countAll('firearms'), getAll<Goal>('goals'),
+      ]);
+      if (goalStepNeeded({ seeded: settings?.northStarSeeded, gunCount: guns, goals })) {
+        setMode('goal');
+        return;
+      }
+    } catch { /* undecidable → skip the question, never block the exit */ }
+    onFinish();
+  }
+
+  // F10: record the answer, then leave the wizard. A storage failure keeps the
+  // user here with a plain error and everything still tappable — their choice
+  // must never silently vanish.
+  async function pickGoal(choice: SetupGoalChoice) {
+    setGoalErr(''); setGoalBusy(true);
+    try {
+      await applySetupGoal(choice);
+      onFinish();
+    } catch {
+      setGoalBusy(false);
+      setGoalErr('Could not save that — try again.');
+    }
+  }
+
+  function saveCustomGoal() {
+    const text = goalText.trim();
+    if (!text) { setGoalErr('Enter the goal before saving.'); return; }
+    void pickGoal({ kind: 'goal', text });
+  }
+
   // One-tap sample data for testers — loads the bundled demo file straight from
   // the app, so there's nothing to download, save, or pick. Uses the same
   // validated restore path as a normal Load from File.
@@ -101,7 +153,8 @@ export function SetupWizard({ onFinish, onCancel }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={mode === 'choose' ? onCancel : () => setMode('choose')}>‹ Back</button>
+        <button className="back-btn"
+          onClick={mode === 'choose' ? onCancel : mode === 'goal' ? () => setMode('gear') : () => setMode('choose')}>‹ Back</button>
         <span />
       </div>
       <h1 className="large-title">Set up FirearmLog</h1>
@@ -159,7 +212,55 @@ export function SetupWizard({ onFinish, onCancel }: {
             {gearRow('Ammo', counts.ammo, 'ammo', false)}
             {gearRow('Magazines', counts.mags, 'mag', false)}
           </div>
-          <button className="button" onClick={onFinish}>Done — go to the app</button>
+          <button className="button" onClick={() => void gearDone()}>Done — you're ready to log</button>
+        </>
+      )}
+
+      {mode === 'goal' && (
+        <>
+          <div className="card">
+            <h2>What are you working toward?</h2>
+            <p className="report-note" style={{ marginBottom: 8 }}>
+              Pick one to keep in front of you on Home — you can change this anytime.
+            </p>
+            <FormProblem problem={goalErr} />
+            {SETUP_GOAL_PRESETS.map((p) => (
+              <button key={p.text} className="row-tap" disabled={goalBusy}
+                onClick={() => void pickGoal({ kind: 'goal', text: p.text, category: p.category })}>
+                <span className="label">{p.text}<div className="row-sub">{p.category}</div></span>
+                <span className="value">›</span>
+              </button>
+            ))}
+            {goalCustom ? (
+              <>
+                <label className="field">My goal
+                  <input value={goalText} {...noAutofillProps} name="fl-setup-goal" autoFocus
+                    enterKeyHint="done"
+                    placeholder="Bill Drill under 2.0 seconds"
+                    onChange={(e) => setGoalText(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') saveCustomGoal(); }} />
+                </label>
+                <button className="button" disabled={goalBusy} onClick={saveCustomGoal}>
+                  Set my goal
+                </button>
+              </>
+            ) : (
+              <button className="row-tap" disabled={goalBusy} onClick={() => setGoalCustom(true)}>
+                <span className="label">Write my own</span>
+                <span className="value">›</span>
+              </button>
+            )}
+          </div>
+          <button
+            onClick={() => void pickGoal({ kind: 'skip' })} disabled={goalBusy}
+            style={{
+              display: 'block', margin: '6px auto 0', padding: 12, minHeight: 44,
+              background: 'none', border: 'none', color: 'var(--accent-ink)',
+              fontSize: 15, cursor: 'pointer',
+            }}
+          >
+            Skip for now
+          </button>
         </>
       )}
 

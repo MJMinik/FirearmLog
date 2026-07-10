@@ -32,7 +32,6 @@ import { SyncScreen, ImportScreen, FreeSpaceScreen } from './ui/AppDataScreens.t
 import { SettingsScreen } from './ui/SettingsScreen.tsx';
 import { countAll, getSettings, probeDb } from './lib/db.ts';
 import { BootErrorScreen } from './ui/BootErrorScreen.tsx';
-import { ensureNorthStar } from './lib/northStar.ts';
 import { syncTelemetryEnabled } from './lib/telemetry.ts';
 import type { AppSettings } from './lib/types.ts';
 import { ErrorBoundary } from './ui/ErrorBoundary.tsx';
@@ -138,20 +137,10 @@ export function App() {
     // still never re-trap the user. On a healthy boot this runs exactly once.
   }, [bootFailed]);
 
-  // North Star seed: once the log is real (at least one gun), a brand-new
-  // install gets its one pinned starter goal — see lib/northStar.ts for the
-  // full rules. The call is self-guarding (northStarSeeded) and fail-safe, so
-  // running it on every data change is cheap and idempotent; it returns true
-  // only the single time it creates the goal — one refresh then shows the card
-  // on Home and the pinned row on Progress → Goals immediately.
-  useEffect(() => {
-    let alive = true;
-    void (async () => {
-      const created = await ensureNorthStar();
-      if (alive && created) setRefreshKey((k) => k + 1);
-    })();
-    return () => { alive = false; };
-  }, [refreshKey]);
+  // F10 (session 55): the boot-time North Star auto-seed is GONE. The starter
+  // goal is now ASKED in the Setup Wizard's goal step (lib/northStar.ts) —
+  // nothing is pinned to anyone unasked, ever. Existing installs keep whatever
+  // they have; the wizard's own guard (northStarSeeded) keeps re-runs quiet.
 
   // Keep the telemetry gate in step with the stored opt-out: on start and after
   // any data change (a toggle, Load-from-File, an import, Clear All all bump

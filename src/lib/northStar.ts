@@ -1,127 +1,106 @@
-// The North Star seed (built session 47, landed session 48).
+// The setup goal (F10, session 55 — supersedes the session-47 auto-seed).
 //
-// A brand-new install gets ONE starter goal — "Reach A class" — created and
-// pinned automatically, so the first real look at Home and Progress → Goals
-// shows a north star instead of an empty list. Four rules, each earned:
+// Originally a brand-new install was auto-assigned ONE starter goal — "Reach
+// A class" — the moment the log was real. That was a USPSA competitor's goal
+// handed to every shooter, hunters included, so the Setup Wizard now ASKS
+// instead: presets + write-your-own + skip. This module keeps the pieces the
+// wizard needs; the boot-time auto-seed (ensureNorthStar) is gone.
 //
-//  - AT MOST ONCE PER INSTALL. `northStarSeeded` in settings is the guard:
-//    once it's true this module never writes again, so deleting or unpinning
-//    the seed is respected forever — the starter goal must never feel haunted.
-//  - ONLY ONCE THE LOG IS REAL (at least one gun). Seeding an EMPTY device
-//    would make a fresh install claim "newer work than the file" during a
-//    backup restore (caught by the round-trip E2E), and would break the
-//    sample-data confirm gate's "genuinely empty" read. An empty device stays
-//    genuinely empty — which is also why the welcome-state Home shows no card.
-//  - THE TRUE NEWCOMER ONLY (R-H / D-2, decision 1a, July 9 2026). The seed
-//    gives a first-time shooter their first goal. An install that already has
-//    goals of its own — an existing user upgrading into this feature, or an old
-//    backup restored onto a fresh install — is NOT a newcomer, so it is left
-//    entirely untouched: no goal is pinned unasked. (We don't even mark it
-//    seeded, so if that user later clears their goals they can still be seeded.)
-//  - AN EXISTING PIN IS NEVER TOUCHED. If the user (or the demo data) already
-//    pinned a goal, we only mark the install seeded — so unpinning later can't
-//    surprise-summon the starter goal.
-//  - "START FRESH" RE-SEEDS — correct, because Clear All wipes settings too:
-//    an erased device is a brand-new install again by definition.
+// The rules that survive from the old seeder, each still earned:
 //
-// The seed's id is FIXED so the write is idempotent: if the app dies between
-// the goal write and the settings write, the retry overwrites the same record
-// instead of duplicating it.
+//  - AT MOST ONCE PER INSTALL. `northStarSeeded` in settings still guards:
+//    once the question is ANSWERED (any answer, including skip), it is never
+//    asked again — re-running the wizard from Help must not nag. Existing
+//    installs already carry the flag from the auto-seed era, so they are
+//    never asked either (untouched, by design).
+//  - ONLY ONCE THE LOG IS REAL (at least one gun). A goal written on an
+//    otherwise-empty device would make a fresh install claim "newer work than
+//    the file" during a backup restore, and would break the sample-data
+//    confirm gate's "genuinely empty" read. No gun → no question.
+//  - AN INSTALL WITH GOALS OF ITS OWN IS NOT ASKED. A restored backup or an
+//    upgrade already has goals; asking would talk past them. We deliberately
+//    do NOT mark the install seeded in that case — if those goals are ever
+//    cleared and setup re-runs, the question is still available.
+//  - "START FRESH" ASKS AGAIN — correct, because Clear All wipes settings
+//    too: an erased device is a brand-new install again by definition.
+//
+// The chosen goal's id is FIXED so the write is idempotent: a retry after a
+// crash overwrites the same record instead of duplicating it. The write path
+// is the existing, tested seedGoalWithSettings (goal + guard + pin in ONE
+// transaction), under the same cross-tab exclusion as restore/import/erase.
 
-import { countAll, getAll, getSettings, putSettings, seedGoalWithSettings, withExclusiveIo } from './db.ts';
+import { putSettings, seedGoalWithSettings, withExclusiveIo } from './db.ts';
 import { stampNew } from './stamps.ts';
 import { todayKey } from './dates.ts';
 import type { AppSettings, Goal } from './types.ts';
 
 export const NORTH_STAR_GOAL_ID = 'go-north-star';
 
-/** The starter goal, verbatim (Michael-approved, session 47). */
-export const NORTH_STAR_GOAL = {
-  text: 'Reach A class',
-  category: 'Classification',
-  target: '75% classifier average',
-} as const;
-
-export type NorthStarAction = 'none' | 'mark' | 'seed';
+/**
+ * The wizard's goal presets (Michael-approved wording, session-54 spec).
+ * Categories reuse the free-text vocabulary the Goals screen already speaks —
+ * they show as the goal's grouping line and feed the category suggestions.
+ */
+export const SETUP_GOAL_PRESETS = [
+  { text: 'Shoot tighter groups', category: 'Accuracy' },
+  { text: 'Build confident, safe gun handling', category: 'Fundamentals' },
+  { text: 'Reach a USPSA/IDPA classification', category: 'Classification' },
+  { text: 'Be ready for hunting season', category: 'Hunting' },
+] as const;
 
 /**
- * Decide what the seeder should do. Pure — no storage — so every branch is
- * unit-tested without IndexedDB.
+ * Should the wizard show the goal step? Pure — no storage — so every branch
+ * is unit-tested without IndexedDB. The caller decides from a FRESH read at
+ * tap time (the wizard's cached counts can lag).
  */
-export function northStarAction(input: {
+export function goalStepNeeded(input: {
   seeded: boolean | undefined;
   gunCount: number;
-  goldenGoalId: string | undefined;
   goals: Pick<Goal, 'id'>[];
-}): NorthStarAction {
-  if (input.seeded) return 'none';           // once per install, forever
-  if (input.gunCount === 0) return 'none';   // the log isn't real yet
-  const pinIsLive =
-    !!input.goldenGoalId && input.goals.some((g) => g.id === input.goldenGoalId);
-  if (pinIsLive) return 'mark';              // never touch an existing pin
-  // R-H (decision 1a): the seed is for the true NEWCOMER. An install that
-  // already has goals of its own — an upgrade into this feature, or a restored
-  // backup — is not a newcomer, so leave it entirely untouched. We return
-  // 'none' (not 'mark') on purpose: don't burn the one-shot, so if that user
-  // later clears their own goals they can still be seeded as a fresh start.
-  const hasOwnGoal = input.goals.some((g) => g.id !== NORTH_STAR_GOAL_ID);
-  if (hasOwnGoal) return 'none';
-  return 'seed';                             // guns, no pin, no goals of their own
+}): boolean {
+  if (input.seeded) return false;        // answered once, never asked again
+  if (input.gunCount === 0) return false; // the log isn't real yet
+  if (input.goals.length > 0) return false; // they have goals — don't talk past them
+  return true;
 }
 
+export type SetupGoalChoice =
+  | { kind: 'skip' }
+  | { kind: 'goal'; text: string; category?: string };
+
 /**
- * Run the seed check against the database. Returns true only the single time
- * the starter goal is actually created (so the caller knows to re-render);
- * marking-only and no-op runs return false. Fail-safe: a storage hiccup can
- * never break app open — it just means we try again next time.
+ * Record the user's answer. Skip marks the install answered and writes no
+ * goal; a chosen goal is created under the fixed id, pinned as the North
+ * Star, and the answered flag lands in the SAME transaction. NOT fail-safe
+ * on purpose: this is a user-initiated write, so a failure must surface to
+ * the wizard (which shows it and offers retry) rather than vanish silently.
  */
-export async function ensureNorthStar(now: number = Date.now()): Promise<boolean> {
-  try {
-    // Cheap early-exit on every open, no lock needed: once seeded, never again.
-    // (A restore rewrites settings in one atomic tx, so this read is never half.)
-    if ((await getSettings<AppSettings>())?.northStarSeeded) return false;
-    // Not yet seeded. Run the decision AND any write under the SAME exclusion as
-    // restore/import/erase (B6), so a second tab's restore can't interleave with
-    // our reads/writes (D-1). If a restore holds the lock this throws, and the
-    // catch below turns it into "try again next open" — fail-safe, never a hang.
-    return await withExclusiveIo('the goal seed', async () => {
-      const settings = await getSettings<AppSettings>();
-      if (settings?.northStarSeeded) return false; // another tab seeded meanwhile
-      const gunCount = await countAll('firearms');
-      const goals = gunCount > 0 ? await getAll<Goal>('goals') : [];
-      const action = northStarAction({
-        seeded: settings?.northStarSeeded,
-        gunCount,
-        goldenGoalId: settings?.goldenGoalId,
-        goals,
-      });
-      if (action === 'none') return false;
-      if (action === 'mark') {
-        await putSettings<AppSettings>({ northStarSeeded: true });
-        return false; // nothing on screen changed
-      }
-      // Seed: the goal AND the guard+pin in ONE transaction (D-1). The fixed id
-      // keeps even this idempotent — a retry overwrites, never duplicates.
-      const goal: Goal = stampNew(
-        {
-          text: NORTH_STAR_GOAL.text,
-          category: NORTH_STAR_GOAL.category,
-          target: NORTH_STAR_GOAL.target,
-          achieved: false,
-          dateSet: todayKey(new Date(now)),
-          dateAchieved: '',
-        },
-        NORTH_STAR_GOAL_ID,
-        now
-      );
-      await seedGoalWithSettings<AppSettings>(goal, {
-        northStarSeeded: true,
-        goldenGoalId: NORTH_STAR_GOAL_ID,
-      });
-      return true;
-    });
-  } catch (e) {
-    console.error('North Star seed check failed', e);
-    return false; // resilience-first: never let the seed break an app open
+export async function applySetupGoal(
+  choice: SetupGoalChoice,
+  now: number = Date.now(),
+): Promise<void> {
+  if (choice.kind === 'skip') {
+    await putSettings<AppSettings>({ northStarSeeded: true });
+    return;
   }
+  const goal: Goal = stampNew(
+    {
+      text: choice.text,
+      category: choice.category ?? '',
+      target: '',
+      achieved: false,
+      dateSet: todayKey(new Date(now)),
+      dateAchieved: '',
+    },
+    NORTH_STAR_GOAL_ID,
+    now
+  );
+  // Same cross-tab exclusion as restore/import/erase (B6), so the write can't
+  // interleave with a restore running in another tab.
+  await withExclusiveIo('the setup goal', async () => {
+    await seedGoalWithSettings<AppSettings>(goal, {
+      northStarSeeded: true,
+      goldenGoalId: NORTH_STAR_GOAL_ID,
+    });
+  });
 }
