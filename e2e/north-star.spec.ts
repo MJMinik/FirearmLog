@@ -29,6 +29,8 @@ test.describe('Setup goal (F10): asked, not assigned', () => {
     await expect(page.getByRole('heading', { name: 'What are you working toward?' })).toBeVisible();
     await expect(page.getByText('1. Add a gun')).toBeVisible();
     await expect(page.getByText('2. Pick a goal')).toBeVisible();
+    // The active step points at the choices sitting below it.
+    await expect(page.getByText('Pick one from the list below ↓')).toBeVisible();
     await page.getByRole('button', { name: 'Shoot tighter groups' }).click();
 
     // Lands on Home with the chosen goal echoed as the North Star card.
@@ -141,6 +143,8 @@ test.describe('Guided handoff (F2): Home points at the first session', () => {
     const main = page.getByRole('main');
     await expect(main.getByRole('heading', { name: "You're set up." })).toBeVisible();
     await expect(main.getByText('2. Pick a goal')).toBeVisible();
+    // Step 3 teaches both doors: tap the row now, or + Log Session later.
+    await expect(main.getByText('Tap here to log it now', { exact: false })).toBeVisible();
 
     // Step 3's row is the action: it opens Log Session directly.
     await main.getByRole('button', { name: '3. Log your first session' }).click();

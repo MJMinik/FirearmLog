@@ -30,9 +30,9 @@ type Adding = 'gun' | 'optic' | 'ammo' | 'mag' | null;
 // welcome screen (step 1 active) and above the goal step (step 2 active); Home
 // carries the same three steps until the first session exists. Display-only
 // except the ACTIVE step, which is the tap target for what to do next.
-export function SetupSteps({ gunDone, goalDone, active, onActive, step3Sub }: {
+export function SetupSteps({ gunDone, goalDone, active, onActive, step2Sub, step3Sub }: {
   gunDone: boolean; goalDone: boolean; active: 1 | 2 | 3; onActive?: () => void;
-  step3Sub?: string;
+  step2Sub?: string; step3Sub?: string;
 }) {
   const row = (n: 1 | 2 | 3, label: string, done: boolean, sub?: string) => {
     const isActive = n === active && !done;
@@ -62,7 +62,7 @@ export function SetupSteps({ gunDone, goalDone, active, onActive, step3Sub }: {
   return (
     <>
       {row(1, '1. Add a gun', gunDone)}
-      {row(2, '2. Pick a goal', goalDone)}
+      {row(2, '2. Pick a goal', goalDone, step2Sub)}
       {row(3, '3. Log your first session', false,
         step3Sub ?? 'You\'ll do this from Home after your next range trip')}
     </>
@@ -300,9 +300,12 @@ export function SetupWizard({ onFinish, onCancel }: {
       {mode === 'goal' && (
         <>
           {/* Step 3b: the checklist rides along — box 1 just earned its check,
-              step 2 is where the user stands now. */}
+              step 2 is where the user stands now, and its sub points at the
+              choices sitting just below (Michael's fix: without the pointer,
+              "current" didn't say WHERE the goal list was). */}
           <div className="card">
-            <SetupSteps gunDone goalDone={false} active={2} />
+            <SetupSteps gunDone goalDone={false} active={2}
+              step2Sub="Pick one from the list below ↓" />
             <button className="row-tap" onClick={() => setMode('gear')}>
               <span className="label" style={{ color: 'var(--text-dim)' }}>Add more gear — optics, ammo, magazines</span>
               <span className="value">›</span>

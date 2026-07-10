@@ -434,7 +434,7 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
               <h2>You're set up.</h2>
               <SetupSteps gunDone goalDone={setupGoalDone} active={3}
                 onActive={() => open({ kind: 'session-form' })}
-                step3Sub="After your next range trip, tap here to log it" />
+                step3Sub="Tap here to log it now, or any time with + Log Session at the top of this screen" />
             </div>
           )}
 
