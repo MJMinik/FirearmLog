@@ -346,8 +346,13 @@ export function App() {
   } else if (view?.kind === 'numbers') {
     content = <NumbersGuide onBack={back} section={view.section} />;
   } else if (view?.kind === 'setup') {
+    // Finishing setup lands on HOME — the wizard's stated contract ("mark
+    // setup done + return to Home"). Before this, replace(null) dropped the
+    // user onto whatever TAB sat underneath (Progress, More…) when the wizard
+    // was re-run from Help — caught by the hardened E2E heading waits, which
+    // had been passing vacuously on a "FirearmLog" substring match.
     content = <SetupWizard
-      onFinish={() => { refresh(); replace(null); }}
+      onFinish={() => { refresh(); setTabState('home'); replace(null); scrollTop(); }}
       onCancel={back} />;
   } else if (view?.kind === 'settings') {
     content = <SettingsScreen onBack={back} />;
