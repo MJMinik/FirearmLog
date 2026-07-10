@@ -30,6 +30,9 @@ export function GunForm({ id, onSaved, onCancel }: {
   const [customRefs, setCustomRefs] = useState<Reference[]>([]);
   const [refSuggestion, setRefSuggestion] = useState<ReferenceEntry | null>(null);
   const [dismissedSuggestionId, setDismissedSuggestionId] = useState<string | null>(null);
+  // F9: shows the inline "Care guide linked ✓" note after the Link tap this
+  // visit (never on a form that merely loaded with a link already set).
+  const [justLinked, setJustLinked] = useState(false);
 
   useEffect(() => {
     void getAll<Reference>('references').then(setCustomRefs);
@@ -146,15 +149,24 @@ export function GunForm({ id, onSaved, onCancel }: {
         </Reveal>
       </div>
 
+      <button className="button" onClick={() => void save()}>{editing ? 'Save changes' : 'Add Gun'}</button>
+
+      {/* F7: the prompt lives BELOW the save button, so its appearing
+          mid-typing can never shove Add Gun out from under a tap. */}
       {refSuggestion && (
-        <div className="card">
+        <div className="card" style={{ marginTop: 16 }}>
           <p className="report-note" style={{ marginBottom: 8 }}>
-            We found a maintenance guide for <strong>{manufacturer.trim()}</strong>: <strong>{refSuggestion.name}</strong>.
+            {/* F8: when the maker IS the guide's name, say it once. */}
+            {manufacturer.trim().toLowerCase() === refSuggestion.name.toLowerCase() ? (
+              <>We found a maintenance guide for <strong>{refSuggestion.name}</strong>.{' '}</>
+            ) : (
+              <>We found a maintenance guide for <strong>{manufacturer.trim()}</strong>: <strong>{refSuggestion.name}</strong>.{' '}</>
+            )}
             Want to link it so its care schedule fills in this gun's upkeep?
           </p>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="button secondary" style={{ flex: 1 }}
-              onClick={() => { setReferenceId(refSuggestion.id); setRefSuggestion(null); }}>
+              onClick={() => { setReferenceId(refSuggestion.id); setRefSuggestion(null); setJustLinked(true); }}>
               Link {refSuggestion.name}
             </button>
             <button className="button secondary" style={{ flex: 1 }}
@@ -165,7 +177,10 @@ export function GunForm({ id, onSaved, onCancel }: {
         </div>
       )}
 
-      <button className="button" onClick={() => void save()}>{editing ? 'Save changes' : 'Add Gun'}</button>
+      {/* F9: linking used to just vanish the prompt — confirm it plainly. */}
+      {justLinked && referenceId && (
+        <p className="report-note" style={{ marginTop: 12, textAlign: 'center' }}>Care guide linked ✓</p>
+      )}
     </div>
   );
 }

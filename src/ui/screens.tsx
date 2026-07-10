@@ -895,7 +895,7 @@ export function MoreScreen({ refreshKey, open }: {
       <div className="card">
         <button className="row-tap" onClick={() => open({ kind: 'maintenance' })}>
           <span className="row-ico" aria-hidden="true"><Icon name="maintenance" size={20} /></span>
-          <span className="label">Maintenance</span>
+          <span className="label">Gun Maintenance</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'malfunctions' })}>

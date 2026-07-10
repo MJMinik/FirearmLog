@@ -51,7 +51,7 @@ const GROUPS: { label: string; sections: SectionDef[] }[] = [
   {
     label: 'Records',
     sections: [
-      { target: { kind: 'maintenance' }, label: 'Maintenance', icon: 'maintenance', also: [] },
+      { target: { kind: 'maintenance' }, label: 'Gun Maintenance', icon: 'maintenance', also: [] },
       { target: { kind: 'malfunctions' }, label: 'Malfunctions', icon: 'malfunction', also: [] },
       { target: { kind: 'costs' }, label: 'Costs & Purchases', icon: 'costs', also: ['purchase-form'] },
       { target: { kind: 'reports' }, label: 'Reports', icon: 'reports', also: [] }

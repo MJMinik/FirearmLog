@@ -142,9 +142,9 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
       body: `Ammo (under ${at('Ammo')}) tracks your inventory with first-in-first-out cost basis, so the cost of rounds you shoot is figured from what you actually paid; when you add ammo you choose whether you're logging a purchase (it lands in Costs & Purchases) or just counting rounds you already own. ${at('Costs & Purchases')} pulls everything together — ammo, range fees, match fees, gear, travel — by category and month, with cost per round and spend by gun. Because a range fee lives on its session and a match fee lives on its match, each fee is stored in exactly one place and counted exactly once.`,
     },
     {
-      title: 'Maintenance & reference',
+      title: 'Gun maintenance & care guides',
       view: { kind: 'maintenance' },
-      body: `Log cleaning and parts changes under ${at('Maintenance')}; schedules come from each gun's linked Care Guide or your own settings, and Home warns you when something's due. Care Guides (under ${at('Care Guides')}) holds manufacturer care guides for popular pistol, rifle, and shotgun makers, and you can add your own.`,
+      body: `Log cleaning and parts changes under ${at('Gun Maintenance')}; schedules come from each gun's linked Care Guide or your own settings, and Home warns you when something's due. Care Guides (under ${at('Care Guides')}) holds manufacturer care guides for popular pistol, rifle, and shotgun makers, and you can add your own.`,
     },
     {
       title: 'Malfunctions',

@@ -12,6 +12,8 @@ test.describe('Smoke', () => {
     await expect(page.getByText('2. Pick a goal')).toBeVisible();
     await expect(page.getByText('3. Log your first session')).toBeVisible();
     await expect(page.getByRole('button', { name: 'See it with sample data' })).toBeVisible();
+    // F6: a true first run has nowhere to go back to — no Back button.
+    await expect(page.getByRole('button', { name: '‹ Back' })).toHaveCount(0);
   });
 
   test('the one-tap demo loads a full dataset and lands on a populated Home', async ({ page }) => {

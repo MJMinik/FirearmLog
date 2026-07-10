@@ -31,7 +31,7 @@ test.describe('Navigation', () => {
     'Magazines',
     'Drills',
     'Costs & Purchases',
-    'Maintenance',
+    'Gun Maintenance',
     'Parts',
     'Care Guides',
     'Reports',

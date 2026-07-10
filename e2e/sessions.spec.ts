@@ -35,4 +35,28 @@ test.describe('Sessions', () => {
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
     await expect(page.getByText(/50\s*(rds|reps)/).first()).toBeVisible();
   });
+
+  // Session-55 fresh-eyes find: with an EMPTY ammo library the Ammo Used card
+  // used to vanish entirely — a new user never learned it existed. Now it
+  // stays and teaches the door; with ammo present, the normal card shows.
+  test('empty ammo library: Log Session keeps the Ammo Used card as a hint', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('main').getByRole('button', { name: '1. Add a gun' }).click();
+    await page.getByRole('textbox', { name: 'What this Gun is called' }).fill('First Pistol');
+    await page.getByRole('textbox', { name: 'Caliber' }).fill('9mm');
+    await page.getByRole('button', { name: 'Add Gun', exact: true }).click();
+    await page.getByRole('button', { name: 'Skip for now' }).click();
+
+    await page.getByRole('main').getByRole('button', { name: '+ Log Session', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'Ammo Used' })).toBeVisible();
+    await expect(page.getByText('Add your ammo under More → Ammo to track rounds used here.')).toBeVisible();
+  });
+
+  test('with ammo in the library, the hint is gone and the real card shows', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Log');
+    await page.getByRole('button', { name: '+ Log Session' }).click();
+    await expect(page.getByRole('heading', { name: 'Ammo Used' })).toBeVisible();
+    await expect(page.getByText('Add your ammo under More → Ammo', { exact: false })).toHaveCount(0);
+  });
 });

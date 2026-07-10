@@ -785,6 +785,16 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         )}
       </div>
 
+      {/* First-run discoverability (Michael's fresh-eyes find, session 55):
+          with an empty ammo library this card used to vanish entirely, so a
+          new user never learned it existed. Keep the card, teach the door. */}
+      {kind !== 'dry_fire' && ammoLib.length === 0 && (
+        <div className="card">
+          <h2>Ammo Used</h2>
+          <p className="report-note">Add your ammo under More → Ammo to track rounds used here.</p>
+        </div>
+      )}
+
       {kind !== 'dry_fire' && ammoLib.length > 0 && (
         <div className="card">
           <h2>Ammo Used</h2>

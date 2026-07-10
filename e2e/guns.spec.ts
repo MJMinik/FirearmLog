@@ -36,4 +36,30 @@ test.describe('Guns', () => {
     await expect(page.getByText(name)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Retire or remove this gun…' })).toBeVisible();
   });
+
+  // F7 + F8 + F9: the care-guide prompt appears BELOW Add Gun (so it can't
+  // shove the button mid-tap), names the maker once when it matches the guide,
+  // and confirms the link inline instead of silently vanishing.
+  test('care-guide prompt: no name doubling, link confirms, Add Gun still saves', async ({ page }) => {
+    await seedDemo(page);
+    await gotoSection(page, 'Guns');
+    await page.getByRole('button', { name: '+ Add Gun' }).click();
+
+    const name = `E2E Glock ${Date.now()}`;
+    await page.getByRole('textbox', { name: 'What this Gun is called' }).fill(name);
+    await page.getByRole('textbox', { name: 'Made by' }).fill('Glock');
+
+    // F8: the maker equals the guide name → said once, never "Glock: Glock".
+    await expect(page.getByText('We found a maintenance guide for Glock.', { exact: false })).toBeVisible();
+    await expect(page.getByText('Glock: Glock')).toHaveCount(0);
+
+    // F9: linking confirms inline.
+    await page.getByRole('button', { name: 'Link Glock' }).click();
+    await expect(page.getByText('Care guide linked ✓')).toBeVisible();
+
+    // F7 regression: with prompt/confirmation present, Add Gun still lands.
+    await page.getByRole('textbox', { name: 'Caliber' }).fill('9mm');
+    await page.getByRole('button', { name: 'Add Gun', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Retire or remove this gun…' })).toBeVisible();
+  });
 });

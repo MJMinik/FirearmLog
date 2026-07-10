@@ -236,8 +236,13 @@ export function SetupWizard({ onFinish, onCancel }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn"
-          onClick={mode === 'choose' ? onCancel : mode === 'goal' ? () => setMode('gear') : () => setMode('choose')}>‹ Back</button>
+        {/* F6: on a true first run (auto-presented welcome, no gun yet) Back
+            leads nowhere the user has been — hide it. Every other wizard
+            screen has a real place to return to. */}
+        {!(mode === 'choose' && (!countsLoaded || counts.guns === 0)) && (
+          <button className="back-btn"
+            onClick={mode === 'choose' ? onCancel : mode === 'goal' ? () => setMode('gear') : () => setMode('choose')}>‹ Back</button>
+        )}
         <span />
       </div>
       <h1 className="large-title">Set up FirearmLog</h1>
