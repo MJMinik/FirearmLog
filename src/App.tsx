@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { TabBar } from './ui/TabBar.tsx';
+import { DiscardChangesSheet } from './ui/Sheet.tsx';
 import type { TabId } from './ui/TabBar.tsx';
 import type { View } from './ui/nav.ts';
 import {
@@ -39,6 +40,25 @@ import { ErrorBoundary } from './ui/ErrorBoundary.tsx';
 export function App() {
   const [tab, setTabState] = useState<TabId>('home');
   const [view, setViewState] = useState<View | null>(null);
+  // F3: the popstate handler is registered once, so it can't read `view` from
+  // React state (it would be stale). This ref always mirrors the current view;
+  // setView is the single writer that keeps state and ref in step.
+  const viewRef = useRef<View | null>(null);
+  const setView = (v: View | null) => { viewRef.current = v; setViewState(v); };
+
+  // F3: the unsaved-edits guard for the exits App owns. SessionForm reports its
+  // dirty state into this ref (a ref, not state — navigation handlers need the
+  // CURRENT value synchronously, and a flag change must not re-render the app).
+  // When a guarded navigation hits a dirty form, the navigation is parked in
+  // pendingNav and the shared Discard-changes? sheet asks first.
+  const sessionDirty = useRef(false);
+  const [pendingNav, setPendingNav] = useState<null | (() => void)>(null);
+  const guardNav = (go: () => void) => {
+    if (sessionDirty.current) setPendingNav(() => go);
+    else go();
+  };
+  // Stable identity so SessionForm's dirty-sync effect doesn't re-run per render.
+  const reportSessionDirty = useCallback((d: boolean) => { sessionDirty.current = d; }, []);
   // Bump this to make every screen re-read the database after a save/import.
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => setRefreshKey((k) => k + 1);
@@ -63,25 +83,35 @@ export function App() {
   // Views live in browser history so Back works (and never blanks the app).
   const push = (v: View) => {
     history.pushState({ view: v }, '');
-    setViewState(v);
+    setView(v);
     // A section-deep-linked wiki view scrolls itself to that section (NumbersGuide);
     // skipping the snap-to-top here removes the race that intermittently left the
     // deep-link stuck at the top of the page instead of on the section it targeted.
     if (v.kind === 'numbers' && v.section) return;
     scrollTop();
   };
-  const replace = (v: View | null) => { history.replaceState({ view: v }, ''); setViewState(v); };
+  const replace = (v: View | null) => { history.replaceState({ view: v }, ''); setView(v); };
   const back = () => history.back();
 
   useEffect(() => {
     history.replaceState({ view: null }, '');
     const onPop = (e: PopStateEvent) => {
+      // F3: browser Back with unsaved session edits. The pop has already
+      // happened by the time this fires, so first push the CURRENT view back
+      // on (neutralizing the pop — the screen never changes), then ask. On
+      // Discard the guard is disarmed and Back is replayed for real; the
+      // replay lands in the branch below and navigates normally.
+      if (sessionDirty.current) {
+        history.pushState({ view: viewRef.current }, '');
+        setPendingNav(() => () => { sessionDirty.current = false; history.back(); });
+        return;
+      }
       const st = e.state as { view?: View | null } | null;
       const v = st?.view ?? null;
       // D-7: the Import screen was retired. A tab whose history was recorded
       // before that update could still carry an 'import' view; send that Back
       // navigation home rather than resurrecting the removed screen.
-      setViewState(v?.kind === 'import' ? null : v);
+      setView(v?.kind === 'import' ? null : v);
     };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
@@ -100,7 +130,7 @@ export function App() {
     let alive = true;
     void (async () => {
       const guns = await countAll('firearms');
-      if (alive && guns === 0) setViewState({ kind: 'setup' });
+      if (alive && guns === 0) setView({ kind: 'setup' });
     })().catch(() => { /* DB down — the F1 boot guard owns this failure. */ });
     return () => { alive = false; };
     // Keyed to bootFailed (not refreshKey) so a recovery from the F1 error
@@ -148,10 +178,13 @@ export function App() {
     if (h1) { h1.setAttribute('tabindex', '-1'); h1.focus({ preventScroll: true }); }
   }, [view, tab]);
 
-  const setTab = (t: TabId) => { replace(null); setTabState(t); scrollTop(); };
+  // F3: both in-app exits (phone tab bar, desktop sidebar) route through
+  // guardNav so a dirty session form gets the Discard-changes? sheet instead of
+  // silently losing its edits.
+  const setTab = (t: TabId) => guardNav(() => { replace(null); setTabState(t); scrollTop(); });
   // Desktop sidebar section links (C1): re-clicking the open section is a no-op
   // so it can't stack duplicate history entries.
-  const openSection = (v: View) => { if (view?.kind !== v.kind) push(v); };
+  const openSection = (v: View) => { if (view?.kind !== v.kind) guardNav(() => push(v)); };
 
   // F1: a failed boot replaces everything — there is nothing useful to render
   // when no screen can reach its data. Recovery re-checks the wizard/goal
@@ -184,7 +217,8 @@ export function App() {
       onCancel={back}
       onConvert={() => push({ kind: 'session-form', id: v.id, convert: true })}
       onDeleted={() => { refresh(); setTab('log'); }}
-      onSaved={() => { refresh(); setTab('log'); }} />;
+      onSaved={() => { refresh(); setTab('log'); }}
+      onDirtyChange={reportSessionDirty} />;
   } else if (view?.kind === 'drills') {
     content = <DrillsScreen refreshKey={refreshKey}
       onBack={back}
@@ -341,6 +375,14 @@ export function App() {
           T1-2: keyed to the current view so navigation recovers from a crash. */}
       <main><ErrorBoundary key={boundaryKey}>{content}</ErrorBoundary></main>
       <TabBar active={tab} onChange={setTab} view={view} onOpen={openSection} />
+      {/* F3: the parked navigation's Discard-changes? sheet — same component
+          and wording as the form's own Cancel guard. Keep editing stays put;
+          Discard disarms the guard and runs the parked navigation. */}
+      {pendingNav && (
+        <DiscardChangesSheet
+          onConfirm={() => { sessionDirty.current = false; const go = pendingNav; setPendingNav(null); go(); }}
+          onClose={() => setPendingNav(null)} />
+      )}
     </>
   );
 }

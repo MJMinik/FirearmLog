@@ -15,7 +15,7 @@ import { InfoTip } from './InfoTip.tsx';
 import { Reveal } from './Reveal.tsx';
 import { Stepper } from './Stepper.tsx';
 import type { View } from './nav.ts';
-import { ConfirmSheet } from './Sheet.tsx';
+import { ConfirmSheet, DiscardChangesSheet } from './Sheet.tsx';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { MediaField, commitMedia } from './MediaField.tsx';
 import type { StagedFile } from './MediaField.tsx';
@@ -676,9 +676,7 @@ export function MatchForm({ id, onSaved, onCancel }: {
       <h1 className="large-title">{editing ? 'Edit Match' : 'Log Match'}</h1>
       <FormProblem problem={problem} />
       {discarding && (
-        <ConfirmSheet title="Discard changes?" message="Your edits on this screen will be lost."
-          cancelLabel="Keep editing" confirmLabel="Discard"
-          onConfirm={onCancel} onClose={() => setDiscarding(false)} />
+        <DiscardChangesSheet onConfirm={onCancel} onClose={() => setDiscarding(false)} />
       )}
 
       <div className="card">

@@ -90,3 +90,17 @@ export function ConfirmSheet({ title, message, confirmLabel, cancelLabel = 'Canc
     </Sheet>
   );
 }
+
+// F3: THE one "unsaved edits" confirm, with its wording defined exactly once.
+// Every place a dirty form can be abandoned — a form's ‹ Cancel button, a
+// tab-bar or sidebar tap, the browser's Back — shows this same sheet, so the
+// user meets one consistent question no matter which door they leave through.
+export function DiscardChangesSheet({ onConfirm, onClose }: {
+  onConfirm: () => void; onClose: () => void;
+}) {
+  return (
+    <ConfirmSheet title="Discard changes?" message="Your edits on this screen will be lost."
+      cancelLabel="Keep editing" confirmLabel="Discard"
+      onConfirm={onConfirm} onClose={onClose} />
+  );
+}

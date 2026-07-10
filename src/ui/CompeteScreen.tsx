@@ -12,7 +12,7 @@ import { allClassifications } from '../lib/dashboard.ts';
 import { matchFee } from '../lib/costing.ts';
 import { ClassificationGrid } from './ClassificationGrid.tsx';
 import type { View } from './nav.ts';
-import { ConfirmSheet, Sheet } from './Sheet.tsx';
+import { ConfirmSheet, DiscardChangesSheet, Sheet } from './Sheet.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { MediaField, commitMedia } from './MediaField.tsx';
@@ -237,9 +237,7 @@ export function ClassifierForm({ id, onSaved, onCancel }: {
       <h1 className="large-title">{original ? 'Edit Classifier' : 'Log Classifier'}</h1>
       <FormProblem problem={problem} />
       {discarding && (
-        <ConfirmSheet title="Discard changes?" message="Your edits on this screen will be lost."
-          cancelLabel="Keep editing" confirmLabel="Discard"
-          onConfirm={onCancel} onClose={() => setDiscarding(false)} />
+        <DiscardChangesSheet onConfirm={onCancel} onClose={() => setDiscarding(false)} />
       )}
       <div className="card">
         <label className="field">Classifier code

@@ -26,7 +26,7 @@ import { softDeleteSession } from './sessionDelete.ts';
 import { openSessionReport } from './sessionReport.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
-import { ConfirmSheet, Sheet } from './Sheet.tsx';
+import { ConfirmSheet, DiscardChangesSheet, Sheet } from './Sheet.tsx';
 import { Icon } from './Icon.tsx';
 import { MediaField, commitMedia } from './MediaField.tsx';
 import type { StagedFile } from './MediaField.tsx';
@@ -70,10 +70,14 @@ const fromRow = (r: DrillRow): DrillResult => ({
   notes: r.notes.trim()
 });
 
-export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved, onCancel, onConvert, onDeleted }: {
+export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved, onCancel, onConvert, onDeleted, onDirtyChange }: {
   id?: string; initialPlanned?: boolean; convert?: boolean; initialDate?: string;
   onSaved: (sessionId: string) => void; onCancel: () => void;
   onConvert?: () => void; onDeleted?: () => void;
+  // F3: reports the form's unsaved-edits state up to App, so the exits App owns
+  // (tab bar, sidebar, browser Back) can show the same Discard-changes? guard
+  // this form's own Cancel button uses. Must be reference-stable (useCallback).
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Session | null>(null);
@@ -137,10 +141,29 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   // M4: this form is large and full of arrays (drills, ammo, malfunctions,
   // checklist), so instead of a field signature we watch for any user edit via a
   // bubbled change event. Programmatic loads don't fire input events, so `touched`
-  // flips true only on a real edit. (Edge: a pure button-only add with no field
-  // change — e.g. toggling a gun — isn't caught; the common typed-edit case is.)
+  // flips true only on a real edit. F3 closed the button-only blind spot: every
+  // click-only mutator (add/remove rows, pickers, staged-media changes) now also
+  // calls setTouched(true) explicitly, so no edit path can slip past the guard.
   const [touched, setTouched] = useState(false);
   const [discarding, setDiscarding] = useState(false);
+
+  // F3: keep App's dirty flag in step with `touched`, and clear it on unmount so
+  // a stale flag can never guard a navigation after this form is gone.
+  useEffect(() => {
+    onDirtyChange?.(touched);
+    return () => onDirtyChange?.(false);
+  }, [touched, onDirtyChange]);
+
+  // F3: last-resort guard for exits the app can't intercept — closing the tab,
+  // a reload, typing a new URL. The browser shows its own generic prompt.
+  // Honest limits: iOS Safari (and the installed PWA) often skip beforeunload,
+  // so on the phone this is best-effort; the in-app exits above are the real fix.
+  useEffect(() => {
+    if (!touched) return;
+    const warn = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [touched]);
 
   useEffect(() => {
     let alive = true;
@@ -311,6 +334,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   async function addChecklistItem(cat: ChecklistCategory) {
     const label = newItemText[cat].trim();
     if (!label) return;
+    setTouched(true); // F3: click-only path (typing lands in local state, not the form)
     const next = addCustomItem(customItems, cat, newId('ci'), label);
     setCustomItems(next);
     setNewItemText((prev) => ({ ...prev, [cat]: '' }));
@@ -360,6 +384,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   }
 
   function addPickedDrills() {
+    setTouched(true); // F3: click-only path
     const toAdd = pickable.filter((d) => picked.has(d.id));
     setDrills((prev) => [
       ...prev,
@@ -382,6 +407,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   // reference drills BY NAME, so the same name twice would be a confusing
   // duplicate row. Case-insensitive guard.
   function addDrillToSessionByName(name: string) {
+    // F3: the single funnel for quick-add and the full editor — one setTouched
+    // here covers both click-only paths.
+    setTouched(true);
     setDrills((prev) => {
       if (prev.some((d) => d.name.trim().toLowerCase() === name.trim().toLowerCase())) return prev;
       return [...prev, { name, distance: '', time: '', score: '', maxScore: '', notes: '' }];
@@ -575,6 +603,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         }, newId('mf'), now));
       }
 
+      // F3: the edits are saved — nothing left to guard. Clear the dirty flag
+      // before onSaved navigates (its setTab would otherwise hit App's guard).
+      onDirtyChange?.(false);
       onSaved(sid);
     } catch {
       // Review 7.1 / rule 23: a failed IndexedDB write (quota, locked txn, bad
@@ -595,6 +626,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   async function reallyDelete() {
     if (!original) return;
     await softDeleteSession(original, ammoLib);
+    // F3: deleting the session makes any unsaved edits moot — clear the dirty
+    // flag so onDeleted's navigation isn't stopped by App's guard.
+    onDirtyChange?.(false);
     onDeleted?.();
   }
 
@@ -610,9 +644,12 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       <h1 className="large-title">{convert ? 'Log Session (from Plan)' : editing ? 'Edit Session' : planned ? 'Plan Session' : 'Log Session'}</h1>
       <FormProblem problem={problem} />
       {discarding && (
-        <ConfirmSheet title="Discard changes?" message="Your edits on this screen will be lost."
-          cancelLabel="Keep editing" confirmLabel="Discard"
-          onConfirm={onCancel} onClose={() => setDiscarding(false)} />
+        <DiscardChangesSheet
+          // Clear App's dirty flag BEFORE leaving: onCancel is history.back(),
+          // which fires popstate — without this, App's own F3 guard would see a
+          // still-dirty form and show a SECOND sheet on top of this one.
+          onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
+          onClose={() => setDiscarding(false)} />
       )}
 
       {editing && original?.planned && !convert && onConvert && (
@@ -635,7 +672,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         <label className="field">Date
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
         </label>
-        <SuggestField label="Where" value={location} onChange={setLocation}
+        {/* F3: tapping a suggestion sets the value by click alone (no change
+            event bubbles), so these two SuggestFields flip `touched` directly. */}
+        <SuggestField label="Where" value={location} onChange={(v) => { setLocation(v); setTouched(true); }}
           suggestions={pastLocations} placeholder="Shoot Straight: University" />
         {kind === 'class' && (
           // One "creatable" field (same as Where): type a name or tap a past
@@ -643,7 +682,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           // instructor, so a new name takes effect immediately with no separate
           // "add" step, and shows up as a suggestion next time. name="instructor"
           // (no "name" token) keeps iOS's contact AutoFill bar away.
-          <SuggestField label="Instructor" value={instructor} onChange={setInstructor}
+          <SuggestField label="Instructor" value={instructor} onChange={(v) => { setInstructor(v); setTouched(true); }}
             suggestions={instructors} placeholder="Ben Stoeger" name="instructor" />
         )}
       </div>
@@ -760,10 +799,10 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                 placeholder="rounds" aria-label={`Rounds of ammo ${i + 1}`} value={r.rounds}
                 onChange={(e) => { setAmmoTouched(true); setAmmoRows((p) => p.map((x, n) => n === i ? { ...x, rounds: e.target.value } : x)); }} />
               <button className="icon-btn" aria-label="Remove ammo row"
-                onClick={() => { setAmmoTouched(true); setAmmoRows((prev) => prev.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
+                onClick={() => { setTouched(true); setAmmoTouched(true); setAmmoRows((prev) => prev.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
             </div>
           ))}
-          <button className="button secondary" onClick={() => { setAmmoTouched(true); setAmmoRows((prev) => [...prev, { ammoId: '', rounds: '' }]); }}>
+          <button className="button secondary" onClick={() => { setTouched(true); setAmmoTouched(true); setAmmoRows((prev) => [...prev, { ammoId: '', rounds: '' }]); }}>
             + Add Ammo
           </button>
           {(() => {
@@ -795,7 +834,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             <div className="drill-edit-head">
               <strong>{d.name}</strong>
               <button className="icon-btn" aria-label={`Remove ${d.name}`}
-                onClick={() => setDrills((prev) => prev.filter((_, x) => x !== i))}><Icon name="close" size={18} /></button>
+                onClick={() => { setTouched(true); setDrills((prev) => prev.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
             </div>
             <div className="drill-edit-fields">
               <label className="field small">Distance
@@ -832,11 +871,14 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
 
       {!planned && (
       <>
+      {/* F3: MediaField's remove buttons mutate staged state by click alone, so
+          the setters are wrapped to flip `touched` — otherwise removing a photo
+          and backing out would discard the removal with no warning. */}
       <MediaField heading="Targets, Photos & Videos" addLabel="+ Add Photos or Videos"
         ownerType="session" ownerId={original?.id ?? ''}
         existingMedia={existingMedia} setExistingMedia={setExistingMedia}
-        removedMedia={removedMedia} setRemovedMedia={setRemovedMedia}
-        newFiles={newFiles} setNewFiles={setNewFiles} />
+        removedMedia={removedMedia} setRemovedMedia={(fn) => { setTouched(true); setRemovedMedia(fn); }}
+        newFiles={newFiles} setNewFiles={(fn) => { setTouched(true); setNewFiles(fn); }} />
 
       <div className="card">
         <h2>Malfunctions</h2>
@@ -845,7 +887,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             <div className="drill-edit-head">
               <strong>{m.type || 'New malfunction'}</strong>
               <button className="icon-btn" aria-label="Remove malfunction"
-                onClick={() => setMalfs((prev) => prev.filter((_, x) => x !== i))}><Icon name="close" size={18} /></button>
+                onClick={() => { setTouched(true); setMalfs((prev) => prev.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
             </div>
             <label className="field">What happened
               <select value={m.otherType ? 'Other' : m.type}
@@ -912,11 +954,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             </label>
           </div>
         ))}
-        <button className="button secondary" onClick={() => setMalfs((prev) => [
+        <button className="button secondary" onClick={() => { setTouched(true); setMalfs((prev) => [
           ...prev,
           { firearmId: (selectedGuns[0] ?? firearms[0])?.id ?? '', type: '', resolution: '', notes: '',
             ammoId: '', magazineId: '', roundCount: '' }
-        ])}>+ Add Malfunction</button>
+        ]); }}>+ Add Malfunction</button>
       </div>
 
       <div className="card">
