@@ -333,6 +333,8 @@ export function MenuBar({ onGoTab, onOpenView, sidebarHidden, onToggleSidebar }:
 
   return (
     <>
+      {/* The first menu IS the app name (the macOS pattern) — bold via CSS,
+          no separate wordmark, so "FirearmLog" appears exactly once. */}
       <div ref={barRef} className="menubar" role="menubar" aria-label="FirearmLog menu bar" onKeyDown={onBarKey}
         onMouseDownCapture={() => {
           pressingInside.current = true;
@@ -351,11 +353,10 @@ export function MenuBar({ onGoTab, onOpenView, sidebarHidden, onToggleSidebar }:
           if (pressingInside.current) return;
           if (open !== null && !barRef.current?.contains(e.relatedTarget as Node)) close();
         }}>
-        <span className="menubar-name" aria-hidden="true">FirearmLog</span>
         {menus.map((m, i) => (
           <div key={m.label} className="menubar-slot">
             <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded={open === i}
-              className={`menubar-btn${open === i ? ' open' : ''}`}
+              className={`menubar-btn${i === 0 ? ' app-name' : ''}${open === i ? ' open' : ''}`}
               tabIndex={i === 0 ? 0 : -1}
               onClick={() => (open === i ? close() : openMenu(i))}
               onMouseEnter={() => { if (open !== null && open !== i) openMenu(i); }}>
