@@ -403,12 +403,15 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
       <h1 className="large-title">FirearmLog</h1>
       {empty ? (
         <>
-          <p className="empty">Welcome to FirearmLog. Start by adding your first gun — your sessions, gear, and maintenance all attach to one. Then log your first session from here.</p>
+          {/* Story frame (DESIGN_DIRECTION §4): the skip path tells the SAME
+              three-step story as the wizard, in the same register as its
+              sample-data card — not a two-step variant with "the app" as hero. */}
+          <p className="empty">Welcome to FirearmLog. Three steps: add your first gun, pick a goal to work toward, and log your first session — all from here.</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <button className="button" onClick={() => open({ kind: 'gun-form' })}>+ Add your first gun</button>
-            <button className="button secondary" onClick={() => open({ kind: 'setup' })}>Just exploring? See it with sample data</button>
+            <button className="button secondary" onClick={() => open({ kind: 'setup' })}>Just looking? See a log 18 months in</button>
             <p className="report-note" style={{ margin: '0 0 4px' }}>
-              It's just example data to explore — you can clear it and start fresh with your own any time (Tour &amp; Setup → Start over).
+              It's a sample log — what yours can look like after a while of keeping it. Clear it and start your own any time (Tour &amp; Setup → Start over).
             </p>
           </div>
         </>

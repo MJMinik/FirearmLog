@@ -27,7 +27,7 @@ separate `npm run dev` running.
 
 ## How tests get data
 
-Most tests tap the in-app **"See it with sample data"** button (the same path a
+Most tests tap the in-app **"See a log 18 months in"** button (the same path a
 tester uses) to seed a full dataset from `public/demo-dataset.bin`. Each test
 runs in a fresh browser context, so IndexedDB starts empty every time and tests
 never bleed into one another.

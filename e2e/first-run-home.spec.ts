@@ -24,7 +24,7 @@ test.describe('First-run empty Home (activation)', () => {
     // The two newcomer-first actions are the heroes.
     await expect(main.getByRole('button', { name: '+ Add your first gun' })).toBeVisible();
     await expect(
-      main.getByRole('button', { name: 'Just exploring? See it with sample data' }),
+      main.getByRole('button', { name: 'Just looking? See a log 18 months in' }),
     ).toBeVisible();
 
     // The Pistol Tracker importer is fully retired from the user's view

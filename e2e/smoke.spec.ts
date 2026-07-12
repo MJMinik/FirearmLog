@@ -11,7 +11,7 @@ test.describe('Smoke', () => {
     await expect(page.getByRole('main').getByRole('button', { name: '1. Add a gun' })).toBeVisible();
     await expect(page.getByText('2. Pick a goal')).toBeVisible();
     await expect(page.getByText('3. Log your first session')).toBeVisible();
-    await expect(page.getByRole('button', { name: 'See it with sample data' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'See a log 18 months in' })).toBeVisible();
     // F6: a true first run has nowhere to go back to — no Back button.
     await expect(page.getByRole('button', { name: '‹ Back' })).toHaveCount(0);
   });

@@ -66,7 +66,7 @@ export async function swipeRowLeft(row: Locator): Promise<void> {
 export async function seedDemo(page: Page): Promise<void> {
   await page.goto('/');
   // An empty log auto-opens the Setup Wizard.
-  const demoBtn = page.getByRole('button', { name: 'See it with sample data' });
+  const demoBtn = page.getByRole('button', { name: 'See a log 18 months in' });
   await expect(demoBtn).toBeVisible();
   await demoBtn.click();
   // Once the restore finishes we land on Home, which shows live stats.

@@ -18,7 +18,7 @@ test.describe('Setup wizard', () => {
     await expect(page.getByRole('heading', { name: 'Set up FirearmLog' })).toBeVisible();
 
     // With data already present, the demo button must warn before replacing it.
-    await page.getByRole('button', { name: 'See it with sample data' }).click();
+    await page.getByRole('button', { name: 'See a log 18 months in' }).click();
     await expect(page.getByRole('heading', { name: 'Load sample data?' })).toBeVisible();
 
     await page.getByRole('button', { name: 'Load sample data' }).click();

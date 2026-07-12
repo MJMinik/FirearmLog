@@ -205,17 +205,23 @@ export function SetupWizard({ onFinish, onCancel }: {
   }
 
   // One sample-data card, used by both welcome variants (first-run + re-run).
+  // The story frame (DESIGN_DIRECTION §4, July 12 2026): the sample log is a
+  // flash-forward of the USER'S own future — the copy shows them their story,
+  // never our features. The demo data behind this button is arc-checked by
+  // tests/demoStory.test.ts so these words stay literally true (charter §1).
   const demoCard = (
     <div className="card">
-      <h2>Just want to look around?</h2>
+      <h2>See where this goes</h2>
       <p className="report-note" style={{ marginBottom: 12 }}>
-        Load a ready-made sample log — guns, sessions, matches, costs, photos, the works —
-        so you can see everything the app does. You can start fresh any time to clear it.
+        Load a sample log — a year and a half of range trips, matches, and dry-fire,
+        a gun getting cared for, gear and costs accounted for, and a goal taking
+        shape — and see what your own log will be telling you once you&rsquo;ve been
+        keeping yours a while. Start fresh any time and begin yours.
       </p>
       <FormProblem problem={demoErr} />
       <button className="button secondary" disabled={demoBusy}
         onClick={() => void demoTapped()}>
-        {demoBusy ? 'Loading sample data…' : 'See it with sample data'}
+        {demoBusy ? 'Loading sample data…' : 'See a log 18 months in'}
       </button>
     </div>
   );

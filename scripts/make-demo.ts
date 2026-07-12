@@ -53,6 +53,83 @@ const stores: Record<string, Rec[]> = {
 };
 const stamp = (isoDate: string) => ({ createdAt: at(isoDate), updatedAt: at(isoDate) });
 
+// ===================== STORY-FRAME DRILL MODEL (session 58, July 12 2026) =====================
+// The demo log must tell a TRUE story (DESIGN_DIRECTION §4, the story frame):
+// skills improve with fast early gains that flatten, a layoff shows up as a
+// couple of slow sessions, and no sample ever beats a personal-best floor.
+// Numbers are the domain seat's table for a Carry Optics C→solid-B climber
+// (board memo 2026-07-12). All values come from a SECOND rng stream (r2), and
+// every draw the OLD code made on the main stream is still burned in place —
+// so the main stream (which decides session/match/classifier structure, picks,
+// and counts) is byte-identical to the pre-fix demo. Only the story-bearing
+// numbers change.
+const r2 = rng(20260712);
+let gaussSpare: number | null = null;
+function gauss(): number { // Box–Muller on r2
+  if (gaussSpare !== null) { const v = gaussSpare; gaussSpare = null; return v; }
+  let u = 0;
+  while (u === 0) u = r2();
+  const v = r2();
+  const mag = Math.sqrt(-2 * Math.log(u));
+  gaussSpare = mag * Math.sin(2 * Math.PI * v);
+  return mag * Math.cos(2 * Math.PI * v);
+}
+// start avg → end avg (seconds), session-to-session SD, hard floor, canonical distance.
+const DRILL_MODEL: Record<string, { start: number; end: number; sd: number; floor: number; dist: string }> = {
+  'Bill Drill':          { start: 3.9,  end: 2.8,  sd: 0.25, floor: 2.45, dist: '7 yd' },
+  'Draw to First Shot':  { start: 1.85, end: 1.35, sd: 0.10, floor: 1.20, dist: '7 yd' },
+  '1-Reload-1':          { start: 3.5,  end: 2.6,  sd: 0.20, floor: 2.30, dist: '7 yd' },
+  'Doubles / Hammers':   { start: 0.35, end: 0.26, sd: 0.03, floor: 0.22, dist: '7 yd' },
+  'Transitions':         { start: 0.55, end: 0.42, sd: 0.05, floor: 0.38, dist: '7 yd' },
+  'Wide Transitions':    { start: 0.95, end: 0.70, sd: 0.06, floor: 0.62, dist: '10 yd' },
+  'Box Drill':           { start: 5.8,  end: 4.4,  sd: 0.35, floor: 4.0,  dist: '10 yd' },
+  'Failure Drill':       { start: 3.1,  end: 2.4,  sd: 0.20, floor: 2.15, dist: '7 yd' },
+  'Blake Drill':         { start: 3.6,  end: 2.7,  sd: 0.25, floor: 2.40, dist: '7 yd' },
+  'El Presidente':       { start: 9.5,  end: 7.4,  sd: 0.6,  floor: 6.8,  dist: '10 yd' },
+  'Accelerator (Steel)': { start: 7.0,  end: 5.4,  sd: 0.45, floor: 4.9,  dist: '10 yd' },
+  'Reload Practice':     { start: 2.0,  end: 1.45, sd: 0.12, floor: 1.30, dist: '5 yd' },
+};
+const runningBest: Record<string, number> = {};
+// Layoff tracking: a ≥14-day gap makes the next two sessions run ~8% slow —
+// the log doesn't flatter, and neither does time off. (Sessions are generated
+// in near-date order within the week loop; the approximation is deliberate
+// and fine for demo data — the visible effect is what matters.)
+let lastSessionAt = START.getTime();
+let slowSessionsLeft = 0;
+function layoffCheck(t: number): void {
+  if (t - lastSessionAt >= 14 * dayMs) slowSessionsLeft = 2;
+  else if (slowSessionsLeft > 0) slowSessionsLeft--;
+  lastSessionAt = Math.max(lastSessionAt, t);
+}
+function drillTime(name: string, week: number, dry: boolean): number | null {
+  const m = DRILL_MODEL[name];
+  if (!m) return null; // untimed drills are handled by their own models
+  let v = m.end + (m.start - m.end) * Math.exp(-week / 26) + gauss() * m.sd;
+  if (dry) v *= 0.92; // par-time reps without recoil run a touch faster
+  if (slowSessionsLeft > 0) v *= 1.08;
+  const floor = dry ? m.floor * 0.92 : m.floor;
+  const key = name + (dry ? '#dry' : '');
+  const best = runningBest[key];
+  // Never below the class-appropriate floor, and never a sudden leap more
+  // than ~8% past the shooter's own best in that modality — PRs arrive in
+  // inches, not miles. (8%, not tighter: drills that mostly live in dry-fire
+  // leave only a handful of live samples across the whole log, and a tighter
+  // ratchet starves them of the curve they're genuinely on.)
+  v = Math.max(v, floor, best !== undefined ? best * 0.92 : 0);
+  if (best === undefined || v < best) runningBest[key] = v;
+  return round(v, 2);
+}
+// Dot Torture, the way the drill is really used: climb to a clean 50 at 3 yd,
+// then step back a yard mid-log, dip, and rebuild — arc AND honest wobble.
+function dotTorture(week: number): { score: number; dist: string } {
+  if (week < 40) {
+    const s = Math.round(44 + 6 * (1 - Math.exp(-week / 14)) + gauss() * 1.5);
+    return { score: Math.max(42, Math.min(50, s)), dist: '3 yd' };
+  }
+  const s = Math.round(46 + 4 * (1 - Math.exp(-(week - 40) / 12)) + gauss() * 1.2);
+  return { score: Math.max(44, Math.min(50, s)), dist: '4 yd' };
+}
+
 // ===================== FIREARMS =====================
 const guns = [
   { id: 'fa-dr920', name: 'Shadow Systems DR920', manufacturer: 'Shadow Systems', model: 'DR920', caliber: '9mm', dateAcquired: '2024-12-20', notes: 'Primary Carry Optics gun.' },
@@ -142,7 +219,7 @@ for (const d of STOCK_DRILLS) {
 }
 const liveDrills = STOCK_DRILLS.filter((d) => d.fire !== 'dry').map((d) => d.name);
 const dryDrills = STOCK_DRILLS.filter((d) => d.fire !== 'live').map((d) => d.name);
-const distances = ['5 yd', '7 yd', '10 yd', '12 yd', '15 yd', '25 yd'];
+// (distances list removed July 12 2026 — drills now carry canonical distances from DRILL_MODEL)
 
 // ===================== SESSIONS (≈110 over ~18 months) =====================
 // Weekly rhythm: usually 1 live practice + 1–2 dry-fire, a class about monthly.
@@ -164,17 +241,25 @@ for (let w = 0; w < weeks; w++) {
     while (chosen.size < nDrills) chosen.add(pick(liveDrills));
     seN++;
     const id = `se-${String(seN).padStart(3, '0')}`;
+    layoffCheck(d.getTime());
     stores.sessions.push({
       id, ...stamp(iso(d)), date: iso(d), type: 'practice',
       guns: [{ firearmId: gun, rounds }], location: pick(liveRanges), distances: '',
       notes: chance(0.25) ? pick(['Good grip day.', 'Draw felt slow, need reps.', 'Dot tracking clean.', 'Worked weak-hand.', 'Sloppy at speed — dialed it back.']) : '',
       ammoUsage: [{ ammoId: can, rounds }],
-      drills: [...chosen].map((name) => ({
-        name, distance: pick(distances),
-        time: /Torture|Slow Fire/.test(name) ? null : round(1.4 + r() * 2.6, 2),
-        score: /Torture/.test(name) ? randint(42, 50) : null,
-        maxScore: /Torture/.test(name) ? 50 : null, notes: '',
-      })),
+      drills: [...chosen].map((name) => {
+        void r(); // burn the old distance draw (main-stream preservation)
+        if (/Torture/.test(name)) {
+          void r(); // burn the old score draw
+          const dt = dotTorture(w);
+          return { name, distance: dt.dist, time: null, score: dt.score, maxScore: 50, notes: '' };
+        }
+        if (/Slow Fire/.test(name)) {
+          return { name, distance: '15 yd', time: null, score: null, maxScore: null, notes: '' };
+        }
+        void r(); // burn the old time draw
+        return { name, distance: DRILL_MODEL[name]?.dist ?? '7 yd', time: drillTime(name, w, false), score: null, maxScore: null, notes: '' };
+      }),
       targetMediaIds: [], malfunctions: [],
       selfRating: {
         focus: Math.min(9, skillBase + ratingCreep + randint(-1, 1)),
@@ -202,14 +287,15 @@ for (let w = 0; w < weeks; w++) {
     const chosen = new Set<string>();
     while (chosen.size < nDrills) chosen.add(pick(dryDrills));
     seN++;
+    layoffCheck(d.getTime());
     stores.sessions.push({
       id: `se-${String(seN).padStart(3, '0')}`, ...stamp(iso(d)), date: iso(d), type: 'dry_fire',
       guns: [{ firearmId: pick(['fa-dr920', 'fa-g34', 'fa-staccato']), rounds: 0 }],
       location: 'Home (dry)', distances: '', notes: chance(0.15) ? pick(['15 min before dinner.', 'Par times tightening.', 'Reload reps.']) : '',
-      ammoUsage: [], drills: [...chosen].map((name) => ({
-        name, distance: pick(['3 yd', '5 yd', '7 yd']),
-        time: round(1.0 + r() * 1.4, 2), score: null, maxScore: null, notes: '',
-      })),
+      ammoUsage: [], drills: [...chosen].map((name) => {
+        void r(); void r(); // burn the old distance + time draws (main-stream preservation)
+        return { name, distance: DRILL_MODEL[name]?.dist ?? '5 yd', time: drillTime(name, w, true), score: null, maxScore: null, notes: '' };
+      }),
       targetMediaIds: [], malfunctions: [],
       selfRating: { focus: Math.min(9, skillBase + ratingCreep + randint(-1, 1)), fundamentals: Math.min(9, skillBase + ratingCreep + randint(-1, 1)), satisfaction: Math.min(9, skillBase + ratingCreep) },
       rangeFee: null, planned: false, instructor: null, checklist: null,
@@ -219,11 +305,23 @@ for (let w = 0; w < weeks; w++) {
   if (w % 5 === 4) {
     const d = new Date(monday.getTime() + 6 * dayMs);
     seN++;
+    layoffCheck(d.getTime());
     stores.sessions.push({
       id: `se-${String(seN).padStart(3, '0')}`, ...stamp(iso(d)), date: iso(d), type: 'class',
       guns: [{ firearmId: 'fa-dr920', rounds: randint(300, 600) }], location: pick(liveRanges), distances: '',
       notes: 'Structured coaching day.', ammoUsage: [{ ammoId: pick(cf9), rounds: randint(300, 600) }],
-      drills: [{ name: pick(liveDrills), distance: '7 yd', time: round(1.6 + r() * 1.5, 2), score: null, maxScore: null, notes: '' }],
+      drills: (() => {
+        const name = pick(liveDrills);
+        void r(); // burn the old time draw (main-stream preservation)
+        if (/Torture/.test(name)) {
+          const dt = dotTorture(w);
+          return [{ name, distance: dt.dist, time: null, score: dt.score, maxScore: 50, notes: '' }];
+        }
+        if (/Slow Fire/.test(name)) {
+          return [{ name, distance: '15 yd', time: null, score: null, maxScore: null, notes: '' }];
+        }
+        return [{ name, distance: DRILL_MODEL[name]?.dist ?? '7 yd', time: drillTime(name, w, false), score: null, maxScore: null, notes: '' }];
+      })(),
       targetMediaIds: [], malfunctions: [],
       selfRating: { focus: Math.min(9, 6 + ratingCreep), fundamentals: Math.min(9, 6 + ratingCreep), satisfaction: Math.min(9, 7 + ratingCreep) },
       rangeFee: null, planned: false,
@@ -344,7 +442,11 @@ const classifierList = [
 ];
 classifierList.forEach(([code, name], i) => {
   const d = new Date(at('2025-01-26') + i * 32 * dayMs);
-  const pct = round(Math.min(80, 55 + i * 1.6 + (r() * 8 - 4)), 1);
+  // Solid-B ending (Michael, 2026-07-12; was a straight line to 80 = A on the
+  // record): fast early gains that flatten — C at the start, ending ~70–75 so
+  // the best-6-of-recent-8 average sits firmly in B and "Make A class" stays
+  // honestly open. One r() draw, same as before (main-stream preservation).
+  const pct = round(Math.min(75.5, 55 + 19 * (1 - Math.exp(-i / 6)) + (r() * 6 - 3)), 1);
   stores.classifiers.push({
     id: `cl-${i + 1}`, ...stamp(iso(d)), date: iso(d), code, name, division: 'Carry Optics',
     hitFactor: round(3.5 + r() * 4, 2), percent: pct, notes: '',
@@ -429,19 +531,70 @@ partSpecs.forEach(([firearmId, name, partNumber, cost, vendor], i) => {
   stores.parts.push({ id: `pt-${i + 1}`, ...stamp('2025-01-20'), firearmId, name, quantity: 1, partNumber, datePurchased: '2025-01-20', notes: 'Spares/upgrade', cost, vendor });
 });
 
-// ===================== GOALS =====================
+// ===================== GOALS (derived from the data — the story frame) =====================
+// A demo goal may be marked "achieved" ONLY on a date the log's own data earns
+// it (board memo 2026-07-12 — the pre-fix demo claimed a sub-2.0 Bill Drill
+// "achieved" while the drill data averaged 3+ seconds). Targets are re-tuned
+// to this shooter's class: the old sub-1.0 draw / sub-2.0 Bill are GM standards.
+// Goal ids and order are UNCHANGED (go-4 stays the pinned North Star below).
+
+// First date a drill's 3-run live-fire average crosses under a threshold.
+function firstCross(drillName: string, under: number): string {
+  const times: { d: string; t: number }[] = [];
+  for (const se of [...stores.sessions].sort((a, b) => (a as { date: string }).date.localeCompare((b as { date: string }).date))) {
+    const s = se as { date: string; type: string; drills?: { name: string; time: number | null }[] };
+    if (s.type === 'dry_fire') continue;
+    for (const dr of s.drills ?? []) {
+      if (dr.name !== drillName || dr.time == null) continue;
+      times.push({ d: s.date, t: dr.time });
+      if (times.length >= 3) {
+        const last3 = times.slice(-3);
+        if (last3.reduce((p, c) => p + c.t, 0) / 3 < under) return last3[2].d;
+      }
+    }
+  }
+  return '';
+}
+// First date the rolling best-6-of-recent-8 Carry Optics classifier average
+// reaches a class floor (USPSA's actual shape, close enough for demo data).
+function classCrossDate(minPct: number): string {
+  const co = (stores.classifiers as { date: string; division: string; percent: number }[])
+    .filter((c) => c.division === 'Carry Optics')
+    .sort((a, b) => a.date.localeCompare(b.date));
+  for (let i = 3; i < co.length; i++) {
+    const best6 = co.slice(Math.max(0, i - 7), i + 1).map((c) => c.percent).sort((a, b) => b - a).slice(0, 6);
+    if (best6.reduce((p, c) => p + c, 0) / best6.length >= minPct) return co[i].date;
+  }
+  return '';
+}
+const billDate = firstCross('Bill Drill', 3.0);
+const drawDate = firstCross('Draw to First Shot', 1.4);
+const bClassDate = classCrossDate(60);
+const steelDate = (stores.matches as { date: string; scoringType?: string }[])
+  .filter((m) => m.scoringType === 'steel').map((m) => m.date).sort()[0] ?? '';
+// Top-10 at a sectional counts only AFTER the goal existed (set 2025-09-01).
+const top10Date = (stores.matches as { date: string; matchType: string; divisionPlace: number | null }[])
+  .filter((m) => m.matchType.includes('Level 2') && m.date > '2025-09-01' && (m.divisionPlace ?? 99) <= 10)
+  .map((m) => m.date).sort()[0] ?? '';
+// "Make A class" is born INSIDE the log, days after B falls — authorship visible.
+const aClassSet = bClassDate ? iso(new Date(at(bClassDate) + 5 * dayMs)) : '2025-11-20';
+
 const goalSpecs = [
-  ['Bill Drill under 2.0s clean', 'Speed', 'under 2.0s', true, '2025-01-05', '2025-04-12'],
-  ['Draw to first A under 1.0s', 'Speed', 'under 1.0s', true, '2025-01-05', '2025-08-02'],
-  ['Reach USPSA B class', 'Classification', 'B in Carry Optics', true, '2025-01-10', '2025-11-15'],
-  ['Reach USPSA A class', 'Classification', 'A in Carry Optics', false, '2025-11-20', ''],
-  ['Shoot a Steel Challenge match', 'Competition', 'Enter one SCSA match', true, '2025-02-15', '2025-04-19'],
+  ['Bill Drill under 3.0s clean', 'Speed', 'under 3.0s', !!billDate, '2025-01-05', billDate],
+  ['Draw to first A under 1.4s', 'Speed', 'under 1.4s', !!drawDate, '2025-01-05', drawDate],
+  ['Reach USPSA B class', 'Classification', 'B in Carry Optics', !!bClassDate, '2025-01-10', bClassDate],
+  ['Reach USPSA A class', 'Classification', 'A in Carry Optics', false, aClassSet, ''],
+  ['Shoot a Steel Challenge match', 'Competition', 'Enter one SCSA match', !!steelDate, '2025-02-15', steelDate],
   ['Sub-1.2s standing reload', 'Speed', 'under 1.2s', false, '2025-06-01', ''],
   ['Dot Torture clean at 5 yd', 'Accuracy', '50/50', false, '2025-03-01', ''],
-  ['Place top-10 division at a sectional', 'Competition', 'Top 10 CO', false, '2025-09-01', ''],
-];
+  ['Place top-10 division at a sectional', 'Competition', 'Top 10 CO', !!top10Date, '2025-09-01', top10Date],
+] as const;
 goalSpecs.forEach(([text, category, target, achieved, dateSet, dateAchieved], i) => {
-  stores.goals.push({ id: `go-${i + 1}`, ...stamp(dateSet as string), text, category, target, achieved, dateSet, dateAchieved });
+  stores.goals.push({
+    id: `go-${i + 1}`, ...stamp(dateSet), text, category, target, achieved, dateSet, dateAchieved,
+    // An achieved goal was last touched the day it fell, not the day it was set.
+    ...(achieved && dateAchieved ? { updatedAt: at(dateAchieved) } : {}),
+  });
 });
 
 // ===================== SKILL ASSESSMENTS (quarterly, trending up) =====================
@@ -471,8 +624,11 @@ stores.references.push({
 // who SWAPPED the magazine certainly knew which one; otherwise it's a coin
 // flip, since sometimes you just don't know).
 // Runs as a post-pass on a SEPARATE RNG stream so every other demo record
-// stays byte-identical to the previous build — the site's other screenshots
-// still match the sample data exactly.
+// stays byte-identical to the previous build. (NOTE, July 12 2026: the
+// story-frame regeneration above deliberately changed drill times/distances,
+// Dot Torture scores, CO classifier percents, and all goals — any marketing-
+// site screenshot showing THOSE numbers needs re-capture; flagged on the
+// launch checklist. Structure, ids, matches, and everything else still match.)
 const rMag = rng(20260709);
 const magsByGun = new Map<string, string[]>();
 for (const mg of stores.magazines as { id: string; firearmIds: string[] }[]) {
