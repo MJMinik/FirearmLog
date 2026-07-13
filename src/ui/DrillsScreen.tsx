@@ -205,7 +205,9 @@ export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, 
           </button>
         </div>
       </div>
-      <button className="button" onClick={() => void save()}>{original ? 'Save changes' : 'Add Drill'}</button>
+      {/* Session 59 #1: completion buttons all speak "Save" (matches the
+          navbar Save above and the "Save ammo"/"Save match" family). */}
+      <button className="button" onClick={() => void save()}>{original ? 'Save changes' : 'Save drill'}</button>
       {isCustom && (
         <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>
           Delete drill

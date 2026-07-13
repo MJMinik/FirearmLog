@@ -21,7 +21,7 @@ async function addFirstGun(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'New Gun' })).toBeVisible();
   await page.getByRole('textbox', { name: 'What this Gun is called' }).fill('First Pistol');
   await page.getByRole('textbox', { name: 'Caliber' }).fill('9mm');
-  await page.getByRole('button', { name: 'Add Gun', exact: true }).click();
+  await page.getByRole('button', { name: 'Save gun', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'What are you working toward?' })).toBeVisible();
   await page.getByRole('button', { name: 'Skip for now' }).click();
   await expect(page.getByRole('main').getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();

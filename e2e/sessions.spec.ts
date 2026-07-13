@@ -44,7 +44,7 @@ test.describe('Sessions', () => {
     await page.getByRole('main').getByRole('button', { name: '1. Add a gun' }).click();
     await page.getByRole('textbox', { name: 'What this Gun is called' }).fill('First Pistol');
     await page.getByRole('textbox', { name: 'Caliber' }).fill('9mm');
-    await page.getByRole('button', { name: 'Add Gun', exact: true }).click();
+    await page.getByRole('button', { name: 'Save gun', exact: true }).click();
     await page.getByRole('button', { name: 'Skip for now' }).click();
 
     await page.getByRole('main').getByRole('button', { name: '+ Log Session', exact: true }).click();

@@ -175,10 +175,14 @@ export function GunForm({ id, onSaved, onCancel }: {
         </Reveal>
       </div>
 
-      <button className="button" onClick={() => void save()}>{editing ? 'Save changes' : 'Add Gun'}</button>
+      {/* Session 59 #1 (Michael): the form's two completion buttons say the
+          same word now — navbar "Save" + bottom "Save gun" — one action, one
+          vocabulary. Both stay: the bottom is the thumb-reach finish on a
+          long phone form (rule 4), the navbar is the app-wide convention. */}
+      <button className="button" onClick={() => void save()}>{editing ? 'Save changes' : 'Save gun'}</button>
 
       {/* F7: the prompt lives BELOW the save button, so its appearing
-          mid-typing can never shove Add Gun out from under a tap. */}
+          mid-typing can never shove the save button out from under a tap. */}
       {refSuggestion && (
         <div className="card" style={{ marginTop: 16 }}>
           <p className="report-note" style={{ marginBottom: 8 }}>

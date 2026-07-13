@@ -30,17 +30,17 @@ test.describe('Guns', () => {
     const name = `E2E Test Pistol ${Date.now()}`;
     await page.getByRole('textbox', { name: 'What this Gun is called' }).fill(name);
     await page.getByRole('textbox', { name: 'Caliber' }).fill('9mm');
-    await page.getByRole('button', { name: 'Add Gun', exact: true }).click();
+    await page.getByRole('button', { name: 'Save gun', exact: true }).click();
 
     // Lands on the new gun's detail, showing its name.
     await expect(page.getByText(name)).toBeVisible();
     await expect(page.getByRole('button', { name: 'Retire or remove this gun…' })).toBeVisible();
   });
 
-  // F7 + F8 + F9: the care-guide prompt appears BELOW Add Gun (so it can't
+  // F7 + F8 + F9: the care-guide prompt appears BELOW the save button (so it can't
   // shove the button mid-tap), names the maker once when it matches the guide,
   // and confirms the link inline instead of silently vanishing.
-  test('care-guide prompt: no name doubling, link confirms, Add Gun still saves', async ({ page }) => {
+  test('care-guide prompt: no name doubling, link confirms, Save gun still saves', async ({ page }) => {
     await seedDemo(page);
     await gotoSection(page, 'Guns');
     await page.getByRole('button', { name: '+ Add Gun' }).click();
@@ -57,9 +57,9 @@ test.describe('Guns', () => {
     await page.getByRole('button', { name: 'Link Glock' }).click();
     await expect(page.getByText('Care guide linked ✓')).toBeVisible();
 
-    // F7 regression: with prompt/confirmation present, Add Gun still lands.
+    // F7 regression: with prompt/confirmation present, Save gun still lands.
     await page.getByRole('textbox', { name: 'Caliber' }).fill('9mm');
-    await page.getByRole('button', { name: 'Add Gun', exact: true }).click();
+    await page.getByRole('button', { name: 'Save gun', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Retire or remove this gun…' })).toBeVisible();
   });
 });

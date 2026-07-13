@@ -17,7 +17,7 @@ async function wizardAddGunAndDone(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'New Gun' })).toBeVisible();
   await page.getByRole('textbox', { name: 'What this Gun is called' }).fill('First Pistol');
   await page.getByRole('textbox', { name: 'Caliber' }).fill('9mm');
-  await page.getByRole('button', { name: 'Add Gun', exact: true }).click();
+  await page.getByRole('button', { name: 'Save gun', exact: true }).click();
 }
 
 test.describe('Setup goal (F10): asked, not assigned', () => {
@@ -107,7 +107,7 @@ test.describe('Setup goal (F10): asked, not assigned', () => {
     await expect(page.getByRole('heading', { name: 'New Gun' })).toBeVisible();
     await page.getByRole('textbox', { name: 'What this Gun is called' }).fill('First Pistol');
     await page.getByRole('textbox', { name: 'Caliber' }).fill('9mm');
-    await page.getByRole('button', { name: 'Add Gun', exact: true }).click();
+    await page.getByRole('button', { name: 'Save gun', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Retire or remove this gun…' })).toBeVisible();
 
     // No starter goal, anywhere — a reload doesn't summon one either.
@@ -178,7 +178,7 @@ test.describe('Guided handoff (F2): Home points at the first session', () => {
     await main.getByRole('button', { name: '+ Add your first gun' }).click();
     await page.getByRole('textbox', { name: 'What this Gun is called' }).fill('First Pistol');
     await page.getByRole('textbox', { name: 'Caliber' }).fill('9mm');
-    await page.getByRole('button', { name: 'Add Gun', exact: true }).click();
+    await page.getByRole('button', { name: 'Save gun', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Retire or remove this gun…' })).toBeVisible();
 
     await gotoTab(page, 'Home');

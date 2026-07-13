@@ -156,7 +156,9 @@ export function MagazineForm({ id, onSaved, onCancel }: {
           <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
         </label>
       </div>
-      <button className="button" onClick={() => void save()}>{original ? 'Save changes' : 'Add Magazine'}</button>
+      {/* Session 59 #1: completion buttons all speak "Save" (matches the
+          navbar Save above and the "Save ammo"/"Save match" family). */}
+      <button className="button" onClick={() => void save()}>{original ? 'Save changes' : 'Save magazine'}</button>
       {original && (
         <button className="button danger" style={{ marginTop: 8 }} onClick={() => setConfirming(true)}>
           Delete Magazine
