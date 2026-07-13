@@ -657,7 +657,12 @@ if (newestMf && !newestMf.magazineId) {
 // F4: drillsSeeded rides in the demo settings — the sample log ships WITH the
 // stock library (drs- ids above), so the app-side seeder must see "already
 // seeded" and never pile a second copy on top.
-stores.meta.push({ key: 'settings', value: { ownerName: 'Demo Shooter', theme: '', checklistCustomItems: { essentials: [], night: [], tactical: [] }, goldenGoalId: 'go-4', drillsSeeded: true } });
+// Session 59: sampleLogLoaded rides here too — the flag that pins the
+// "You're exploring a sample log / Start my own log" banner travels INSIDE the
+// sample's own settings (atomic with the data, no app-side race), and any
+// real log's settings simply don't carry it. tests/demoStory.test.ts asserts
+// it, so a regenerated demo can never silently lose the exit banner.
+stores.meta.push({ key: 'settings', value: { ownerName: 'Demo Shooter', theme: '', checklistCustomItems: { essentials: [], night: [], tactical: [] }, goldenGoalId: 'go-4', drillsSeeded: true, sampleLogLoaded: true } });
 
 // ===================== BUILD =====================
 let newest = 0;

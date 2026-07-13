@@ -154,3 +154,17 @@ test('demo story: the card\'s OTHER claims hold too — a gun getting cared for,
   assert.ok(purchases.length >= 15, `costs accounted for needs a real purchase history (got ${purchases.length})`);
   assert.ok(purchases.every((p) => typeof p.cost === 'number' && p.cost > 0), 'every purchase carries a real cost');
 });
+
+test('demo story: the sample carries its own exit — settings ship with sampleLogLoaded', () => {
+  // Session 59: the "You're exploring a sample log / Start my own log" banner
+  // keys off settings.sampleLogLoaded, and the flag lives INSIDE the demo
+  // dataset (make-demo.ts) — not in app code — so it can't race the load and
+  // it vanishes whenever any real data replaces the log. This assertion makes
+  // the exit part of the shipped artifact's contract: a regenerated demo that
+  // drops the flag strands the converted explorer again, and fails here.
+  const meta = stores.meta as unknown as { key: string; value: Record<string, unknown> }[];
+  const settings = meta.find((m) => m.key === 'settings');
+  assert.ok(settings, 'the demo ships a settings record');
+  assert.equal(settings.value.sampleLogLoaded, true,
+    'demo settings must carry sampleLogLoaded: true — the exit banner depends on it');
+});

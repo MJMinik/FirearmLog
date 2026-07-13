@@ -29,6 +29,7 @@ import { UspsaImport } from './ui/UspsaImport.tsx';
 import { HelpScreen } from './ui/HelpScreen.tsx';
 import { NumbersGuide } from './ui/NumbersGuide.tsx';
 import { SetupWizard } from './ui/SetupWizard.tsx';
+import { SampleLogBanner } from './ui/SampleLogBanner.tsx';
 import { SyncScreen, FreeSpaceScreen } from './ui/AppDataScreens.tsx';
 import { SettingsScreen } from './ui/SettingsScreen.tsx';
 import { countAll, getSettings, probeDb } from './lib/db.ts';
@@ -65,6 +66,25 @@ export function App() {
   // Bump this to make every screen re-read the database after a save/import.
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => setRefreshKey((k) => k + 1);
+
+  // Session 59: is the on-device log the bundled sample? The flag travels
+  // INSIDE the demo dataset's settings (see types.ts), so this is a plain
+  // read — re-checked on every data change (loading the sample, a restore, a
+  // wipe all bump refreshKey), and fail-safe: an unreadable settings record
+  // hides the banner rather than pinning a wrong one over a real log.
+  const [sampleLog, setSampleLog] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      try {
+        const settings = await getSettings<AppSettings>();
+        if (alive) setSampleLog(settings?.sampleLogLoaded === true);
+      } catch {
+        if (alive) setSampleLog(false);
+      }
+    })();
+    return () => { alive = false; };
+  }, [refreshKey]);
 
   // F1 boot guard: if the database can't open (stale tab holding a connection,
   // a pending delete queued ahead of the open), every screen's load would hang
@@ -423,6 +443,10 @@ export function App() {
           so even a hardware keyboard on a small viewport stays untouched. */}
       <MenuBar onGoTab={setTab} onOpenView={menuOpen}
         sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} />
+      {/* Session 59: while the log IS the sample, the exit stays pinned on
+          every screen — the converted explorer must never have to hunt for
+          the way to start their own log. */}
+      {sampleLog && <SampleLogBanner />}
       {/* Audit #D5: a <main> landmark for screen readers (the nav landmark is the tab bar).
           Audit CR-17/#D16: an error boundary turns a render crash into a friendly reload.
           T1-2: keyed to the current view so navigation recovers from a crash. */}

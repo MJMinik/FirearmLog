@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
 import type { Firearm, GunCategory, Reference } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
-import { getAll, getOne, putOne } from '../lib/db.ts';
+import { countAll, getAll, getOne, putOne } from '../lib/db.ts';
+import { CoachMark } from './CoachMark.tsx';
+import { coachMarkDismissals, dismissCoachMark } from '../lib/coachMarks.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { suggestReferenceMatch, type ReferenceEntry } from '../lib/referenceData.ts';
@@ -37,6 +39,24 @@ export function GunForm({ id, onSaved, onCancel }: {
   useEffect(() => {
     void getAll<Reference>('references').then(setCustomRefs);
   }, []);
+
+  // Session 59: the very first gun form a newcomer sees points at Save — the
+  // tap-test showed the completion affordance wasn't obvious. Only on a NEW
+  // gun while the log has none (after the first save the condition retires
+  // itself — earned, not dismissed), or gone for good on an explicit ✕.
+  const [saveMark, setSaveMark] = useState(false);
+  useEffect(() => {
+    if (editing) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const [guns, dismissed] = await Promise.all([countAll('firearms'), coachMarkDismissals()]);
+        if (alive) setSaveMark(guns === 0 && dismissed.gunSave !== true);
+      } catch { /* fail quiet: no mark beats a broken form */ }
+    })();
+    return () => { alive = false; };
+  }, [editing]);
+  const closeSaveMark = () => { setSaveMark(false); void dismissCoachMark('gunSave'); };
 
   useEffect(() => {
     if (id === undefined) return;
@@ -101,6 +121,12 @@ export function GunForm({ id, onSaved, onCancel }: {
         <button className="back-btn" onClick={onCancel}>‹ Cancel</button>
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
+      {/* Session 59: anchored right under the navbar, arrow up at Save. */}
+      {saveMark && (
+        <CoachMark arrow="up-right" onDismiss={closeSaveMark}>
+          Fill in what you know — you can add more later. When you&rsquo;re done, tap Save.
+        </CoachMark>
+      )}
       <h1 className="large-title">{editing ? 'Edit Gun' : 'New Gun'}</h1>
       <FormProblem problem={problem} />
 

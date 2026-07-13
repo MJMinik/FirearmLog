@@ -411,7 +411,9 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
             <button className="button" onClick={() => open({ kind: 'gun-form' })}>+ Add your first gun</button>
             <button className="button secondary" onClick={() => open({ kind: 'setup' })}>Just looking? See a log 18 months in</button>
             <p className="report-note" style={{ margin: '0 0 4px' }}>
-              It's a sample log — what yours can look like after a while of keeping it. Clear it and start your own any time (Tour &amp; Setup → Start over).
+              It's a sample log — what yours can look like after a while of keeping it. While
+              you're exploring it, "Start my own log" at the top of the screen brings you back
+              here to begin yours.
             </p>
           </div>
         </>
