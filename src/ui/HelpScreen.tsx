@@ -166,7 +166,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Setup & sample data',
       view: { kind: 'setup' },
-      body: `The first time you open the app it walks you through setup in three steps — add a gun, pick a goal (or skip it), then log your first session from Home — or load a ready-made sample log so you can explore everything the app does. You can re-run either any time from Tour & Setup, and clear the sample whenever you like by starting fresh.`,
+      body: `The first time you open the app it walks you through setup in three steps — add a gun, pick a goal (or skip it), then log your first session from Home — or load a ready-made sample log so you can explore everything the app does. While the sample is loaded, "Start my own log" at the top of every screen clears it and starts yours; you can re-run setup any time from Tour & Setup.`,
     },
     {
       title: 'Your data & privacy',

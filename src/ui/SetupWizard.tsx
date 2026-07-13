@@ -17,6 +17,8 @@ import { applySetupGoal, goalStepNeeded, SETUP_GOAL_PRESETS } from '../lib/north
 import type { SetupGoalChoice } from '../lib/northStar.ts';
 import type { AppSettings, Goal } from '../lib/types.ts';
 import { ConfirmSheet } from './Sheet.tsx';
+import { CoachMark } from './CoachMark.tsx';
+import { coachMarkDismissals, dismissCoachMark } from '../lib/coachMarks.ts';
 import { FormProblem } from './FormProblem.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { GunForm } from './GunForm.tsx';
@@ -94,6 +96,18 @@ export function SetupWizard({ onFinish, onCancel }: {
   // Step 3b: gate the welcome variant on a completed read, so a re-runner with
   // data never sees a flash of the first-run checklist before counts arrive.
   const [countsLoaded, setCountsLoaded] = useState(false);
+
+  // Session 59: the goal step's coach mark — a pointer, because the step's
+  // TEXT already says "pick one below" and Michael's tap-test showed text
+  // alone isn't read. Hidden only after an explicit ✕ (picking a goal exits
+  // the wizard anyway, so acting on it IS the other way it goes away).
+  const [goalMarkDismissed, setGoalMarkDismissed] = useState(true); // quiet until read
+  useEffect(() => {
+    let alive = true;
+    void coachMarkDismissals().then((d) => { if (alive) setGoalMarkDismissed(d.goalPick === true); });
+    return () => { alive = false; };
+  }, []);
+  const closeGoalMark = () => { setGoalMarkDismissed(true); void dismissCoachMark('goalPick'); };
 
   useEffect(() => {
     let alive = true;
@@ -323,7 +337,15 @@ export function SetupWizard({ onFinish, onCancel }: {
             </button>
           </div>
 
-          <div className="card">
+          {/* Session 59: the mark sits ABOVE the goal card, arrow down INTO it,
+              and the card itself glows amber — where to act is now pointed at,
+              not just described (the checklist sub-line stays for readers). */}
+          {!goalMarkDismissed && (
+            <CoachMark arrow="down" onDismiss={closeGoalMark}>
+              Pick a goal here — or add one of your own.
+            </CoachMark>
+          )}
+          <div className={goalMarkDismissed ? 'card' : 'card coach-glow'}>
             <h2>What are you working toward?</h2>
             <p className="report-note" style={{ marginBottom: 8 }}>
               Pick one to keep in front of you on Home — you can change this anytime.

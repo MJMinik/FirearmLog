@@ -188,6 +188,104 @@ input, select, textarea, button { font-size: max(16px, 1rem); font-family: inher
 .update-banner span { flex: 1; }
 .update-banner button.primary { background: var(--accent); color: var(--on-accent); }
 
+/* ---------- Sample-log banner (session 59) ---------- */
+/* Pinned while the log IS the bundled sample: sticky so it rides the top of
+   every screen at every scroll depth — the exit lives wherever the excitement
+   happens. Amber fill with --on-accent ink (6.2:1, per the brand tokens);
+   the button is solid ink so it reads as THE action on the bar. z-index sits
+   under the desktop menu bar (40) and its dropdowns. */
+.sample-banner {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 8px 14px;
+  padding-top: max(8px, env(safe-area-inset-top));
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: var(--fs-subhead);
+  line-height: 1.3;
+}
+.sample-banner button {
+  flex-shrink: 0;
+  background: var(--on-accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-height: 44px;
+  font-size: var(--fs-footnote);
+  font-weight: 600;
+  cursor: pointer;
+}
+@media (min-width: 900px) and (min-height: 500px) {
+  /* Desktop: sit under the fixed 40px menu bar, and START RIGHT OF the fixed
+     220px sidebar — a full-width bar would float over the sidebar's top
+     buttons and swallow their clicks (caught by E2E: "sample-banner
+     intercepts pointer events" on the sidebar's Home). */
+  .sample-banner { top: 40px; margin-left: 220px; }
+  .app-shell.sidebar-hidden .sample-banner { margin-left: 0; }
+}
+
+/* ---------- Coach marks (session 59) ---------- */
+/* Anchored first-run guidance: an amber callout IN THE FLOW beside its target,
+   with a pointer triangle on the anchored edge. Chosen over modals on purpose
+   (non-readers reflex-dismiss modals; an anchored mark stays until acted on).
+   The triangle inherits the fill via border-color so light/dark both work. */
+.coach-mark {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  background: var(--accent);
+  color: var(--on-accent);
+  border-radius: 12px;
+  padding: 12px 14px;
+  margin: 4px 0 14px;
+  font-size: var(--fs-subhead);
+  line-height: 1.35;
+  font-weight: 500;
+}
+.coach-mark-text { flex: 1; }
+.coach-mark-x {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: var(--on-accent);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  /* An honest 44px tap target without inflating the card. */
+  margin: -12px -14px -12px 0;
+  padding: 14px;
+  min-height: 44px;
+  min-width: 44px;
+}
+.coach-mark::after {
+  content: '';
+  position: absolute;
+  border: 8px solid transparent;
+}
+/* Points DOWN at the content directly below the mark. */
+.coach-mark-down::after {
+  top: 100%;
+  left: 24px;
+  border-top-color: var(--accent);
+}
+/* Points UP-RIGHT at a navbar action (Save) above the mark. */
+.coach-mark-up-right::after {
+  bottom: 100%;
+  right: 24px;
+  border-bottom-color: var(--accent);
+}
+/* The soft amber glow on the content a mark points at (the goal cards). */
+.coach-glow {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
 .row {
   display: flex;
   align-items: center;

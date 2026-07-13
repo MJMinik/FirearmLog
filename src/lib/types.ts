@@ -365,6 +365,14 @@ export interface AppSettings {
    *  true = the user has opted out and NOTHING is sent. Read only through
    *  telemetry.ts (the single send chokepoint). */
   analyticsOptOut?: boolean;
+  /** Session 59: true while the on-device log IS the bundled sample ("See a
+   *  log 18 months in"). BAKED INTO the demo dataset's own settings by
+   *  scripts/make-demo.ts — never set by app code — so it arrives with the
+   *  sample atomically, rides along in a backup OF the sample, and vanishes
+   *  the moment anything else replaces the log (a real restore's settings
+   *  don't carry it) or the log is cleared (Clear All wipes settings). Drives
+   *  the pinned "You're exploring a sample log" banner and its exit. */
+  sampleLogLoaded?: boolean;
   legacy?: Record<string, unknown>;
 }
 
