@@ -11,6 +11,7 @@ import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseFlog } from '../src/lib/flog.ts';
+import { dryRepsForFirearm } from '../src/lib/stats.ts';
 
 const bin = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'demo-dataset.bin'));
 const snap = parseFlog(new Uint8Array(bin));
@@ -167,4 +168,31 @@ test('demo story: the sample carries its own exit — settings ship with sampleL
   assert.ok(settings, 'the demo ships a settings record');
   assert.equal(settings.value.sampleLogLoaded, true,
     'demo settings must carry sampleLogLoaded: true — the exit banner depends on it');
+});
+
+test('demo story: dry-fire work is real — every dry session carries reps, every dry-fired gun shows them (F5)', () => {
+  // Stranger-test F5 (session 60): the round-count report showed "0 dry reps"
+  // for every gun because the generator wrote rounds: 0 on dry-fire sessions.
+  // The report was honest; the flash-forward was lying (the arc says this
+  // shooter dry-fires twice a week). This pins the fix to the shipped artifact:
+  // a regenerated demo whose dry work vanishes again fails here.
+  type GunRow = { firearmId: string; rounds: number };
+  const dry = (stores.sessions as unknown as (Sess & { guns: GunRow[] })[])
+    .filter((s) => !s.planned && s.type === 'dry_fire');
+  assert.ok(dry.length >= 20, `the arc needs a real dry-fire habit (got ${dry.length} sessions)`);
+  for (const s of dry) {
+    assert.ok(s.guns.length >= 1, `dry session on ${s.date} names no gun`);
+    for (const g of s.guns) {
+      assert.ok(g.rounds > 0, `dry session on ${s.date} carries 0 reps — the F5 lie returning`);
+      assert.ok(g.rounds <= 500, `dry session on ${s.date} claims ${g.rounds} reps — implausible for one evening`);
+    }
+  }
+  // And the number the round-count report actually prints: per-gun lifetime dry
+  // reps, through the same function the app uses.
+  const gunIds = [...new Set(dry.flatMap((s) => s.guns.map((g) => g.firearmId)))];
+  assert.ok(gunIds.length >= 2, 'the sample should dry-fire more than one gun');
+  const all = stores.sessions as unknown as (Sess & { guns: GunRow[] })[];
+  for (const id of gunIds) {
+    assert.ok(dryRepsForFirearm(id, all) > 0, `gun ${id} dry-fires in the data but reports 0 lifetime dry reps`);
+  }
 });

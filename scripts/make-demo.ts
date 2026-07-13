@@ -288,9 +288,17 @@ for (let w = 0; w < weeks; w++) {
     while (chosen.size < nDrills) chosen.add(pick(dryDrills));
     seN++;
     layoffCheck(d.getTime());
+    // Stranger-test F5 (session 60): dry-fire sessions used to ship rounds: 0,
+    // so the round-count report truthfully showed "0 dry reps" for every gun --
+    // a lie in the flash-forward (the arc says this shooter dry-fires twice a
+    // week). Reps are derived ARITHMETICALLY from values already drawn (nDrills,
+    // w, k) -- deliberately NO new RNG draws, so the shared stream is untouched
+    // and every other number in the dataset (and the shipped screenshots'
+    // anchors) stays byte-identical.
+    const dryReps = 40 + 25 * nDrills + ((w + k) % 5) * 8; // 65-155 presses, varied
     stores.sessions.push({
       id: `se-${String(seN).padStart(3, '0')}`, ...stamp(iso(d)), date: iso(d), type: 'dry_fire',
-      guns: [{ firearmId: pick(['fa-dr920', 'fa-g34', 'fa-staccato']), rounds: 0 }],
+      guns: [{ firearmId: pick(['fa-dr920', 'fa-g34', 'fa-staccato']), rounds: dryReps }],
       location: 'Home (dry)', distances: '', notes: chance(0.15) ? pick(['15 min before dinner.', 'Par times tightening.', 'Reload reps.']) : '',
       ammoUsage: [], drills: [...chosen].map((name) => {
         void r(); void r(); // burn the old distance + time draws (main-stream preservation)
