@@ -34,4 +34,5 @@ export type View =
   | { kind: 'settings' }
   | { kind: 'sync' }
   | { kind: 'free-space' }
+  | { kind: 'your-data' }
   | { kind: 'drill-history'; name: string };

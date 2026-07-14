@@ -9,16 +9,21 @@
 //
 // Wiring status — honest (R-12): NOTHING is sent yet. No provider is registered
 // (provider === null), so every call is a no-op; the real Aptabase / Sentry /
-// benchmark providers are registered in the step-4 wiring branch. `enabled`
-// mirrors the stored opt-out; the app keeps it fresh by calling
-// syncTelemetryEnabled() at start and after any settings-changing op (the
-// opt-out toggle, Load-from-File, an import, Clear All) — so the cached gate can
+// benchmark providers are registered in a later activation step. The gates
+// follow the CONSENT POSTURE (decision 2026-07-12, geo-gated hybrid):
+// usage/crash is opt-out everywhere except the EU/EEA, where it needs the
+// one-tap first-run YES; the benchmark layer is opt-in-by-feature everywhere
+// ("share to compare"), independent of the usage answer — each consent governs
+// exactly what its label says. The app keeps the gates fresh by
+// calling syncTelemetryEnabled() at start and after any settings-changing op
+// (a toggle, Load-from-File, an import, Clear All) — so the cached gates can
 // never go stale after a restore replaces settings (R-4).
 //
 // Safe by construction: both doors guard on `enabled` AND a registered provider,
 // are synchronous, and never throw — telemetry must never break the app.
 
 import type { BenchmarkContribution } from './benchmark.ts';
+import type { ConsentRegion } from './region.ts';
 
 /** The closed set of Layer-A usage events and the prop shape each may carry
  *  (build spec §5). track() refuses anything not listed here — no free-text
@@ -36,6 +41,7 @@ export const EVENT_SCHEMA = {
   wiki_opened: { section: 'string' },
   benchmark_viewed: { metric: 'string' },
   optout_toggled: { on: 'boolean' },
+  benchmark_optin_toggled: { on: 'boolean' },
 } as const satisfies Record<string, Record<string, 'string' | 'number' | 'boolean'>>;
 
 export type TelemetryEvent = keyof typeof EVENT_SCHEMA;
@@ -55,23 +61,58 @@ export interface TelemetryProvider {
 
 let provider: TelemetryProvider | null = null;
 let enabled = false;
+let benchmarkOn = false;
 
-/** Pure helper: given the stored settings, is the user participating?
- *  Opt-OUT model — participating unless `analyticsOptOut === true`. */
-export function analyticsEnabled(settings: { analyticsOptOut?: boolean } | undefined): boolean {
-  return settings?.analyticsOptOut !== true;
+/** The settings fields the consent posture reads. */
+export interface ConsentSettings {
+  analyticsOptOut?: boolean;
+  analyticsConsent?: boolean;
+  benchmarkOptIn?: boolean;
 }
 
-/** Set the live on/off state directly (used by tests and the opt-out toggle). */
-export function setTelemetryEnabled(next: boolean): void {
+/** Pure helper: is the user participating in USAGE/CRASH analytics?
+ *  Geo-gated hybrid (decision 2026-07-12):
+ *  - everywhere: `analyticsOptOut === true` is a standing refusal — always NO;
+ *  - EU/EEA: additionally requires the affirmative first-run YES
+ *    (`analyticsConsent === true`) — unanswered means NOT participating;
+ *  - rest of world: opt-out model — participating unless refused. */
+export function analyticsEnabled(
+  settings: ConsentSettings | undefined,
+  region: ConsentRegion,
+): boolean {
+  if (settings?.analyticsOptOut === true) return false;
+  if (region === 'eu') return settings?.analyticsConsent === true;
+  return true;
+}
+
+/** Pure helper: is the user participating in the BENCHMARK layer?
+ *  Opt-in-by-feature EVERYWHERE ("share to compare" — decision 2026-07-12):
+ *  only an explicit `benchmarkOptIn === true` participates. Deliberately
+ *  INDEPENDENT of the usage-analytics answer: the opt-in is itself the
+ *  affirmative consent in every region, and "share benchmarks but skip usage
+ *  stats" is a coherent choice the shooter is allowed to make — each toggle
+ *  governs exactly what its label says, nothing else. */
+export function benchmarkEnabled(settings: ConsentSettings | undefined): boolean {
+  return settings?.benchmarkOptIn === true;
+}
+
+/** Set the live on/off states directly (used by tests). */
+export function setTelemetryEnabled(next: boolean, benchmark: boolean = next): void {
   enabled = next;
+  benchmarkOn = benchmark;
 }
 
-/** Re-sync the live gate from the stored settings. The app calls this at start
- *  and after any settings-changing op, so a Load-from-File / import / Clear All
- *  can never leave `enabled` stale against what's on disk (R-4). */
-export function syncTelemetryEnabled(settings: { analyticsOptOut?: boolean } | undefined): void {
-  enabled = analyticsEnabled(settings);
+/** Re-sync the live gates from the stored settings + the device's consent
+ *  region. The app calls this at start and after any settings-changing op, so a
+ *  Load-from-File / import / Clear All can never leave the gates stale against
+ *  what's on disk (R-4). Region is required on purpose: every caller must say
+ *  which posture applies (the app passes detectRegion()). */
+export function syncTelemetryEnabled(
+  settings: ConsentSettings | undefined,
+  region: ConsentRegion,
+): void {
+  enabled = analyticsEnabled(settings, region);
+  benchmarkOn = benchmarkEnabled(settings);
 }
 
 /** Register the real send provider (step 4). null unregisters — pure no-op. */
@@ -110,11 +151,14 @@ export function track(event: TelemetryEvent, props?: TelemetryProps): void {
   }
 }
 
-/** The Layer-B send chokepoint — one anonymous benchmark sample, through the
- *  SAME gate as track(). The contribution is already shape-validated by
- *  isValidContribution before it reaches here. Never throws. */
+/** The Layer-B send chokepoint — one anonymous benchmark sample. Gated on the
+ *  BENCHMARK opt-in ("share to compare"), NOT on the usage-analytics gate: the
+ *  two consents are independent by design (decision 2026-07-12), and the
+ *  standing refusal switch already zeroes both inside the sync. The
+ *  contribution is shape-validated by isValidContribution before it reaches
+ *  here. Never throws. */
 export function sendContribution(contribution: BenchmarkContribution): void {
-  if (!enabled || provider === null) return;
+  if (!benchmarkOn || provider === null) return;
   try {
     provider.sendContribution?.(contribution);
   } catch {
@@ -150,6 +194,6 @@ export function scrubError(err: unknown, maxFrames = 20): ScrubbedError {
 
 /** Inspection hook for tests and diagnostics — reports the current wiring state
  *  without exposing the provider itself. */
-export function telemetryState(): { enabled: boolean; wired: boolean } {
-  return { enabled, wired: provider !== null };
+export function telemetryState(): { enabled: boolean; benchmark: boolean; wired: boolean } {
+  return { enabled, benchmark: benchmarkOn, wired: provider !== null };
 }

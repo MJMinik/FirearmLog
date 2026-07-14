@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   analyticsEnabled,
+  benchmarkEnabled,
   setTelemetryEnabled,
   syncTelemetryEnabled,
   registerTelemetryProvider,
@@ -27,25 +28,50 @@ const sample: BenchmarkContribution = {
   metric: 'classifier_percent', value: 58,
 };
 
-// --- analyticsEnabled + syncTelemetryEnabled: the opt-OUT rule --------------
+// --- the consent posture (decision 2026-07-12): geo-gated hybrid ------------
 
-test('analyticsEnabled: undefined settings => participating (default on)', () => {
-  assert.equal(analyticsEnabled(undefined), true);
+test('analyticsEnabled, rest of world: opt-OUT model — participating unless refused', () => {
+  assert.equal(analyticsEnabled(undefined, 'row'), true); // no settings yet => on
+  assert.equal(analyticsEnabled({}, 'row'), true);
+  assert.equal(analyticsEnabled({ analyticsOptOut: true }, 'row'), false);
+  assert.equal(analyticsEnabled({ analyticsOptOut: false }, 'row'), true);
 });
 
-test('analyticsEnabled: analyticsOptOut true => opted out', () => {
-  assert.equal(analyticsEnabled({ analyticsOptOut: true }), false);
-  assert.equal(analyticsEnabled({ analyticsOptOut: false }), true);
+test('analyticsEnabled, EU/EEA: opt-IN model — NOTHING without the affirmative yes', () => {
+  assert.equal(analyticsEnabled(undefined, 'eu'), false); // never asked => off
+  assert.equal(analyticsEnabled({}, 'eu'), false);
+  assert.equal(analyticsEnabled({ analyticsConsent: true }, 'eu'), true);
+  assert.equal(analyticsEnabled({ analyticsConsent: false }, 'eu'), false);
 });
 
-test('syncTelemetryEnabled: the live gate follows the stored opt-out', () => {
+test('analyticsEnabled: the standing refusal wins in EVERY region, even over consent', () => {
+  assert.equal(analyticsEnabled({ analyticsOptOut: true, analyticsConsent: true }, 'eu'), false);
+  assert.equal(analyticsEnabled({ analyticsOptOut: true, analyticsConsent: true }, 'row'), false);
+});
+
+test('benchmarkEnabled: opt-in-by-feature everywhere — only an explicit yes participates', () => {
+  assert.equal(benchmarkEnabled(undefined), false);
+  assert.equal(benchmarkEnabled({}), false);
+  assert.equal(benchmarkEnabled({ benchmarkOptIn: false }), false);
+  assert.equal(benchmarkEnabled({ benchmarkOptIn: true }), true);
+  // independent of the usage answer, by design (each toggle governs its label)
+  assert.equal(benchmarkEnabled({ benchmarkOptIn: true, analyticsOptOut: true }), true);
+});
+
+test('syncTelemetryEnabled: both live gates follow settings + region', () => {
   reset();
-  syncTelemetryEnabled({ analyticsOptOut: true });
+  syncTelemetryEnabled({ analyticsOptOut: true }, 'row');
   assert.equal(telemetryState().enabled, false);
-  syncTelemetryEnabled({ analyticsOptOut: false });
+  syncTelemetryEnabled({ analyticsOptOut: false }, 'row');
   assert.equal(telemetryState().enabled, true);
-  syncTelemetryEnabled(undefined); // no settings yet => participating
+  syncTelemetryEnabled(undefined, 'row'); // no settings yet, ROW => participating
   assert.equal(telemetryState().enabled, true);
+  syncTelemetryEnabled(undefined, 'eu'); // no settings yet, EU => off until asked
+  assert.equal(telemetryState().enabled, false);
+  syncTelemetryEnabled({ analyticsConsent: true, benchmarkOptIn: true }, 'eu');
+  assert.deepEqual(telemetryState(), { enabled: true, benchmark: true, wired: false });
+  syncTelemetryEnabled({ benchmarkOptIn: true }, 'eu'); // benchmark yes, usage unanswered
+  assert.deepEqual(telemetryState(), { enabled: false, benchmark: true, wired: false });
 });
 
 // --- track(): nothing leaves unless BOTH wired and enabled ------------------
@@ -54,7 +80,7 @@ test('track: no provider => no-op even when enabled', () => {
   reset();
   setTelemetryEnabled(true);
   assert.doesNotThrow(() => track('app_opened'));
-  assert.deepEqual(telemetryState(), { enabled: true, wired: false });
+  assert.deepEqual(telemetryState(), { enabled: true, benchmark: true, wired: false });
 });
 
 test('track: provider registered but disabled => provider NOT called', () => {
@@ -132,6 +158,20 @@ test('sendContribution: no-op unless enabled AND a provider implements it', () =
   sendContribution(sample);
   assert.equal(sent.length, 1);
   assert.deepEqual(sent[0], sample);
+});
+
+test('sendContribution: gated on the BENCHMARK opt-in, independent of the usage gate', () => {
+  reset();
+  const sent: BenchmarkContribution[] = [];
+  registerTelemetryProvider({ track: () => {}, sendContribution: (c) => sent.push(c) });
+  // usage on, benchmark off => a contribution must NOT leave
+  setTelemetryEnabled(true, false);
+  sendContribution(sample);
+  assert.equal(sent.length, 0);
+  // usage off, benchmark on => the contribution DOES leave (independent consents)
+  setTelemetryEnabled(false, true);
+  sendContribution(sample);
+  assert.equal(sent.length, 1);
 });
 
 test('sendContribution: a provider without the door (usage-only) is a safe no-op', () => {

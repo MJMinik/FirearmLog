@@ -360,11 +360,24 @@ export interface AppSettings {
   /** Whether to show the optional coaching remarks (e.g. the match-debrief
    *  "room to push?" question). Undefined = on; set false to hide them. */
   coachingRemarks?: boolean;
-  /** Rung-1 analytics is OPT-OUT: anonymous usage/crash/benchmark data is on by
-   *  default and the log always stays on-device. Undefined/false = participating;
-   *  true = the user has opted out and NOTHING is sent. Read only through
-   *  telemetry.ts (the single send chokepoint). */
+  /** Rung-1 usage/crash refusal — the standing "no" for anonymous usage stats
+   *  and crash reports, honored in every region. Survives Clear All by design
+   *  (a refusal is not "data"). Governs ONLY usage/crash; the benchmark layer
+   *  has its own independent opt-in below. Read only through telemetry.ts
+   *  (the single send chokepoint). */
   analyticsOptOut?: boolean;
+  /** Rung-1 consent posture (decision 2026-07-12, geo-gated hybrid): in the
+   *  EU/EEA, usage/crash reporting needs an affirmative YES before anything is
+   *  sent — this records the one-tap first-run answer. true = consented;
+   *  false = said "no thanks"; undefined = never asked (treated as NOT
+   *  consented in the EU; irrelevant elsewhere, where opt-out governs). */
+  analyticsConsent?: boolean;
+  /** Rung-1 benchmark layer is OPT-IN-BY-FEATURE everywhere ("share to
+   *  compare" — decision 2026-07-12): true = the shooter chose to contribute
+   *  anonymous benchmark samples and in return sees the community comparisons.
+   *  Undefined/false = not contributing; nothing benchmark-shaped ever leaves
+   *  the device. */
+  benchmarkOptIn?: boolean;
   /** Session 59: true while the on-device log IS the bundled sample ("See a
    *  log 18 months in"). BAKED INTO the demo dataset's own settings by
    *  scripts/make-demo.ts — never set by app code — so it arrives with the
