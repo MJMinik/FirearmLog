@@ -64,5 +64,31 @@ test.describe('Log filter shows matches honestly (F2a)', () => {
     await filterSheet.getByRole('button', { name: 'Done' }).click();
     await expect(matchesCard).toBeVisible();
     await expect(matchesCard.locator('.row-tap').first()).toContainText(name);
+
+    // With matches logged, the Matches chip plus a no-hit query gets the
+    // GENERIC empty state — never the "No matches logged yet" teaching line.
+    // This pins the `matches.length === 0` guard: drop it and this fails.
+    await main.getByRole('button', { name: /Search & Filter/ }).click();
+    await filterSheet.getByRole('button', { name: 'Matches', exact: true }).click();
+    await filterSheet.locator('input[type="search"]').fill('zzz-no-such-record-zzz');
+    await filterSheet.getByRole('button', { name: 'Done' }).click();
+    await expect(main.getByText(/Nothing matches your search/)).toBeVisible();
+    await expect(main.getByText('No matches logged yet')).toHaveCount(0);
+  });
+
+  test('filtering to Matches with none logged teaches where matches live', async ({ page }) => {
+    // Fresh, empty log — skip the wizard instead of loading the sample.
+    await page.goto('/');
+    await page.getByRole('button', { name: "Skip for now — I'm just looking around" }).click();
+    await gotoTab(page, 'Log');
+
+    const main = page.getByRole('main');
+    await main.getByRole('button', { name: /Search & Filter/ }).click();
+    const filterSheet = page.getByRole('dialog', { name: 'Search & Filter' });
+    await filterSheet.getByRole('button', { name: 'Matches', exact: true }).click();
+    await filterSheet.getByRole('button', { name: 'Done' }).click();
+
+    // The empty state answers the actual question instead of shrugging.
+    await expect(main.getByText(/No matches logged yet — matches live in the Compete tab/)).toBeVisible();
   });
 });

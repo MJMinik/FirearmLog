@@ -752,7 +752,14 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
       ) : !narrowing && sessions.length === 0 ? (
         <p className="empty">Nothing logged yet. Tap "Log Session" after your next range trip.</p>
       ) : narrowing && shownSessions.length === 0 && listedMatches.length === 0 ? (
-        <p className="empty">Nothing matches your search. Tap Clear to see everything again.</p>
+        /* F2a follow-up (Michael, July 14 2026): filtering to Matches with none
+           logged at all gets a TEACHING answer, not a generic one — the pilot's
+           own confusion, answered in the app forever. */
+        <p className="empty">
+          {filter.kinds.includes('match') && matches.length === 0
+            ? 'No matches logged yet — matches live in the Compete tab. Tap Clear to see everything again.'
+            : 'Nothing matches your search. Tap Clear to see everything again.'}
+        </p>
       ) : (
         <>
           {shownSessions.length > 0 && (
