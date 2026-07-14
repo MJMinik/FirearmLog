@@ -20,6 +20,8 @@ import { bucketTotals, malfunctionsInRange, ratePerThousand, spanStartDate } fro
 import { matchAccuracyTrend } from '../lib/competition.ts';
 import { buildHeatmap, monthLabels, sessionsOnDay } from '../lib/heatmap.ts';
 import { sessionRounds } from '../lib/stats.ts';
+import { chartDateLabel, dateMode, thinIndices } from '../lib/chartFurniture.ts';
+import { ChartReadout } from './ChartReadout.tsx';
 import type { View } from './nav.ts';
 import { RoundsByMonthChart } from './screens.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
@@ -347,11 +349,19 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
 function SpeedAccuracyTrendCard({ matches, coachingRemarks, onDisableRemarks }: {
   matches: Match[]; coachingRemarks: boolean; onDisableRemarks: () => void;
 }) {
+  // The readout stores WHICH match was tapped (by id) and derives its text
+  // from the current data at render — it can never assert numbers for data
+  // the chart no longer shows (fresh-eyes audit finding, session 62).
+  const [selMatchId, setSelMatchId] = useState<string | null>(null);
   const trend = matchAccuracyTrend(matches);
   const pts = trend.points;
   if (pts.length < 2) return null;
 
-  const w = 280, h = 120, padR = 8, padL = 30, padY = 14;
+  // F4 (session 62): furnished per the chart-furniture spec — date anchors on
+  // the x-axis (the pilot tester's note, verbatim: "Date should show along
+  // horizontal axis"), the 90% mid tick labeled, the latest match's number
+  // always visible, and a tap-readout line beneath.
+  const w = 280, h = 138, padR = 12, padL = 34, padT = 14, padB = 20;
   const vals = pts.map((p) => p.pointsKept * 100);
   const min = Math.min(...vals), max = Math.max(...vals);
   // M6: fix the y-domain to a meaningful accuracy band (80–100%) rather than
@@ -362,28 +372,67 @@ function SpeedAccuracyTrendCard({ matches, coachingRemarks, onDisableRemarks }: 
   const domain = hiY - loY;
   const stepX = (w - padL - padR) / (pts.length - 1);
   const xAt = (i: number) => padL + i * stepX;
-  const yAt = (v: number) => padY + (1 - (v - loY) / domain) * (h - padY * 2);
+  const yAt = (v: number) => padT + (1 - (v - loY) / domain) * (h - padT - padB);
   const line = pts.map((p, i) => `${xAt(i)},${yAt(p.pointsKept * 100)}`).join(' ');
+  const mode = dateMode(pts[0].date, pts[pts.length - 1].date);
+  const dateIdxs = thinIndices(pts.length, 4);
+  const lastIdx = pts.length - 1;
+  const lastV = vals[lastIdx];
+  const lastLabelY = yAt(lastV) < padT + 14 ? yAt(lastV) + 14 : yAt(lastV) - 8;
+
+  const sel = selMatchId != null ? pts.find((p) => p.matchId === selMatchId) ?? null : null;
+  const readout = sel
+    ? `${formatDayKey(sel.date)} — ${sel.name} — ${(sel.pointsKept * 100).toFixed(1)}% of points kept`
+    : null;
 
   return (
     <div className="card">
-      <h2>Accuracy across matches <InfoTip title="Accuracy across matches">Your USPSA accuracy — the share of available points you kept — across your matches, oldest to newest. This is the place to read the trend: one match is a small sample; the run of matches is the signal for whether you're getting cleaner or looser over a season. There's no pace line on purpose: raw time isn't comparable across different matches, so pace shows up only as a note below, and only when a clear pattern holds.</InfoTip></h2>
+      <h2>Accuracy across matches <InfoTip title="Accuracy across matches">Your USPSA accuracy — the share of available points you kept — across your matches, oldest to newest, with the dates along the bottom. Tap any dot for that match's name, date, and number. This is the place to read the trend: one match is a small sample; the run of matches is the signal for whether you're getting cleaner or looser over a season. There's no pace line on purpose: raw time isn't comparable across different matches, so pace shows up only as a note below, and only when a clear pattern holds.</InfoTip></h2>
       <p className="report-note" style={{ marginTop: 0 }}>
         Points kept — {Math.round(min)}% to {Math.round(max)}% across {pts.length} USPSA matches.
       </p>
       <svg viewBox={`0 0 ${w} ${h}`} width="100%" style={{ display: 'block', marginTop: 4 }}
-        role="img" aria-label={`Accuracy across ${pts.length} matches — ${Math.round(min)} to ${Math.round(max)} percent of points kept, oldest to newest`}>
+        role="img" aria-label={`Accuracy across ${pts.length} matches from ${formatDayKey(pts[0].date)} to ${formatDayKey(pts[lastIdx].date)} — ${Math.round(min)} to ${Math.round(max)} percent of points kept, oldest to newest`}>
         {[hiY, (hiY + loY) / 2, loY].map((gv, k) => (
-          <line key={k} x1={padL} y1={yAt(gv)} x2={w} y2={yAt(gv)} stroke="var(--separator)" strokeWidth={0.5} />
+          <g key={k}>
+            <line x1={padL} y1={yAt(gv)} x2={w - padR} y2={yAt(gv)} stroke="var(--separator)" strokeWidth={0.5} />
+            <text className="chart-tick" x={padL - 4} y={yAt(gv) + 3} fontSize={10} fill="var(--text-dim)" textAnchor="end">
+              {Math.round(gv)}%
+            </text>
+          </g>
         ))}
-        <text x={padL - 4} y={padY + 3} fontSize={10} fill="var(--text-dim)" textAnchor="end">{hiY}%</text>
-        <text x={padL - 4} y={h - padY + 3} fontSize={10} fill="var(--text-dim)" textAnchor="end">{loY}%</text>
+        {dateIdxs.map((i) => (
+          <text className="chart-date" key={`d-${i}`} x={xAt(i)} y={h - 6}
+            textAnchor={i === 0 ? 'start' : i === lastIdx ? 'end' : 'middle'}
+            fill="var(--text-dim)" fontSize={10} fontFamily="inherit">
+            {chartDateLabel(pts[i].date, mode)}
+          </text>
+        ))}
         <polyline points={line} fill="none" stroke="var(--accent-ink)" strokeWidth={1.5}
           strokeLinejoin="round" strokeLinecap="round" />
         {pts.map((p, i) => (
           <circle key={p.matchId} cx={xAt(i)} cy={yAt(p.pointsKept * 100)} r={2.5} fill="var(--accent-ink)" />
         ))}
+        {/* Honest tap targets: one full-height column per match, split at the
+            midpoints — dense seasons can't steal each other's taps. */}
+        {pts.map((p, i) => {
+          const left = i === 0 ? 0 : (xAt(i - 1) + xAt(i)) / 2;
+          const right = i === lastIdx ? w : (xAt(i) + xAt(i + 1)) / 2;
+          return (
+            <rect className="chart-hit" key={`hit-${p.matchId}`} x={left} y={0}
+              width={right - left} height={h} fill="transparent" style={{ cursor: 'pointer' }}
+              onClick={() => setSelMatchId(p.matchId)}>
+              <title>{`${formatDayKey(p.date)}: ${p.name} — ${(p.pointsKept * 100).toFixed(1)}%`}</title>
+            </rect>
+          );
+        })}
+        <text className="chart-last-label" x={xAt(lastIdx)} y={lastLabelY} textAnchor="end"
+          fill="var(--text)" fontSize={11} fontWeight={600} fontFamily="inherit"
+          style={{ pointerEvents: 'none' }}>
+          {lastV.toFixed(1)}%
+        </text>
       </svg>
+      <ChartReadout value={readout} hint="Tap a dot to see that match's date and number." />
       {trend.consistentlyClean && coachingRemarks && (
         <p className="report-note" style={{ marginTop: 8 }}>
           Your recent matches have all been very clean (95%+ of points kept) — you may consistently have room to push the pace.{' '}
@@ -413,7 +462,7 @@ function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunct
 
   return (
     <div className="card">
-      <h2>Trends <InfoTip title="Trends">Your rounds and reps over the span you pick. "Dry : live" is dry-fire reps per live round; "malfunctions / 1,000" is your stoppage rate. Filter by gun or gun type.</InfoTip></h2>
+      <h2>Trends <InfoTip title="Trends">Your rounds and reps over the span you pick. "Dry : live" is dry-fire reps per live round; "malfunctions / 1,000" is your stoppage rate. Filter by gun or gun type. Tap a bar for that month's exact numbers.</InfoTip></h2>
       {/* Progressive disclosure: show the chart with its defaults (last 12 mo, all guns)
           first; the filter row is one tap away rather than clutter above the data. */}
       <Reveal label="Filters">

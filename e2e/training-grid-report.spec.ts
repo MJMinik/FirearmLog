@@ -73,8 +73,13 @@ test.describe('Training grid day squares', () => {
     await page.getByText("Just show the day's count, don't open the report").click();
     await todaySquare(page).click();
 
-    // No popup, no navigation — just the count line for today.
-    await expect(page.locator('p.report-note[aria-live="polite"]')).toContainText(/session/);
+    // No popup, no navigation — just the count line for today. Scoped to the
+    // Training grid card: F4 added aria-live readout lines to the OTHER charts
+    // on this screen, so the bare selector stopped being unique (session 62).
+    const gridCard = page.getByRole('main').locator('.card').filter({
+      has: page.getByRole('heading', { name: /Training grid/ }),
+    });
+    await expect(gridCard.locator('p.report-note[aria-live="polite"]')).toContainText(/session/);
     await expect(page.getByRole('heading', { name: 'Progress' }).first()).toBeVisible();
   });
 });

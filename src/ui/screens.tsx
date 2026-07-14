@@ -26,6 +26,7 @@ import { isActive, isOwned, isFormer, isRetired, statusBadge } from '../lib/gunS
 import { MonthCalendar } from './Calendar.tsx';
 import type { CalItem } from './Calendar.tsx';
 import { LogFilterBar } from './FilterBar.tsx';
+import { ChartReadout } from './ChartReadout.tsx';
 import { emptyLogFilter, filterCount, matchMatchesFilter, sessionKind, sessionMatchesFilter } from '../lib/searchFilter.ts';
 import type { LogFilter } from '../lib/searchFilter.ts';
 import { activeOnly, trashedOnly, daysLeft } from '../lib/softDelete.ts';
@@ -119,6 +120,17 @@ function SessionRow({ s, firearms, onTap, onDelete }: {
 // ---- Rounds by Month bar chart (SVG, hand-rolled per spec §3.4) ----
 
 export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
+  // F4 (session 62): this chart set the furniture standard (the M6 pass);
+  // it gains the tap-readout so every chart answers a tap the same way.
+  // The readout stores WHICH month was tapped and derives its numbers from
+  // the CURRENT buckets at render — so changing the filter or span updates
+  // (or clears) it instead of leaving stale numbers on screen (fresh-eyes
+  // audit finding, session 62).
+  const [selKey, setSelKey] = useState<string | null>(null);
+  const selBucket = selKey != null ? buckets.find((b) => b.key === selKey) ?? null : null;
+  const readout = selBucket
+    ? `${selBucket.label} — ${selBucket.liveRounds.toLocaleString()} live · ${selBucket.matchRounds.toLocaleString()} match · ${selBucket.dryReps.toLocaleString()} dry reps`
+    : null;
   const max = Math.max(...buckets.map(b => b.total), 1);
   const barW = Math.floor(280 / buckets.length);
   const gap = 4;
@@ -136,7 +148,7 @@ export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
       role="img" aria-label="Rounds by month bar chart">
       {/* Vertical axis label */}
       <text x={10} y={h / 2} textAnchor="middle"
-        fill="var(--text-dim)" fontSize="9" fontFamily="inherit"
+        fill="var(--text-dim)" fontSize="10" fontFamily="inherit"
         transform={`rotate(-90 10 ${h / 2})`}>
         Rounds fired
       </text>
@@ -180,16 +192,24 @@ export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
               )}
               {/* Month label (thinned out when there are many months) */}
               {i % labelStep === 0 && (
-                <text x={x + barW / 2} y={h + 14} textAnchor="middle"
-                  fill="var(--text-dim)" fontSize="9" fontFamily="inherit">
+                <text className="chart-date" x={x + barW / 2} y={h + 14} textAnchor="middle"
+                  fill="var(--text-dim)" fontSize="10" fontFamily="inherit">
                   {b.label.split(' ')[0]}
                 </text>
               )}
+              {/* F4: the whole column answers a tap, not just the painted bar —
+                  short bars would otherwise be nearly impossible to hit. */}
+              <rect className="chart-hit" x={x} y={0} width={barW + gap} height={h}
+                fill="transparent" style={{ cursor: 'pointer' }}
+                onClick={() => setSelKey(b.key)}>
+                <title>{`${b.label}: ${b.liveRounds.toLocaleString()} live · ${b.matchRounds.toLocaleString()} match · ${b.dryReps.toLocaleString()} dry reps`}</title>
+              </rect>
             </g>
           );
         })}
       </g>
     </svg>
+    <ChartReadout value={readout} hint="Tap a bar to see that month's numbers." />
     <div className="chart-legend">
       <span><i style={{ background: 'var(--accent)' }} />Live rounds</span>
       <span><i style={{ background: 'var(--cat-match)' }} />Match rounds</span>
