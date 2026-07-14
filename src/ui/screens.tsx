@@ -26,7 +26,7 @@ import { isActive, isOwned, isFormer, isRetired, statusBadge } from '../lib/gunS
 import { MonthCalendar } from './Calendar.tsx';
 import type { CalItem } from './Calendar.tsx';
 import { LogFilterBar } from './FilterBar.tsx';
-import { emptyLogFilter, matchMatchesFilter, sessionKind, sessionMatchesFilter } from '../lib/searchFilter.ts';
+import { emptyLogFilter, filterCount, matchMatchesFilter, sessionKind, sessionMatchesFilter } from '../lib/searchFilter.ts';
 import type { LogFilter } from '../lib/searchFilter.ts';
 import { activeOnly, trashedOnly, daysLeft } from '../lib/softDelete.ts';
 import { softDeleteSession, restoreSession, purgeSession, purgeExpiredSessions } from './sessionDelete.ts';
@@ -694,6 +694,16 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
   const shownSessions = sessions.filter((s) => sessionMatchesFilter(s, filter, firearms));
   const shownMatches = matches.filter((m) => matchMatchesFilter(m, filter, firearms));
 
+  // F2a (stranger-test finding, July 13 2026): the filter counts matches, so the
+  // LIST must show them too when the shooter is narrowing — otherwise "Matches"
+  // promises what the list never delivers (the pilot tester called it broken).
+  // Default view (no filter active) stays sessions-only: matches live in Compete
+  // and on the calendar, which is the app's map. Newest first, like everywhere.
+  const narrowing = filterCount(filter) > 0;
+  const listedMatches = narrowing
+    ? [...shownMatches].sort((a, b) => b.date.localeCompare(a.date))
+    : [];
+
   const calItems = new Map<string, CalItem[]>();
   for (const s of shownSessions) {
     if (!s.date) continue;
@@ -717,7 +727,8 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
       <p className="report-note" style={{ marginTop: -8, marginBottom: 12 }}>
         Your training record: live practice, dry fire, classes, and planned range
         trips — with rounds, drills, ammo used, malfunctions, photos, and how it felt.
-        Matches and classifiers live in the Compete tab; they show up here on the calendar.
+        Matches and classifiers live in the Compete tab; they show up here on the
+        calendar, and in the list when your search includes them.
       </p>
       <div style={{ display: 'flex', gap: 8 }}>
         <button className="button" style={{ flex: 1 }} onClick={() => open({ kind: 'session-form' })}>+ Log Session</button>
@@ -738,19 +749,43 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
             ? { kind: 'match-detail', id: it.id }
             : { kind: 'session-form', id: it.id })}
           onEmptyDay={(dk) => open({ kind: 'session-form', date: dk })} />
-      ) : sessions.length === 0 ? (
+      ) : !narrowing && sessions.length === 0 ? (
         <p className="empty">Nothing logged yet. Tap "Log Session" after your next range trip.</p>
-      ) : shownSessions.length === 0 ? (
-        <p className="empty">Nothing matches your search. Tap Clear to see everything again{shownMatches.length > 0 ? ', or flip to Calendar — your matches are there' : ''}.</p>
+      ) : narrowing && shownSessions.length === 0 && listedMatches.length === 0 ? (
+        <p className="empty">Nothing matches your search. Tap Clear to see everything again.</p>
       ) : (
-        <div className="card">
-          <h2>{shownSessions.length === sessions.length ? 'All Sessions' : 'Matching Sessions'}</h2>
-          {shownSessions.map((s) => (
-            <SessionRow key={s.id} s={s} firearms={firearms}
-              onTap={() => open({ kind: 'session-form', id: s.id })}
-              onDelete={() => onRowDelete(s)} />
-          ))}
-        </div>
+        <>
+          {shownSessions.length > 0 && (
+            <div className="card">
+              <h2>{shownSessions.length === sessions.length ? 'All Sessions' : 'Matching Sessions'}</h2>
+              {shownSessions.map((s) => (
+                <SessionRow key={s.id} s={s} firearms={firearms}
+                  onTap={() => open({ kind: 'session-form', id: s.id })}
+                  onDelete={() => onRowDelete(s)} />
+              ))}
+            </div>
+          )}
+          {/* F2a: matching matches render as real rows while narrowing — same row
+              shape as Compete's Matches card so the two read as one system, and
+              tapping one opens the match itself. No swipe here: match deletion
+              stays where matches are managed, in Compete. */}
+          {listedMatches.length > 0 && (
+            <div className="card">
+              <h2>Matches</h2>
+              {listedMatches.map((m) => (
+                <button className="row-tap" key={m.id} onClick={() => open({ kind: 'match-detail', id: m.id })}>
+                  <span className="label">
+                    {m.name || m.matchType}
+                    <div className="row-sub">{formatDayKey(m.date)} · {m.division}</div>
+                  </span>
+                  <span className="value">
+                    {m.matchPercent != null ? `${m.matchPercent}%` : m.divisionPlace != null ? `#${m.divisionPlace}` : '›'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       )}
 
       <RecentlyDeleted trashed={trashed} firearms={firearms}
