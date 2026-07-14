@@ -30,12 +30,13 @@ import { HelpScreen } from './ui/HelpScreen.tsx';
 import { NumbersGuide } from './ui/NumbersGuide.tsx';
 import { SetupWizard } from './ui/SetupWizard.tsx';
 import { SampleLogBanner } from './ui/SampleLogBanner.tsx';
-import { SyncScreen, FreeSpaceScreen } from './ui/AppDataScreens.tsx';
+import { SyncScreen, FreeSpaceScreen, YourDataScreen } from './ui/AppDataScreens.tsx';
 import { SettingsScreen } from './ui/SettingsScreen.tsx';
 import { countAll, getSettings, probeDb } from './lib/db.ts';
 import { BootErrorScreen } from './ui/BootErrorScreen.tsx';
 import { ensureStockDrills } from './lib/stockDrills.ts';
 import { syncTelemetryEnabled } from './lib/telemetry.ts';
+import { detectRegion } from './lib/region.ts';
 import type { AppSettings } from './lib/types.ts';
 import { ErrorBoundary } from './ui/ErrorBoundary.tsx';
 
@@ -189,7 +190,7 @@ export function App() {
     let alive = true;
     void (async () => {
       const settings = await getSettings<AppSettings>();
-      if (alive) syncTelemetryEnabled(settings);
+      if (alive) syncTelemetryEnabled(settings, detectRegion());
     })().catch(() => { /* DB down — the F1 boot guard owns this failure. */ });
     return () => { alive = false; };
   }, [refreshKey]);
@@ -420,6 +421,8 @@ export function App() {
     content = <SyncScreen onBack={back} onImported={refresh} />;
   } else if (view?.kind === 'free-space') {
     content = <FreeSpaceScreen onBack={back} />;
+  } else if (view?.kind === 'your-data') {
+    content = <YourDataScreen onBack={back} onChanged={refresh} />;
   } else if (tab === 'home') {
     content = <HomeScreen refreshKey={refreshKey} open={push} onGoBackup={() => push({ kind: 'sync' })} />;
   } else if (tab === 'log') {

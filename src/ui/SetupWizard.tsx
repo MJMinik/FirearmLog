@@ -11,7 +11,7 @@
 // (The legacy migration importer lives in lib/import/ with no user-facing
 // surface — F11 removed its last screen; it's not part of any first run.)
 import { useEffect, useState } from 'react';
-import { countAll, getAll, getSettings, localLastModified, restoreSnapshot } from '../lib/db.ts';
+import { countAll, getAll, getSettings, localLastModified, putSettings, restoreSnapshot } from '../lib/db.ts';
 import { parseFlog } from '../lib/flog.ts';
 import { applySetupGoal, goalStepNeeded, SETUP_GOAL_PRESETS } from '../lib/northStar.ts';
 import type { SetupGoalChoice } from '../lib/northStar.ts';
@@ -22,6 +22,8 @@ import { coachMarkDismissals, dismissCoachMark } from '../lib/coachMarks.ts';
 import { FormProblem } from './FormProblem.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { GunForm } from './GunForm.tsx';
+import { syncTelemetryEnabled, telemetryState } from '../lib/telemetry.ts';
+import { detectRegion } from '../lib/region.ts';
 import { OpticForm } from './OpticsScreen.tsx';
 import { AmmoForm } from './AmmoScreens.tsx';
 import { MagazineForm } from './MagazinesScreen.tsx';
@@ -280,6 +282,7 @@ export function SetupWizard({ onFinish, onCancel }: {
 
           {demoCard}
           {skipLink}
+          <FirstRunConsent />
         </>
       )}
 
@@ -401,5 +404,51 @@ export function SetupWizard({ onFinish, onCancel }: {
         />
       )}
     </div>
+  );
+}
+
+// Rung-1 first-run disclosure (build spec §4; consent posture 2026-07-12).
+// Hidden while telemetry ships dark — when nothing can be sent, a disclosure
+// about sending would be untrue (charter §1). At activation it lights up by
+// region: EU/EEA gets the one-tap opt-in ask (consent BEFORE anything is
+// sent); everywhere else, one calm line pointing at the Your Data screen —
+// a disclosure, not a consent wall (Design/UX seat: no banner pattern).
+function FirstRunConsent() {
+  const [answered, setAnswered] = useState(false);
+  if (!telemetryState().wired || answered) return null;
+  const region = detectRegion();
+
+  async function answer(yes: boolean) {
+    setAnswered(true); // one tap, then out of the way
+    const patch: Partial<AppSettings> = yes
+      ? { analyticsOptOut: false, analyticsConsent: true }
+      : { analyticsOptOut: true, analyticsConsent: false };
+    // putSettings returns the MERGED settings — re-sync the live gates from
+    // that, so this answer can never clobber another flag's gate state.
+    const merged = await putSettings<AppSettings>(patch);
+    syncTelemetryEnabled(merged, region);
+  }
+
+  if (region === 'eu') {
+    return (
+      <div className="card">
+        <h2>Help improve FirearmLog?</h2>
+        <p className="report-note" style={{ marginBottom: 12 }}>
+          Share anonymous usage stats — which screens get used, never your log,
+          your name, or anything you've entered. Nothing is sent unless you say
+          yes, and you can change your mind anytime in More → Your Data.
+        </p>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button className="button" style={{ flex: 1 }} onClick={() => void answer(true)}>Share anonymous stats</button>
+          <button className="button secondary" style={{ flex: 1 }} onClick={() => void answer(false)}>No thanks</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <p className="report-note" style={{ marginTop: 12 }}>
+      FirearmLog shares anonymous usage stats to help improve it — see exactly
+      what that means, or turn it off, in More → Your Data.
+    </p>
   );
 }

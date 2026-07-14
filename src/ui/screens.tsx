@@ -14,6 +14,7 @@ import { buildRefLookup } from '../lib/referenceData.ts';
 import type { ReferenceEntry } from '../lib/referenceData.ts';
 import { formatDayKey } from '../lib/dates.ts';
 import { sessionRounds, roundsForFirearm, dryRepsForFirearm } from '../lib/stats.ts';
+import { telemetryState } from '../lib/telemetry.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { Reveal } from './Reveal.tsx';
 import { Icon } from './Icon.tsx';
@@ -943,6 +944,18 @@ export function MoreScreen({ refreshKey, open }: {
           <span className="label">Free Up Space</span>
           <span className="value">›</span>
         </button>
+        {/* Rung-1 transparency surface — hidden while telemetry ships dark
+            (no provider wired, nothing can be sent), so users never meet a
+            control for a pipe that doesn't exist. The activation step makes
+            this row appear with the pipe itself. Deep links stay honest: the
+            screen is state-aware. */}
+        {telemetryState().wired && (
+          <button className="row-tap" onClick={() => open({ kind: 'your-data' })}>
+            <span className="row-ico" aria-hidden="true"><Icon name="shield" size={20} /></span>
+            <span className="label">Your Data</span>
+            <span className="value">›</span>
+          </button>
+        )}
       </div>
     </div>
   );

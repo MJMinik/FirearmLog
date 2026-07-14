@@ -12,6 +12,7 @@ import { Fragment } from 'react';
 import type { View } from './nav.ts';
 import { Icon } from './Icon.tsx';
 import type { IconName } from './Icon.tsx';
+import { telemetryState } from '../lib/telemetry.ts';
 
 export type TabId = 'home' | 'log' | 'compete' | 'progress' | 'more';
 
@@ -22,7 +23,15 @@ const TABS: { id: TabId; label: string; icon: IconName }[] = [
   { id: 'progress', label: 'Progress', icon: 'progress' }
 ];
 
-type SectionDef = { target: View; label: string; icon: IconName; also: View['kind'][] };
+type SectionDef = {
+  target: View; label: string; icon: IconName; also: View['kind'][];
+  /** Render this entry only when the condition holds (checked each render).
+   *  Used by the Rung-1 "Your Data" row so the desktop sidebar matches the
+   *  phone More screen: hidden while telemetry ships dark, present once a
+   *  provider is wired — the required transparency surface (DATA_MOAT_SPEC
+   *  §6a) must be reachable from BOTH nav layouts. */
+  when?: () => boolean;
+};
 
 // Desktop-only direct links to the sections that live under More on the phone,
 // grouped exactly like the phone More screen. Nothing is removed vs. the old
@@ -63,7 +72,8 @@ const GROUPS: { label: string; sections: SectionDef[] }[] = [
       { target: { kind: 'help' }, label: 'Tour & Setup', icon: 'help', also: ['setup'] },
       { target: { kind: 'settings' }, label: 'Settings', icon: 'settings', also: [] },
       { target: { kind: 'sync' }, label: 'Sync & Backup', icon: 'sync', also: [] },
-      { target: { kind: 'free-space' }, label: 'Free Up Space', icon: 'cleanup', also: [] }
+      { target: { kind: 'free-space' }, label: 'Free Up Space', icon: 'cleanup', also: [] },
+      { target: { kind: 'your-data' }, label: 'Your Data', icon: 'shield', also: [], when: () => telemetryState().wired }
     ]
   }
 ];
@@ -100,7 +110,7 @@ export function TabBar({ active, onChange, view, onOpen }: {
       {GROUPS.map((g) => (
         <Fragment key={g.label}>
           <div className="nav-group-label" aria-hidden="true">{g.label}</div>
-          {g.sections.map((s) => (
+          {g.sections.filter((s) => !s.when || s.when()).map((s) => (
             <button key={s.target.kind} className={`sidebar-only ${sectionOn(s) ? 'active' : ''}`}
               aria-current={sectionOn(s) ? 'page' : undefined}
               onClick={() => onOpen(s.target)}>
