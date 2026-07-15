@@ -56,7 +56,7 @@ const QUICK_TOUR: TourStep[] = [
   {
     title: 'Your gear and data',
     view: { kind: 'guns' },
-    body: 'Everything else is grouped into four sets: Your Gear (guns, optics, magazines, ammo, parts, care guides), Training (drills, how the numbers work), Records (maintenance, malfunctions, costs, reports), and App & Data (Tour & Setup, Settings, Sync & Backup, Free Up Space). On a phone they\'re under the More tab; on a computer they\'re down the sidebar.',
+    body: 'Everything else is grouped into four sets: Your Gear (guns, optics, magazines, ammo, parts, care guides), Training (drills, how the numbers work), Records (maintenance, reminders, malfunctions, costs, reports), and App & Data (Tour & Setup, Settings, Sync & Backup, Free Up Space). On a phone they\'re under the More tab; on a computer they\'re down the sidebar.',
   },
   {
     title: 'Your data stays yours',
@@ -82,7 +82,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Home',
-      body: 'Home is your dashboard. Up top are alerts — a gun due for cleaning, ammo running low, goals you\'re chasing — and you can tap any alert to jump to it. Below are recent sessions, quick stats, and a big Log Session button. The Live-fire rounds and Sessions tiles have a range you can set to the last 6 or 12 months or all time. Tap a month on the rounds chart to see that month\'s sessions.',
+      body: 'Home is your dashboard. Up top is Needs Attention — a gun due for cleaning, a reminder that\'s come due, ammo running low, goals you\'re chasing — and you can tap any item to jump to it. Just below sits Coming up: reminders you\'ve set that are near, like a battery swap or a spring change by round count. Below those are recent sessions, quick stats, and a big Log Session button. The Live-fire rounds and Sessions tiles have a range you can set to the last 6 or 12 months or all time. Tap a month on the rounds chart to see that month\'s sessions.',
     },
     {
       title: 'Logging a session',
@@ -148,6 +148,11 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
       title: 'Gun maintenance & care guides',
       view: { kind: 'maintenance' },
       body: `Log cleaning and parts changes under ${at('Gun Maintenance')}; schedules come from each gun's linked Care Guide or your own settings, and Home warns you when something's due. Care Guides (under ${at('Care Guides')}) holds manufacturer care guides for popular pistol, rifle, and shotgun makers, and you can add your own.`,
+    },
+    {
+      title: 'Reminders',
+      view: { kind: 'reminders' },
+      body: `Reminders (under ${at('Reminders')}) nudge you about the things that run on a schedule — a red-dot battery once a year, a recoil spring by round count on a specific gun, a membership or classifier-currency renewal. Start from a template or write your own: set a date (it can repeat every year or every few months) or a round count on one gun, and add a note. There's no push notification while the app is closed, but a date reminder has an Add to Calendar button that hands it to your phone's calendar to do the alerting. What's near shows on Home under Coming up, and the full list here is grouped Overdue, Coming up, and Later. Mark one done and a repeating date rolls forward, a round-count one re-anchors to the gun's current rounds, and a one-off moves to Done.`,
     },
     {
       title: 'Malfunctions',
