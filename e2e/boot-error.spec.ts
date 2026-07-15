@@ -50,6 +50,6 @@ test.describe('Boot open guard (F1)', () => {
     await page.getByRole('button', { name: 'Try Again' }).click();
 
     // A fresh profile with a working database boots into the setup wizard.
-    await expect(page.getByRole('heading', { name: 'Set up FirearmLog' })).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: 'Set up your log' })).toBeVisible({ timeout: 15_000 });
   });
 });

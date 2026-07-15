@@ -70,7 +70,7 @@ test.describe('Danger flows (M-13)', () => {
     await page.getByRole('button', { name: 'Clear all data' }).click();
     await page.getByPlaceholder('erase').fill('erase');
     await page.getByRole('button', { name: 'Erase everything' }).click();
-    await expect(page.getByRole('heading', { name: 'Set up FirearmLog' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: 'Set up your log' })).toBeVisible({ timeout: 20_000 });
     await page.getByRole('button', { name: /Skip for now/ }).click();
 
     // 3. Load from File with the very file we just saved.

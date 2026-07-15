@@ -15,7 +15,7 @@ test.describe('Setup wizard', () => {
     // Re-open the wizard from Tour & Setup.
     await gotoSection(page, 'Tour & Setup');
     await page.getByRole('button', { name: 'Set Up' }).click();
-    await expect(page.getByRole('heading', { name: 'Set up FirearmLog' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Set up your log' })).toBeVisible();
 
     // With data already present, the demo button must warn before replacing it.
     await page.getByRole('button', { name: 'See a log 18 months in' }).click();

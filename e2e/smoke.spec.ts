@@ -4,7 +4,7 @@ import { seedDemo } from './helpers';
 test.describe('Smoke', () => {
   test('a fresh install opens on the Setup Wizard with the start options', async ({ page }) => {
     await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'Set up FirearmLog' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Set up your log' })).toBeVisible();
     // First run is for new users: the 1-2-3 checklist (step 3b) or the sample
     // data door. (Restoring a backup lives under Sync & Backup, not here.)
     await expect(page.getByText("Let's get you set up — three steps:")).toBeVisible();

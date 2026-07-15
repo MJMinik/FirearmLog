@@ -267,7 +267,7 @@ export function SetupWizard({ onFinish, onCancel }: {
         )}
         <span />
       </div>
-      <h1 className="large-title">Set up FirearmLog</h1>
+      <h1 className="large-title">Set up your log</h1>
 
       {mode === 'choose' && countsLoaded && counts.guns === 0 && (
         <>
@@ -290,16 +290,18 @@ export function SetupWizard({ onFinish, onCancel }: {
         <>
           {/* The re-run welcome (Help → Set Up with a real log): the classic
               two doors — more gear, or sample data. The first-run checklist
-              would read as nagging here (the steps are already done). */}
-          <p className="report-note" style={{ marginBottom: 12 }}>Welcome! How would you like to start?</p>
+              would read as nagging here (the steps are already done). Re-voiced
+              s64 (story frame): no newcomer language for a shooter whose gear
+              is already in. */}
+          <p className="report-note" style={{ marginBottom: 12 }}>Your gear's in. What would you like to do?</p>
 
           <div className="card">
-            <h2>Set up your gear</h2>
+            <h2>Add more gear</h2>
             <p className="report-note" style={{ marginBottom: 12 }}>
-              Add your guns and gear to get started. You can always add more later from the
-              Guns, Optics, Ammo, and Magazines screens.
+              More guns, optics, ammo, or magazines — add them here, or anytime from
+              their own screens.
             </p>
-            <button className="button" onClick={() => setMode('gear')}>Add my gear</button>
+            <button className="button" onClick={() => setMode('gear')}>Add gear</button>
           </div>
 
           {demoCard}

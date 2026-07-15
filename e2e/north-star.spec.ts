@@ -91,7 +91,7 @@ test.describe('Setup goal (F10): asked, not assigned', () => {
     // Re-running setup from Help must not re-ask — skip was the answer.
     await gotoSection(page, 'Tour & Setup');
     await page.getByRole('main').getByRole('button', { name: 'Set Up' }).click();
-    await page.getByRole('button', { name: 'Add my gear' }).click();
+    await page.getByRole('button', { name: 'Add gear' }).click();
     await page.getByRole('button', { name: "Done — you're ready to log" }).click();
     await expect(main.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'What are you working toward?' })).toHaveCount(0);

@@ -11,8 +11,9 @@ import { seedDemo, gotoSection, gotoTab } from './helpers';
 // Selector notes (from the pre-push fresh-eyes audit): drill rows are BUTTONS
 // whose accessible name contains the drill name plus sub-text, so we match by
 // role+name (substring), never getByText({exact}) — a drill name is never an
-// element's entire text. And Home's h1 is asserted with exact:true because
-// "FirearmLog" substring-matches the wizard's "Set up FirearmLog" heading.
+// element's entire text. Home's h1 keeps exact:true as belt-and-braces
+// (the wizard heading was renamed "Set up your log" in s64, but exact
+// matching on headings stays the house rule — substring collisions bit twice).
 
 // First gun via the first-run checklist (step 3b), skipping the goal step.
 async function addFirstGun(page: Page): Promise<void> {

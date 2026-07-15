@@ -25,6 +25,6 @@ test.describe('Clear all data / Start over', () => {
     await erase.click();
 
     // The wipe reloads to an empty log → the Setup Wizard auto-opens (guns === 0).
-    await expect(page.getByRole('heading', { name: 'Set up FirearmLog' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: 'Set up your log' })).toBeVisible({ timeout: 20_000 });
   });
 });
