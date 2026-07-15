@@ -7,6 +7,7 @@ export type IconName =
   | 'home' | 'log' | 'compete' | 'progress' | 'more'
   | 'gun' | 'optic' | 'ammo' | 'magazine' | 'drills'
   | 'costs' | 'maintenance' | 'parts' | 'reference' | 'reports' | 'help' | 'malfunction' | 'info'
+  | 'reminder'
   | 'sync' | 'cleanup' | 'settings' | 'shield'
   | 'close' | 'edit' | 'star' | 'starFilled' | 'external'
   | 'chevronRight' | 'chevronDown';
@@ -30,6 +31,7 @@ const PATHS: Record<IconName, string> = {
   reports:     'M6 3.5h8l4 4V20.5H6z M14 3.5V8h4 M9 17v-3 M12 17v-6 M15 17v-4',
   help:        'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M9.6 9.2a2.5 2.5 0 0 1 4.9.6c0 1.6-2.4 1.9-2.4 3.4 M12 16.8h.01',
   malfunction: 'M12 4.5 20.5 19H3.5z M12 10v4 M12 16.8h.01',
+  reminder:    'M12 3.5a5.5 5.5 0 0 0-5.5 5.5c0 4-1.5 5.5-2 6.5h15c-.5-1-2-2.5-2-6.5A5.5 5.5 0 0 0 12 3.5z M10.2 19a2 2 0 0 0 3.6 0',
   info:        'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z M12 11v5 M12 7.6h.01',
   sync:        'M20 11a8 8 0 0 0-13.7-5.3L4 8 M4 4v4h4 M4 13a8 8 0 0 0 13.7 5.3L20 16 M20 20v-4h-4',
   cleanup:     'M12 4l1.5 4L18 9.5l-4.5 1.5L12 15l-1.5-4L6 9.5l4.5-1.5z M18 14.5l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8z',

@@ -1,8 +1,10 @@
 // Tab screens. Home and Log are live against the database; Compete and
 // Progress arrive in M5 and M7 and say so in plain language.
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { Ammunition, AppSettings, Classifier, DrillDef, Firearm, Goal, GunCategory, MaintenanceEntry, Match, Purchase, Reference, Session } from '../lib/types.ts';
+import type { Ammunition, AppSettings, Classifier, DrillDef, Firearm, Goal, GunCategory, MaintenanceEntry, Match, Purchase, Reference, Reminder, Session } from '../lib/types.ts';
 import { goldenGoal } from '../lib/goals.ts';
+import { buildReminderContext, reminderViews, dueReminders, homeComingUp } from '../lib/reminders.ts';
+import type { ReminderView } from '../lib/reminders.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
 import { getAll, getOne, getSettings, putOne } from '../lib/db.ts';
 import { maintenanceAlerts, maintenanceStatus, resolveSchedule } from '../lib/maintenance.ts';
@@ -12,7 +14,7 @@ import { MIN_SCORES_FOR_CLASSIFICATION } from '../lib/competition.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { buildRefLookup } from '../lib/referenceData.ts';
 import type { ReferenceEntry } from '../lib/referenceData.ts';
-import { formatDayKey } from '../lib/dates.ts';
+import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { sessionRounds, roundsForFirearm, dryRepsForFirearm } from '../lib/stats.ts';
 import { telemetryState } from '../lib/telemetry.ts';
 import { InfoTip } from './InfoTip.tsx';
@@ -49,6 +51,7 @@ function useData(refreshKey: number) {
   const [classifiers, setClassifiers] = useState<Classifier[]>([]);
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [drills, setDrills] = useState<DrillDef[]>([]);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
   const [loaded, setLoaded] = useState(false);
   // If the load fails (a bad read / storage hiccup), fail safe to a recoverable
   // error state instead of hanging on a blank screen (pro-grade audit T1-1).
@@ -65,12 +68,12 @@ function useData(refreshKey: number) {
         // Sweep out anything past its 30-day window first, so the lists below are
         // already clean. Fails safe (returns 0) — it can never block the load.
         await purgeExpiredSessions();
-        const [f, s, m, mt, r, am, cl, pu, dr] = await Promise.all([
+        const [f, s, m, mt, r, am, cl, pu, dr, rem] = await Promise.all([
           getAll<Firearm>('firearms'), getAll<Session>('sessions'),
           getAll<Match>('matches'), getAll<MaintenanceEntry>('maintenance'),
           getAll<Reference>('references'), getAll<Ammunition>('ammunition'),
           getAll<Classifier>('classifiers'), getAll<Purchase>('purchases'),
-          getAll<DrillDef>('drills')
+          getAll<DrillDef>('drills'), getAll<Reminder>('reminders')
         ]);
         if (!alive) return;
         setFirearms(f);
@@ -85,6 +88,7 @@ function useData(refreshKey: number) {
         setClassifiers(cl);
         setPurchases(pu);
         setDrills(dr);
+        setReminders(rem);
         setLoaded(true);
       } catch (e) {
         if (!alive) return;
@@ -94,7 +98,7 @@ function useData(refreshKey: number) {
     })();
     return () => { alive = false; };
   }, [refreshKey, nonce]);
-  return { firearms, sessions, trashed, matches, maintenance, references, ammo, classifiers, purchases, drills, loaded, error, reload };
+  return { firearms, sessions, trashed, matches, maintenance, references, ammo, classifiers, purchases, drills, reminders, loaded, error, reload };
 }
 
 function SessionRow({ s, firearms, onTap, onDelete }: {
@@ -336,10 +340,28 @@ function AlertRow({ alert, onTap, onDismiss, onComplete }: {
   );
 }
 
+// A reminder row on Home (in Needs Attention when due, in Coming up when soon).
+// Tapping opens the Reminders screen, where Mark done / Add to Calendar live.
+function HomeReminderRow({ v, open }: { v: ReminderView; open: (view: View) => void }) {
+  const r = v.reminder;
+  const title = v.gunName ? `${v.gunName}: ${r.title}` : r.title;
+  return (
+    <button className="row-tap" onClick={() => open({ kind: 'reminders' })}>
+      <span className="label">
+        {title}
+        <div className="row-sub">{v.detail}</div>
+      </span>
+      <span className={`badge ${v.level === 'due' ? 'bad' : 'warn-badge'}`} style={{ fontSize: 11 }}>
+        {v.level === 'due' ? 'Due' : 'Soon'}
+      </span>
+    </button>
+  );
+}
+
 export function HomeScreen({ refreshKey, open, onGoBackup }: {
   refreshKey: number; open: (v: View) => void; onGoBackup: () => void;
 }) {
-  const { firearms, sessions, matches, maintenance, references, ammo, classifiers, drills, loaded, error, reload } = useData(refreshKey);
+  const { firearms, sessions, matches, maintenance, references, ammo, classifiers, drills, reminders, loaded, error, reload } = useData(refreshKey);
   const [dismissed, setDismissed] = useState<Record<string, string>>({});
   const [chartFilter, setChartFilter] = useState<RoundsFilter>({});
   const [chartMonths, setChartMonths] = useState(12);
@@ -417,6 +439,13 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
   });
   const lowCans = lowAmmo(ammo);
   const showBackup = backupChanges >= BACKUP_REMINDER_THRESHOLD;
+
+  // Reminders share ONE urgency ladder with the maintenance alerts: a due reminder
+  // rises into Needs Attention (below), an upcoming one sits in the Coming up card
+  // (spec §6 decision 2). An item is never in both, and both cards vanish when empty.
+  const remViews = reminderViews(reminders, buildReminderContext(firearms, sessions, matches, todayKey()));
+  const dueRems = dueReminders(remViews);
+  const comingUp = homeComingUp(remViews);
 
   const stats = dashboardStats(firearms, sessions, matches, classifiers, ammo);
   const statCutoff = statRange === 'all' ? null : spanStartDate(statRange);
@@ -552,7 +581,7 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
           )}
 
           {/* ---- Needs Attention (dismissible) ---- */}
-          {(showBackup || alerts.length > 0 || lowCans.length > 0 || (trainingGap !== null && trainingGap >= 14) || (ratingTrend?.dipping)) && (
+          {(showBackup || alerts.length > 0 || dueRems.length > 0 || lowCans.length > 0 || (trainingGap !== null && trainingGap >= 14) || (ratingTrend?.dipping)) && (
             <div className="card" style={{ marginTop: 16 }}>
               <h2>Needs Attention</h2>
               {showBackup && (
@@ -570,6 +599,8 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
                   onDismiss={() => handleDismiss(a)}
                   onComplete={() => open({ kind: 'maint-form', gunId: a.firearmId })} />
               ))}
+              {/* Reminders that have come due join the maintenance alerts here. */}
+              {dueRems.map((v) => <HomeReminderRow key={v.reminder.id} v={v} open={open} />)}
               {lowCans.map((a) => (
                 <button className="row-tap" key={a.id} onClick={() => open({ kind: 'ammo' })}>
                   <span className="label">
@@ -602,6 +633,23 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
                   </span>
                   <span className="badge warn-badge" style={{ fontSize: 11 }}>Trend</span>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* ---- Coming up: reminders within the horizon, directly BELOW Needs
+               Attention (spec §6 decision 2). Caps at 4, soonest first; a
+               "See all coming up (N)" row appears only past the cap (§6b LOCKED).
+               Vanishes when empty. ---- */}
+          {comingUp.total > 0 && (
+            <div className="card" style={{ marginTop: 16 }}>
+              <h2>Coming up</h2>
+              {comingUp.shown.map((v) => <HomeReminderRow key={v.reminder.id} v={v} open={open} />)}
+              {comingUp.hasOverflow && (
+                <button className="row-tap" onClick={() => open({ kind: 'reminders' })}>
+                  <span className="label">See all coming up ({comingUp.total})</span>
+                  <span className="value">›</span>
+                </button>
               )}
             </div>
           )}
@@ -980,6 +1028,11 @@ export function MoreScreen({ refreshKey, open }: {
         <button className="row-tap" onClick={() => open({ kind: 'maintenance' })}>
           <span className="row-ico" aria-hidden="true"><Icon name="maintenance" size={20} /></span>
           <span className="label">Gun Maintenance</span>
+          <span className="value">›</span>
+        </button>
+        <button className="row-tap" onClick={() => open({ kind: 'reminders' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="reminder" size={20} /></span>
+          <span className="label">Reminders</span>
           <span className="value">›</span>
         </button>
         <button className="row-tap" onClick={() => open({ kind: 'malfunctions' })}>

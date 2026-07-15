@@ -12,6 +12,8 @@ export type View =
   | { kind: 'reference-detail'; id: string }
   | { kind: 'maintenance' }
   | { kind: 'maint-form'; gunId: string; id?: string }
+  | { kind: 'reminders' }
+  | { kind: 'reminder-form'; id?: string; templateKey?: string; firearmId?: string }
   | { kind: 'malfunctions' }
   | { kind: 'reference-form'; id?: string; copyFrom?: string }
   | { kind: 'match-detail'; id: string }
