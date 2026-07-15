@@ -331,6 +331,45 @@ export interface Mark {
   label: string;
 }
 
+/**
+ * A shooter's reminder (Reminders feature). Two kinds, one urgency ladder:
+ *  - date-based: a due date, optionally repeating (every year / every N months).
+ *  - round-count-based: every N rounds on ONE gun, measured against the same
+ *    lifetime round count maintenance uses (lib/stats.roundsForFirearm) from a
+ *    stored baseline. A worn recoil spring by round count is the reminder a paper
+ *    calendar can't do.
+ * Additive object store; rides the .flog sync like every other record (it travels
+ * in SNAPSHOT_STORES automatically), and Clear All wipes it like any other record.
+ * All fields here are read AND written by the app — nothing is reserved dead
+ * surface (snooze + a Recently-Deleted tombstone are deliberately deferred; see
+ * the Reminders build notes — they'd be added additively when those features land).
+ */
+export interface Reminder extends BaseRecord, Imported {
+  title: string;
+  notes: string;
+  /** 'template' = created from a shipped starter (fully editable); 'custom' = free-form. */
+  source: 'template' | 'custom';
+  /** Which starter this came from (source === 'template') — for reference only. */
+  templateKey?: string | null;
+  /** What makes it come due. */
+  trigger: 'date' | 'rounds';
+  // ---- date-based ----
+  dueDate?: string | null;               // YYYY-MM-DD
+  repeat?: 'none' | 'yearly' | 'months'; // recurrence (date-based only)
+  repeatMonths?: number | null;          // interval when repeat === 'months'
+  // ---- round-count-based ----
+  everyRounds?: number | null;           // interval in rounds
+  /** The gun's lifetime round count when this reminder was last set or completed —
+   *  rounds-since is measured from here, so it survives the gun's growing count. */
+  baselineRounds?: number | null;
+  // ---- scope + lifecycle ----
+  firearmId?: string | null;             // a specific gun, or null = shooter-wide
+  lastDoneDate?: string | null;          // YYYY-MM-DD of the last "mark done"
+  /** false = paused: hidden from Home and the active lists, kept in the Done
+   *  section so a one-off can be turned back on or removed. */
+  enabled: boolean;
+}
+
 /** Old-app trash items, carried over so nothing is lost (Q7). */
 export interface TrashItem extends BaseRecord {
   recordType: string;

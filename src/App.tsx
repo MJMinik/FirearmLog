@@ -18,6 +18,7 @@ import { DrillHistoryScreen } from './ui/DrillHistoryScreen.tsx';
 import { MagazinesScreen, MagazineForm } from './ui/MagazinesScreen.tsx';
 import { ReferenceList, ReferenceDetail, ReferenceForm } from './ui/ReferenceScreens.tsx';
 import { MaintenanceOverview, MaintenanceForm } from './ui/MaintenanceScreens.tsx';
+import { RemindersScreen, ReminderForm } from './ui/RemindersScreen.tsx';
 import { MalfunctionsScreen } from './ui/MalfunctionsScreen.tsx';
 import { AmmoScreen, AmmoForm } from './ui/AmmoScreens.tsx';
 import { CostsScreen, PurchaseForm } from './ui/CostsScreen.tsx';
@@ -329,6 +330,14 @@ export function App() {
     content = <MaintenanceForm gunId={v.gunId} id={v.id}
       onCancel={back}
       onSaved={() => { refresh(); replace({ kind: 'gun-detail', id: v.gunId }); }} />;
+  } else if (view?.kind === 'reminders') {
+    content = <RemindersScreen refreshKey={refreshKey} onBack={back} open={push} />;
+  } else if (view?.kind === 'reminder-form') {
+    const v = view;
+    content = <ReminderForm id={v.id} templateKey={v.templateKey} firearmId={v.firearmId}
+      onCancel={back}
+      onSaved={() => { refresh(); replace({ kind: 'reminders' }); }}
+      onDirtyChange={reportFormDirty} />;
   } else if (view?.kind === 'malfunctions') {
     content = <MalfunctionsScreen refreshKey={refreshKey}
       onBack={back}
