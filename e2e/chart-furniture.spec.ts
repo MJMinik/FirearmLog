@@ -29,11 +29,19 @@ test.describe('Chart furniture (F4)', () => {
     // The latest match's number is always visible.
     await expect(card.locator('text.chart-last-label')).toBeVisible();
 
-    // The readout starts as the hint, then a tap fills it with a real value.
+    // The readout starts as the hint, then a tap fills it with a real value —
+    // and the tapped dot wears exactly one selection ring, which MOVES on the
+    // next tap rather than accumulating.
     await expect(card.locator('.chart-readout')).toHaveText(/Tap a dot/);
+    await expect(card.locator('.chart-sel-ring')).toHaveCount(0);
     await card.locator('.chart-hit').last().click();
     await expect(card.locator('.chart-readout')).toHaveText(/% of points kept/);
     await expect(card.locator('.chart-readout')).not.toHaveText(/Tap a dot/);
+    await expect(card.locator('.chart-sel-ring')).toHaveCount(1);
+    const ringX1 = await card.locator('.chart-sel-ring').getAttribute('cx');
+    await card.locator('.chart-hit').first().click();
+    await expect(card.locator('.chart-sel-ring')).toHaveCount(1);
+    expect(await card.locator('.chart-sel-ring').getAttribute('cx')).not.toBe(ringX1);
   });
 
   test('Drill history trend: unit ticks, date anchors, last value, tap-readout', async ({ page }) => {
@@ -68,8 +76,14 @@ test.describe('Chart furniture (F4)', () => {
     await expect(card).toBeVisible();
 
     await expect(card.locator('.chart-readout')).toHaveText(/Tap a bar/);
+    // The CURRENT month (last column) can be empty — tap it first to prove an
+    // empty month reads out honestly with NO ring (there's no bar to wear it),
+    // then tap the oldest month, which has rounds, and expect the outline.
     await card.locator('.chart-hit').last().click();
     await expect(card.locator('.chart-readout')).toHaveText(/live · .* match · .* dry reps/);
+    await card.locator('.chart-hit').first().click();
+    await expect(card.locator('.chart-readout')).toHaveText(/live · .* match · .* dry reps/);
+    await expect(card.locator('.chart-sel-ring')).toHaveCount(1);
   });
 
   test('the readout never goes stale: a month that leaves the chart leaves the readout', async ({ page }) => {
@@ -92,6 +106,8 @@ test.describe('Chart furniture (F4)', () => {
     await card.getByRole('button', { name: 'Filters' }).click();
     await card.locator('select[aria-label="Months"]').selectOption('6');
 
+    // Both the readout AND the selection ring let go of the vanished month.
     await expect(readout).toHaveText(/Tap a bar/);
+    await expect(card.locator('.chart-sel-ring')).toHaveCount(0);
   });
 });

@@ -174,6 +174,14 @@ function DrillTrend({ attempts, best, lowerIsBetter, scoring }: {
             fill={isBest ? 'var(--accent)' : 'var(--text-dim)'} />
         );
       })}
+      {/* The selection ring: the tapped run wears an amber ring, so the
+          readout below visibly belongs to a specific dot (Michael's call,
+          session 62). Derived from the same selection the readout uses. */}
+      {sel != null && selIdx != null && (
+        <circle className="chart-sel-ring" cx={x(selIdx)} cy={y(sel.metric as number)}
+          r={6.5} fill="none" stroke="var(--accent)" strokeWidth={1.75}
+          style={{ pointerEvents: 'none' }} />
+      )}
       {/* Honest tap targets: one full-height column per run, split at the
           midpoints between dots — dense series can't steal each other's taps
           the way overlapping circles could. Drawn after the dots so the whole

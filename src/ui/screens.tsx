@@ -207,6 +207,20 @@ export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
             </g>
           );
         })}
+        {/* The selection ring, bar-chart form: the tapped month's stack wears
+            an outline so the readout visibly belongs to it (Michael's call,
+            session 62). Same derived selection as the readout. A month with
+            zero rounds gets no outline — there is no bar to wear it — and
+            ink (not amber) so it stays visible against the amber bars. */}
+        {selBucket && selBucket.total > 0 && (() => {
+          const i = buckets.indexOf(selBucket);
+          const selH = (selBucket.total / max) * h;
+          return (
+            <rect className="chart-sel-ring" x={i * (barW + gap) - 1.5} y={h - selH - 1.5}
+              width={barW + 3} height={selH + 3} rx={3.5} fill="none"
+              stroke="var(--accent-ink)" strokeWidth={1.75} style={{ pointerEvents: 'none' }} />
+          );
+        })()}
       </g>
     </svg>
     <ChartReadout value={readout} hint="Tap a bar to see that month's numbers." />

@@ -413,6 +413,14 @@ function SpeedAccuracyTrendCard({ matches, coachingRemarks, onDisableRemarks }: 
         {pts.map((p, i) => (
           <circle key={p.matchId} cx={xAt(i)} cy={yAt(p.pointsKept * 100)} r={2.5} fill="var(--accent-ink)" />
         ))}
+        {/* The selection ring: the tapped match wears an amber ring, so the
+            readout below visibly belongs to a specific dot (Michael's call,
+            session 62). Same derived selection as the readout. */}
+        {sel != null && (
+          <circle className="chart-sel-ring" cx={xAt(pts.indexOf(sel))} cy={yAt(sel.pointsKept * 100)}
+            r={6.5} fill="none" stroke="var(--accent)" strokeWidth={1.75}
+            style={{ pointerEvents: 'none' }} />
+        )}
         {/* Honest tap targets: one full-height column per match, split at the
             midpoints — dense seasons can't steal each other's taps. */}
         {pts.map((p, i) => {
