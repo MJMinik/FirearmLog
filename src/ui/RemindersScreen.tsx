@@ -7,18 +7,18 @@ import { ScreenLoading, ScreenError } from './ScreenState.tsx';
 import type { Firearm, Match, Reminder, Session } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { activeOnly } from '../lib/softDelete.ts';
-import { todayKey, formatDayKey } from '../lib/dates.ts';
+import { todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { roundsForFirearm } from '../lib/stats.ts';
 import { ownedGuns } from '../lib/gunStatus.ts';
 import {
   buildReminderContext, comingUpReminders, completionPatch, dueReminders,
-  laterReminders, pausedReminders, reminderViews,
+  inactiveNote, inactiveReminders, laterReminders, reminderViews,
 } from '../lib/reminders.ts';
 import type { ReminderView } from '../lib/reminders.ts';
 import { REMINDER_TEMPLATES, getReminderTemplate } from '../lib/reminderTemplates.ts';
-import { buildReminderIcs, canExportIcs, icsFileName } from '../lib/ics.ts';
+import { buildReminderIcs, icsFileName } from '../lib/ics.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
@@ -88,7 +88,10 @@ export function RemindersScreen({ refreshKey, onBack, open }: {
   const due = dueReminders(views);
   const soon = comingUpReminders(views);
   const later = laterReminders(views);
-  const done = pausedReminders(views);
+  // Level-based on purpose: Done also catches a reminder that can't be measured
+  // any more (e.g. its gun was deleted before the cascade existed, or arrived in
+  // a restored backup) — every stored reminder ALWAYS has a reachable row.
+  const done = inactiveReminders(views);
   const activeCount = due.length + soon.length + later.length;
 
   const openForm = (id?: string) => open({ kind: 'reminder-form', id });
@@ -144,20 +147,21 @@ export function RemindersScreen({ refreshKey, onBack, open }: {
               <button className="row-tap" onClick={() => setShowDone((o) => !o)} aria-expanded={showDone}>
                 <span className="label">
                   Done
-                  <div className="row-sub">{done.length} finished or paused</div>
+                  <div className="row-sub">{done.length} not running right now</div>
                 </span>
                 <span className="value"><Icon name={showDone ? 'chevronDown' : 'chevronRight'} size={16} /></span>
               </button>
               {showDone && done.map((v) => {
                 const r = v.reminder;
-                const label = r.firearmId ? `${ctx.gunName(r.firearmId) ?? '—'}: ${r.title}` : r.title;
+                const label = v.gunName ? `${v.gunName}: ${r.title}` : r.title;
+                const gunResolved = r.firearmId ? v.gunName !== undefined : true;
                 return (
                   <button className="row-tap" key={r.id} onClick={() => openForm(r.id)}>
                     <span className="label">
                       {label}
-                      <div className="row-sub">{r.lastDoneDate ? `Marked done ${formatDayKey(r.lastDoneDate)}` : 'Paused'}</div>
+                      <div className="row-sub">{inactiveNote(r, gunResolved)}</div>
                     </span>
-                    <span className="badge info">Off</span>
+                    <span className="badge info">{r.enabled === false ? 'Off' : 'Note'}</span>
                   </button>
                 );
               })}
@@ -205,7 +209,9 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
   const [trigger, setTrigger] = useState<Reminder['trigger']>(tpl?.trigger ?? 'date');
   const [firearmId, setFirearmId] = useState(initialFirearmId ?? '');
   const [dueDate, setDueDate] = useState('');
-  const [repeat, setRepeat] = useState<Reminder['repeat']>(tpl?.defaultRepeat ?? 'yearly');
+  // A fresh custom reminder does NOT repeat unless the shooter says so — a
+  // one-off must never silently become annual. Templates carry their own repeat.
+  const [repeat, setRepeat] = useState<Reminder['repeat']>(tpl?.defaultRepeat ?? 'none');
   const [repeatMonths, setRepeatMonths] = useState(String(tpl?.defaultRepeatMonths ?? 3));
   const [everyRounds, setEveryRounds] = useState(tpl?.defaultEveryRounds ? String(tpl.defaultEveryRounds) : '');
 
@@ -284,6 +290,14 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
       };
     } else {
       if (!firearmId) { setProblem('Pick which gun this round-count reminder is for.'); return; }
+      // An orphaned reminder (its gun left the log) opens with its old gun id
+      // still in state while the picker shows the placeholder — refuse a save
+      // that would quietly re-point at a gun that isn't there. (Only when guns
+      // actually loaded; a read hiccup must not block an unrelated edit.)
+      if (firearms.length > 0 && !firearms.some((g) => g.id === firearmId)) {
+        setProblem('That gun is no longer in your log — pick one of your guns, or delete this reminder.');
+        return;
+      }
       const iv = Number(everyRounds);
       if (!Number.isFinite(iv) || iv <= 0) { setProblem('Enter how many rounds between reminders — a number over 0.'); return; }
       // Keep the existing baseline when the gun and kind are unchanged; otherwise
@@ -321,14 +335,28 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
   }
 
   function addToCalendar() {
-    if (!original || !canExportIcs(original)) return;
+    // Export what's ON SCREEN, not the last-saved record — editing the date and
+    // then tapping Add to Calendar must never silently export the stale saved
+    // date. This matches how the codebase treats the visible form as what the
+    // shooter means (edits are guarded on exit, never silently substituted):
+    // the shooter sees exactly the fields the event is built from.
+    if (!original || trigger !== 'date' || !dueDate) return;
     try {
-      const ics = buildReminderIcs(original);
+      const candidate: Reminder = {
+        ...original,
+        title: title.trim() || original.title,
+        notes: notes.trim(),
+        trigger: 'date',
+        dueDate,
+        repeat: repeat ?? 'none',
+        repeatMonths: repeat === 'months' ? Math.max(1, Math.round(Number(repeatMonths) || 1)) : null,
+      };
+      const ics = buildReminderIcs(candidate);
       const blob = new Blob([ics], { type: 'text/calendar' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = icsFileName(original);
+      a.download = icsFileName(candidate);
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -433,7 +461,11 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
           Turn back on
         </button>
       )}
-      {editing && original && canExportIcs(original) && (
+      {/* Keyed to the FORM state (not the saved record) so it tracks what the
+          export uses: it appears exactly when the fields on screen make a
+          calendar event, and hides the moment the reminder is switched to a
+          round count — a round-count reminder has no date to export. */}
+      {editing && original && trigger === 'date' && !!dueDate && (
         <button className="button secondary" style={{ marginTop: 8 }} onClick={addToCalendar}>
           Add to Calendar
         </button>
