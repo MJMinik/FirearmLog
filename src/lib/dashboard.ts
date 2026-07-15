@@ -295,7 +295,7 @@ export function isAlertDismissed(
  */
 export const BACKUP_TRACKED_STORES = [
   'sessions', 'matches', 'firearms', 'optics', 'ammunition',
-  'magazines', 'parts', 'drills', 'maintenance', 'purchases', 'goals'
+  'magazines', 'parts', 'drills', 'maintenance', 'purchases', 'goals', 'reminders'
 ] as const;
 
 /**

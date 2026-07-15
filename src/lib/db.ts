@@ -6,13 +6,19 @@ import type { Snapshot } from './flog.ts';
 import { newestStamp } from './flog.ts';
 
 const DB_NAME = 'firearmlog';
-const SCHEMA_VERSION = 1;
+// v2 (Reminders feature): adds the additive 'reminders' object store. The bump is
+// what makes onupgradeneeded fire on an EXISTING install so the new store gets
+// created; the upgrade loop below creates any store that's missing, so it's a
+// purely additive migration — no existing store is touched and no data is
+// rewritten. Reminders travel in the .flog sync automatically (SNAPSHOT_STORES is
+// derived from STORE_NAMES) and Clear All wipes them like any other record.
+const SCHEMA_VERSION = 2;
 
 export const STORE_NAMES = [
   'firearms', 'sessions', 'drills', 'ammunition', 'purchases',
   'maintenance', 'malfunctions', 'magazines', 'optics', 'parts',
   'goals', 'skills', 'matches', 'classifiers', 'references',
-  'media', 'trash', 'meta'
+  'reminders', 'media', 'trash', 'meta'
 ] as const;
 
 export type StoreName = (typeof STORE_NAMES)[number];
