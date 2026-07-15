@@ -1,8 +1,9 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  addMonthsToDay, buildReminderContext, comingUpReminders, completionPatch, daysBetween,
-  dueReminders, homeComingUp, laterReminders, nextDueDate, pausedReminders, reminderView, reminderViews,
+  addMonthsToDay, advanceDueDate, buildReminderContext, comingUpReminders, completionPatch,
+  daysBetween, dueReminders, homeComingUp, inactiveNote, inactiveReminders, laterReminders,
+  reminderIdsForGun, reminderView, reminderViews,
 } from '../src/lib/reminders.ts';
 import type { ReminderContext } from '../src/lib/reminders.ts';
 import type { Firearm, Reminder } from '../src/lib/types.ts';
@@ -79,7 +80,31 @@ test('buckets split by level and sort soonest first', () => {
   assert.deepEqual(comingUpReminders(views).map((v) => v.reminder.id), ['b', 'a']);
   assert.deepEqual(dueReminders(views).map((v) => v.reminder.id), ['c']);
   assert.deepEqual(laterReminders(views).map((v) => v.reminder.id), ['d']);
-  assert.deepEqual(pausedReminders(views).map((v) => v.reminder.id), ['e']);
+  assert.deepEqual(inactiveReminders(views).map((v) => v.reminder.id), ['e']);
+});
+
+test('an orphaned round-count reminder lands in the Done bucket — never invisible', () => {
+  // Its gun is gone: roundsForGun resolves null, so it's inactive — and the Done
+  // bucket must catch it so the record always has a reachable row with Delete.
+  const orphan = rem({ id: 'o', trigger: 'rounds', firearmId: 'fa-gone', everyRounds: 5000, baselineRounds: 0 });
+  const views = reminderViews([orphan], ctx(null));
+  assert.equal(dueReminders(views).length, 0);
+  assert.equal(comingUpReminders(views).length, 0);
+  assert.equal(laterReminders(views).length, 0);
+  assert.deepEqual(inactiveReminders(views).map((v) => v.reminder.id), ['o']);
+});
+
+test('inactiveNote explains each Done row plainly', () => {
+  // Paused / finished.
+  assert.equal(inactiveNote(rem({ enabled: false }), true), 'Paused');
+  assert.match(inactiveNote(rem({ enabled: false, lastDoneDate: '2026-07-01' }), true), /^Marked done /);
+  // Orphaned: the gun left the log.
+  assert.match(
+    inactiveNote(rem({ trigger: 'rounds', firearmId: 'fa-gone', everyRounds: 5000 }), false),
+    /no longer in your log/,
+  );
+  // Unmeasurable for any other reason.
+  assert.match(inactiveNote(rem({ trigger: 'date', dueDate: null }), true), /Missing its date or round count/);
 });
 
 // ---- Home cap / overflow (spec §6b LOCKED) ----
@@ -107,11 +132,17 @@ test('homeComingUp caps at 4 and reports overflow only past the cap', () => {
 
 // ---- recurrence + completion ----
 
-test('nextDueDate rolls a recurring date forward to the next future occurrence', () => {
-  assert.equal(nextDueDate('2026-07-10', 'yearly', null, TODAY), '2027-07-10'); // past -> next year
-  assert.equal(nextDueDate('2026-07-20', 'yearly', null, TODAY), '2026-07-20'); // already future -> unchanged
-  assert.equal(nextDueDate('2026-06-15', 'months', 3, TODAY), '2026-09-15');    // +3 months past today
-  assert.equal(nextDueDate('2026-07-10', 'none', null, TODAY), null);
+test('advanceDueDate always moves at least one interval from the due date', () => {
+  assert.equal(advanceDueDate('2026-07-10', 'yearly', null, TODAY), '2027-07-10'); // just past -> next year
+  // Done EARLY (due date still in the future): it STILL advances one interval —
+  // "done is done"; the reminder must not stay armed to fire again this cycle.
+  assert.equal(advanceDueDate('2026-08-01', 'yearly', null, TODAY), '2027-08-01');
+  assert.equal(advanceDueDate('2026-06-15', 'months', 3, TODAY), '2026-09-15');
+  // Done very LATE: keeps stepping until strictly after today, so it can't come
+  // back already overdue.
+  assert.equal(advanceDueDate('2023-07-10', 'yearly', null, TODAY), '2027-07-10');
+  assert.equal(advanceDueDate('2026-01-05', 'months', 2, TODAY), '2026-09-05'); // 03-05, 05-05, 07-05 all <= today
+  assert.equal(advanceDueDate('2026-07-10', 'none', null, TODAY), null);
 });
 
 test('completionPatch: recurring date advances, one-off pauses, round re-anchors', () => {
@@ -126,6 +157,33 @@ test('completionPatch: recurring date advances, one-off pauses, round re-anchors
   const rounds = completionPatch(rem({ trigger: 'rounds', firearmId: 'fa-1', everyRounds: 5000, baselineRounds: 0 }), ctx(6100));
   assert.equal(rounds.baselineRounds, 6100);
   assert.equal(rounds.lastDoneDate, TODAY);
+});
+
+test('completionPatch: marking a recurring reminder done EARLY still rolls it forward', () => {
+  // Due Aug 1, done July 15 (today, before the date), yearly -> next due Aug 1 NEXT year.
+  const early = completionPatch(rem({ trigger: 'date', dueDate: '2026-08-01', repeat: 'yearly' }), ctx());
+  assert.equal(early.dueDate, '2027-08-01');
+  assert.equal(early.lastDoneDate, TODAY);
+});
+
+test('completionPatch: a very-overdue recurring reminder rolls past today, never back into overdue', () => {
+  const late = completionPatch(rem({ trigger: 'date', dueDate: '2024-05-01', repeat: 'yearly' }), ctx());
+  assert.equal(late.dueDate, '2027-05-01'); // 2025-05-01 and 2026-05-01 are already past
+  assert.equal(late.lastDoneDate, TODAY);
+});
+
+// ---- gun-delete cascade ----
+
+test('reminderIdsForGun picks exactly the reminders tied to that gun', () => {
+  const list = [
+    rem({ id: 'r1', trigger: 'rounds', firearmId: 'fa-1', everyRounds: 5000 }),
+    rem({ id: 'r2', trigger: 'date', dueDate: '2026-08-01', firearmId: 'fa-1' }),
+    rem({ id: 'r3', trigger: 'date', dueDate: '2026-08-01', firearmId: 'fa-2' }),
+    rem({ id: 'r4', trigger: 'date', dueDate: '2026-08-01', firearmId: null }),
+  ];
+  assert.deepEqual(reminderIdsForGun(list, 'fa-1'), ['r1', 'r2']);
+  assert.deepEqual(reminderIdsForGun(list, 'fa-2'), ['r3']);
+  assert.deepEqual(reminderIdsForGun(list, 'fa-none'), []);
 });
 
 // ---- date helpers ----

@@ -4,11 +4,12 @@
 // can be freed; on "no longer own" and on permanent delete they always move to
 // inventory (optic & parts -> unassigned, magazines drop this gun).
 import { useState } from 'react';
-import type { Firearm, Magazine, Optic, Part } from '../lib/types.ts';
+import type { Firearm, Magazine, Optic, Part, Reminder } from '../lib/types.ts';
 import { deleteOne, getAll, putOne } from '../lib/db.ts';
 import { stampUpdate } from '../lib/stamps.ts';
 import { todayKey } from '../lib/dates.ts';
 import { REMOVAL_REASONS } from '../lib/gunStatus.ts';
+import { reminderIdsForGun } from '../lib/reminders.ts';
 import { Sheet, ConfirmSheet } from './Sheet.tsx';
 
 async function freeAccessories(gunId: string) {
@@ -55,6 +56,14 @@ export function GunRemoveSheet({ gun, hasHistory, onClose, onDone }: {
   async function deleteForever() {
     if (busy) return; setBusy(true);
     await freeAccessories(gun.id);
+    // A permanently deleted gun takes its reminders with it — a round-count
+    // reminder is meaningless without its gun, and a stranded one would resolve
+    // inactive and hide in storage forever. Reminders go BEFORE the gun record,
+    // so an interruption can never leave orphans behind a gun that's already gone.
+    const reminders = await getAll<Reminder>('reminders');
+    for (const rid of reminderIdsForGun(reminders, gun.id)) {
+      await deleteOne('reminders', rid);
+    }
     await deleteOne('firearms', gun.id);
     onDone(true);
   }
@@ -63,7 +72,7 @@ export function GunRemoveSheet({ gun, hasHistory, onClose, onDone }: {
     return (
       <ConfirmSheet
         title={`Delete ${gun.name} permanently?`}
-        message="This gun has no logged sessions or matches, so it can be fully removed. Its optic and magazines move to your inventory. There's no undo."
+        message="This gun has no logged sessions or matches, so it can be fully removed. Its optic and magazines move to your inventory, and any reminders you set for it are removed with it. There's no undo."
         confirmLabel="Delete Permanently"
         onConfirm={() => void deleteForever()}
         onClose={() => setConfirmDelete(false)}

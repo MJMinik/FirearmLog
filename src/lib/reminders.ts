@@ -98,11 +98,14 @@ export function addMonthsToDay(key: string, months: number): string {
 }
 
 /**
- * The next occurrence of a recurring date reminder that falls strictly after
- * today (rolling forward past any cycles that were missed). Null when it doesn't
- * repeat or has no date.
+ * Where a recurring date reminder's due date lands when the shooter marks it
+ * done: ALWAYS at least one interval forward from the current due date — done is
+ * done, even done EARLY (swapping the battery a week ahead of its date must not
+ * leave the reminder armed to fire again this cycle) — and then, when it was
+ * completed very late, kept advancing until strictly after today, so it can't
+ * come back already overdue. Null when it doesn't repeat or has no date.
  */
-export function nextDueDate(
+export function advanceDueDate(
   due: string | null | undefined,
   repeat: Reminder['repeat'],
   repeatMonths: number | null | undefined,
@@ -110,7 +113,7 @@ export function nextDueDate(
 ): string | null {
   if (!due || !repeat || repeat === 'none') return null;
   const step = repeat === 'yearly' ? 12 : Math.max(1, repeatMonths ?? 1);
-  let next = due;
+  let next = addMonthsToDay(due, step); // at least one interval, even from a future date
   // Guard the loop so a bad interval can never hang (at most a few hundred steps).
   for (let i = 0; i < 1200; i++) {
     const days = daysBetween(today, next);
@@ -184,9 +187,38 @@ export function laterReminders(views: ReminderView[]): ReminderView[] {
   return views.filter((v) => v.level === 'later').sort(bySoonest);
 }
 
-/** Paused reminders (enabled === false) — the Done section on the Reminders screen. */
-export function pausedReminders(views: ReminderView[]): ReminderView[] {
-  return views.filter((v) => v.reminder.enabled === false);
+/**
+ * Everything that isn't on the active ladder — the Done section on the Reminders
+ * screen. Deliberately level-based, not enabled-based: it catches paused/finished
+ * reminders AND any record that can't be measured (a round-count reminder whose
+ * gun left the log, a record missing its date/interval), so a stored reminder is
+ * NEVER invisible and unreachable — it always has a row with a working Delete.
+ */
+export function inactiveReminders(views: ReminderView[]): ReminderView[] {
+  return views.filter((v) => v.level === 'inactive');
+}
+
+/**
+ * The Done-section sub-line for an inactive reminder, in plain range language.
+ * `gunResolved` = the reminder's gun (if it names one) still exists in the log.
+ */
+export function inactiveNote(r: Reminder, gunResolved: boolean): string {
+  if (r.enabled === false) {
+    return r.lastDoneDate ? `Marked done ${formatDayKey(r.lastDoneDate)}` : 'Paused';
+  }
+  if (r.firearmId && !gunResolved) {
+    return 'The gun this was for is no longer in your log — you can delete this reminder.';
+  }
+  return 'Missing its date or round count — open it to fix or delete it.';
+}
+
+/** The reminders that belong to one gun — deleted alongside a permanent gun
+ *  delete so no reminder is ever stranded pointing at a gun that's gone. */
+export function reminderIdsForGun(
+  reminders: Pick<Reminder, 'id' | 'firearmId'>[],
+  gunId: string,
+): string[] {
+  return reminders.filter((r) => r.firearmId === gunId).map((r) => r.id);
 }
 
 /**
@@ -205,7 +237,10 @@ export function homeComingUp(
 /**
  * The patch to apply when a shooter marks a reminder done. Pure so it's tested:
  *  - round-based: reset the baseline to the gun's current rounds (recurs forever).
- *  - recurring date: advance the due date to the next future occurrence.
+ *  - recurring date: advance the due date one interval past the current due date
+ *    (advanceDueDate above — an EARLY done still rolls forward; a very-late done
+ *    rolls past today), so "mark one done and a repeating date rolls forward"
+ *    stays true no matter when the shooter does the work.
  *  - one-off date: pause it (enabled=false) so it drops off the active ladder but
  *    stays in the Done section, re-enable-able.
  * Always stamps lastDoneDate.
@@ -217,7 +252,7 @@ export function completionPatch(r: Reminder, ctx: ReminderContext): Partial<Remi
     return { lastDoneDate: today, baselineRounds: rounds ?? r.baselineRounds ?? 0 };
   }
   if (r.repeat && r.repeat !== 'none' && r.dueDate) {
-    const next = nextDueDate(r.dueDate, r.repeat, r.repeatMonths ?? null, today);
+    const next = advanceDueDate(r.dueDate, r.repeat, r.repeatMonths ?? null, today);
     return { lastDoneDate: today, dueDate: next ?? r.dueDate };
   }
   return { lastDoneDate: today, enabled: false };
