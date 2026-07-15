@@ -14,7 +14,7 @@ and deploys it to GitHub Pages.
 
 ## Where things live
 
-- This folder (`Claude Projects/FirearmLog/FirearmLog`) is the local repository that
+- This folder (`Claude Projects/FirearmLog/App` — renamed from the inner `FirearmLog`, July 15 2026) is the local repository that
   GitHub Desktop watches. The GitHub copy is `MJMinik/FirearmLog`.
 - One-time Pages setup: on github.com, repo **Settings -> Pages** -> under
   "Build and deployment", set **Source: GitHub Actions**.
