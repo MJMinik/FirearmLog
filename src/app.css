@@ -956,6 +956,14 @@ select { max-width: 100%; min-width: 0; min-height: 44px; }
 .chart-filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 4px; }
 .chart-filters select { flex: 1; min-width: 90px; }
 
+/* Chart text (ticks, dates, value labels) is read-only furniture — an iOS
+   long-press must never text-select it (Michael's tap-test catch, session 62:
+   pressing anywhere on the accuracy chart grabbed "88.3%" with selection
+   handles, since it was the SVG's only selectable text). Taps still work;
+   the readout line below the chart is the one way to pull numbers out. */
+svg text { -webkit-user-select: none; user-select: none; }
+.card svg { -webkit-touch-callout: none; }
+
 .chart-legend { display: flex; flex-wrap: wrap; gap: 14px; margin: 6px 0 2px; }
 .chart-legend span { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-caption); color: var(--text-dim); }
 .chart-legend i { width: 11px; height: 11px; border-radius: 2px; display: inline-block; flex: none; }

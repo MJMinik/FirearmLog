@@ -426,9 +426,12 @@ function SpeedAccuracyTrendCard({ matches, coachingRemarks, onDisableRemarks }: 
             </rect>
           );
         })}
+        {/* Card-colored halo (paint-order: stroke) keeps the headline number
+            legible where the line passes behind it (live-verify catch, s62). */}
         <text className="chart-last-label" x={xAt(lastIdx)} y={lastLabelY} textAnchor="end"
           fill="var(--text)" fontSize={11} fontWeight={600} fontFamily="inherit"
-          style={{ pointerEvents: 'none' }}>
+          stroke="var(--bg-card)" strokeWidth={3.5} strokeLinejoin="round"
+          style={{ pointerEvents: 'none', paintOrder: 'stroke' }}>
           {lastV.toFixed(1)}%
         </text>
       </svg>

@@ -189,10 +189,13 @@ function DrillTrend({ attempts, best, lowerIsBetter, scoring }: {
           </rect>
         );
       })}
-      {/* The latest run carries its number — the headline is always readable. */}
+      {/* The latest run carries its number — the headline is always readable.
+          The card-colored halo (paint-order: stroke) keeps it legible where the
+          line passes behind it (live-verify catch, session 62). */}
       <text className="chart-last-label" x={x(lastIdx)} y={lastLabelY} textAnchor="end"
         fill="var(--text)" fontSize="11" fontWeight="600" fontFamily="inherit"
-        style={{ pointerEvents: 'none' }}>
+        stroke="var(--bg-card)" strokeWidth={3.5} strokeLinejoin="round"
+        style={{ pointerEvents: 'none', paintOrder: 'stroke' }}>
         {formatMetricTick(lastV, scoring)}
       </text>
     </svg>
