@@ -199,9 +199,11 @@ export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
               )}
               {/* F4: the whole column answers a tap, not just the painted bar —
                   short bars would otherwise be nearly impossible to hit. */}
+              {/* Tap the selected month again to clear it — the same
+                  tap-again-to-deselect manner as the line charts (s64). */}
               <rect className="chart-hit" x={x} y={0} width={barW + gap} height={h}
                 fill="transparent" style={{ cursor: 'pointer' }}
-                onClick={() => setSelKey(b.key)}>
+                onClick={() => setSelKey((prev) => (prev === b.key ? null : b.key))}>
                 <title>{`${b.label}: ${b.liveRounds.toLocaleString()} live · ${b.matchRounds.toLocaleString()} match · ${b.dryReps.toLocaleString()} dry reps`}</title>
               </rect>
             </g>

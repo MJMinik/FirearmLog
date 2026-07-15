@@ -4,8 +4,11 @@ import { seedDemo, gotoTab } from './helpers';
 // F4 (stranger-test finding, session 62): every chart must answer, by itself,
 // "what am I looking at, over what dates, and what are the numbers?" These
 // runs prove the furniture is really there on the seeded demo — y ticks, date
-// anchors, the always-visible latest value, and the tap-readout line that
-// starts as a hint (Michael's discoverability condition) and fills on tap.
+// anchors, the latest value, and the tap-readout line that starts as a hint
+// (Michael's discoverability condition) and fills on tap. Session 64 manners:
+// the latest-value label steps aside while an OLDER point is selected (two
+// numbers at once read as stale — Michael's tap-through), and tapping the
+// selected point again deselects it, on every chart.
 
 test.describe('Chart furniture (F4)', () => {
   test.beforeEach(async ({ page }) => {
@@ -26,7 +29,7 @@ test.describe('Chart furniture (F4)', () => {
     expect(await card.locator('text.chart-tick').count()).toBe(3);
     expect(await card.locator('text.chart-date').count()).toBeGreaterThanOrEqual(2);
 
-    // The latest match's number is always visible.
+    // The latest match's number is visible when nothing is selected.
     await expect(card.locator('text.chart-last-label')).toBeVisible();
 
     // The readout starts as the hint, then a tap fills it with a real value —
@@ -38,10 +41,21 @@ test.describe('Chart furniture (F4)', () => {
     await expect(card.locator('.chart-readout')).toHaveText(/% of points kept/);
     await expect(card.locator('.chart-readout')).not.toHaveText(/Tap a dot/);
     await expect(card.locator('.chart-sel-ring')).toHaveCount(1);
+    // Selecting the LATEST dot keeps its label — one dot, one number, no clash.
+    await expect(card.locator('text.chart-last-label')).toBeVisible();
     const ringX1 = await card.locator('.chart-sel-ring').getAttribute('cx');
     await card.locator('.chart-hit').first().click();
     await expect(card.locator('.chart-sel-ring')).toHaveCount(1);
     expect(await card.locator('.chart-sel-ring').getAttribute('cx')).not.toBe(ringX1);
+    // While an OLDER dot is selected the latest-value label steps aside
+    // (two numbers at once read as stale — Michael's tap-through, s64)...
+    await expect(card.locator('text.chart-last-label')).toHaveCount(0);
+    // ...and tapping the selected dot AGAIN clears the selection: ring off,
+    // readout back to the hint, latest-value label back on stage.
+    await card.locator('.chart-hit').first().click();
+    await expect(card.locator('.chart-sel-ring')).toHaveCount(0);
+    await expect(card.locator('.chart-readout')).toHaveText(/Tap a dot/);
+    await expect(card.locator('text.chart-last-label')).toBeVisible();
   });
 
   test('Drill history trend: unit ticks, date anchors, last value, tap-readout', async ({ page }) => {
@@ -65,6 +79,14 @@ test.describe('Chart furniture (F4)', () => {
     await card.locator('.chart-hit').first().click();
     await expect(card.locator('.chart-readout')).not.toHaveText(/Tap a dot/);
     await expect(card.locator('.chart-readout')).toHaveText(/—/);
+    // The oldest run is selected, so the latest-value label steps aside (s64)...
+    await expect(card.locator('text.chart-last-label')).toHaveCount(0);
+    await expect(card.locator('.chart-sel-ring')).toHaveCount(1);
+    // ...and tap-again clears the selection and brings the label back.
+    await card.locator('.chart-hit').first().click();
+    await expect(card.locator('.chart-sel-ring')).toHaveCount(0);
+    await expect(card.locator('.chart-readout')).toHaveText(/Tap a dot/);
+    await expect(card.locator('text.chart-last-label')).toBeVisible();
   });
 
   test('Rounds by Month: whole columns answer a tap with the month\'s numbers', async ({ page }) => {
@@ -84,6 +106,11 @@ test.describe('Chart furniture (F4)', () => {
     await card.locator('.chart-hit').first().click();
     await expect(card.locator('.chart-readout')).toHaveText(/live · .* match · .* dry reps/);
     await expect(card.locator('.chart-sel-ring')).toHaveCount(1);
+    // Tap-again-to-deselect: the same gesture means the same thing on every
+    // chart (s64) — outline off, readout back to the hint.
+    await card.locator('.chart-hit').first().click();
+    await expect(card.locator('.chart-sel-ring')).toHaveCount(0);
+    await expect(card.locator('.chart-readout')).toHaveText(/Tap a bar/);
   });
 
   test('the readout never goes stale: a month that leaves the chart leaves the readout', async ({ page }) => {

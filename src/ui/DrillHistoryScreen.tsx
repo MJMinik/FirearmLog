@@ -95,10 +95,11 @@ export function DrillHistoryScreen({ name, refreshKey, onBack, open }: {
 
 // The drill's key number over time (oldest → newest, left → right), with the
 // best run marked. F4 (session 62): furnished per the chart-furniture spec —
-// y gridlines with unit-aware tick labels, date anchors along the x-axis, an
-// always-visible label on the latest run, and a tap-readout line beneath
-// (never invisible: it starts as a hint). Falls back to a plain note when
-// there aren't two scoreable runs to draw a line between.
+// y gridlines with unit-aware tick labels, date anchors along the x-axis, a
+// label on the latest run (which yields the stage while an OLDER run is
+// selected — s64), and a tap-readout line beneath (never invisible: it starts
+// as a hint). Falls back to a plain note when there aren't two scoreable runs
+// to draw a line between.
 function DrillTrend({ attempts, best, lowerIsBetter, scoring }: {
   attempts: DrillHistoryAttempt[]; best: DrillHistoryAttempt | null; lowerIsBetter: boolean;
   scoring: string;
@@ -192,20 +193,25 @@ function DrillTrend({ attempts, best, lowerIsBetter, scoring }: {
         return (
           <rect className="chart-hit" key={`hit-${a.sessionId}-${i}`} x={left} y={0}
             width={right - left} height={h} fill="transparent" style={{ cursor: 'pointer' }}
-            onClick={() => setSelIdx(i)}>
+            onClick={() => setSelIdx((prev) => (prev === i ? null : i))}>
             <title>{`${formatDayKey(a.date)}: ${formatDrillScore(a, scoring)}`}</title>
           </rect>
         );
       })}
-      {/* The latest run carries its number — the headline is always readable.
+      {/* The latest run carries its number — the headline reads at a glance.
           The card-colored halo (paint-order: stroke) keeps it legible where the
-          line passes behind it (live-verify catch, session 62). */}
-      <text className="chart-last-label" x={x(lastIdx)} y={lastLabelY} textAnchor="end"
-        fill="var(--text)" fontSize="11" fontWeight="600" fontFamily="inherit"
-        stroke="var(--bg-card)" strokeWidth={3.5} strokeLinejoin="round"
-        style={{ pointerEvents: 'none', paintOrder: 'stroke' }}>
-        {formatMetricTick(lastV, scoring)}
-      </text>
+          line passes behind it (live-verify catch, session 62). It yields the
+          stage while an OLDER run is selected — two numbers at once read as
+          stale (Michael's catch, s64) — and returns on deselect, or when the
+          selected run IS the latest. */}
+      {(sel == null || selIdx === lastIdx) && (
+        <text className="chart-last-label" x={x(lastIdx)} y={lastLabelY} textAnchor="end"
+          fill="var(--text)" fontSize="11" fontWeight="600" fontFamily="inherit"
+          stroke="var(--bg-card)" strokeWidth={3.5} strokeLinejoin="round"
+          style={{ pointerEvents: 'none', paintOrder: 'stroke' }}>
+          {formatMetricTick(lastV, scoring)}
+        </text>
+      )}
     </svg>
     <ChartReadout value={readout} hint="Tap a dot to see its date and number." />
     </>

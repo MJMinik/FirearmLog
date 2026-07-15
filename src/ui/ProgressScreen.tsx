@@ -360,7 +360,10 @@ function SpeedAccuracyTrendCard({ matches, coachingRemarks, onDisableRemarks }: 
   // F4 (session 62): furnished per the chart-furniture spec — date anchors on
   // the x-axis (the pilot tester's note, verbatim: "Date should show along
   // horizontal axis"), the 90% mid tick labeled, the latest match's number
-  // always visible, and a tap-readout line beneath.
+  // visible whenever no OTHER dot is selected, and a tap-readout line beneath.
+  // (Session 64, Michael's tap-through: two numbers at once read as stale —
+  // while an older dot is selected, the latest-value label steps aside, the
+  // Stocks-app scrub manner. Tapping the selected dot again clears it.)
   const w = 280, h = 138, padR = 12, padL = 34, padT = 14, padB = 20;
   const vals = pts.map((p) => p.pointsKept * 100);
   const min = Math.min(...vals), max = Math.max(...vals);
@@ -381,6 +384,7 @@ function SpeedAccuracyTrendCard({ matches, coachingRemarks, onDisableRemarks }: 
   const lastLabelY = yAt(lastV) < padT + 14 ? yAt(lastV) + 14 : yAt(lastV) - 8;
 
   const sel = selMatchId != null ? pts.find((p) => p.matchId === selMatchId) ?? null : null;
+  const selIdx = sel != null ? pts.indexOf(sel) : -1;
   const readout = sel
     ? `${formatDayKey(sel.date)} — ${sel.name} — ${(sel.pointsKept * 100).toFixed(1)}% of points kept`
     : null;
@@ -417,7 +421,7 @@ function SpeedAccuracyTrendCard({ matches, coachingRemarks, onDisableRemarks }: 
             readout below visibly belongs to a specific dot (Michael's call,
             session 62). Same derived selection as the readout. */}
         {sel != null && (
-          <circle className="chart-sel-ring" cx={xAt(pts.indexOf(sel))} cy={yAt(sel.pointsKept * 100)}
+          <circle className="chart-sel-ring" cx={xAt(selIdx)} cy={yAt(sel.pointsKept * 100)}
             r={6.5} fill="none" stroke="var(--accent)" strokeWidth={1.75}
             style={{ pointerEvents: 'none' }} />
         )}
@@ -429,19 +433,24 @@ function SpeedAccuracyTrendCard({ matches, coachingRemarks, onDisableRemarks }: 
           return (
             <rect className="chart-hit" key={`hit-${p.matchId}`} x={left} y={0}
               width={right - left} height={h} fill="transparent" style={{ cursor: 'pointer' }}
-              onClick={() => setSelMatchId(p.matchId)}>
+              onClick={() => setSelMatchId((prev) => (prev === p.matchId ? null : p.matchId))}>
               <title>{`${formatDayKey(p.date)}: ${p.name} — ${(p.pointsKept * 100).toFixed(1)}%`}</title>
             </rect>
           );
         })}
         {/* Card-colored halo (paint-order: stroke) keeps the headline number
-            legible where the line passes behind it (live-verify catch, s62). */}
-        <text className="chart-last-label" x={xAt(lastIdx)} y={lastLabelY} textAnchor="end"
-          fill="var(--text)" fontSize={11} fontWeight={600} fontFamily="inherit"
-          stroke="var(--bg-card)" strokeWidth={3.5} strokeLinejoin="round"
-          style={{ pointerEvents: 'none', paintOrder: 'stroke' }}>
-          {lastV.toFixed(1)}%
-        </text>
+            legible where the line passes behind it (live-verify catch, s62).
+            The label yields the stage while an OLDER dot is selected — two
+            numbers at once read as stale (Michael's catch, s64) — and returns
+            on deselect, or when the selected dot IS the latest. */}
+        {(sel == null || selIdx === lastIdx) && (
+          <text className="chart-last-label" x={xAt(lastIdx)} y={lastLabelY} textAnchor="end"
+            fill="var(--text)" fontSize={11} fontWeight={600} fontFamily="inherit"
+            stroke="var(--bg-card)" strokeWidth={3.5} strokeLinejoin="round"
+            style={{ pointerEvents: 'none', paintOrder: 'stroke' }}>
+            {lastV.toFixed(1)}%
+          </text>
+        )}
       </svg>
       <ChartReadout value={readout} hint="Tap a dot to see that match's date and number." />
       {trend.consistentlyClean && coachingRemarks && (
