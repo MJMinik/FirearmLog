@@ -1,8 +1,9 @@
 // Progress-tab trend helpers (spec §10.2). Pure + tested. The rounds-by-month
 // aggregation already lives in dashboard.ts and is reused; this adds the
 // malfunction-rate and dry/live math.
-import type { Firearm, GunCategory, MalfunctionEntry } from './types.ts';
-import type { MonthBucket } from './dashboard.ts';
+import type { Firearm, GunCategory, MalfunctionEntry, Session } from './types.ts';
+import type { MonthBucket, RoundsFilter } from './dashboard.ts';
+import { isLiveSession, isDrySession, sessionUsedFilteredGun } from './dashboard.ts';
 
 /** Events per 1,000 rounds (e.g. malfunctions). Null when there are no rounds. */
 export function ratePerThousand(events: number, rounds: number): number | null {
@@ -39,4 +40,35 @@ export function malfunctionsInRange(
 export function spanStartDate(months: number, now: Date = new Date()): string {
   const d = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+/** Dry-fire and live SESSION counts for the "Dry : live sessions" ratio. */
+export interface SessionRatioCounts { liveSessions: number; drySessions: number; }
+
+/**
+ * Count dry-fire vs live SESSIONS on/after `sinceDate` (YYYY-MM-DD), scoped to
+ * the gun/category filter — the basis for the Trends card's "Dry : live
+ * sessions" row (Tester-2 Change-1, July 16 2026). Sessions are firm units on
+ * both sides, unlike a user-defined "rep", so the ratio compares session counts.
+ *
+ * "Live" vs "dry" and the planned-session exclusion mirror the Home sessions
+ * tile EXACTLY — both count through `isLiveSession` / `isDrySession`, so the two
+ * surfaces agree by construction. A session's relevance to a gun filter mirrors
+ * the rounds chart via `sessionUsedFilteredGun` (a session counts if it USED the
+ * gun/category). Matches are not sessions and are never counted here. Pure.
+ */
+export function sessionRatioCounts(
+  sessions: Pick<Session, 'date' | 'planned' | 'type' | 'guns'>[],
+  sinceDate: string,
+  filter: RoundsFilter,
+  firearms: Pick<Firearm, 'id' | 'category'>[]
+): SessionRatioCounts {
+  let liveSessions = 0, drySessions = 0;
+  for (const s of sessions ?? []) {
+    if (!s.date || s.date < sinceDate) continue;
+    if (!sessionUsedFilteredGun(s, filter, firearms)) continue;
+    if (isDrySession(s)) drySessions++;
+    else if (isLiveSession(s)) liveSessions++;
+  }
+  return { liveSessions, drySessions };
 }

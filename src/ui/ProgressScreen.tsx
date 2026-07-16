@@ -16,7 +16,7 @@ import { SKILL_AREAS, assessmentAverage, assessmentsByDate, latestAssessment } f
 import {
   allClassifications, formatDrillScore, personalRecords, roundsByMonth, type RoundsFilter
 } from '../lib/dashboard.ts';
-import { bucketTotals, malfunctionsInRange, ratePerThousand, spanStartDate } from '../lib/trends.ts';
+import { bucketTotals, malfunctionsInRange, ratePerThousand, sessionRatioCounts, spanStartDate } from '../lib/trends.ts';
 import { matchAccuracyTrend } from '../lib/competition.ts';
 import { buildHeatmap, monthLabels, sessionsOnDay } from '../lib/heatmap.ts';
 import { sessionRounds } from '../lib/stats.ts';
@@ -502,13 +502,18 @@ function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunct
   const since = spanStartDate(months);
   const malfCount = malfunctionsInRange(malfunctions, since, filter, firearms);
   const malfRate = ratePerThousand(malfCount, totals.liveAndMatch);
+  // Tester-2 Change-1 (July 16 2026): the dry/live ratio compares SESSION counts
+  // (dry-fire sessions per live session) — firm units on both sides — not
+  // reps-per-round. Counted through the shared Home-tile definition so the two
+  // surfaces agree; scoped to this card's span and gun/category filter.
+  const { liveSessions, drySessions } = sessionRatioCounts(sessions, since, filter, firearms);
   const divisions = allClassifications(classifiers);
   const prs = personalRecords(sessions, drills).filter((p) => p.best).slice(0, 8);
   const anyRounds = totals.live + totals.match + totals.dry > 0;
 
   return (
     <div className="card">
-      <h2>Trends <InfoTip title="Trends">Your rounds and reps over the span you pick. "Dry : live" is dry-fire reps per live round; "malfunctions / 1,000" is your stoppage rate. Filter by gun or gun type. Tap a bar for that month's exact numbers.</InfoTip></h2>
+      <h2>Trends <InfoTip title="Trends">Your rounds and reps over the span you pick. "Dry : live sessions" is how many dry-fire sessions you log for every live session — matches aren't counted here. "Malfunctions / 1,000" is your stoppage rate. Filter by gun or gun type. Tap a bar for that month's exact numbers.</InfoTip></h2>
       {/* Progressive disclosure: show the chart with its defaults (last 12 mo, all guns)
           first; the filter row is one tap away rather than clutter above the data. */}
       <Reveal label="Filters">
@@ -535,11 +540,11 @@ function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunct
         ? <RoundsByMonthChart buckets={buckets} />
         : <p className="report-note">No rounds logged{(filter.category || filter.firearmId) ? ' for this gun.' : ' yet.'}</p>}
 
-      <div className="row"><span className="label">Live + match rounds (span)</span><span className="value">{totals.liveAndMatch.toLocaleString()}</span></div>
-      <div className="row"><span className="label">Dry-fire reps (span)</span><span className="value">{totals.dry.toLocaleString()}</span></div>
+      <div className="row"><span className="label">Live + match rounds (last {months} mo)</span><span className="value">{totals.liveAndMatch.toLocaleString()}</span></div>
+      <div className="row"><span className="label">Dry-fire reps (last {months} mo)</span><span className="value">{totals.dry.toLocaleString()}</span></div>
       <div className="row">
-        <span className="label">Dry : live</span>
-        <span className="value">{totals.liveAndMatch > 0 ? `${(totals.dry / totals.liveAndMatch).toFixed(2)} : 1` : '—'}</span>
+        <span className="label">Dry : live sessions (last {months} mo)</span>
+        <span className="value">{liveSessions > 0 ? `${(drySessions / liveSessions).toFixed(1)} : 1` : '—'}</span>
       </div>
       <div className="row">
         <span className="label">Malfunctions / 1,000 rds</span>

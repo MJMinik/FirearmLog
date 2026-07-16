@@ -1,8 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import type { Firearm } from '../src/lib/types.ts';
+import type { Firearm, Session } from '../src/lib/types.ts';
 import type { MonthBucket } from '../src/lib/dashboard.ts';
-import { bucketTotals, malfunctionsInRange, ratePerThousand, spanStartDate } from '../src/lib/trends.ts';
+import { bucketTotals, malfunctionsInRange, ratePerThousand, sessionRatioCounts, spanStartDate } from '../src/lib/trends.ts';
 
 test('ratePerThousand scales events by rounds, null when no rounds', () => {
   assert.equal(ratePerThousand(3, 1500), 2);
@@ -36,4 +36,92 @@ test('malfunctionsInRange respects date cutoff and gun/category filter', () => {
 test('spanStartDate returns the first day of the span', () => {
   assert.equal(spanStartDate(12, new Date(2026, 5, 14)), '2025-07-01'); // 12 months back incl. current
   assert.equal(spanStartDate(1, new Date(2026, 5, 14)), '2026-06-01');
+});
+
+// ---- sessionRatioCounts (Tester-2 Change-1): dry-fire vs live SESSION counts ----
+
+const on = (date: string, type: Session['type'], planned: boolean, gunIds: string[] = []): Session =>
+  ({ id: 's', date, type, planned, drills: [],
+     guns: gunIds.map((firearmId) => ({ firearmId, rounds: 50 })) } as unknown as Session);
+
+test('sessionRatioCounts splits live vs dry sessions and excludes planned', () => {
+  const sessions = [
+    on('2026-06-01', 'practice', false),   // live
+    on('2026-06-02', 'class', false),      // live (class is not dry-fire)
+    on('2026-06-03', 'dry_fire', false),   // dry
+    on('2026-06-04', 'dry_fire', false),   // dry
+    on('2026-06-05', 'practice', true),    // planned live — excluded
+    on('2026-06-06', 'dry_fire', true),    // planned dry — excluded
+  ];
+  const c = sessionRatioCounts(sessions, '2026-01-01', {}, firearms);
+  assert.deepEqual(c, { liveSessions: 2, drySessions: 2 }); // 2 dry : 2 live → 1.0 : 1
+});
+
+test('sessionRatioCounts scopes to the span (sessions before the cutoff drop)', () => {
+  const sessions = [
+    on('2026-06-01', 'practice', false),   // in span
+    on('2026-06-02', 'dry_fire', false),   // in span
+    on('2025-01-01', 'practice', false),   // before cutoff — excluded
+    on('2025-01-02', 'dry_fire', false),   // before cutoff — excluded
+  ];
+  const c = sessionRatioCounts(sessions, '2026-05-01', {}, firearms);
+  assert.deepEqual(c, { liveSessions: 1, drySessions: 1 });
+});
+
+test('sessionRatioCounts counts a session only when it used the filtered gun/category', () => {
+  const sessions = [
+    on('2026-06-01', 'practice', false, ['g1']),         // pistol live
+    on('2026-06-02', 'practice', false, ['g2']),         // rifle live
+    on('2026-06-03', 'dry_fire', false, ['g1']),         // pistol dry
+    on('2026-06-04', 'dry_fire', false, ['g2', 'g1']),   // used both — counts for g1
+  ];
+  // Filter to one gun (g1): the g2-only live session drops out.
+  assert.deepEqual(
+    sessionRatioCounts(sessions, '2026-01-01', { firearmId: 'g1' }, firearms),
+    { liveSessions: 1, drySessions: 2 }
+  );
+  // Filter to a category (Rifle = g2): only sessions that used g2.
+  assert.deepEqual(
+    sessionRatioCounts(sessions, '2026-01-01', { category: 'Rifle' }, firearms),
+    { liveSessions: 1, drySessions: 1 }
+  );
+});
+
+test('sessionRatioCounts zero-live edge: dry sessions but no live → live 0', () => {
+  const sessions = [
+    on('2026-06-01', 'dry_fire', false),
+    on('2026-06-02', 'dry_fire', false),
+  ];
+  const c = sessionRatioCounts(sessions, '2026-01-01', {}, firearms);
+  assert.deepEqual(c, { liveSessions: 0, drySessions: 2 }); // caller shows "—"
+});
+
+test('sessionRatioCounts dry-only-is-zero edge: live sessions, no dry → ratio 0.0 : 1', () => {
+  const sessions = [
+    on('2026-06-01', 'practice', false),
+    on('2026-06-02', 'class', false),
+  ];
+  const c = sessionRatioCounts(sessions, '2026-01-01', {}, firearms);
+  assert.deepEqual(c, { liveSessions: 2, drySessions: 0 });
+});
+
+test('sessionRatioCounts counts a session dated exactly on the cutoff (boundary is inclusive)', () => {
+  const sessions = [
+    on('2026-05-01', 'practice', false),  // exactly ON sinceDate — MUST count
+    on('2026-05-01', 'dry_fire', false),  // exactly ON sinceDate — MUST count
+    on('2026-04-30', 'practice', false),  // one day before — excluded
+  ];
+  // An `s.date <= sinceDate` exclusion bug would drop the two boundary rows.
+  const c = sessionRatioCounts(sessions, '2026-05-01', {}, firearms);
+  assert.deepEqual(c, { liveSessions: 1, drySessions: 1 });
+});
+
+test('sessionRatioCounts skips a session with no date', () => {
+  const sessions = [
+    on('', 'practice', false),            // empty date — skipped
+    on('', 'dry_fire', false),            // empty date — skipped
+    on('2026-06-01', 'practice', false),  // real live session
+  ];
+  const c = sessionRatioCounts(sessions, '2026-01-01', {}, firearms);
+  assert.deepEqual(c, { liveSessions: 1, drySessions: 0 });
 });

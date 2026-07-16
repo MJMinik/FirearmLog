@@ -123,7 +123,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Progress — trends & filters',
-      body: 'Trends charts your rounds over time with a color legend, and shows tiles for live + match rounds, dry-fire reps, your dry-to-live ratio, and malfunctions per 1,000 rounds. Filter everything by gun type, individual gun, and a 6-, 12-, or 24-month span. Classification by division and personal records show here too — tap a record to open that drill\'s full history over time. An Accuracy across matches chart tracks your USPSA accuracy — the share of points you kept — over your matches, so you can read whether you\'re getting cleaner over a season.',
+      body: 'Trends charts your rounds over time with a color legend, and shows tiles for live + match rounds, dry-fire reps, your dry-to-live session ratio, and malfunctions per 1,000 rounds. Filter everything by gun type, individual gun, and a 6-, 12-, or 24-month span. Classification by division and personal records show here too — tap a record to open that drill\'s full history over time. An Accuracy across matches chart tracks your USPSA accuracy — the share of points you kept — over your matches, so you can read whether you\'re getting cleaner over a season.',
     },
     {
       title: 'Progress — training grid & records',

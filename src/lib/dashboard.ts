@@ -48,6 +48,42 @@ function sessionRoundsFiltered(
   }, 0);
 }
 
+// The ONE definition of a logged live vs dry session (Tester-2 Change-1, July 16
+// 2026). Home's sessions tile, the ranged Home tiles, and the Trends "Dry : live
+// sessions" ratio all count through these, so the three surfaces agree by
+// construction — a session is counted only when it's NOT planned; dry-fire is
+// "dry", everything else logged is "live". Matches are not sessions and never
+// pass through here.
+/** A logged (non-planned) live session — anything that isn't dry-fire. */
+export function isLiveSession(s: Pick<Session, 'planned' | 'type'>): boolean {
+  return !s.planned && s.type !== 'dry_fire';
+}
+/** A logged (non-planned) dry-fire session. */
+export function isDrySession(s: Pick<Session, 'planned' | 'type'>): boolean {
+  return !s.planned && s.type === 'dry_fire';
+}
+
+/**
+ * True when a session is relevant to the gun/category filter — it used a gun
+ * that matches (one gun wins over category). No filter = every session matches.
+ * The boolean mirror of `sessionRoundsFiltered`'s relevance (Tester-2 Change-1):
+ * the Trends session ratio counts a session iff this returns true. Named for its
+ * RoundsFilter/gun basis so it can't be confused with searchFilter.ts's
+ * LogFilter-based `sessionMatchesFilter` (rename after the cold audit, July 16).
+ */
+export function sessionUsedFilteredGun(
+  s: Pick<Session, 'guns'>,
+  filter: RoundsFilter | undefined,
+  firearms: Pick<Firearm, 'id' | 'category'>[]
+): boolean {
+  if (!filter || (!filter.firearmId && !filter.category)) return true;
+  return (s.guns ?? []).some((g) => {
+    if (filter.firearmId) return g.firearmId === filter.firearmId;
+    if (filter.category) return gunCategoryOf(g.firearmId, firearms) === filter.category;
+    return false;
+  });
+}
+
 /** Rounds in one match that count toward the filter (matches have a single gun). */
 function matchRoundsFiltered(
   m: Pick<Match, 'totalRounds' | 'firearmId'>,
@@ -172,8 +208,8 @@ export function dashboardStats(
   ammo: Ammunition[]
 ): DashboardStats {
   const liveFireRounds = totalRounds(firearms, sessions, matches);
-  const liveSessions = sessions.filter(s => !s.planned && s.type !== 'dry_fire').length;
-  const drySessions = sessions.filter(s => !s.planned && s.type === 'dry_fire').length;
+  const liveSessions = sessions.filter(isLiveSession).length;
+  const drySessions = sessions.filter(isDrySession).length;
   const totalSess = sessions.filter(s => !s.planned).length;
   const ammoInventory = ammo.reduce((s, a) => s + (a.quantity || 0), 0);
 
@@ -227,16 +263,16 @@ export function rangedActivity(
   if (cutoff === null) {
     return {
       liveFireRounds: totalRounds(firearms, sessions, matches),
-      liveSessions: sessions.filter(s => !s.planned && s.type !== 'dry_fire').length,
-      drySessions: sessions.filter(s => !s.planned && s.type === 'dry_fire').length,
+      liveSessions: sessions.filter(isLiveSession).length,
+      drySessions: sessions.filter(isDrySession).length,
     };
   }
   const owned = new Set((firearms ?? []).map((f) => f.id));
   let liveFireRounds = 0, liveSessions = 0, drySessions = 0;
   for (const s of sessions ?? []) {
-    if (s.planned || !s.date || s.date < cutoff) continue;
-    if (s.type === 'dry_fire') drySessions++;
-    else {
+    if (!s.date || s.date < cutoff) continue;
+    if (isDrySession(s)) drySessions++;
+    else if (isLiveSession(s)) {
       liveSessions++;
       for (const g of s.guns ?? []) {
         if (owned.has(g.firearmId)) liveFireRounds += g.rounds || 0;
