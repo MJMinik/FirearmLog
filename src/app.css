@@ -814,14 +814,23 @@ a.button { text-decoration: none; }
 
 /* ---------- M5: calendar ---------- */
 .cal-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+/* Tester-2 F7 (July 16 2026): `minmax(0, 1fr)`, not a bare `1fr`. A `1fr` track
+   keeps an implicit min-content floor, and the cells' `aspect-ratio: 1` +
+   `min-height: 44px` transfer that floor into a min WIDTH — so the seven tracks
+   refused to shrink and the grid blew out to ~7/4 of the phone viewport (only
+   columns S–W fit, T/F/S clipped by `.screen{overflow-x:hidden}`; measured 684px
+   at a 390px width, Michael's iPhone / mobile Safari). `minmax(0, …)` removes
+   the floor so the tracks divide the container evenly; the cells stay square via
+   the aspect-ratio. Desktop is unaffected — it always had room to spare. (The
+   month's pad cells are no longer rendered — see Calendar.tsx — because a
+   content-less grid cell took an intrinsic ~96px height that inflated its row.) */
+.cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
 .cal-weekdays div { text-align: center; font-size: 0.6875rem; color: var(--text-dim); padding: 2px 0; }
 .cal-cell {
-  aspect-ratio: 1; min-height: 44px; border: none; border-radius: 8px;
+  aspect-ratio: 1; min-height: 44px; min-width: 0; border: none; border-radius: 8px;
   background: var(--bg); color: var(--text); font-size: var(--fs-subhead); cursor: pointer;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
 }
-.cal-cell.empty { background: none; cursor: default; }
 .cal-cell.today { outline: 2px solid var(--accent-ink); }
 .cal-cell.busy { font-weight: 600; }
 .cal-dots { display: flex; align-items: center; gap: 3px; min-height: 9px; }

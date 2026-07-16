@@ -127,7 +127,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Progress — training grid & records',
-      body: 'The training grid shows a square per day, darker where you shot more — toggle 26 or 52 weeks, with the months labeled along the bottom. Tap a square to open that day\'s session report — drills, notes, and target photos on one page — or turn on "Just show the day\'s count" to peek at a day without opening it. (To change a session, open it from the Log.) Personal records list your best result per drill.',
+      body: 'The training grid shows a square per day, darker where you shot more — toggle 26 or 52 weeks, with the months labeled along the bottom. Tap a square for that day: on a phone you see its count; on a bigger screen it opens that day\'s session report — drills, notes, and target photos on one page. The checkbox switches between the two. (To change a session, open it from the Log.) Personal records list your best result per drill.',
     },
     {
       title: 'Guns',

@@ -24,11 +24,13 @@ export function MonthCalendar({ items, onOpen, onEmptyDay }: {
   const first = new Date(year, month, 1);
   const startPad = first.getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells: (number | null)[] = [
-    ...(Array.from({ length: startPad }, () => null) as null[]),
-    ...Array.from({ length: daysInMonth }, (_, i) => i + 1)
-  ];
-  while (cells.length % 7 !== 0) cells.push(null);
+  // Tester-2 F7 (July 16 2026): the month's days, no padding cells. We used to
+  // pad the grid with empty `.cal-cell` divs; a content-less grid cell takes an
+  // intrinsic ~96px height that inflated any row it sat in (the first and last
+  // weeks read a full row taller than the middle). Instead we render only the
+  // real days and push the 1st into its weekday column with `grid-column-start`,
+  // so the grid never holds an empty cell and every row is one clean 44px band.
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
   const monthName = first.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
   const todayK = dayKey(now);
 
@@ -57,14 +59,16 @@ export function MonthCalendar({ items, onOpen, onEmptyDay }: {
         {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((w, i) => <div key={i}>{w}</div>)}
       </div>
       <div className="cal-grid">
-        {cells.map((d, i) => {
-          if (d === null) return <div key={i} className="cal-cell empty" />;
+        {days.map((d) => {
           const key = dayKey(new Date(year, month, d));
           const dateLabel = new Date(year, month, d).toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' });
           const list = items.get(key) ?? [];
           const present = KIND_ORDER.filter((k) => list.some((x) => x.kind === k));
           return (
-            <button key={i}
+            <button key={d}
+              // Tester-2 F7 (July 16 2026): push the 1st into its weekday column;
+              // the rest flow after it. No empty pad cells — see above.
+              style={d === 1 ? { gridColumnStart: startPad + 1 } : undefined}
               className={`cal-cell ${key === todayK ? 'today' : ''} ${list.length ? 'busy' : ''}`}
               onClick={() => tapDay(d)}
               aria-label={`${dateLabel}: ${present.length ? present.map((k) => KIND_LABEL[k]).join(', ') : 'nothing logged'}`}>

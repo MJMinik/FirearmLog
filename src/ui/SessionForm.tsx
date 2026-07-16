@@ -111,8 +111,12 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const [existingMedia, setExistingMedia] = useState<Media[]>([]);
   const [removedMedia, setRemovedMedia] = useState<string[]>([]);
   const [newFiles, setNewFiles] = useState<StagedFile[]>([]);
+  // Tester-2 F4 (July 16 2026): a NEW session starts UNRATED (empty), not a
+  // pre-filled 5/5/5 — an untouched form must not be indistinguishable from a
+  // real rated-5 session (a data-integrity leak). The save path already omits
+  // any rating left empty, so an unopened block stores no selfRating at all.
   const [ratings, setRatings] = useState<Record<string, string>>(
-    editing ? { focus: '', fundamentals: '', satisfaction: '' } : { focus: '5', fundamentals: '5', satisfaction: '5' }
+    { focus: '', fundamentals: '', satisfaction: '' }
   );
   const [rangeFee, setRangeFee] = useState('');
   const [notes, setNotes] = useState('');

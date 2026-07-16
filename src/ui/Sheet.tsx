@@ -18,6 +18,18 @@ export function Sheet({ title, onClose, children }: {
 }) {
   const downOnBackdrop = useRef(false);
   const sheetRef = useRef<HTMLDivElement>(null);
+  // Tester-2 F1 (July 16 2026): hold the LATEST onClose in a ref so the
+  // focus-trap effect can run ONCE per mount (`[]` deps) instead of re-running
+  // whenever a caller passes a fresh arrow-function onClose each render. The old
+  // `[onClose]` deps tore the trap down and back up on every parent re-render
+  // (e.g. each keystroke in FilterBar's search box updated filter state), which
+  // yanked focus off the input to the sheet's first focusable — closing the iOS
+  // keyboard on every keystroke. The keydown handler reads onCloseRef.current.
+  const onCloseRef = useRef(onClose);
+  // Tester-2 F1 (July 16 2026): sync the ref in an effect, not during render —
+  // a render-phase mutation is unsafe under concurrent rendering (a render can
+  // be discarded). No deps array, so it re-syncs after every committed render.
+  useEffect(() => { onCloseRef.current = onClose; });
   // A11y (pro-grade audit T1-9): trap keyboard focus inside the open sheet and
   // restore it to whatever was focused before (the trigger) on close, so a
   // keyboard/VoiceOver user can't Tab onto the page behind the "modal". Escape
@@ -39,7 +51,7 @@ export function Sheet({ title, onClose, children }: {
     (focusables()[0] ?? sheetRef.current)?.focus();
     const h = (e: KeyboardEvent) => {
       if (!isTop()) return; // only the top-most sheet handles the keyboard
-      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key === 'Escape') { onCloseRef.current(); return; }
       if (e.key !== 'Tab') return;
       const items = focusables();
       if (items.length === 0) { e.preventDefault(); return; }
@@ -55,7 +67,8 @@ export function Sheet({ title, onClose, children }: {
       window.removeEventListener('keydown', h);
       previouslyFocused?.focus?.();
     };
-  }, [onClose]);
+    // Tester-2 F1 (July 16 2026): run once per mount — see onCloseRef above.
+  }, []);
   return (
     <div className="sheet-backdrop"
       onMouseDown={(e) => { downOnBackdrop.current = e.target === e.currentTarget; }}

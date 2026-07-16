@@ -4,6 +4,7 @@
 // value is saved the moment the record it's on is saved, so it shows up as a
 // suggestion next time. One shared component (DRY) so any form can use it.
 import { useState } from 'react';
+import type { Ref } from 'react';
 import { rankSuggestions } from '../lib/suggest.ts';
 
 // Attributes that tell iOS Safari (and password managers) to leave a field
@@ -19,22 +20,32 @@ export const noAutofillProps = {
   'data-lpignore': 'true'
 } as const;
 
-export function SuggestField({ label, value, onChange, suggestions, placeholder, name }: {
+export function SuggestField({ label, value, onChange, suggestions, placeholder, name, inputRef, enterKeyHint, onEnter }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   suggestions: string[];
   placeholder?: string;
   name?: string;
+  // Tester-2 F2 (July 16 2026): the goals form drives the keyboard's Return key
+  // from field to field. inputRef lets a parent focus THIS field; onEnter fires
+  // on Return so the parent can advance focus to the next field (Enter must not
+  // commit the goal — only the Add Goal button does).
+  inputRef?: Ref<HTMLInputElement>;
+  enterKeyHint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send';
+  onEnter?: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const matches = open ? rankSuggestions(suggestions, value) : [];
   return (
     <label className="field suggest-anchor">{label}
       <input value={value} placeholder={placeholder} {...noAutofillProps}
-        name={name}
+        name={name} ref={inputRef} enterKeyHint={enterKeyHint}
         onChange={(e) => { onChange(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && onEnter) { e.preventDefault(); setOpen(false); onEnter(); }
+        }}
         onBlur={() => setOpen(false)} />
       {matches.length > 0 && (
         <div className="suggest-list" role="listbox" aria-label={`${label} suggestions`}>

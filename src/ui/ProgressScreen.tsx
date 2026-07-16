@@ -1,7 +1,7 @@
 // Progress tab (spec §10): goals, skill ratings, trends, heatmap. Built up
 // across the M7 batches; this batch adds Goals (req 26 — create several in a
 // row without leaving the page, editable anytime).
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type {
   AppSettings, Classifier, DrillDef, Firearm, Goal, GunCategory, MalfunctionEntry, Match, Session, SkillAssessment
 } from '../lib/types.ts';
@@ -54,6 +54,11 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
   const [skillSheet, setSkillSheet] = useState<SkillAssessment | 'new' | null>(null);
   const [goldenId, setGoldenId] = useState<string>('');
   const [coachingRemarks, setCoachingRemarks] = useState(true);
+  // Tester-2 F2 (July 16 2026): Return advances field-to-field in the goals
+  // form (Goal → Category → Target → dismiss keyboard); ONLY the Add Goal
+  // button commits. Refs let each field hand focus to the next.
+  const goalCatRef = useRef<HTMLInputElement>(null);
+  const goalTargetRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -145,16 +150,29 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
             <FormProblem problem={goalProblem} />
             <label className="field">Goal
               <input value={text} {...noAutofillProps} name="fl-goal-text" autoFocus
-                enterKeyHint="done"
+                enterKeyHint="next"
                 placeholder="Bill Drill under 2.0 seconds"
                 onChange={(e) => setText(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') void addGoal(); }} />
+                onKeyDown={(e) => {
+                  // Tester-2 F2 (July 16 2026): Enter ADVANCES to Category, it no
+                  // longer commits — testers were banking junk goals hidden under
+                  // the iOS keyboard. Only the Add Goal button commits.
+                  if (e.key === 'Enter') { e.preventDefault(); goalCatRef.current?.focus(); }
+                }} />
             </label>
             <SuggestField label="Category (optional)" value={category} onChange={setCategory}
-              name="fl-goal-cat" suggestions={cats} placeholder="Speed" />
+              name="fl-goal-cat" suggestions={cats} placeholder="Speed"
+              inputRef={goalCatRef} enterKeyHint="next"
+              onEnter={() => goalTargetRef.current?.focus()} />
             <label className="field">Target (optional)
               <input value={target} {...noAutofillProps} name="fl-goal-target" placeholder="under 2.0s"
-                onChange={(e) => setTarget(e.target.value)} />
+                ref={goalTargetRef} enterKeyHint="done"
+                onChange={(e) => setTarget(e.target.value)}
+                onKeyDown={(e) => {
+                  // Tester-2 F2 (July 16 2026): Enter on the last field just
+                  // dismisses the keyboard; it does NOT commit.
+                  if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur(); }
+                }} />
             </label>
             <div style={{ display: 'flex', gap: 8 }}>
               <button className="button" style={{ flex: 1 }} onClick={() => void addGoal()}>Add Goal</button>
@@ -242,7 +260,15 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
   // opens its report directly; several show a picker; an empty day falls back
   // to showing its count so the tap is never dead. The checkbox opts into the
   // quieter "just show the day's count" behaviour. Not remembered across visits.
-  const [showCountOnly, setShowCountOnly] = useState(false);
+  // Tester-2 F3 (July 16 2026): on a PHONE the day squares render ~11px wide —
+  // far under the 44pt tap minimum — so accidental report-opens are the norm
+  // there. Default count-only on phone widths (the same ≥900px breakpoint the
+  // app uses to switch to the bottom tab bar); desktop keeps opening reports.
+  // Evaluated once at mount; the checkbox still lets either side switch.
+  const [showCountOnly, setShowCountOnly] = useState(
+    () => typeof window !== 'undefined' &&
+      !window.matchMedia('(min-width: 900px) and (min-height: 500px)').matches
+  );
   const [daySheet, setDaySheet] = useState<Session[] | null>(null);
   // Michael, July 8 2026: a day square opens the day's Session Report — the
   // finished read with the target photos — not the edit screen. Editing still
@@ -279,7 +305,7 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
   const labelH = labelFont + 4;
   return (
     <div className="card">
-      <h2>Training grid <InfoTip title="Training grid">Each square is a day — darker means more rounds, with the months labeled along the bottom. Switch between the last 26 or 52 weeks. Tap a day to open that day's session report — drills, notes, and target photos on one page — or turn on "Just show the day's count" to peek at a day without opening it. (To change a session, open it from the Log tab.)</InfoTip></h2>
+      <h2>Training grid <InfoTip title="Training grid">Each square is a day — darker means more rounds, with the months labeled along the bottom. Switch between the last 26 or 52 weeks. Tap a square for that day: on a phone you'll see its count; on a bigger screen it opens that day's session report — drills, notes, and target photos on one page. The checkbox switches between the two. (To change a session, open it from the Log tab.)</InfoTip></h2>
       <div className="chart-filters">
         <select aria-label="Training grid weeks" value={weeks} onChange={(e) => setWeeks(Number(e.target.value))}>
           <option value={26}>26 weeks</option>
@@ -560,7 +586,7 @@ function SkillsCard({ skills, onNew, onEdit }: {
   const history = [...assessmentsByDate(skills)].reverse(); // newest first
   return (
     <div className="card">
-      <h2>Skills Check <InfoTip title="Skills Check">Rate yourself 1–10 in eight areas now and then. You'll see your latest scores, your average, and how they trend over time.</InfoTip></h2>
+      <h2>Skills Check <InfoTip title="Skills Check">Rate yourself 1–10 in eight areas now and then. You'll see your latest scores, your average, and every check you've saved.</InfoTip></h2>
       <button className="button secondary" onClick={onNew}>+ New Check</button>
       {!latest && (
         <p className="report-note">Rate yourself 1–10 across the 8 areas now and then to see your trend.</p>
