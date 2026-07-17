@@ -59,6 +59,12 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
   // button commits. Refs let each field hand focus to the next.
   const goalCatRef = useRef<HTMLInputElement>(null);
   const goalTargetRef = useRef<HTMLInputElement>(null);
+  // A6 (Michael, July 17 2026): when Enter advances focus INTO the Category
+  // field, its suggestion list used to auto-open — noise the shooter didn't ask
+  // for. This one-shot flag, set on the Enter-advance path just below, tells the
+  // Category SuggestField to skip opening for that programmatic focus only; a
+  // real tap or typing still opens it, so discoverability is untouched.
+  const suppressCatOpen = useRef(false);
 
   useEffect(() => {
     let alive = true;
@@ -157,12 +163,14 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
                   // Tester-2 F2 (July 16 2026): Enter ADVANCES to Category, it no
                   // longer commits — testers were banking junk goals hidden under
                   // the iOS keyboard. Only the Add Goal button commits.
-                  if (e.key === 'Enter') { e.preventDefault(); goalCatRef.current?.focus(); }
+                  // A6: arm the one-shot flag so the Category field doesn't pop its
+                  // suggestion list open just because Enter moved focus into it.
+                  if (e.key === 'Enter') { e.preventDefault(); suppressCatOpen.current = true; goalCatRef.current?.focus(); }
                 }} />
             </label>
             <SuggestField label="Category (optional)" value={category} onChange={setCategory}
               name="fl-goal-cat" suggestions={cats} placeholder="Speed"
-              inputRef={goalCatRef} enterKeyHint="next"
+              inputRef={goalCatRef} enterKeyHint="next" suppressOpenOnFocus={suppressCatOpen}
               onEnter={() => goalTargetRef.current?.focus()} />
             <label className="field">Target (optional)
               <input value={target} {...noAutofillProps} name="fl-goal-target" placeholder="under 2.0s"

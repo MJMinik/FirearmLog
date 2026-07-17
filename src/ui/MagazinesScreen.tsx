@@ -44,7 +44,7 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onBack}>‹ Back</button>
+        <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
         <span />
       </div>
       <h1 className="large-title">Magazines <InfoTip title="Magazines">Your magazines, grouped by the guns they fit.</InfoTip></h1>

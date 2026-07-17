@@ -59,7 +59,7 @@ export function ReportsScreen({ refreshKey, onBack, popupBlocked }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onBack}>‹ Back</button>
+        <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
         <span />
       </div>
       <h1 className="large-title">Reports <InfoTip title="Reports">Printable summaries — round count, costs, season, malfunctions, maintenance, insurance. Save as PDF.</InfoTip></h1>

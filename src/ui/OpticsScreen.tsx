@@ -119,7 +119,7 @@ export function OpticsScreen({ refreshKey, onBack, openOpticForm }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onBack}>‹ Back</button>
+        <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
         <span />
       </div>
       <h1 className="large-title">Optics <InfoTip title="Optics">Red dots and scopes. Track each optic, attach it to a gun, and its cost feeds Costs &amp; Purchases.</InfoTip></h1>

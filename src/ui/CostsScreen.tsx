@@ -92,7 +92,7 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onBack}>‹ Back</button>
+        <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
       </div>
       <h1 className="large-title">Costs &amp; Purchases</h1>
       <button className="button" onClick={() => openForm()}>+ Add Purchase</button>

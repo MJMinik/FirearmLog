@@ -1,7 +1,10 @@
 import { useEffect, useState } from 'react';
-import type { Firearm, GunCategory, Reference } from '../lib/types.ts';
+import type { Firearm, GunCategory, Match, Reference, Session } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
 import { countAll, getAll, getOne, putOne } from '../lib/db.ts';
+import { roundsForFirearm } from '../lib/stats.ts';
+import { activeOnly } from '../lib/softDelete.ts';
+import { lifetimeFromStart, startFromLifetime } from '../lib/lifetimeRounds.ts';
 import { CoachMark } from './CoachMark.tsx';
 import { coachMarkDismissals, dismissCoachMark } from '../lib/coachMarks.ts';
 import { newId } from '../lib/id.ts';
@@ -24,6 +27,16 @@ export function GunForm({ id, onSaved, onCancel }: {
   const [serial, setSerial] = useState('');
   const [acquired, setAcquired] = useState('');
   const [startCount, setStartCount] = useState('0');
+  // A1: the shooter also sees and edits the LIFETIME total. loggedRounds is the
+  // live-fire + match rounds already recorded against this gun (dry fire never
+  // counts); it's 0 on a new gun. storedLifetime is the gun's lifetime as it
+  // stands right now (from what's stored, not the in-progress edits) — shown as
+  // a read-only reminder when editing. lifetime is the editable field, kept in
+  // two-way sync with startCount through lib/lifetimeRounds.
+  const [loggedRounds, setLoggedRounds] = useState(0);
+  const [storedLifetime, setStoredLifetime] = useState<number | null>(null);
+  const [lifetime, setLifetime] = useState('0');
+  const [lifetimeClamped, setLifetimeClamped] = useState(false);
   const [deepClean, setDeepClean] = useState('');
   const [recoilSpring, setRecoilSpring] = useState('');
   const [notes, setNotes] = useState('');
@@ -75,6 +88,35 @@ export function GunForm({ id, onSaved, onCancel }: {
     return () => { alive = false; };
   }, [editing, id]);
 
+  // A1: when editing, work out how many rounds are already LOGGED against this
+  // gun (live fire + matches; dry fire never counts) by reading the same
+  // roundsForFirearm math every screen uses, then subtracting the ORIGINAL
+  // stored starting count. That gives the fixed "logged" floor the two-way sync
+  // needs, and the gun's lifetime as it stands right now for the read-only line.
+  // Read-only: this effect never writes sessions or matches.
+  useEffect(() => {
+    if (id === undefined) return;
+    let alive = true;
+    void (async () => {
+      const [g, sessions, matches] = await Promise.all([
+        getOne<Firearm>('firearms', id),
+        getAll<Session>('sessions'),
+        getAll<Match>('matches')
+      ]);
+      if (!alive || !g) return;
+      // Mirror the gun-detail stat exactly: trashed sessions don't count toward
+      // lifetime rounds there (activeOnly), so they must not count here either —
+      // otherwise the read-only "right now" line would disagree with the gun's
+      // own page.
+      const total = roundsForFirearm(g.id, [g], activeOnly(sessions), matches);
+      const logged = total - g.startingRoundCount;
+      setLoggedRounds(logged);
+      setStoredLifetime(total);
+      setLifetime(String(total));
+    })();
+    return () => { alive = false; };
+  }, [id]);
+
   // Suggest a maintenance guide that matches the manufacturer, scoped to
   // type — but only while nothing is linked and that exact suggestion
   // hasn't already been waved off. Never links automatically.
@@ -84,10 +126,53 @@ export function GunForm({ id, onSaved, onCancel }: {
     setRefSuggestion(match && match.id !== dismissedSuggestionId ? match : null);
   }, [manufacturer, category, customRefs, referenceId, dismissedSuggestionId]);
 
+  // A1: the two fields are two views of one number (lifetime = start + logged).
+  // Editing either updates the other through the pure helpers. An empty box is
+  // left mid-typing (the shooter is between digits); only a real number syncs.
+  function onStartChange(v: string) {
+    setStartCount(v);
+    setLifetimeClamped(false);
+    if (v.trim() === '') return;
+    const n = Number(v);
+    if (Number.isFinite(n)) setLifetime(String(lifetimeFromStart(n, loggedRounds)));
+  }
+  function onLifetimeChange(v: string) {
+    setLifetime(v);
+    // Clear any stale clamp note while the shooter is actively typing — the
+    // value is in flux, so don't accuse it of being too low yet.
+    setLifetimeClamped(false);
+    if (v.trim() === '') return;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return;
+    // Keep the starting-count box in LIVE two-way sync (floored at 0 by the
+    // helper so it never shows a negative), but DON'T snap the lifetime box or
+    // raise the note here. Snapping on every keystroke corrupts select-all-and-
+    // retype: with 3,000 logged, typing "8000" would clamp on the leading "8",
+    // snap the box to "3000", then append the rest → "30000…". The clamp + snap
+    // happens once, on blur (below) or at save.
+    const { start } = startFromLifetime(n, loggedRounds);
+    setStartCount(String(start));
+  }
+  // A1: reconcile once the shooter leaves the field. A lifetime below what's
+  // already logged is impossible, so snap the box down to the logged floor and
+  // explain it — now both boxes show EXACTLY what a save would store (lifetime =
+  // logged, starting count = 0). Save is the backstop: startCount is already
+  // floored at 0 by the live sync above, so a save without an intervening blur
+  // still stores the correct clamped value.
+  function onLifetimeBlur() {
+    if (lifetime.trim() === '') return;
+    const n = Number(lifetime);
+    if (!Number.isFinite(n)) return;
+    const { start, clamped } = startFromLifetime(n, loggedRounds);
+    setStartCount(String(start));
+    setLifetimeClamped(clamped);
+    if (clamped) setLifetime(String(loggedRounds));
+  }
+
   async function save() {
     if (!name.trim()) { setProblem('Give the gun a name.'); return; }
     const start = Number(startCount);
-    if (!Number.isFinite(start) || start < 0) { setProblem('Starting round count needs to be a number.'); return; }
+    if (!Number.isFinite(start) || start < 0) { setProblem('Rounds fired before FirearmLog needs to be a number.'); return; }
     const dcNum = deepClean.trim() === '' ? null : Number(deepClean);
     const rsNum = recoilSpring.trim() === '' ? null : Number(recoilSpring);
     if ((dcNum !== null && !(dcNum > 0)) || (rsNum !== null && !(rsNum > 0))) {
@@ -163,9 +248,33 @@ export function GunForm({ id, onSaved, onCancel }: {
           <label className="field">Date acquired
             <input type="date" value={acquired} onChange={(e) => setAcquired(e.target.value)} />
           </label>
-          <label className="field">Starting round count
-            <input type="number" inputMode="numeric" min="0" value={startCount} onChange={(e) => setStartCount(e.target.value)} />
+          {/* A1: while editing, show the gun's lifetime as it stands now, so the
+              shooter knows what the two boxes below add up to. Skipped on a new
+              gun — nothing is logged yet, so the two fields are simply equal. */}
+          {editing && storedLifetime !== null && (
+            <p className="report-note">
+              Lifetime rounds right now: {storedLifetime.toLocaleString()} — live fire and matches; dry fire never counts.
+            </p>
+          )}
+          {/* A1: the stored field is still startingRoundCount only. "Rounds fired
+              before FirearmLog" edits it directly; "Lifetime rounds (total)" edits
+              the same number the other way (lifetime = this + rounds logged here). */}
+          <label className="field">Rounds fired before FirearmLog
+            <input type="number" inputMode="numeric" min="0" value={startCount} onChange={(e) => onStartChange(e.target.value)} />
           </label>
+          {/* A1: gate the lifetime view to editing (like the read-only line above).
+              On a new gun loggedRounds is always 0, so lifetime = starting count —
+              a second box for the same number would only confuse. */}
+          {editing && (
+            <label className="field">Lifetime rounds (total)
+              <input type="number" inputMode="numeric" min="0" value={lifetime} onChange={(e) => onLifetimeChange(e.target.value)} onBlur={onLifetimeBlur} />
+            </label>
+          )}
+          {lifetimeClamped && (
+            <p className="report-note">
+              You've already logged {loggedRounds.toLocaleString()} rounds with this gun, so its lifetime can't be lower than that. Rounds fired before FirearmLog is set to 0.
+            </p>
+          )}
           <label className="field">Deep clean every … rounds (blank = use the linked Maintenance Guide or 10,000)
             <input type="number" inputMode="numeric" min="1" value={deepClean} onChange={(e) => setDeepClean(e.target.value)} />
           </label>

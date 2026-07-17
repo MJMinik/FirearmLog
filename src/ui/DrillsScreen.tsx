@@ -46,7 +46,7 @@ export function DrillsScreen({ refreshKey, onBack, openForm, openHistory }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onBack}>‹ Back</button>
+        <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
         <span />
       </div>
       <h1 className="large-title">Drills <InfoTip title="Drills">Your drill library. Each drill is tagged by gun type and dry/live, so the session picker shows the right ones. Tap a drill to read how to run it and see your history on it, or "+ Add Drill" to create your own.</InfoTip></h1>

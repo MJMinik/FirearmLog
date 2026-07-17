@@ -293,7 +293,7 @@ export function App() {
     const v = view;
     content = <DrillForm id={v.id}
       onCancel={back}
-      onSaved={() => { refresh(); replace({ kind: 'drills' }); }} />;
+      onSaved={() => { refresh(); back(); }} />;
   } else if (view?.kind === 'magazines') {
     content = <MagazinesScreen refreshKey={refreshKey}
       onBack={back}
@@ -302,7 +302,7 @@ export function App() {
     const v = view;
     content = <MagazineForm id={v.id}
       onCancel={back}
-      onSaved={() => { refresh(); replace({ kind: 'magazines' }); }} />;
+      onSaved={() => { refresh(); back(); }} />;
   } else if (view?.kind === 'references') {
     content = <ReferenceList refreshKey={refreshKey}
       onBack={back}
@@ -336,7 +336,14 @@ export function App() {
     const v = view;
     content = <ReminderForm id={v.id} templateKey={v.templateKey} firearmId={v.firearmId}
       onCancel={back}
-      onSaved={() => { refresh(); replace({ kind: 'reminders' }); }}
+      // A2: reminder-form is only ever pushed from the Reminders list, so its
+      // origin is always Reminders — same-kind, the dead-dup replace() left. back()
+      // dedups it. Safe DESPITE the dirty guard: every save path (save, markDone,
+      // turnBackOn, reallyDelete) calls onDirtyChange(false) BEFORE onSaved(), and
+      // the dirty-reporting effect's deps (sig, initialSig) don't change across the
+      // save, so it never re-runs to re-arm the guard before the pop. formDirty is
+      // provably false when back()'s popstate fires, so it navigates normally.
+      onSaved={() => { refresh(); back(); }}
       onDirtyChange={reportFormDirty} />;
   } else if (view?.kind === 'malfunctions') {
     content = <MalfunctionsScreen refreshKey={refreshKey}
@@ -360,9 +367,18 @@ export function App() {
       openForm={(aid) => push({ kind: 'ammo-form', id: aid })} />;
   } else if (view?.kind === 'ammo-form') {
     const v = view;
+    // A2 history dedup: this form was PUSHED from its own list (Ammo), so a save
+    // that replace()d the list onto itself left a dead duplicate entry — one
+    // browser Back then landed on the same list again before really leaving.
+    // refresh(); back() pops the form off instead, so history reads clean
+    // ([…, list]) and Back leaves in one tap. Same pattern for the sibling gear
+    // forms below. It's safe here because none of these forms use the dirty
+    // guard — they're clean after save, so back() navigates normally. KEEP
+    // replace() only where the save intentionally lands somewhere OTHER than the
+    // origin (a gun/optic/match detail view).
     content = <AmmoForm id={v.id}
       onCancel={back}
-      onSaved={() => { refresh(); replace({ kind: 'ammo' }); }} />;
+      onSaved={() => { refresh(); back(); }} />;
   } else if (view?.kind === 'costs') {
     content = <CostsScreen refreshKey={refreshKey}
       onBack={back}
@@ -372,7 +388,7 @@ export function App() {
     const v = view;
     content = <PurchaseForm id={v.id}
       onCancel={back}
-      onSaved={() => { refresh(); replace({ kind: 'costs' }); }} />;
+      onSaved={() => { refresh(); back(); }} />;
   } else if (view?.kind === 'optics') {
     content = <OpticsScreen refreshKey={refreshKey}
       onBack={back}
@@ -381,7 +397,14 @@ export function App() {
     const v = view;
     content = <OpticForm id={v.id} firearmId={v.firearmId}
       onCancel={back}
-      onSaved={() => { refresh(); replace(v.firearmId ? { kind: 'gun-detail', id: v.firearmId } : { kind: 'optics' }); }} />;
+      // A2: BOTH entry paths are same-kind, so back() dedups either way. A plain
+      // optic edit was pushed from the Optics list (back() → Optics). An optic
+      // linked to a gun (firearmId set) was pushed from that gun's DETAIL, and
+      // the intended landing IS that same gun's detail — so back() returns to the
+      // origin (gun-detail) without stacking the duplicate a replace() would.
+      // OpticForm is clean after save (no dirty guard), so back() navigates
+      // normally (history-dedup rule documented at the ammo-form site above).
+      onSaved={() => { refresh(); back(); }} />;
   } else if (view?.kind === 'parts') {
     content = <PartsScreen refreshKey={refreshKey}
       onBack={back}
@@ -391,7 +414,7 @@ export function App() {
     const v = view;
     content = <PartForm id={v.id}
       onCancel={back}
-      onSaved={() => { refresh(); replace({ kind: 'parts' }); }} />;
+      onSaved={() => { refresh(); back(); }} />;
   } else if (view?.kind === 'reports') {
     content = <ReportsScreen refreshKey={refreshKey} onBack={back} popupBlocked={view.blocked} />;
   } else if (view?.kind === 'classifier-form') {

@@ -22,7 +22,7 @@ function ScreenShell({ title, onBack, children }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onBack}>‹ Back</button>
+        <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
         <span />
       </div>
       <h1 className="large-title">{title}</h1>

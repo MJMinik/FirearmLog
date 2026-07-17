@@ -1110,7 +1110,7 @@ export function GunsScreen({ refreshKey, onBack, open }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onBack}>‹ Back</button>
+        <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
         <span />
       </div>
       <h1 className="large-title">Guns <InfoTip title="Guns">Your firearms. Tap one for its details, maintenance, and photos; use + to add a gun. Open a gun to retire it or mark it sold — its history stays.</InfoTip></h1>

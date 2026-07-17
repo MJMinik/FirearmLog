@@ -52,7 +52,7 @@ export function MaintenanceOverview({ refreshKey, onBack, openGun, logFor }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onBack}>‹ Back</button>
+        <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
         <span />
       </div>
       <h1 className="large-title">Gun Maintenance <InfoTip title="Gun Maintenance">Cleaning and parts work per gun, against each gun's schedule. Home warns you when something's due. Want a custom schedule or care steps? Create a guide in the Care Guides section and link it to the gun.</InfoTip></h1>

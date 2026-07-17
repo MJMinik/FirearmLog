@@ -74,7 +74,7 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onBack}>‹ Back</button>
+        <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
       </div>
       <h1 className="large-title">Malfunctions <InfoTip title="Malfunctions">Every malfunction you've logged, newest first. Search or filter by gun, type, ammo, or magazine to spot patterns — like a magazine or ammo that jams more than the rest. Tap one to open the session it happened in.</InfoTip></h1>
 

@@ -45,7 +45,7 @@ export function ReferenceList({ refreshKey, onBack, openDetail, openForm }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onBack}>‹ Back</button>
+        <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
         <span />
       </div>
       <h1 className="large-title">Care Guides <InfoTip title="Care Guides">Manufacturer care guides. Link one to a gun to set its default maintenance schedule. Don't see your make, or want your own steps and schedule? Tap "+ Create Your Own Guide" and link it to a gun.</InfoTip></h1>

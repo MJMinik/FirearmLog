@@ -70,7 +70,7 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onBack}>‹ Back</button>
+        <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
         <span />
       </div>
       <h1 className="large-title">Parts <InfoTip title="Parts">Spare parts and spare optics on the shelf. What you buy here feeds Costs &amp; Purchases.</InfoTip></h1>

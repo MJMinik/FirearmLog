@@ -99,7 +99,7 @@ export function RemindersScreen({ refreshKey, onBack, open }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onBack}>‹ Back</button>
+        <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
         <span />
       </div>
       <h1 className="large-title">Reminders <InfoTip title="Reminders">Nudges for the things that run on a schedule — a red-dot battery, a recoil spring by round count, a membership renewal. You'll see them here and on Home when they're coming up; there's no push notification, but you can add a date reminder to your calendar. Start from a template or add your own.</InfoTip></h1>

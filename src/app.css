@@ -775,6 +775,13 @@ select.category-pick {
   /* The "More" tab is a phone-only affordance — on desktop the sidebar already
      lists every section, so the grouped More menu would be redundant. */
   .tabbar button.phone-only { display: none; }
+  /* A2: top-level section screens (Guns, Optics, Reports, Settings, …) carry a
+     "‹ Back" button for phone, where sections are reached through the More hub
+     and Back returns to it. On desktop the sidebar is always present, so that
+     Back would only retrace sibling sidebar visits — confusing. Hide it here,
+     at the SAME breakpoint where the sidebar replaces the tab bar. Drill-down
+     screens (a gun's detail, every form) keep their own Back everywhere. */
+  .section-back { display: none; }
   .side-title {
     display: block; font-size: 20px; font-weight: 700; color: var(--text);
     padding: 0 14px 14px;

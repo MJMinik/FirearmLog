@@ -4,7 +4,7 @@
 // value is saved the moment the record it's on is saved, so it shows up as a
 // suggestion next time. One shared component (DRY) so any form can use it.
 import { useState } from 'react';
-import type { Ref } from 'react';
+import type { MutableRefObject, Ref } from 'react';
 import { rankSuggestions } from '../lib/suggest.ts';
 
 // Attributes that tell iOS Safari (and password managers) to leave a field
@@ -20,7 +20,7 @@ export const noAutofillProps = {
   'data-lpignore': 'true'
 } as const;
 
-export function SuggestField({ label, value, onChange, suggestions, placeholder, name, inputRef, enterKeyHint, onEnter }: {
+export function SuggestField({ label, value, onChange, suggestions, placeholder, name, inputRef, enterKeyHint, onEnter, suppressOpenOnFocus }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
@@ -34,6 +34,13 @@ export function SuggestField({ label, value, onChange, suggestions, placeholder,
   inputRef?: Ref<HTMLInputElement>;
   enterKeyHint?: 'enter' | 'done' | 'go' | 'next' | 'previous' | 'search' | 'send';
   onEnter?: () => void;
+  // A6 (Michael, July 17 2026): a shared "suppress the next auto-open" flag.
+  // When focus arrives PROGRAMMATICALLY (Enter-advancing from the field above),
+  // the parent sets this true right before calling focus(); the field then skips
+  // opening its suggestion list once and clears the flag. Discoverability is
+  // kept — a real tap/click or typing still opens the list — but the noise of a
+  // menu popping open on every Return keypress is cut.
+  suppressOpenOnFocus?: MutableRefObject<boolean>;
 }) {
   const [open, setOpen] = useState(false);
   const matches = open ? rankSuggestions(suggestions, value) : [];
@@ -42,7 +49,12 @@ export function SuggestField({ label, value, onChange, suggestions, placeholder,
       <input value={value} placeholder={placeholder} {...noAutofillProps}
         name={name} ref={inputRef} enterKeyHint={enterKeyHint}
         onChange={(e) => { onChange(e.target.value); setOpen(true); }}
-        onFocus={() => setOpen(true)}
+        onFocus={() => {
+          // A6: honor the one-shot suppression from an Enter-advance, then clear
+          // it so the very next real focus (a tap) opens normally.
+          if (suppressOpenOnFocus?.current) { suppressOpenOnFocus.current = false; return; }
+          setOpen(true);
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && onEnter) { e.preventDefault(); setOpen(false); onEnter(); }
         }}

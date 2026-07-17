@@ -56,7 +56,7 @@ export function AmmoScreen({ refreshKey, onBack, openForm }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onBack}>‹ Back</button>
+        <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
       </div>
       <h1 className="large-title">Ammo <InfoTip title="Ammo">Every kind of ammo you have on hand — rounds left and their cost per round. Cost is figured first-in-first-out (oldest rounds counted first), so it reflects what you actually paid; log your ammo buys under Costs &amp; Purchases to keep it accurate.</InfoTip></h1>
       <button className="button" onClick={() => openForm()}>+ Add Ammo</button>
