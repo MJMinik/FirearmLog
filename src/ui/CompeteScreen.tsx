@@ -2,7 +2,7 @@
 // and the season at a glance.
 import { useEffect, useMemo, useState } from 'react';
 import { ScreenLoading } from './ScreenState.tsx';
-import type { Classifier, Match, Media } from '../lib/types.ts';
+import type { Classifier, Firearm, Match, Media } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
@@ -10,6 +10,10 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { DIVISIONS, MIN_SCORES_FOR_CLASSIFICATION, classificationProgress } from '../lib/competition.ts';
 import { allClassifications } from '../lib/dashboard.ts';
 import { matchFee } from '../lib/costing.ts';
+import { competeFilterCount, competeFilterOptions, emptyCompeteFilter, matchMatchesCompeteFilter } from '../lib/competeFilter.ts';
+import type { CompeteFilter } from '../lib/competeFilter.ts';
+import { CompeteFilterBar } from './FilterBar.tsx';
+import { MatchRow } from './MatchRow.tsx';
 import { ClassificationGrid } from './ClassificationGrid.tsx';
 import type { View } from './nav.ts';
 import { ConfirmSheet, DiscardChangesSheet, Sheet } from './Sheet.tsx';
@@ -25,6 +29,7 @@ export function CompeteScreen({ refreshKey, open }: {
 }) {
   const [matches, setMatches] = useState<Match[]>([]);
   const [classifiers, setClassifiers] = useState<Classifier[]>([]);
+  const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [division, setDivision] = useState('');
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
@@ -32,15 +37,18 @@ export function CompeteScreen({ refreshKey, open }: {
   // Audit #17: the two importers live behind one "Import…" choice so the
   // classification/season status shows sooner instead of under four buttons.
   const [showImport, setShowImport] = useState(false);
+  // A3 (batch 2): the Compete match list gets the app-wide Search & Filter.
+  const [filter, setFilter] = useState<CompeteFilter>(emptyCompeteFilter());
 
   useEffect(() => {
     let alive = true;
     setError(false);
-    void Promise.all([getAll<Match>('matches'), getAll<Classifier>('classifiers')]).then(([m, c]) => {
+    void Promise.all([getAll<Match>('matches'), getAll<Classifier>('classifiers'), getAll<Firearm>('firearms')]).then(([m, c, f]) => {
       if (!alive) return;
       setMatches(m.sort((a, b) => b.date.localeCompare(a.date)));
       const sorted = c.sort((a, b) => b.date.localeCompare(a.date));
       setClassifiers(sorted);
+      setFirearms(f);
       setDivision((prev) => prev || sorted[0]?.division || 'Carry Optics');
       setLoaded(true);
     }).catch(() => { if (alive) setError(true); });
@@ -53,6 +61,15 @@ export function CompeteScreen({ refreshKey, open }: {
   );
   // Every division you hold a class in — the at-a-glance grid (shared with Home).
   const divClasses = useMemo(() => allClassifications(classifiers), [classifiers]);
+  // A3 (batch 2): the match list, narrowed by the Compete filter (matches are
+  // already newest-first). Options come from the matches themselves, so the
+  // dropdowns only offer types/divisions you've actually shot.
+  const filterOpts = useMemo(() => competeFilterOptions(matches), [matches]);
+  const shownMatches = useMemo(
+    () => matches.filter((m) => matchMatchesCompeteFilter(m, filter)),
+    [matches, filter]
+  );
+  const narrowingMatches = competeFilterCount(filter) > 0;
 
   const thisYear = todayKey().slice(0, 4);
   const seasonMatches = matches.filter((m) => m.date.startsWith(thisYear));
@@ -119,16 +136,16 @@ export function CompeteScreen({ refreshKey, open }: {
       <div className="card">
         <h2>Matches</h2>
         {matches.length === 0 && <p className="report-note">No matches logged yet.</p>}
-        {matches.map((m) => (
-          <button className="row-tap" key={m.id} onClick={() => open({ kind: 'match-detail', id: m.id })}>
-            <span className="label">
-              {m.name || m.matchType}
-              <div className="row-sub">{formatDayKey(m.date)} · {m.division}</div>
-            </span>
-            <span className="value">
-              {m.matchPercent != null ? `${m.matchPercent}%` : m.divisionPlace != null ? `#${m.divisionPlace}` : '›'}
-            </span>
-          </button>
+        {matches.length > 0 && (
+          <CompeteFilterBar value={filter} onChange={setFilter} firearms={firearms}
+            matchTypes={filterOpts.matchTypes} divisions={filterOpts.divisions}
+            shown={shownMatches.length} total={matches.length} />
+        )}
+        {matches.length > 0 && narrowingMatches && shownMatches.length === 0 && (
+          <p className="report-note">Nothing matches your search. Tap Clear to see everything again.</p>
+        )}
+        {shownMatches.map((m) => (
+          <MatchRow key={m.id} match={m} onTap={() => open({ kind: 'match-detail', id: m.id })} />
         ))}
       </div>
 

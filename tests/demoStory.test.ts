@@ -196,3 +196,28 @@ test('demo story: dry-fire work is real — every dry session carries reps, ever
     assert.ok(dryRepsForFirearm(id, all) > 0, `gun ${id} dry-fires in the data but reports 0 lifetime dry reps`);
   }
 });
+
+test('demo story: the log is dry-fire-HEAVY — total dry reps run ~3x live rounds (A5)', () => {
+  // A5 (batch 2): the pre-fix demo dry-fired only ~a third of live volume —
+  // backwards from a dry-fire-heavy training story (doctrine: several dry reps
+  // per live round). This pins the regenerated truth: dry reps clearly dominate
+  // live volume, landing near 3:1. A regenerated demo that slides back toward the
+  // old 0.36:1 fails here. Per-session reps stay believable (the F5 test above
+  // caps them at 500/evening).
+  // Coupling note: planned sessions are excluded here, matching the totals the
+  // dry-fire volume pass in scripts/make-demo.ts targets — keep the two in step.
+  type GunRow = { firearmId: string; rounds: number };
+  type S = { type: string; planned: boolean; guns: GunRow[] };
+  const gunRounds = (s: S) => (s.guns ?? []).reduce((a, g) => a + (g.rounds || 0), 0);
+  let live = 0, dry = 0;
+  for (const s of stores.sessions as unknown as S[]) {
+    if (s.planned) continue;
+    if (s.type === 'dry_fire') dry += gunRounds(s);
+    else live += gunRounds(s);
+  }
+  for (const m of stores.matches as unknown as { totalRounds: number | null }[]) live += m.totalRounds ?? 0;
+  assert.ok(live > 0, 'the log has live volume to compare against');
+  const ratio = dry / live;
+  assert.ok(ratio >= 2.5 && ratio <= 3.6, `dry:live-rounds ratio ${ratio.toFixed(2)} must land near 3:1 (dry-fire-heavy)`);
+  assert.ok(dry > live * 2, 'dry-fire work must clearly dominate live volume — the story is dry-fire-heavy');
+});

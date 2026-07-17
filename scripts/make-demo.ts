@@ -224,7 +224,7 @@ const dryDrills = STOCK_DRILLS.filter((d) => d.fire !== 'live').map((d) => d.nam
 // ===================== SESSIONS (≈110 over ~18 months) =====================
 // Weekly rhythm: usually 1 live practice + 1–2 dry-fire, a class about monthly.
 let seN = 0;
-const liveRanges = ['Echo Valley', 'Take Aim', 'Ancient City Shooting Range'];
+const liveRanges = ['Echo Valley', 'Cypress Creek Range', 'Ancient City Shooting Range'];
 const skillBase = 5; // trends up over time
 const weeks = 76;
 for (let w = 0; w < weeks; w++) {
@@ -441,6 +441,72 @@ for (const sp of steelSpecs) {
   });
 }
 
+// ===================== DRY-FIRE VOLUME PASS (A5, batch 2, July 17 2026) =====================
+// Realism fix: the shooter's story is dry-fire-HEAVY (common training doctrine is
+// several dry reps per live round), but the in-rhythm loop above dry-fired only
+// ~a third of live volume — backwards. This pass ADDS dry-fire sessions until
+// total dry reps reach ~3x total live rounds, on a SEPARATE rng stream so every
+// record already generated (the live drill arc, classifiers, matches, goals)
+// stays byte-identical. Reps per added session stay believable for a focused
+// dry block (~220–480, under the 500/evening plausibility cap the story tests
+// keep). Drill times respect the same class-appropriate floors as the rest of
+// the log. NOTE: a genuinely 3:1 ratio at 60–150 reps/session would need ~700
+// dry sessions (implausible); realistic per-session volume is the honest knob.
+const rDry = rng(20260717);
+const isDry = (s: Rec): boolean => (s as { type: string }).type === 'dry_fire';
+const isPlanned = (s: Rec): boolean => (s as { planned?: boolean }).planned === true;
+const gunRounds = (s: Rec): number =>
+  ((s as { guns: { rounds: number }[] }).guns ?? []).reduce((a, g) => a + (g.rounds || 0), 0);
+// Coupling note: planned (not-yet-shot) sessions are EXCLUDED from both totals,
+// matching the dry:live ratio test in tests/demoStory.test.ts exactly — keep the
+// two in step (a planned session is intent, not volume). The demo currently makes
+// no planned sessions, so this is belt-and-suspenders, but the handling must agree.
+let liveRoundTotal = 0;
+for (const s of stores.sessions) if (!isDry(s) && !isPlanned(s)) liveRoundTotal += gunRounds(s);
+for (const m of stores.matches) liveRoundTotal += (m as { totalRounds: number | null }).totalRounds ?? 0;
+let dryRepTotal = 0;
+for (const s of stores.sessions) if (isDry(s) && !isPlanned(s)) dryRepTotal += gunRounds(s);
+const dryTarget = liveRoundTotal * 3;
+const dryGunPool = ['fa-dr920', 'fa-g34', 'fa-staccato'];
+const dryDrillPool = STOCK_DRILLS.filter((d) => d.fire !== 'live').map((d) => d.name);
+const dryNotes = ['Par times tightening.', 'Reload reps before bed.', 'Draw + first shot, 20 min.',
+  'Transitions on the wall dots.', '10 min after work.', 'Wide array, eye lead.'];
+let dryGuard = 0;
+while (dryRepTotal < dryTarget && dryGuard < 4000) {
+  dryGuard++;
+  const wk = Math.floor(rDry() * weeks);
+  const monday = new Date(START.getTime() + wk * 7 * dayMs);
+  const d = new Date(monday.getTime() + Math.floor(rDry() * 7) * dayMs);
+  const nDrills = 1 + Math.floor(rDry() * 3); // 1–3
+  const chosen = new Set<string>();
+  while (chosen.size < nDrills) chosen.add(dryDrillPool[Math.floor(rDry() * dryDrillPool.length)]);
+  const reps = 220 + Math.floor(rDry() * 260); // 220–479 presses, a focused block
+  const ratingCreep = Math.min(3, Math.floor(wk / 22));
+  seN++;
+  stores.sessions.push({
+    id: `se-${String(seN).padStart(3, '0')}`, ...stamp(iso(d)), date: iso(d), type: 'dry_fire',
+    guns: [{ firearmId: dryGunPool[Math.floor(rDry() * dryGunPool.length)], rounds: reps }],
+    location: 'Home (dry)', distances: '',
+    notes: rDry() < 0.18 ? dryNotes[Math.floor(rDry() * dryNotes.length)] : '',
+    ammoUsage: [],
+    drills: [...chosen].map((name) => {
+      const m = DRILL_MODEL[name];
+      // Dry runs sit a touch faster than live and never beat the dry floor
+      // (floor * 0.92), the same limit the rest of the log respects.
+      const t = Math.max(m.end * 0.92 * (0.97 + rDry() * 0.32), m.floor * 0.92 + 0.03);
+      return { name, distance: m.dist, time: round(t, 2), score: null, maxScore: null, notes: '' };
+    }),
+    targetMediaIds: [], malfunctions: [],
+    selfRating: {
+      focus: Math.min(9, skillBase + ratingCreep + (rDry() < 0.5 ? 0 : 1)),
+      fundamentals: Math.min(9, skillBase + ratingCreep + (rDry() < 0.5 ? 0 : 1)),
+      satisfaction: Math.min(9, skillBase + ratingCreep),
+    },
+    rangeFee: null, planned: false, instructor: null, checklist: null,
+  });
+  dryRepTotal += reps;
+}
+
 // ===================== CLASSIFIERS (C -> A trend) =====================
 const classifierList = [
   ['99-11', 'Down the Middle'], ['03-09', 'On the Move'], ['13-02', 'Tic-Tac-Toe'], ['99-63', 'Take Heed'],
@@ -505,7 +571,7 @@ addPurchase('2025-01-15', 'Gear / Equipment', 'DAA Alpha-X holster + pouches', '
 addPurchase('2025-03-02', 'Gear / Equipment', 'Range bag + eyes/ears', 'Amazon', 164.5);
 addPurchase('2025-05-17', 'Gear / Equipment', 'Staccato XC magazines (x4)', 'Staccato', 320.0);
 addPurchase('2025-06-20', 'Training / Class', 'Ben Stoeger 2-day class', 'Stoeger Pro Shop', 400.0);
-addPurchase('2025-09-06', 'Training / Class', 'Local GM private lesson', 'Take Aim', 150.0);
+addPurchase('2025-09-06', 'Training / Class', 'Local GM private lesson', 'Cypress Creek Range', 150.0);
 addPurchase('2025-08-15', 'Travel', 'Hotel — Area match', 'Marriott', 268.0);
 addPurchase('2026-03-20', 'Travel', 'Fuel + hotel — State match', '—', 340.0);
 addPurchase('2026-02-01', 'Gear / Equipment', 'Spare optic (507Comp)', 'Optics Planet', 349.99);

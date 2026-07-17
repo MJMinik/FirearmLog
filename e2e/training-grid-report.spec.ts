@@ -1,15 +1,18 @@
 import { test, expect, type Page } from '@playwright/test';
 import { seedDemo, gotoTab, isDesktop } from './helpers';
 
-// A day square on the Progress training grid. On a BIGGER screen a tap opens
-// that day's SESSION REPORT — the finished read with drills, notes, and target
-// photos — not the edit screen (Michael, July 8 2026). A day with several
-// sessions shows the picker sheet first; each row there opens a report too.
+// The Progress training grid.
 //
-// Tester-2 F3 (July 16 2026): on a PHONE the squares render ~11px wide — well
-// under the 44pt tap minimum — so a tap that opens a report is usually an
-// accident. On phone widths "Just show the day's count" is therefore the
-// DEFAULT (Michael's decision); the checkbox still lets either side switch.
+// DESKTOP (a pointer hits a 12px square fine): a tap on a day square opens that
+// day's SESSION REPORT — the finished read with drills, notes, and target photos
+// — not the edit screen (Michael, July 8 2026). A day with several sessions shows
+// a picker sheet first. The "Just show the day's count" checkbox flips a tap to a
+// quiet count peek instead.
+//
+// PHONE (A4, batch 2): the squares render ~5–11px — a quarter of the 44pt minimum
+// — so the grid is DISPLAY-ONLY there (no per-cell tap, no count-only checkbox).
+// The readout moves to a coarser, honest target: tap a MONTH chip below the grid
+// for that month's totals.
 
 /** Today's day key in the page's local time (matches the app's day keys). */
 function todayKey(): string {
@@ -30,6 +33,12 @@ async function logSessionToday(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
 }
 
+function gridCard(page: Page) {
+  return page.getByRole('main').locator('.card').filter({
+    has: page.getByRole('heading', { name: /Training grid/ }),
+  });
+}
+
 function todaySquare(page: Page) {
   const grid = page.getByRole('img', { name: 'Training activity heatmap' });
   return grid.locator('rect').filter({ has: page.locator(`title:has-text("${todayKey()}:")`) });
@@ -39,12 +48,14 @@ function countOnlyToggle(page: Page) {
   return page.getByText("Just show the day's count, don't open the report");
 }
 
-/** Tap today's square and assert a Session Report popup opened (report mode). */
+function monthChips(page: Page) {
+  return gridCard(page).getByRole('group', { name: 'Tap a month for its totals' }).getByRole('button');
+}
+
+/** Desktop: tap today's square and assert a Session Report popup opened. */
 async function expectOpensReport(page: Page): Promise<void> {
   const square = todaySquare(page);
   await expect(square).toHaveCount(1);
-  // One session today opens the report straight away; if the sample data also
-  // logged something today, the day picker shows first — open the first row.
   const firstTry = page.waitForEvent('popup', { timeout: 3000 }).catch(() => null);
   await square.click();
   let popup = await firstTry;
@@ -63,22 +74,19 @@ async function expectOpensReport(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Progress' }).first()).toBeVisible();
 }
 
-/** Tap today's square and assert only the count line shows — no popup (peek). */
+/** Desktop: tap today's square and assert only the count line shows — no popup. */
 async function expectShowsCount(page: Page): Promise<void> {
   const square = todaySquare(page);
   await expect(square).toHaveCount(1);
   const gotPopup = page.waitForEvent('popup', { timeout: 2000 }).catch(() => null);
   await square.click();
   expect(await gotPopup).toBeNull();
-  const gridCard = page.getByRole('main').locator('.card').filter({
-    has: page.getByRole('heading', { name: /Training grid/ }),
-  });
-  await expect(gridCard.locator('p.report-note[aria-live="polite"]')).toContainText(/session/);
+  await expect(gridCard(page).locator('p.report-note[aria-live="polite"]')).toContainText(/session/);
   await expect(page.getByRole('heading', { name: 'Progress' }).first()).toBeVisible();
 }
 
-test.describe('Training grid day squares', () => {
-  test('default tap: opens the report on a big screen, shows the count on a phone', async ({ page }) => {
+test.describe('Training grid', () => {
+  test('desktop taps a day for its report; phone grid is display-only with month totals', async ({ page }) => {
     await seedDemo(page);
     await logSessionToday(page);
     await gotoTab(page, 'Progress');
@@ -88,25 +96,62 @@ test.describe('Training grid day squares', () => {
       await expect(countOnlyToggle(page)).not.toBeChecked();
       await expectOpensReport(page);
     } else {
-      // Phone default (F3): count-only ON, so a tap peeks the count — no popup.
-      await expect(countOnlyToggle(page)).toBeChecked();
-      await expectShowsCount(page);
+      // Phone: the count-only checkbox is gone entirely (no per-cell tap to gate).
+      await expect(countOnlyToggle(page)).toHaveCount(0);
+
+      // The grid squares are DISPLAY-ONLY: tapping one opens no popup and writes
+      // no day-count readout.
+      const square = todaySquare(page);
+      await expect(square).toHaveCount(1);
+      const gotPopup = page.waitForEvent('popup', { timeout: 1500 }).catch(() => null);
+      await square.click();
+      expect(await gotPopup).toBeNull();
+      await expect(gridCard(page).locator('p.report-note[aria-live="polite"]')).toHaveCount(0);
+
+      // The coarse readout works: tap a month chip → its totals appear.
+      const chips = monthChips(page);
+      expect(await chips.count()).toBeGreaterThan(0);
+      await chips.last().click();
+      await expect(gridCard(page).locator('p.report-note[aria-live="polite"]')).toContainText(/session/);
     }
   });
 
-  test('the checkbox flips the tap behaviour on either form factor', async ({ page }) => {
+  test('the count-only checkbox flips the tap (desktop only)', async ({ page }) => {
     await seedDemo(page);
     await logSessionToday(page);
     await gotoTab(page, 'Progress');
 
-    // Flip whatever the form-factor default is and assert the OTHER behaviour.
-    await countOnlyToggle(page).click();
     if (isDesktop(page)) {
-      // Desktop: default off → now ON → the quiet count peek.
+      await countOnlyToggle(page).click();
       await expectShowsCount(page);
     } else {
-      // Phone: default on → now OFF → tapping opens the report.
-      await expectOpensReport(page);
+      // Phone has no such checkbox — the whole per-cell interaction is gone.
+      await expect(countOnlyToggle(page)).toHaveCount(0);
+    }
+  });
+
+  test('phone grid has no sub-44pt interactive cells; the month targets clear 44pt', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Progress');
+    test.skip(isDesktop(page), 'phone-only: desktop keeps the per-cell pointer tap');
+
+    // No day square advertises itself as tappable (display-only → no pointer).
+    const rects = page.getByRole('img', { name: 'Training activity heatmap' }).locator('rect');
+    const n = await rects.count();
+    expect(n).toBeGreaterThan(0);
+    for (const i of [0, Math.floor(n / 2), n - 1]) {
+      const cursor = await rects.nth(i).evaluate((el) => getComputedStyle(el).cursor);
+      expect(cursor).not.toBe('pointer');
+    }
+
+    // The real interactive targets — the month chips — each clear the 44pt floor.
+    const chips = monthChips(page);
+    const c = await chips.count();
+    expect(c).toBeGreaterThan(0);
+    for (let i = 0; i < c; i++) {
+      const box = await chips.nth(i).boundingBox();
+      expect(box).not.toBeNull();
+      expect(box!.height).toBeGreaterThanOrEqual(44);
     }
   });
 });

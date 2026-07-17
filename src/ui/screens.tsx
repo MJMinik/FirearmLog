@@ -28,6 +28,7 @@ import { isActive, isOwned, isFormer, isRetired, statusBadge } from '../lib/gunS
 import { MonthCalendar } from './Calendar.tsx';
 import type { CalItem } from './Calendar.tsx';
 import { LogFilterBar } from './FilterBar.tsx';
+import { MatchRow } from './MatchRow.tsx';
 import { ChartReadout } from './ChartReadout.tsx';
 import { emptyLogFilter, filterCount, matchMatchesFilter, sessionKind, sessionMatchesFilter } from '../lib/searchFilter.ts';
 import type { LogFilter } from '../lib/searchFilter.ts';
@@ -864,15 +865,7 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
             <div className="card">
               <h2>Matches</h2>
               {listedMatches.map((m) => (
-                <button className="row-tap" key={m.id} onClick={() => open({ kind: 'match-detail', id: m.id })}>
-                  <span className="label">
-                    {m.name || m.matchType}
-                    <div className="row-sub">{formatDayKey(m.date)} · {m.division}</div>
-                  </span>
-                  <span className="value">
-                    {m.matchPercent != null ? `${m.matchPercent}%` : m.divisionPlace != null ? `#${m.divisionPlace}` : '›'}
-                  </span>
-                </button>
+                <MatchRow key={m.id} match={m} onTap={() => open({ kind: 'match-detail', id: m.id })} />
               ))}
             </div>
           )}

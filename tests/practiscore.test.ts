@@ -12,10 +12,10 @@ test('parses the sample match metadata', () => {
   assert.equal(m.competitors.length, 5);
 });
 
-test("reads a competitor's row correctly (Michael)", () => {
+test("reads a competitor's row correctly (Chris Calder)", () => {
   const m = parsePractiScore(SAMPLE_PRACTISCORE_CSV);
-  const me = m.competitors.find((c) => c.name === 'Michael Minik');
-  assert.ok(me, 'found Michael');
+  const me = m.competitors.find((c) => c.name === 'Chris Calder');
+  assert.ok(me, 'found Chris Calder');
   assert.equal(me!.overallPlace, 3);
   assert.equal(me!.divisionPlace, 2);
   assert.equal(me!.division, 'Carry Optics');

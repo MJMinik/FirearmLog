@@ -12,7 +12,7 @@ import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { goalCategories, goalStats, pinGolden, sortGoals } from '../lib/goals.ts';
-import { SKILL_AREAS, assessmentAverage, assessmentsByDate, latestAssessment } from '../lib/skills.ts';
+import { SKILL_AREAS, assessmentAverage, assessmentsByDate, latestAssessment, resolveSkillEvidence, skillRatingSeries } from '../lib/skills.ts';
 import {
   allClassifications, formatDrillScore, personalRecords, roundsByMonth, type RoundsFilter
 } from '../lib/dashboard.ts';
@@ -141,6 +141,18 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
   const stats = goalStats(goals);
   const cats = goalCategories(goals);
 
+  // F7 (batch 2): the Skills Check "measured evidence" bridge resolves against
+  // real data. A drill counts as evidence only if it has at least one logged run
+  // (any session it appears in); the accuracy card counts only when it's showing.
+  const loggedDrillNames = new Set<string>();
+  for (const se of sessions) for (const d of se.drills ?? []) if (d.name) loggedDrillNames.add(d.name);
+  const accuracyAvailable = matchAccuracyTrend(matches).points.length >= 2;
+  // Scroll the "Accuracy across matches" card into view — the Accuracy skill's
+  // evidence lives there, not on a drill.
+  function scrollToAccuracy() {
+    document.getElementById('accuracy-across-matches')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   return (
     <div className="screen">
       <h1 className="large-title">Progress</h1>
@@ -230,7 +242,9 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
         })}
       </div>
 
-      <SkillsCard skills={skills} onNew={() => setSkillSheet('new')} onEdit={(a) => setSkillSheet(a)} />
+      <SkillsCard skills={skills} loggedDrills={loggedDrillNames} accuracyAvailable={accuracyAvailable}
+        open={open} onScrollToAccuracy={scrollToAccuracy}
+        onNew={() => setSkillSheet('new')} onEdit={(a) => setSkillSheet(a)} />
 
       <TrendsCard sessions={sessions} matches={matches} firearms={firearms}
         drills={drills} classifiers={classifiers} malfunctions={malfunctions} open={open} />
@@ -258,25 +272,49 @@ const SESSION_TYPE_LABEL: Record<string, string> = {
   practice: 'Live practice', dry_fire: 'Dry fire', class: 'Class'
 };
 
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/** Per-month totals over the heatmap grid — the coarse, phone-friendly readout
+ *  (a whole month is a real 44pt tap target; a single ~11px day square isn't).
+ *  Only real (in-range) days count; oldest→newest. */
+function monthSummaries(grid: { date: string; sessions: number; rounds: number; inRange: boolean }[][]): {
+  ym: string; label: string; sessions: number; rounds: number;
+}[] {
+  const map = new Map<string, { sessions: number; rounds: number }>();
+  for (const col of grid) for (const c of col) {
+    if (!c.inRange) continue;
+    const ym = c.date.slice(0, 7);
+    const cur = map.get(ym) ?? { sessions: 0, rounds: 0 };
+    cur.sessions += c.sessions; cur.rounds += c.rounds;
+    map.set(ym, cur);
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([ym, v]) => ({
+      ym, label: `${MONTH_ABBR[Number(ym.slice(5, 7)) - 1]} '${ym.slice(2, 4)}`,
+      sessions: v.sessions, rounds: v.rounds,
+    }));
+}
+
 function HeatmapCard({ sessions }: { sessions: Session[] }) {
   const [weeks, setWeeks] = useState(26);
   // Audit #20: tapping a day shows its count here — the SVG <title> only worked
   // on desktop hover, so on a phone the "press a square" help did nothing.
   const [selText, setSelText] = useState<string | null>(null);
-  // Default: tapping a day opens that day's Session Report (Michael, July 8
-  // 2026 — supersedes the session-36 open-the-edit-screen default). One session
-  // opens its report directly; several show a picker; an empty day falls back
-  // to showing its count so the tap is never dead. The checkbox opts into the
-  // quieter "just show the day's count" behaviour. Not remembered across visits.
-  // Tester-2 F3 (July 16 2026): on a PHONE the day squares render ~11px wide —
-  // far under the 44pt tap minimum — so accidental report-opens are the norm
-  // there. Default count-only on phone widths (the same ≥900px breakpoint the
-  // app uses to switch to the bottom tab bar); desktop keeps opening reports.
-  // Evaluated once at mount; the checkbox still lets either side switch.
-  const [showCountOnly, setShowCountOnly] = useState(
+  // A4 (batch 2): at PHONE width the day squares render ~11px (26wk) to ~5px
+  // (52wk) — a quarter of the 44pt tap minimum, so per-cell tapping was never an
+  // honest target there. On phone the grid is DISPLAY-ONLY and the readout moves
+  // to a coarser grain: tap a MONTH below (a real 44pt target) for its totals.
+  // Desktop keeps the per-cell tap (a pointer hits a 12px square fine). Evaluated
+  // once at mount; the same ≥900px breakpoint the app uses for its nav switch.
+  const [isPhone] = useState(
     () => typeof window !== 'undefined' &&
       !window.matchMedia('(min-width: 900px) and (min-height: 500px)').matches
   );
+  const [selMonth, setSelMonth] = useState<string | null>(null);
+  // Desktop only: tapping a day opens that day's Session Report (Michael, July 8
+  // 2026); the checkbox opts into the quieter "just show the count" behaviour.
+  const [showCountOnly, setShowCountOnly] = useState(false);
   const [daySheet, setDaySheet] = useState<Session[] | null>(null);
   // Michael, July 8 2026: a day square opens the day's Session Report — the
   // finished read with the target photos — not the edit screen. Editing still
@@ -297,6 +335,11 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
     setSelText(`${formatDayKey(c.date)}: ${c.sessions} session${c.sessions !== 1 ? 's' : ''}, ${c.rounds.toLocaleString()} rounds`);
   }
   const grid = buildHeatmap(sessions, weeks, new Date());
+  const months = isPhone ? monthSummaries(grid) : [];
+  function tapMonth(mo: { ym: string; label: string; sessions: number; rounds: number }) {
+    setSelMonth(mo.ym);
+    setSelText(`${mo.label}: ${mo.sessions} session${mo.sessions !== 1 ? 's' : ''}, ${mo.rounds.toLocaleString()} rounds`);
+  }
   const cell = 12, gap = 3, rows = 7;
   const w = grid.length * (cell + gap) - gap;
   const h = rows * (cell + gap) - gap;
@@ -313,25 +356,36 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
   const labelH = labelFont + 4;
   return (
     <div className="card">
-      <h2>Training grid <InfoTip title="Training grid">Each square is a day — darker means more rounds, with the months labeled along the bottom. Switch between the last 26 or 52 weeks. Tap a square for that day: on a phone you'll see its count; on a bigger screen it opens that day's session report — drills, notes, and target photos on one page. The checkbox switches between the two. (To change a session, open it from the Log tab.)</InfoTip></h2>
+      <h2>Training grid <InfoTip title="Training grid">Each square is a day — darker means more rounds, with the months labeled along the bottom. Switch between the last 26 or 52 weeks. On a phone the squares are too small to tap one by one, so the grid is just to look at — tap a month below it for that month's totals. On a bigger screen, tap a square to open that day's session report — drills, notes, and target photos on one page (the checkbox switches to just showing the count). To change a session, open it from the Log tab.</InfoTip></h2>
       <div className="chart-filters">
-        <select aria-label="Training grid weeks" value={weeks} onChange={(e) => setWeeks(Number(e.target.value))}>
+        <select aria-label="Training grid weeks"
+          value={weeks}
+          onChange={(e) => {
+            setWeeks(Number(e.target.value));
+            // Drop any month readout — it belongs to the OTHER span's grid.
+            setSelMonth(null);
+            setSelText(null);
+          }}>
           <option value={26}>26 weeks</option>
           <option value={52}>52 weeks</option>
         </select>
       </div>
-      <label className="report-note" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginTop: 4, minHeight: 'var(--touch-min)' }}>
-        <input type="checkbox" checked={showCountOnly} onChange={(e) => setShowCountOnly(e.target.checked)} />
-        Just show the day's count, don't open the report
-      </label>
+      {!isPhone && (
+        <label className="report-note" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginTop: 4, minHeight: 'var(--touch-min)' }}>
+          <input type="checkbox" checked={showCountOnly} onChange={(e) => setShowCountOnly(e.target.checked)} />
+          Just show the day's count, don't open the report
+        </label>
+      )}
       <svg viewBox={`0 0 ${w} ${h + labelH}`} width="100%" role="img" aria-label="Training activity heatmap"
         style={{ display: 'block', maxWidth: w, marginTop: 4 }}>
         {grid.map((col, ci) => col.map((c, ri) => (
           <rect key={c.date} x={ci * (cell + gap)} y={ri * (cell + gap)} width={cell} height={cell} rx={2}
             fill={c.level === 0 ? 'var(--separator)' : 'var(--accent)'}
             opacity={c.level === 0 ? (c.inRange ? 0.4 : 0.12) : opacities[c.level]}
-            style={{ cursor: 'pointer' }}
-            onClick={() => tapCell(c)}>
+            // A4: display-only on phone (no per-cell tap — the squares are far
+            // under 44pt there); the pointer-friendly per-day tap stays on desktop.
+            style={isPhone ? undefined : { cursor: 'pointer' }}
+            onClick={isPhone ? undefined : () => tapCell(c)}>
             <title>{`${c.date}: ${c.sessions} session${c.sessions !== 1 ? 's' : ''}, ${c.rounds.toLocaleString()} rounds`}</title>
           </rect>
         )))}
@@ -351,12 +405,22 @@ function HeatmapCard({ sessions }: { sessions: Session[] }) {
           );
         })}
       </svg>
+      {isPhone && months.length > 0 && (
+        <div className="chip-row" role="group" aria-label="Tap a month for its totals" style={{ marginTop: 8, marginBottom: 0 }}>
+          {months.map((mo) => (
+            <button key={mo.ym} className={`chip ${selMonth === mo.ym ? 'on' : ''}`}
+              aria-pressed={selMonth === mo.ym} onClick={() => tapMonth(mo)}>{mo.label}</button>
+          ))}
+        </div>
+      )}
       {selText
         ? <p className="report-note" aria-live="polite">{selText}</p>
         : <p className="report-note">
-            {showCountOnly
-              ? `Each square is a day; darker = more rounds — tap one to see its count. Last ${weeks} weeks.`
-              : `Each square is a day; darker = more rounds — tap one for that day's session report. Last ${weeks} weeks.`}
+            {isPhone
+              ? `Each square is a day; darker = more rounds. Tap a month above for its totals. Last ${weeks} weeks.`
+              : showCountOnly
+                ? `Each square is a day; darker = more rounds — tap one to see its count. Last ${weeks} weeks.`
+                : `Each square is a day; darker = more rounds — tap one for that day's session report. Last ${weeks} weeks.`}
           </p>}
       {daySheet && (
         <Sheet title="Sessions on this day" onClose={() => setDaySheet(null)}>
@@ -424,7 +488,7 @@ function SpeedAccuracyTrendCard({ matches, coachingRemarks, onDisableRemarks }: 
     : null;
 
   return (
-    <div className="card">
+    <div className="card" id="accuracy-across-matches">
       <h2>Accuracy across matches <InfoTip title="Accuracy across matches">Your USPSA accuracy — the share of available points you kept — across your matches, oldest to newest, with the dates along the bottom. Tap any dot for that match's name, date, and number. This is the place to read the trend: one match is a small sample; the run of matches is the signal for whether you're getting cleaner or looser over a season. There's no pace line on purpose: raw time isn't comparable across different matches, so pace shows up only as a note below, and only when a clear pattern holds.</InfoTip></h2>
       <p className="report-note" style={{ marginTop: 0 }}>
         Points kept — {Math.round(min)}% to {Math.round(max)}% across {pts.length} USPSA matches.
@@ -592,14 +656,34 @@ function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunct
   );
 }
 
-function SkillsCard({ skills, onNew, onEdit }: {
-  skills: SkillAssessment[]; onNew: () => void; onEdit: (a: SkillAssessment) => void;
+function SkillsCard({ skills, loggedDrills, accuracyAvailable, open, onScrollToAccuracy, onNew, onEdit }: {
+  skills: SkillAssessment[];
+  loggedDrills: Set<string>;
+  accuracyAvailable: boolean;
+  open: (v: View) => void;
+  onScrollToAccuracy: () => void;
+  onNew: () => void;
+  onEdit: (a: SkillAssessment) => void;
 }) {
   const latest = latestAssessment(skills);
   const history = [...assessmentsByDate(skills)].reverse(); // newest first
+  // F7: which area's self-rating trend is on screen (a picker, one chart at a
+  // time — eight charts at once would bury the card).
+  const [trendSkill, setTrendSkill] = useState('draw');
+  // The two-drill case (Transitions): tapping "Measured" opens a small picker.
+  const [pickDrills, setPickDrills] = useState<string[] | null>(null);
+
+  // Open a skill's MEASURED evidence: a drill's history, a small picker when two
+  // drills back it, or the "Accuracy across matches" card for accuracy.
+  function openEvidence(ev: { kind: 'drills'; drills: string[] } | { kind: 'accuracy' }) {
+    if (ev.kind === 'accuracy') { onScrollToAccuracy(); return; }
+    if (ev.drills.length === 1) { open({ kind: 'drill-history', name: ev.drills[0] }); return; }
+    setPickDrills(ev.drills);
+  }
+
   return (
     <div className="card">
-      <h2>Skills Check <InfoTip title="Skills Check">Rate yourself 1–10 in eight areas now and then. You'll see your latest scores, your average, and every check you've saved.</InfoTip></h2>
+      <h2>Skills Check <InfoTip title="Skills Check">Rate yourself 1–10 in eight areas now and then. You'll see your latest scores, your average, and every check you've saved. Where a timer can back it up, a "Measured" link takes you to the numbers — your rating is your opinion, the drill trend is the timer's.</InfoTip></h2>
       <button className="button secondary" onClick={onNew}>+ New Check</button>
       {!latest && (
         <p className="report-note">Rate yourself 1–10 across the 8 areas now and then to see your trend.</p>
@@ -608,14 +692,42 @@ function SkillsCard({ skills, onNew, onEdit }: {
         <>
           <p className="report-note">Latest — {formatDayKey(latest.date)}
             {assessmentAverage(latest.ratings) != null ? ` · avg ${assessmentAverage(latest.ratings)!.toFixed(1)}` : ''}</p>
-          {SKILL_AREAS.map((a) => (
-            <div className="row" key={a.key}>
-              <span className="label">{a.label}</span>
-              <span className="value">{latest.ratings[a.key] ? `${latest.ratings[a.key]} / 10` : '—'}</span>
-            </div>
-          ))}
+          {SKILL_AREAS.map((a) => {
+            const ev = resolveSkillEvidence(a.key, loggedDrills, accuracyAvailable);
+            return (
+              <div className="row" key={a.key}>
+                <span className="label">{a.label}</span>
+                <span className="value">{latest.ratings[a.key] ? `${latest.ratings[a.key]} / 10` : '—'}</span>
+                {ev && (
+                  <button className="link-btn" style={{ marginLeft: 8, flexShrink: 0 }}
+                    aria-label={`See the measured evidence for ${a.label}`}
+                    onClick={() => openEvidence(ev)}>Measured ›</button>
+                )}
+              </div>
+            );
+          })}
         </>
       )}
+
+      {/* F7: the self-rating TREND — your opinion over time, kept visibly apart
+          from the measured charts (dashed, dim line; see RatingsTrend). One area
+          at a time, picked below. */}
+      {skills.length >= 2 && (
+        <>
+          <h2 style={{ marginTop: 12 }}>Rating trends <InfoTip title="Rating trends">How you've scored yourself in one area over your checks. These are your own ratings — your opinion. The measured trend is the timer's: open an area's "Measured" link above to see it.</InfoTip></h2>
+          <div className="chip-row" role="group" aria-label="Pick an area for its rating trend">
+            {SKILL_AREAS.map((a) => (
+              <button key={a.key} className={`chip ${trendSkill === a.key ? 'on' : ''}`}
+                aria-pressed={trendSkill === a.key} onClick={() => setTrendSkill(a.key)}>{a.label}</button>
+            ))}
+          </div>
+          {/* key={trendSkill} remounts on an area switch, so a selection (ring +
+              readout) from one area never lingers onto the next. */}
+          <RatingsTrend key={trendSkill} series={skillRatingSeries(skills, trendSkill)}
+            label={SKILL_AREAS.find((a) => a.key === trendSkill)?.label ?? ''} />
+        </>
+      )}
+
       {history.length > 1 && (
         <>
           <h2 style={{ marginTop: 12 }}>History</h2>
@@ -630,7 +742,107 @@ function SkillsCard({ skills, onNew, onEdit }: {
           })}
         </>
       )}
+
+      {pickDrills && (
+        <Sheet title="Measured evidence" onClose={() => setPickDrills(null)}>
+          <p className="report-note" style={{ marginTop: 0 }}>Two drills track this — open one:</p>
+          {pickDrills.map((name) => (
+            <button key={name} className="drill-pick-row"
+              onClick={() => { setPickDrills(null); open({ kind: 'drill-history', name }); }}>
+              <strong>{name}</strong>
+              <span>See your logged runs and trend.</span>
+            </button>
+          ))}
+        </Sheet>
+      )}
     </div>
+  );
+}
+
+/**
+ * F7: one area's SELF-RATINGS over dated checks — the shooter's own opinion, not
+ * a measurement. Built on the same F4 chart furniture as the drill/accuracy
+ * trends (y ticks, date anchors, tap-readout, selection ring, last-value label
+ * that yields while an older dot is selected), but drawn DASHED and dim on
+ * purpose so it never reads as a measured line. Fixed 1–10 y-axis. Fewer than two
+ * checks falls back to the standard "log at least two…" note.
+ */
+function RatingsTrend({ series, label }: { series: { date: string; rating: number }[]; label: string }) {
+  const [selIdx, setSelIdx] = useState<number | null>(null);
+  if (series.length < 2) {
+    // Honest condition: the shortfall is checks that RATED THIS AREA, which can
+    // be fewer than the total number of checks saved.
+    return <p className="report-note">Rate your {label} in at least two checks to see how it's moved.</p>;
+  }
+  const w = 280, h = 138, padR = 12, padL = 30, padT = 14, padB = 20;
+  const loY = 1, hiY = 10, domain = hiY - loY;
+  const stepX = (w - padL - padR) / (series.length - 1);
+  const xAt = (i: number) => padL + i * stepX;
+  const yAt = (v: number) => padT + (1 - (v - loY) / domain) * (h - padT - padB);
+  const line = series.map((p, i) => `${xAt(i)},${yAt(p.rating)}`).join(' ');
+  const mode = dateMode(series[0].date, series[series.length - 1].date);
+  const dateIdxs = thinIndices(series.length, 4);
+  const lastIdx = series.length - 1;
+  const lastV = series[lastIdx].rating;
+  const lastLabelY = yAt(lastV) < padT + 14 ? yAt(lastV) + 14 : yAt(lastV) - 8;
+  const sel = selIdx != null && selIdx < series.length ? series[selIdx] : null;
+  const readout = sel ? `${formatDayKey(sel.date)} — you rated your ${label} ${sel.rating}/10` : null;
+
+  return (
+    <>
+      <p className="report-note" style={{ marginTop: 0 }}>
+        Your self-ratings — how you scored your own {label}, 1–10, at each check.
+      </p>
+      <svg viewBox={`0 0 ${w} ${h}`} width="100%" style={{ display: 'block', marginTop: 4 }}
+        role="img" aria-label={`Your own ${label} self-ratings across ${series.length} checks, on a 1 to 10 scale, oldest to newest`}>
+        {[hiY, (hiY + loY) / 2, loY].map((gv, k) => (
+          <g key={k}>
+            <line x1={padL} y1={yAt(gv)} x2={w - padR} y2={yAt(gv)} stroke="var(--separator)" strokeWidth={0.5} />
+            <text className="chart-tick" x={padL - 4} y={yAt(gv) + 3} fontSize={10} fill="var(--text-dim)" textAnchor="end">
+              {gv}
+            </text>
+          </g>
+        ))}
+        {dateIdxs.map((i) => (
+          <text className="chart-date" key={`d-${i}`} x={xAt(i)} y={h - 6}
+            textAnchor={i === 0 ? 'start' : i === lastIdx ? 'end' : 'middle'}
+            fill="var(--text-dim)" fontSize={10} fontFamily="inherit">
+            {chartDateLabel(series[i].date, mode)}
+          </text>
+        ))}
+        {/* Dashed, dim ink — visibly an opinion line, NOT one of the accent
+            measurement lines the drill/accuracy charts use. */}
+        <polyline points={line} fill="none" stroke="var(--text-dim)" strokeWidth={1.5}
+          strokeDasharray="5 4" strokeLinejoin="round" strokeLinecap="round" />
+        {series.map((p, i) => (
+          <circle key={i} cx={xAt(i)} cy={yAt(p.rating)} r={2.5} fill="var(--text-dim)" />
+        ))}
+        {sel != null && selIdx != null && (
+          <circle className="chart-sel-ring" cx={xAt(selIdx)} cy={yAt(sel.rating)} r={6.5}
+            fill="none" stroke="var(--accent)" strokeWidth={1.75} style={{ pointerEvents: 'none' }} />
+        )}
+        {series.map((p, i) => {
+          const left = i === 0 ? 0 : (xAt(i - 1) + xAt(i)) / 2;
+          const right = i === lastIdx ? w : (xAt(i) + xAt(i + 1)) / 2;
+          return (
+            <rect className="chart-hit" key={`hit-${i}`} x={left} y={0} width={right - left} height={h}
+              fill="transparent" style={{ cursor: 'pointer' }}
+              onClick={() => setSelIdx((prev) => (prev === i ? null : i))}>
+              <title>{`${formatDayKey(p.date)}: ${p.rating}/10`}</title>
+            </rect>
+          );
+        })}
+        {(sel == null || selIdx === lastIdx) && (
+          <text className="chart-last-label" x={xAt(lastIdx)} y={lastLabelY} textAnchor="end"
+            fill="var(--text)" fontSize={11} fontWeight={600} fontFamily="inherit"
+            stroke="var(--bg-card)" strokeWidth={3.5} strokeLinejoin="round"
+            style={{ pointerEvents: 'none', paintOrder: 'stroke' }}>
+            {lastV}/10
+          </text>
+        )}
+      </svg>
+      <ChartReadout value={readout} hint="Tap a dot to see that check's date and score." />
+    </>
   );
 }
 
