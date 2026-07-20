@@ -169,11 +169,13 @@ test.describe('Rename: combine / collision', () => {
     await input.fill(secondName.toUpperCase());
     await sheet.getByRole('button', { name: 'Save', exact: true }).click();
 
-    // Combine dialog appears (not rename) with a count
+    // Combine dialog appears (not rename) with a count.
+    // NOTE: assert the button by ROLE, not getByText('Combine') — the word appears
+    // in both the dialog body and the button, and strict mode rejects a 2-element match.
     await expect(sheet.getByText('already exists', { exact: false })).toBeVisible();
-    await expect(sheet.getByText('Combine', { exact: false })).toBeVisible();
+    await expect(sheet.getByRole('button', { name: 'Combine', exact: true })).toBeVisible();
     // Count must mention at least 1 record
-    await expect(sheet.getByText(/\d+/, { })).toBeVisible();
+    await expect(sheet.getByText(/\d+/).first()).toBeVisible();
 
     // Confirm the combine
     await sheet.getByRole('button', { name: 'Combine', exact: true }).click();
@@ -383,12 +385,10 @@ test.describe('Suggestion filtering', () => {
     await page.getByRole('dialog', { name: 'Hide from suggestions' })
       .getByRole('button', { name: 'Hide', exact: true }).click();
 
-    // Now go log a session and check that hidden value does NOT appear in Where suggestions
-    await page.getByRole('button', { name: '‹ Back' }).first().click(); // back to Manage lists
-    await page.getByRole('button', { name: '‹ Back' }).first().click(); // back to Settings
-    await page.getByRole('button', { name: '‹ Back' }).first().click(); // back to More/main
-
-    // Navigate to Log and open session form
+    // Now go log a session and check that hidden value does NOT appear in Where
+    // suggestions. Go straight to the Log tab — no '‹ Back' clicks: on desktop the
+    // section Back button is hidden by CSS (the sidebar replaces it), so clicking
+    // it times out. gotoTab works from any screen (test 3 relies on the same).
     await gotoTab(page, 'Log');
 
     await page.getByRole('main').getByRole('button', { name: /Log Session/i }).first().click();
