@@ -58,7 +58,7 @@ test.describe('Danger flows (M-13)', () => {
     await expect(page.getByRole('heading', { name: 'Your Data File Is Ready' })).toBeVisible();
     const [download] = await Promise.all([
       page.waitForEvent('download'),
-      page.getByRole('link', { name: 'Save the File Now' }).click(),
+      page.getByRole('button', { name: 'Save the File Now' }).click(),
     ]);
     const flogPath = await download.path();
     expect(flogPath).toBeTruthy();

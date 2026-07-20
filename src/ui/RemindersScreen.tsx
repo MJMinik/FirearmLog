@@ -19,6 +19,7 @@ import {
 import type { ReminderView } from '../lib/reminders.ts';
 import { REMINDER_TEMPLATES, getReminderTemplate } from '../lib/reminderTemplates.ts';
 import { buildReminderIcs, icsFileName } from '../lib/ics.ts';
+import { deliverFile } from './deliverFile.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
@@ -334,7 +335,7 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
     onSaved();
   }
 
-  function addToCalendar() {
+  async function addToCalendar() {
     // Export what's ON SCREEN, not the last-saved record — editing the date and
     // then tapping Add to Calendar must never silently export the stale saved
     // date. This matches how the codebase treats the visible form as what the
@@ -353,14 +354,11 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
       };
       const ics = buildReminderIcs(candidate);
       const blob = new Blob([ics], { type: 'text/calendar' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = icsFileName(candidate);
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      // Same delivery-router as SyncCard: on the installed iOS PWA a plain
+      // anchor to a blob URL navigates the webview away (blank screen), so we
+      // route through the Share sheet / new-window paths there and keep the
+      // classic download-anchor everywhere else. See src/ui/deliverFile.ts.
+      await deliverFile(blob, icsFileName(candidate), 'text/calendar');
     } catch (e) {
       setProblem(e instanceof Error ? e.message : 'That reminder could not be exported.');
     }
@@ -466,7 +464,7 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
           calendar event, and hides the moment the reminder is switched to a
           round count — a round-count reminder has no date to export. */}
       {editing && original && trigger === 'date' && !!dueDate && (
-        <button className="button secondary" style={{ marginTop: 8 }} onClick={addToCalendar}>
+        <button className="button secondary" style={{ marginTop: 8 }} onClick={() => void addToCalendar()}>
           Add to Calendar
         </button>
       )}
