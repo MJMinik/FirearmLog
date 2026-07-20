@@ -5,6 +5,7 @@
 import { useRef, useState } from 'react';
 import type { PointerEvent } from 'react';
 import { Sheet } from './Sheet.tsx';
+import { useDirtyTracker } from './useDirtyTracker.ts';
 import { Icon } from './Icon.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { newId } from '../lib/id.ts';
@@ -25,6 +26,9 @@ export function PhotoMarkup({ url, initial, onSave, onClose }: {
   const [draft, setDraft] = useState<Draft | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
   const start = useRef<{ x: number; y: number } | null>(null);
+  // F-Universal-Guard: dismiss gestures ask "Discard changes?" once a mark has
+  // been drawn/edited/deleted beyond the initial set.
+  const dirty = useDirtyTracker({ marks });
 
   function at(e: PointerEvent<HTMLDivElement>): { x: number; y: number } {
     const r = boxRef.current?.getBoundingClientRect();
@@ -59,7 +63,7 @@ export function PhotoMarkup({ url, initial, onSave, onClose }: {
     : marks;
 
   return (
-    <Sheet title="Mark up photo" onClose={onClose}>
+    <Sheet title="Mark up photo" onClose={onClose} dirty={dirty}>
       <div className="markup-colors">
         {COLORS.map((c) => (
           <button key={c} aria-label={`Pen color ${c}`}

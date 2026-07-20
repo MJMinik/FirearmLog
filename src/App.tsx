@@ -273,7 +273,8 @@ export function App() {
     const v = view;
     content = <GunForm id={v.id}
       onCancel={back}
-      onSaved={(gid) => { refresh(); replace({ kind: 'gun-detail', id: gid }); }} />;
+      onSaved={(gid) => { refresh(); replace({ kind: 'gun-detail', id: gid }); }}
+      onDirtyChange={reportFormDirty} />;
   } else if (view?.kind === 'session-form') {
     const v = view;
     content = <SessionForm id={v.id} initialPlanned={v.planned} convert={v.convert} initialDate={v.date}
@@ -293,7 +294,8 @@ export function App() {
     const v = view;
     content = <DrillForm id={v.id}
       onCancel={back}
-      onSaved={() => { refresh(); back(); }} />;
+      onSaved={() => { refresh(); back(); }}
+      onDirtyChange={reportFormDirty} />;
   } else if (view?.kind === 'magazines') {
     content = <MagazinesScreen refreshKey={refreshKey}
       onBack={back}
@@ -302,7 +304,8 @@ export function App() {
     const v = view;
     content = <MagazineForm id={v.id}
       onCancel={back}
-      onSaved={() => { refresh(); back(); }} />;
+      onSaved={() => { refresh(); back(); }}
+      onDirtyChange={reportFormDirty} />;
   } else if (view?.kind === 'references') {
     content = <ReferenceList refreshKey={refreshKey}
       onBack={back}
@@ -319,7 +322,8 @@ export function App() {
     const v = view;
     content = <ReferenceForm id={v.id} copyFrom={v.copyFrom}
       onCancel={back}
-      onSaved={(rid) => { refresh(); replace({ kind: 'reference-detail', id: rid }); }} />;
+      onSaved={(rid) => { refresh(); replace({ kind: 'reference-detail', id: rid }); }}
+      onDirtyChange={reportFormDirty} />;
   } else if (view?.kind === 'maintenance') {
     content = <MaintenanceOverview refreshKey={refreshKey}
       onBack={back}
@@ -329,7 +333,8 @@ export function App() {
     const v = view;
     content = <MaintenanceForm gunId={v.gunId} id={v.id}
       onCancel={back}
-      onSaved={() => { refresh(); replace({ kind: 'gun-detail', id: v.gunId }); }} />;
+      onSaved={() => { refresh(); replace({ kind: 'gun-detail', id: v.gunId }); }}
+      onDirtyChange={reportFormDirty} />;
   } else if (view?.kind === 'reminders') {
     content = <RemindersScreen refreshKey={refreshKey} onBack={back} open={push} />;
   } else if (view?.kind === 'reminder-form') {
@@ -378,7 +383,8 @@ export function App() {
     // origin (a gun/optic/match detail view).
     content = <AmmoForm id={v.id}
       onCancel={back}
-      onSaved={() => { refresh(); back(); }} />;
+      onSaved={() => { refresh(); back(); }}
+      onDirtyChange={reportFormDirty} />;
   } else if (view?.kind === 'costs') {
     content = <CostsScreen refreshKey={refreshKey}
       onBack={back}
@@ -388,7 +394,8 @@ export function App() {
     const v = view;
     content = <PurchaseForm id={v.id}
       onCancel={back}
-      onSaved={() => { refresh(); back(); }} />;
+      onSaved={() => { refresh(); back(); }}
+      onDirtyChange={reportFormDirty} />;
   } else if (view?.kind === 'optics') {
     content = <OpticsScreen refreshKey={refreshKey}
       onBack={back}
@@ -402,9 +409,10 @@ export function App() {
       // linked to a gun (firearmId set) was pushed from that gun's DETAIL, and
       // the intended landing IS that same gun's detail — so back() returns to the
       // origin (gun-detail) without stacking the duplicate a replace() would.
-      // OpticForm is clean after save (no dirty guard), so back() navigates
-      // normally (history-dedup rule documented at the ammo-form site above).
-      onSaved={() => { refresh(); back(); }} />;
+      // F-Universal-Guard: onDirtyChange keeps App's browser-Back / tab-bar
+      // guard in step; the form clears dirty before onSaved so back() runs.
+      onSaved={() => { refresh(); back(); }}
+      onDirtyChange={reportFormDirty} />;
   } else if (view?.kind === 'parts') {
     content = <PartsScreen refreshKey={refreshKey}
       onBack={back}
@@ -414,7 +422,8 @@ export function App() {
     const v = view;
     content = <PartForm id={v.id}
       onCancel={back}
-      onSaved={() => { refresh(); back(); }} />;
+      onSaved={() => { refresh(); back(); }}
+      onDirtyChange={reportFormDirty} />;
   } else if (view?.kind === 'reports') {
     content = <ReportsScreen refreshKey={refreshKey} onBack={back} popupBlocked={view.blocked} />;
   } else if (view?.kind === 'classifier-form') {

@@ -632,6 +632,67 @@ select.category-pick {
   background: var(--bg); overflow: auto;
 }
 
+/* ---------- Feature: photo lightbox (July 20 2026) ----------
+   Full-screen viewer that floats above the PhotoSheet so a shooter can actually
+   see the photo/video at size. Sits above the sheet (z-index 70). Dark backdrop
+   so the image is the whole story; the close X sits inside the safe area so it
+   stays reachable under an iPhone notch. Tap the backdrop OR the stage OR the
+   X to dismiss. Marks stay overlaid at full size — MarkedImage positions in %,
+   so the numbered circles scale with the enlarged image on their own. */
+.lightbox-backdrop {
+  position: fixed; inset: 0; z-index: 70;
+  background: rgba(0, 0, 0, 0.92);
+  display: flex; align-items: center; justify-content: center;
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right))
+           max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  /* Match the sheet's own gentle entrance so the lightbox doesn't slam in. */
+  animation: sheet-fade 0.2s ease-out;
+  /* AUDIT FIX #6 (July 20 2026): stop backdrop swipes from scroll-chaining
+     into the PhotoSheet underneath — overscroll-behavior contains the scroll,
+     touch-action blocks the browser's default gesture entirely. */
+  overscroll-behavior: contain;
+  touch-action: none;
+}
+.lightbox-close {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  right: max(12px, env(safe-area-inset-right));
+  width: 44px; height: 44px; border-radius: 22px; border: none;
+  background: rgba(0, 0, 0, 0.6); color: #fff;
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  z-index: 71;
+}
+.lightbox-close:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
+.lightbox-stage {
+  width: 100%; height: 100%;
+  display: flex; align-items: center; justify-content: center;
+}
+.lightbox-media {
+  max-width: 100%; max-height: 100%;
+  display: flex; align-items: center; justify-content: center;
+}
+.lightbox-media video {
+  max-width: 100%; max-height: 100%;
+  width: auto; height: auto; display: block;
+}
+/* When the lightbox holds an image, MarkedImage's markup-canvas needs its
+   fullscreen caps — the default caps at 45dvh (sheet-sized). These override. */
+.lightbox-image-wrap .markup-canvas { max-width: 100%; max-height: 100%; }
+.lightbox-image-wrap .markup-canvas img { max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: 8px; }
+/* The legend list is not meaningful in the fullscreen view — the numbered
+   circles are drawn on the image and that's the point. Hide it here so it
+   doesn't push the image out of view. */
+.lightbox-image-wrap .markup-legend { display: none; }
+
+/* The thumbnail/preview button in PhotoSheet that opens the lightbox. Keep it
+   a plain wrapper (no border/background) so the framed image is what shows. */
+.photo-fullscreen-btn {
+  display: block; width: 100%; padding: 0; border: none; background: none;
+  cursor: zoom-in; text-align: left;
+}
+.photo-fullscreen-btn:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; border-radius: 12px; }
+
+
 .drill-pick-row {
   display: flex; flex-direction: column; align-items: flex-start; gap: 2px; width: 100%;
   background: none; border: none; border-bottom: 0.5px solid var(--separator);

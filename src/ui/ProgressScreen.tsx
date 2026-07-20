@@ -26,6 +26,7 @@ import type { View } from './nav.ts';
 import { RoundsByMonthChart } from './screens.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
+import { useDirtyTracker } from './useDirtyTracker.ts';
 import { FormProblem } from './FormProblem.tsx';
 import { Icon } from './Icon.tsx';
 import { SwipeRow } from './SwipeRow.tsx';
@@ -858,6 +859,8 @@ function SkillSheet({ assessment, onClose, onSaved }: {
   const [notes, setNotes] = useState(assessment?.notes || '');
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState('');
+  // F-Universal-Guard: sheet dismiss gestures ask "Discard changes?" when dirty.
+  const dirty = useDirtyTracker({ date, ratings, notes });
 
   async function save() {
     const r: Record<string, number> = {};
@@ -880,7 +883,7 @@ function SkillSheet({ assessment, onClose, onSaved }: {
   }
 
   return (
-    <Sheet title={assessment ? 'Edit Check' : 'New Check'} onClose={onClose}>
+    <Sheet title={assessment ? 'Edit Check' : 'New Check'} onClose={onClose} dirty={dirty}>
       <FormProblem problem={problem} />
       <label className="field">Date
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -918,6 +921,9 @@ function GoalEditSheet({ goal, categories, onClose, onSaved }: {
   const [target, setTarget] = useState(goal.target);
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState('');
+  // F-Universal-Guard: the Sheet's own dismiss gestures (backdrop tap, Esc, X)
+  // ask "Discard changes?" when this snapshot no longer matches the initial one.
+  const dirty = useDirtyTracker({ text, category, target });
 
   async function save() {
     if (!text.trim()) { setProblem('Enter the goal before saving.'); return; }
@@ -931,7 +937,7 @@ function GoalEditSheet({ goal, categories, onClose, onSaved }: {
   }
 
   return (
-    <Sheet title="Edit Goal" onClose={onClose}>
+    <Sheet title="Edit Goal" onClose={onClose} dirty={dirty}>
       <FormProblem problem={problem} />
       <label className="field">Goal
         <input value={text} {...noAutofillProps} name="fl-goal-text"

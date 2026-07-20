@@ -14,7 +14,8 @@ import { ammoCurrentCostPerRound, costPerRoundAfterBuy, lowAmmo } from '../lib/c
 import { combinedCan, findSameAmmo, repointAmmoUsage, repointPurchaseIds } from '../lib/ammoMerge.ts';
 import { recentValues } from '../lib/suggest.ts';
 import { SuggestField } from './SuggestField.tsx';
-import { ConfirmSheet, Sheet } from './Sheet.tsx';
+import { ConfirmSheet, DiscardChangesSheet, Sheet } from './Sheet.tsx';
+import { useDirtyTracker } from './useDirtyTracker.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
@@ -98,8 +99,9 @@ export function AmmoScreen({ refreshKey, onBack, openForm }: {
 
 const BULLET_TYPES = ['FMJ', 'JHP', 'TMJ', 'LRN', 'Frangible', 'Birdshot', 'Buckshot', 'Slug', 'Other'];
 
-export function AmmoForm({ id, onSaved, onCancel }: {
+export function AmmoForm({ id, onSaved, onCancel, onDirtyChange }: {
   id?: string; onSaved: () => void; onCancel: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Ammunition | null>(null);
@@ -121,6 +123,14 @@ export function AmmoForm({ id, onSaved, onCancel }: {
   const [problem, setProblem] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [dupe, setDupe] = useState<Ammunition | null>(null);
+  const [discarding, setDiscarding] = useState(false);
+  // AUDIT FIX (July 20 2026): on EDIT, gate the dirty baseline on the async
+  // getOne load — otherwise the baseline is empty strings and a clean close
+  // fires "Discard changes?". New: loaded starts true; nothing to wait for.
+  const [loaded, setLoaded] = useState<boolean>(!editing);
+  const dirty = useDirtyTracker({ brand, caliber, grain, bulletType, quantity, costPerRound, notes, purchRounds, purchCost, purchVendor, justCounting }, loaded);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   useEffect(() => {
     let alive = true;
@@ -147,6 +157,7 @@ export function AmmoForm({ id, onSaved, onCancel }: {
         setQuantity(String(a.quantity || 0));
         setCostPerRound(a.costPerRound > 0 ? String(a.costPerRound) : '');
         setNotes(a.notes);
+        setLoaded(true); // AUDIT FIX: seed dirty baseline now, not before load.
       });
     }
     return () => { alive = false; };
@@ -226,6 +237,7 @@ export function AmmoForm({ id, onSaved, onCancel }: {
     if (original) await putOne('ammunition', stampUpdate({ ...original, ...withPurchase }, now));
     else await putOne('ammunition', stampNew(withPurchase, canId, now));
     await savePurchase(canId, n.pr, n.pc, now);
+    onDirtyChange?.(false);
     onSaved();
   }
 
@@ -276,20 +288,27 @@ export function AmmoForm({ id, onSaved, onCancel }: {
     // Audit CR-8: the whole merge lands in ONE transaction (can + repointed
     // sessions/purchases + the buy + deleting the old can) — never half-applied.
     await applyAmmoMerge({ keptCan, sessions: sessionRecs, purchases: purchaseRecs, newPurchase, deleteCanId });
+    onDirtyChange?.(false);
     onSaved();
   }
 
   async function reallyDelete() {
     if (id !== undefined) await deleteOne('ammunition', id);
+    onDirtyChange?.(false);
     onSaved();
   }
 
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onCancel}>‹ Cancel</button>
+        <button className="back-btn" onClick={() => (dirty ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
+      {discarding && (
+        <DiscardChangesSheet
+          onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
+          onClose={() => setDiscarding(false)} />
+      )}
       <h1 className="large-title">{editing ? 'Edit Ammo' : 'Add Ammo'}</h1>
       <FormProblem problem={problem} />
       <div className="card">

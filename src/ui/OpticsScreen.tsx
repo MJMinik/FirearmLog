@@ -8,7 +8,8 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { isBatteryDue, normalizeBatteryLog } from '../lib/optics.ts';
 import { recentValues } from '../lib/suggest.ts';
-import { ConfirmSheet, Sheet } from './Sheet.tsx';
+import { ConfirmSheet, DiscardChangesSheet, Sheet } from './Sheet.tsx';
+import { useDirtyTracker } from './useDirtyTracker.ts';
 import { ScreenError } from './ScreenState.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
@@ -150,6 +151,8 @@ function BatteryLogSheet({ optic, onClose, onSaved }: {
 }) {
   const [date, setDate] = useState(todayKey());
   const [notes, setNotes] = useState('');
+  // F-Universal-Guard: notes typed or date moved off today → discard confirm.
+  const dirty = useDirtyTracker({ date, notes });
 
   async function save() {
     const entry = { date, notes: notes.trim() };
@@ -158,7 +161,7 @@ function BatteryLogSheet({ optic, onClose, onSaved }: {
   }
 
   return (
-    <Sheet title="Log Battery Change" onClose={onClose}>
+    <Sheet title="Log Battery Change" onClose={onClose} dirty={dirty}>
       <label className="field">Date
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       </label>
@@ -171,9 +174,11 @@ function BatteryLogSheet({ optic, onClose, onSaved }: {
   );
 }
 
-export function OpticForm({ id, firearmId, onSaved, onCancel }: {
+export function OpticForm({ id, firearmId, onSaved, onCancel, onDirtyChange }: {
   id?: string; firearmId?: string; onSaved: () => void; onCancel: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
+  const editing = id !== undefined;
   const [original, setOriginal] = useState<Optic | null>(null);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [allOptics, setAllOptics] = useState<Optic[]>([]);
@@ -189,6 +194,13 @@ export function OpticForm({ id, firearmId, onSaved, onCancel }: {
   const [notes, setNotes] = useState('');
   const [problem, setProblem] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  // AUDIT FIX (July 20 2026): gate the dirty baseline on the async load so
+  // an untouched edit doesn't fire "Discard changes?".
+  const [loaded, setLoaded] = useState<boolean>(!editing);
+  const dirty = useDirtyTracker({ firearmIdSel, make, model, installDate, dotSize, zeroDist, mountHeight, torqueSpec, settingsSnapshot, notes }, loaded);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   useEffect(() => {
     let alive = true;
@@ -206,6 +218,7 @@ export function OpticForm({ id, firearmId, onSaved, onCancel }: {
         setDotSize(o.dotSize); setZeroDist(o.zeroDist);
         setMountHeight(o.mountHeight); setTorqueSpec(o.torqueSpec);
         setSettingsSnapshot(o.settingsSnapshot); setNotes(o.notes);
+        setLoaded(true); // AUDIT FIX
       });
     } else if (firearmId) {
       setFirearmIdSel(firearmId);
@@ -226,11 +239,13 @@ export function OpticForm({ id, firearmId, onSaved, onCancel }: {
     } else {
       await putOne('optics', stampNew({ ...fields, batteryLog: [] }, newId('op'), Date.now()));
     }
+    onDirtyChange?.(false);
     onSaved();
   }
 
   async function reallyDelete() {
     if (original) await deleteOne('optics', original.id);
+    onDirtyChange?.(false);
     onSaved();
   }
 
@@ -248,9 +263,14 @@ export function OpticForm({ id, firearmId, onSaved, onCancel }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onCancel}>‹ Cancel</button>
+        <button className="back-btn" onClick={() => (dirty ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
+      {discarding && (
+        <DiscardChangesSheet
+          onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
+          onClose={() => setDiscarding(false)} />
+      )}
       <h1 className="large-title">{original ? 'Edit Optic' : 'New Optic'}</h1>
       <FormProblem problem={problem} />
       <div className="card">

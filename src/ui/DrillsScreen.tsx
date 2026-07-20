@@ -8,7 +8,8 @@ import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
-import { ConfirmSheet } from './Sheet.tsx';
+import { ConfirmSheet, DiscardChangesSheet } from './Sheet.tsx';
+import { useDirtyTracker } from './useDirtyTracker.ts';
 import { ScreenError } from './ScreenState.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
@@ -94,10 +95,12 @@ export function DrillsScreen({ refreshKey, onBack, openForm, openHistory }: {
   );
 }
 
-export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, onCancel }: {
+export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, onCancel, onDirtyChange }: {
   id?: string; initialName?: string; initialFire?: DrillDef['fire'];
   initialCats?: GunCategory[]; onSaved: () => void; onCancel: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
+  const editing = id !== undefined;
   const [original, setOriginal] = useState<DrillDef | null>(null);
   // For a brand-new drill, seed from any values handed in (e.g. the name and
   // context the shooter already typed in the session quick-add) so nothing is lost
@@ -111,6 +114,13 @@ export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, 
   const [holster, setHolster] = useState(false);
   const [problem, setProblem] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  // AUDIT FIX (July 20 2026): edit forms wait for the getOne load before
+  // seeding the dirty baseline. On new (id undefined) we start ready.
+  const [loaded, setLoaded] = useState<boolean>(!editing);
+  const dirty = useDirtyTracker({ name, fire, cats, brief, full, scoring, holster }, loaded);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   useEffect(() => {
     if (id === undefined) return;
@@ -121,6 +131,7 @@ export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, 
       setName(d.name); setFire(d.fire); setCats(d.gunCategories);
       setBrief(d.briefDescription); setFull(d.fullDescription);
       setScoring(d.scoring); setHolster(d.requiresHolster);
+      setLoaded(true); // AUDIT FIX
     });
     return () => { alive = false; };
   }, [id]);
@@ -143,6 +154,7 @@ export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, 
       // Custom drills use a 'drx-' ID so a re-import never touches them.
       await putOne('drills', stampNew({ ...fields, tags: [] }, newId('drx'), Date.now()));
     }
+    onDirtyChange?.(false);
     onSaved();
   }
 
@@ -152,15 +164,21 @@ export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, 
   const isCustom = !!original && original.id.startsWith('drx');
   async function reallyDelete() {
     if (original) await deleteOne('drills', original.id);
+    onDirtyChange?.(false);
     onSaved();
   }
 
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onCancel}>‹ Cancel</button>
+        <button className="back-btn" onClick={() => (dirty ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
+      {discarding && (
+        <DiscardChangesSheet
+          onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
+          onClose={() => setDiscarding(false)} />
+      )}
       <h1 className="large-title">{original ? 'Edit Drill' : 'New Drill'}</h1>
       <FormProblem problem={problem} />
 

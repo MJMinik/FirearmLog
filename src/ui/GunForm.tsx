@@ -6,6 +6,8 @@ import { roundsForFirearm } from '../lib/stats.ts';
 import { activeOnly } from '../lib/softDelete.ts';
 import { lifetimeFromStart, startFromLifetime } from '../lib/lifetimeRounds.ts';
 import { CoachMark } from './CoachMark.tsx';
+import { DiscardChangesSheet } from './Sheet.tsx';
+import { useDirtyTracker } from './useDirtyTracker.ts';
 import { coachMarkDismissals, dismissCoachMark } from '../lib/coachMarks.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -14,11 +16,15 @@ import { FormProblem } from './FormProblem.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { Reveal } from './Reveal.tsx';
 
-export function GunForm({ id, onSaved, onCancel }: {
+export function GunForm({ id, onSaved, onCancel, onDirtyChange }: {
   id?: string; onSaved: (gunId: string) => void; onCancel: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Firearm | null>(null);
+  // F-Universal-Guard (July 20 2026): the ‹ Cancel button + browser Back / tab-bar
+  // exit all show the shared Discard-changes? sheet if the form is dirty.
+  const [discarding, setDiscarding] = useState(false);
   const [name, setName] = useState('');
   const [manufacturer, setManufacturer] = useState('');
   const [model, setModel] = useState('');
@@ -53,6 +59,25 @@ export function GunForm({ id, onSaved, onCancel }: {
     void getAll<Reference>('references').then(setCustomRefs);
   }, []);
 
+  // F-Universal-Guard: dirty = fields moved off their initial values. Report
+  // the flag up so App's own guard fires on browser Back / tab-bar exits
+  // (F3 parity), matching what SessionForm / MatchForm / ClassifierForm do.
+  //
+  // AUDIT FIX (July 20 2026): baseline seeding is GATED on `loaded` — see the
+  // useState below. On edit, the record is fetched asynchronously (getOne(...)
+  // .then), so if we seeded on first render the baseline would be empty
+  // strings and the form would look dirty untouched — closing a clean edit
+  // would fire "Discard changes?". The load effect flips `loaded` to true
+  // once state is populated; useDirtyTracker holds off until then. On a NEW
+  // gun `loaded` starts true (nothing to load) so tracking begins immediately.
+  const [loaded, setLoaded] = useState<boolean>(!editing);
+  const dirty = useDirtyTracker({
+    name, manufacturer, model, caliber, category, serial, acquired,
+    startCount, lifetime, deepClean, recoilSpring, notes, referenceId,
+  }, loaded);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+
   // Session 59: the very first gun form a newcomer sees points at Save — the
   // tap-test showed the completion affordance wasn't obvious. Only on a NEW
   // gun while the log has none (after the first save the condition retires
@@ -84,6 +109,9 @@ export function GunForm({ id, onSaved, onCancel }: {
       setRecoilSpring(g.recoilSpringInterval ? String(g.recoilSpringInterval) : '');
       setNotes(g.notes);
       setReferenceId(g.referenceId);
+      // AUDIT FIX: flip the dirty-tracker's baseline gate ONLY after fields
+      // are populated — the useDirtyTracker call above waits for this flag.
+      setLoaded(true);
     });
     return () => { alive = false; };
   }, [editing, id]);
@@ -187,6 +215,9 @@ export function GunForm({ id, onSaved, onCancel }: {
     if (editing && original) {
       const updated = stampUpdate({ ...original, ...fields }, Date.now());
       await putOne('firearms', updated);
+      // F-Universal-Guard: clear before navigating so App's guard doesn't
+      // stop the onSaved replace() with a second discard sheet.
+      onDirtyChange?.(false);
       onSaved(updated.id);
     } else {
       const created: Firearm = stampNew({
@@ -196,6 +227,7 @@ export function GunForm({ id, onSaved, onCancel }: {
         photoIds: []
       }, newId('fa'), Date.now());
       await putOne('firearms', created);
+      onDirtyChange?.(false);
       onSaved(created.id);
     }
   }
@@ -203,9 +235,14 @@ export function GunForm({ id, onSaved, onCancel }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onCancel}>‹ Cancel</button>
+        <button className="back-btn" onClick={() => (dirty ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
+      {discarding && (
+        <DiscardChangesSheet
+          onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
+          onClose={() => setDiscarding(false)} />
+      )}
       {/* Session 59: anchored right under the navbar, arrow up at Save. */}
       {saveMark && (
         <CoachMark arrow="up-right" onDismiss={closeSaveMark}>

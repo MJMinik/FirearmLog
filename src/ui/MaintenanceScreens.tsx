@@ -10,7 +10,8 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { MAINT_TYPES, maintLabel, maintenanceStatus } from '../lib/maintenance.ts';
 import { buildRefLookup } from '../lib/referenceData.ts';
 import { InfoTip } from './InfoTip.tsx';
-import { ConfirmSheet } from './Sheet.tsx';
+import { ConfirmSheet, DiscardChangesSheet } from './Sheet.tsx';
+import { useDirtyTracker } from './useDirtyTracker.ts';
 import { FormProblem } from './FormProblem.tsx';
 import { ownedGuns } from '../lib/gunStatus.ts';
 import { ScreenError } from './ScreenState.tsx';
@@ -90,8 +91,9 @@ export function MaintenanceOverview({ refreshKey, onBack, openGun, logFor }: {
 // Audit #16: maintenance entries are now editable and deletable. With an `id`
 // this edits an existing entry (and offers delete); without one it logs a new
 // entry as before.
-export function MaintenanceForm({ gunId, id, onSaved, onCancel }: {
+export function MaintenanceForm({ gunId, id, onSaved, onCancel, onDirtyChange }: {
   gunId: string; id?: string; onSaved: () => void; onCancel: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<MaintenanceEntry | null>(null);
@@ -103,6 +105,14 @@ export function MaintenanceForm({ gunId, id, onSaved, onCancel }: {
   const [notes, setNotes] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [problem, setProblem] = useState('');
+  const [discarding, setDiscarding] = useState(false);
+  // F-Universal-Guard: dirty tracks moves off the initial values.
+  // AUDIT FIX (July 20 2026): wait for the async getOne load to populate
+  // fields before seeding the baseline; new records start ready.
+  const [loaded, setLoaded] = useState<boolean>(!editing);
+  const dirty = useDirtyTracker({ type, date, performedBy, parts, notes }, loaded);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   useEffect(() => {
     void getOne<Firearm>('firearms', gunId).then((g) => { if (g) setGunName(g.name); });
@@ -116,6 +126,7 @@ export function MaintenanceForm({ gunId, id, onSaved, onCancel }: {
       setOriginal(m);
       setType(m.type); setDate(m.date);
       setPerformedBy(m.performedBy); setParts(m.partsReplaced); setNotes(m.notes);
+      setLoaded(true); // AUDIT FIX
     });
     return () => { alive = false; };
   }, [id]);
@@ -133,20 +144,27 @@ export function MaintenanceForm({ gunId, id, onSaved, onCancel }: {
     } else {
       await putOne('maintenance', stampNew(fields, newId('ma'), Date.now()));
     }
+    onDirtyChange?.(false);
     onSaved();
   }
 
   async function reallyDelete() {
     if (original) await deleteOne('maintenance', original.id);
+    onDirtyChange?.(false);
     onSaved();
   }
 
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onCancel}>‹ Cancel</button>
+        <button className="back-btn" onClick={() => (dirty ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
+      {discarding && (
+        <DiscardChangesSheet
+          onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
+          onClose={() => setDiscarding(false)} />
+      )}
       <h1 className="large-title">{editing ? 'Edit Work' : 'Log Work'}{gunName ? ` — ${gunName}` : ''}</h1>
       <FormProblem problem={problem} />
       <div className="card">

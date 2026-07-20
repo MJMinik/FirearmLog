@@ -11,7 +11,8 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import type { ReferenceEntry } from '../lib/referenceData.ts';
 import { REFERENCES, getReference, isCustomRefId, toEntry } from '../lib/referenceData.ts';
 import type { Firearm } from '../lib/types.ts';
-import { ConfirmSheet } from './Sheet.tsx';
+import { ConfirmSheet, DiscardChangesSheet } from './Sheet.tsx';
+import { useDirtyTracker } from './useDirtyTracker.ts';
 import { ScreenError } from './ScreenState.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { InfoTip } from './InfoTip.tsx';
@@ -195,10 +196,12 @@ export function ReferenceDetail({ id, onBack, onEdit, onCopy, onDeleted, refresh
   );
 }
 
-export function ReferenceForm({ id, copyFrom, onSaved, onCancel }: {
+export function ReferenceForm({ id, copyFrom, onSaved, onCancel, onDirtyChange }: {
   id?: string; copyFrom?: string;
   onSaved: (refId: string) => void; onCancel: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
+  const editing = id !== undefined;
   const [original, setOriginal] = useState<Reference | null>(null);
   const [name, setName] = useState('');
   const [category, setCategory] = useState<GunCategory>('Pistol');
@@ -208,6 +211,14 @@ export function ReferenceForm({ id, copyFrom, onSaved, onCancel }: {
   const [guidance, setGuidance] = useState('');
   const [links, setLinks] = useState('');
   const [problem, setProblem] = useState('');
+  const [discarding, setDiscarding] = useState(false);
+  // AUDIT FIX (July 20 2026): wait for the async load before seeding baseline.
+  // copyFrom path populates state SYNCHRONOUSLY from getReference(), so if
+  // that path fires (no id) we can start ready — same as a plain new form.
+  const [loaded, setLoaded] = useState<boolean>(!editing);
+  const dirty = useDirtyTracker({ name, category, deepClean, recoilSpring, checklist, guidance, links }, loaded);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   useEffect(() => {
     let alive = true;
@@ -221,6 +232,7 @@ export function ReferenceForm({ id, copyFrom, onSaved, onCancel }: {
         setChecklist(r.checklist.join('\n'));
         setGuidance(r.guidance);
         setLinks(r.links.map((l) => l.url).join('\n'));
+        setLoaded(true); // AUDIT FIX
       });
     } else if (copyFrom) {
       const src = getReference(copyFrom);
@@ -258,10 +270,12 @@ export function ReferenceForm({ id, copyFrom, onSaved, onCancel }: {
     if (original) {
       const updated = stampUpdate({ ...original, ...fields }, Date.now());
       await putOne('references', updated);
+      onDirtyChange?.(false);
       onSaved(updated.id);
     } else {
       const created: Reference = stampNew(fields, newId('refx'), Date.now());
       await putOne('references', created);
+      onDirtyChange?.(false);
       onSaved(created.id);
     }
   }
@@ -269,9 +283,14 @@ export function ReferenceForm({ id, copyFrom, onSaved, onCancel }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onCancel}>‹ Cancel</button>
+        <button className="back-btn" onClick={() => (dirty ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
+      {discarding && (
+        <DiscardChangesSheet
+          onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
+          onClose={() => setDiscarding(false)} />
+      )}
       <h1 className="large-title">{original ? 'Edit Guide' : 'New Guide'}</h1>
       <FormProblem problem={problem} />
 

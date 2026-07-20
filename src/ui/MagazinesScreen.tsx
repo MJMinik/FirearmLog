@@ -6,7 +6,8 @@ import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { FormProblem } from './FormProblem.tsx';
-import { ConfirmSheet } from './Sheet.tsx';
+import { ConfirmSheet, DiscardChangesSheet } from './Sheet.tsx';
+import { useDirtyTracker } from './useDirtyTracker.ts';
 import { ScreenError } from './ScreenState.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { ownedGuns } from '../lib/gunStatus.ts';
@@ -69,9 +70,11 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
   );
 }
 
-export function MagazineForm({ id, onSaved, onCancel }: {
+export function MagazineForm({ id, onSaved, onCancel, onDirtyChange }: {
   id?: string; onSaved: () => void; onCancel: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
+  const editing = id !== undefined;
   const [original, setOriginal] = useState<Magazine | null>(null);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [label, setLabel] = useState('');
@@ -81,6 +84,15 @@ export function MagazineForm({ id, onSaved, onCancel }: {
   const [notes, setNotes] = useState('');
   const [problem, setProblem] = useState('');
   const [confirming, setConfirming] = useState(false);
+  // F-Universal-Guard: guard the ‹ Cancel exit + report dirty upstream for the
+  // browser Back / tab-bar exits (App owns the shared discard sheet there).
+  const [discarding, setDiscarding] = useState(false);
+  // AUDIT FIX (July 20 2026): wait for the getOne load before seeding the
+  // dirty baseline on edit.
+  const [loaded, setLoaded] = useState<boolean>(!editing);
+  const dirty = useDirtyTracker({ label, gunIds, active, totalRounds, notes }, loaded);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   useEffect(() => {
     let alive = true;
@@ -93,6 +105,7 @@ export function MagazineForm({ id, onSaved, onCancel }: {
         setOriginal(m);
         setLabel(m.label); setGunIds(m.firearmIds); setActive(m.active);
         setTotalRounds(String(m.totalRounds)); setNotes(m.notes);
+        setLoaded(true); // AUDIT FIX
       });
     }
     return () => { alive = false; };
@@ -108,6 +121,7 @@ export function MagazineForm({ id, onSaved, onCancel }: {
     } else {
       await putOne('magazines', stampNew({ ...fields, springHistory: [] }, newId('mg'), Date.now()));
     }
+    onDirtyChange?.(false);
     onSaved();
   }
 
@@ -115,15 +129,21 @@ export function MagazineForm({ id, onSaved, onCancel }: {
   // don't link to magazines). "Retire" still exists for mags you want to keep on record.
   async function reallyDelete() {
     if (original) await deleteOne('magazines', original.id);
+    onDirtyChange?.(false);
     onSaved();
   }
 
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onCancel}>‹ Cancel</button>
+        <button className="back-btn" onClick={() => (dirty ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
+      {discarding && (
+        <DiscardChangesSheet
+          onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
+          onClose={() => setDiscarding(false)} />
+      )}
       <h1 className="large-title">{original ? 'Edit Magazine' : 'New Magazine'}</h1>
       <FormProblem problem={problem} />
       <div className="card">

@@ -11,7 +11,8 @@ import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { isBatteryDue } from '../lib/optics.ts';
 import { recentValues } from '../lib/suggest.ts';
 import { buildPartsReportHtml, opticLabel } from '../lib/partsReport.ts';
-import { ConfirmSheet } from './Sheet.tsx';
+import { ConfirmSheet, DiscardChangesSheet } from './Sheet.tsx';
+import { useDirtyTracker } from './useDirtyTracker.ts';
 import { ScreenError } from './ScreenState.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
@@ -136,9 +137,11 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
   );
 }
 
-export function PartForm({ id, onSaved, onCancel }: {
+export function PartForm({ id, onSaved, onCancel, onDirtyChange }: {
   id?: string; onSaved: () => void; onCancel: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
+  const editing = id !== undefined;
   const [original, setOriginal] = useState<Part | null>(null);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [allParts, setAllParts] = useState<Part[]>([]);
@@ -152,6 +155,14 @@ export function PartForm({ id, onSaved, onCancel }: {
   const [notes, setNotes] = useState('');
   const [problem, setProblem] = useState('');
   const [confirming, setConfirming] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  // AUDIT FIX (July 20 2026): on EDIT, gate the dirty baseline on the getOne
+  // load — otherwise the baseline is empty strings and a clean close fires
+  // "Discard changes?" untouched. On NEW, loaded starts true immediately.
+  const [loaded, setLoaded] = useState<boolean>(!editing);
+  const dirty = useDirtyTracker({ firearmIdSel, name, quantity, partNumber, cost, vendor, datePurchased, notes }, loaded);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   useEffect(() => {
     let alive = true;
@@ -168,6 +179,7 @@ export function PartForm({ id, onSaved, onCancel }: {
         setPartNumber(p.partNumber); setDatePurchased(p.datePurchased); setNotes(p.notes);
         setCost(p.cost != null ? String(p.cost) : '');
         setVendor(p.vendor ?? '');
+        setLoaded(true); // AUDIT FIX: seed dirty baseline once state is populated.
       });
     }
     return () => { alive = false; };
@@ -191,11 +203,13 @@ export function PartForm({ id, onSaved, onCancel }: {
     } else {
       await putOne('parts', stampNew(fields, newId('pt'), Date.now()));
     }
+    onDirtyChange?.(false);
     onSaved();
   }
 
   async function reallyDelete() {
     if (original) await deleteOne('parts', original.id);
+    onDirtyChange?.(false);
     onSaved();
   }
 
@@ -206,9 +220,14 @@ export function PartForm({ id, onSaved, onCancel }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onCancel}>‹ Cancel</button>
+        <button className="back-btn" onClick={() => (dirty ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
         <button className="navbar-action" onClick={() => void save()}>Save</button>
       </div>
+      {discarding && (
+        <DiscardChangesSheet
+          onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
+          onClose={() => setDiscarding(false)} />
+      )}
       <h1 className="large-title">{original ? 'Edit Part' : 'New Part'}</h1>
       <FormProblem problem={problem} />
       <div className="card">

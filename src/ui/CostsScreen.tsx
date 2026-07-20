@@ -15,7 +15,8 @@ import { recentValues } from '../lib/suggest.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { SuggestField } from './SuggestField.tsx';
 import { InfoTip } from './InfoTip.tsx';
-import { ConfirmSheet } from './Sheet.tsx';
+import { ConfirmSheet, DiscardChangesSheet } from './Sheet.tsx';
+import { useDirtyTracker } from './useDirtyTracker.ts';
 import { FormProblem } from './FormProblem.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { ScreenError } from './ScreenState.tsx';
@@ -180,8 +181,9 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
   );
 }
 
-export function PurchaseForm({ id, onSaved, onCancel }: {
+export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange }: {
   id?: string; onSaved: () => void; onCancel: () => void;
+  onDirtyChange?: (dirty: boolean) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Purchase | null>(null);
@@ -200,6 +202,14 @@ export function PurchaseForm({ id, onSaved, onCancel }: {
   const [problem, setProblem] = useState('');
   const [confirming, setConfirming] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [discarding, setDiscarding] = useState(false);
+  // AUDIT FIX (July 20 2026): wait for the getOne load before seeding the
+  // dirty baseline on edit — otherwise a clean close of an existing purchase
+  // fires "Discard changes?" untouched.
+  const [loaded, setLoaded] = useState<boolean>(!editing);
+  const dirty = useDirtyTracker({ date, category, item, vendor, cost, rounds, ammoId, addToInv, notes }, loaded);
+  useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   useEffect(() => {
     let alive = true;
@@ -224,6 +234,7 @@ export function PurchaseForm({ id, onSaved, onCancel }: {
         setAmmoId(link?.ammoId ?? '');
         setAddToInv(p.addedToInventory === true);
         setNotes(p.notes);
+        setLoaded(true); // AUDIT FIX
       });
     }
     return () => { alive = false; };
@@ -272,6 +283,7 @@ export function PurchaseForm({ id, onSaved, onCancel }: {
             { ...can, quantity: (can.quantity || 0) + (r ?? 0) }, now));
         }
       }
+      onDirtyChange?.(false);
       onSaved();
     } finally {
       setSaving(false);
@@ -283,17 +295,23 @@ export function PurchaseForm({ id, onSaved, onCancel }: {
       await reverseOldBump(original);
       await deleteOne('purchases', original.id);
     }
+    onDirtyChange?.(false);
     onSaved();
   }
 
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onCancel}>‹ Cancel</button>
+        <button className="back-btn" onClick={() => (dirty ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
         <button className="navbar-action" disabled={saving} onClick={() => void save()}>
           {saving ? 'Saving…' : 'Save'}
         </button>
       </div>
+      {discarding && (
+        <DiscardChangesSheet
+          onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
+          onClose={() => setDiscarding(false)} />
+      )}
       <h1 className="large-title">{editing ? 'Edit Purchase' : 'Add Purchase'}</h1>
       <FormProblem problem={problem} />
       <div className="card">

@@ -1037,7 +1037,8 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       )}
 
       {picking && (
-        <Sheet title="Pick Drills" onClose={() => { setPicking(false); setQuickAdding(false); setQuickName(''); setQuickProblem(''); }}>
+        <Sheet title="Pick Drills" onClose={() => { setPicking(false); setQuickAdding(false); setQuickName(''); setQuickProblem(''); }}
+          dirty={picked.size > 0 || quickName.trim() !== '' || quickProblem.trim() !== ''}>
           {!quickAdding && pickable.length === 0 && (
             <>
               {/* Dead-end no more: the empty state's prominent call-to-action is to

@@ -5,6 +5,7 @@
 // media so the experience is identical (DRY).
 import { useState } from 'react';
 import { Sheet } from './Sheet.tsx';
+import { useDirtyTracker } from './useDirtyTracker.ts';
 import { noAutofillProps } from './SuggestField.tsx';
 import { PhotoMarkup } from './PhotoMarkup.tsx';
 import { MarkedImage } from './MarkedImage.tsx';
@@ -29,9 +30,12 @@ export function NewPhotoSheet({ file, onSave, onClose }: {
   const [notes, setNotes] = useState(file.notes ?? '');
   const [marks, setMarks] = useState<Mark[]>(file.marks ?? []);
   const [marking, setMarking] = useState(false);
+  // F-Universal-Guard: sheet dismiss gestures ask "Discard changes?" when the
+  // caption/notes/marks have moved off the file's starting draft.
+  const dirty = useDirtyTracker({ name, notes, marks });
   const label = file.kind === 'video' ? 'Video' : 'Photo';
   return (
-    <Sheet title={label} onClose={onClose}>
+    <Sheet title={label} onClose={onClose} dirty={dirty}>
       {file.kind === 'video'
         ? <video className="photo-full" src={file.url} controls playsInline preload="metadata" />
         : <MarkedImage url={file.url} alt={name || `New ${label.toLowerCase()}`} marks={marks} />}
