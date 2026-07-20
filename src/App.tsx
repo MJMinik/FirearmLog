@@ -33,6 +33,7 @@ import { SetupWizard } from './ui/SetupWizard.tsx';
 import { SampleLogBanner } from './ui/SampleLogBanner.tsx';
 import { SyncScreen, FreeSpaceScreen, YourDataScreen } from './ui/AppDataScreens.tsx';
 import { SettingsScreen } from './ui/SettingsScreen.tsx';
+import { ManageListsScreen, ListDetailScreen } from './ui/ManageListsScreen.tsx';
 import { countAll, getSettings, probeDb } from './lib/db.ts';
 import { BootErrorScreen } from './ui/BootErrorScreen.tsx';
 import { ensureStockDrills } from './lib/stockDrills.ts';
@@ -457,7 +458,12 @@ export function App() {
       onFinish={() => { refresh(); setTabState('home'); replace(null); scrollTop(); }}
       onCancel={back} />;
   } else if (view?.kind === 'settings') {
-    content = <SettingsScreen onBack={back} />;
+    content = <SettingsScreen onBack={back} open={push} />;
+  } else if (view?.kind === 'manage-lists') {
+    content = <ManageListsScreen onBack={back} onOpen={(id) => push({ kind: 'list-detail', listId: id })} />;
+  } else if (view?.kind === 'list-detail') {
+    const v = view;
+    content = <ListDetailScreen listId={v.listId} onBack={back} />;
   } else if (view?.kind === 'sync') {
     content = <SyncScreen onBack={back} onImported={refresh} />;
   } else if (view?.kind === 'free-space') {

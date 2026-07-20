@@ -5,13 +5,14 @@
 import { useEffect, useState } from 'react';
 import { ScreenLoading } from './ScreenState.tsx';
 import type { Ammunition, Firearm, Match, Part, Purchase, Session } from '../lib/types.ts';
-import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
+import { deleteOne, getAll, getOne, getSettings, putOne } from '../lib/db.ts';
 import { activeOnly } from '../lib/softDelete.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { costTotals, gunSpend, purchaseAmmoLink, roundsFired } from '../lib/costing.ts';
 import { recentValues } from '../lib/suggest.ts';
+import { filterHidden } from '../lib/listEdits.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { SuggestField } from './SuggestField.tsx';
 import { InfoTip } from './InfoTip.tsx';
@@ -207,6 +208,7 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange }: {
   // dirty baseline on edit — otherwise a clean close of an existing purchase
   // fires "Discard changes?" untouched.
   const [loaded, setLoaded] = useState<boolean>(!editing);
+  const [hiddenSuggestions, setHiddenSuggestions] = useState<Record<string, string[]>>({});
   const dirty = useDirtyTracker({ date, category, item, vendor, cost, rounds, ammoId, addToInv, notes }, loaded);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
@@ -220,6 +222,9 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange }: {
       if (!alive) return;
       setPastVendors(recentValues(all.map((p) => ({ date: p.date, value: p.vendor }))));
       setPastItems(recentValues(all.map((p) => ({ date: p.date, value: p.item }))));
+    });
+    void getSettings<{ hiddenSuggestions?: Record<string, string[]> }>().then((s) => {
+      if (alive) setHiddenSuggestions(s?.hiddenSuggestions ?? {});
     });
     if (id !== undefined) {
       void getOne<Purchase>('purchases', id).then((p) => {
@@ -326,7 +331,7 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange }: {
         <SuggestField label="Item" value={item} onChange={setItem} suggestions={pastItems}
           placeholder={category === 'Ammo Purchase' ? '1,000 rds Blazer Brass 115gr' : 'Safariland holster'} />
         <SuggestField label="Vendor (optional)" value={vendor} onChange={setVendor}
-          suggestions={pastVendors} placeholder="Primary Arms" />
+          suggestions={filterHidden(pastVendors, hiddenSuggestions, 'vendors')} placeholder="Primary Arms" />
         <label className="field">Cost ($)
           <input type="number" inputMode="decimal" min="0" step="0.01" value={cost}
             onChange={(e) => setCost(e.target.value)} placeholder="0.00" />

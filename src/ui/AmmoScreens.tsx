@@ -5,7 +5,7 @@
 import { useEffect, useState } from 'react';
 import { ScreenLoading } from './ScreenState.tsx';
 import type { Ammunition, Purchase, Session } from '../lib/types.ts';
-import { applyAmmoMerge, deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
+import { applyAmmoMerge, deleteOne, getAll, getOne, getSettings, putOne } from '../lib/db.ts';
 import { activeOnly } from '../lib/softDelete.ts';
 import { todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
@@ -13,6 +13,7 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { ammoCurrentCostPerRound, costPerRoundAfterBuy, lowAmmo } from '../lib/costing.ts';
 import { combinedCan, findSameAmmo, repointAmmoUsage, repointPurchaseIds } from '../lib/ammoMerge.ts';
 import { recentValues } from '../lib/suggest.ts';
+import { filterHidden } from '../lib/listEdits.ts';
 import { SuggestField } from './SuggestField.tsx';
 import { ConfirmSheet, DiscardChangesSheet, Sheet } from './Sheet.tsx';
 import { useDirtyTracker } from './useDirtyTracker.ts';
@@ -128,6 +129,7 @@ export function AmmoForm({ id, onSaved, onCancel, onDirtyChange }: {
   // getOne load — otherwise the baseline is empty strings and a clean close
   // fires "Discard changes?". New: loaded starts true; nothing to wait for.
   const [loaded, setLoaded] = useState<boolean>(!editing);
+  const [hiddenSuggestions, setHiddenSuggestions] = useState<Record<string, string[]>>({});
   const dirty = useDirtyTracker({ brand, caliber, grain, bulletType, quantity, costPerRound, notes, purchRounds, purchCost, purchVendor, justCounting }, loaded);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
@@ -160,6 +162,9 @@ export function AmmoForm({ id, onSaved, onCancel, onDirtyChange }: {
         setLoaded(true); // AUDIT FIX: seed dirty baseline now, not before load.
       });
     }
+    void getSettings<{ hiddenSuggestions?: Record<string, string[]> }>().then((s) => {
+      if (alive) setHiddenSuggestions(s?.hiddenSuggestions ?? {});
+    });
     return () => { alive = false; };
   }, [id]);
 
@@ -313,9 +318,9 @@ export function AmmoForm({ id, onSaved, onCancel, onDirtyChange }: {
       <FormProblem problem={problem} />
       <div className="card">
         <SuggestField label="Brand" value={brand} onChange={setBrand}
-          suggestions={pastBrands} placeholder="Blazer Brass" />
+          suggestions={filterHidden(pastBrands, hiddenSuggestions, 'ammo-brands')} placeholder="Blazer Brass" />
         <SuggestField label="Caliber" value={caliber} onChange={setCaliber}
-          suggestions={pastCalibers} placeholder="9mm" />
+          suggestions={filterHidden(pastCalibers, hiddenSuggestions, 'calibers')} placeholder="9mm" />
         <label className="field">Grain
           <input type="number" inputMode="numeric" value={grain} onChange={(e) => setGrain(e.target.value)} placeholder="115" />
         </label>
@@ -389,7 +394,7 @@ export function AmmoForm({ id, onSaved, onCancel, onDirtyChange }: {
                   onChange={(e) => setPurchCost(e.target.value)} placeholder="299.99" />
               </label>
               <SuggestField label="Vendor (optional)" value={purchVendor} onChange={setPurchVendor}
-                suggestions={pastVendors} placeholder="Primary Arms" />
+                suggestions={filterHidden(pastVendors, hiddenSuggestions, 'vendors')} placeholder="Primary Arms" />
               <p className="report-note">
                 One Save does it all: the buy lands under Costs &amp; Purchases, the rounds go
                 on the shelf, and every round you shoot from this can gets priced from your

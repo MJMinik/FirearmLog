@@ -25,6 +25,7 @@ import { ChartReadout } from './ChartReadout.tsx';
 import type { View } from './nav.ts';
 import { RoundsByMonthChart } from './screens.tsx';
 import { SuggestField, noAutofillProps } from './SuggestField.tsx';
+import { filterHidden } from '../lib/listEdits.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { useDirtyTracker } from './useDirtyTracker.ts';
 import { FormProblem } from './FormProblem.tsx';
@@ -37,6 +38,7 @@ import { ScreenError } from './ScreenState.tsx';
 
 export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open: (v: View) => void }) {
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [hiddenSuggestions, setHiddenSuggestions] = useState<Record<string, string[]>>({});
   const [skills, setSkills] = useState<SkillAssessment[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
@@ -72,8 +74,9 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
     setError(false);
     void (async () => {
       try {
-        const [g, s, se, m, f, d, c, mf] = await Promise.all([
+        const [g, s, se, _hiddenSettings, m, f, d, c, mf] = await Promise.all([
           getAll<Goal>('goals'), getAll<SkillAssessment>('skills'), getAll<Session>('sessions'),
+          getSettings<{ hiddenSuggestions?: Record<string, string[]> }>(),
           getAll<Match>('matches'), getAll<Firearm>('firearms'), getAll<DrillDef>('drills'),
           getAll<Classifier>('classifiers'), getAll<MalfunctionEntry>('malfunctions')
         ]);
@@ -83,6 +86,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
         const live = activeOnly(se);
         const trashedIds = trashedIdSet(se);
         setGoals(sortGoals(g)); setSkills(s); setSessions(live); setMatches(m);
+        setHiddenSuggestions((_hiddenSettings as { hiddenSuggestions?: Record<string, string[]> } | undefined)?.hiddenSuggestions ?? {});
         setFirearms(f); setDrills(d); setClassifiers(c);
         setMalfunctions(activeMalfunctions(mf, trashedIds));
         const settings = await getSettings<AppSettings>();
@@ -182,7 +186,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
                 }} />
             </label>
             <SuggestField label="Category (optional)" value={category} onChange={setCategory}
-              name="fl-goal-cat" suggestions={cats} placeholder="Speed"
+              name="fl-goal-cat" suggestions={filterHidden(cats, hiddenSuggestions, 'goal-categories')} placeholder="Speed"
               inputRef={goalCatRef} enterKeyHint="next" suppressOpenOnFocus={suppressCatOpen}
               onEnter={() => goalTargetRef.current?.focus()} />
             <label className="field">Target (optional)
@@ -256,7 +260,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
       <HeatmapCard sessions={sessions} />
 
       {editing && (
-        <GoalEditSheet goal={editing} categories={cats}
+        <GoalEditSheet goal={editing} categories={filterHidden(cats, hiddenSuggestions, 'goal-categories')}
           onClose={() => setEditing(null)}
           onSaved={() => { setEditing(null); setBump((b) => b + 1); }} />
       )}

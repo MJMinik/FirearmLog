@@ -4,12 +4,13 @@
 // inventory until you assign it to a gun. Includes a printable report.
 import { useEffect, useState } from 'react';
 import type { Firearm, Optic, Part } from '../lib/types.ts';
-import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
+import { deleteOne, getAll, getOne, getSettings, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { isBatteryDue } from '../lib/optics.ts';
 import { recentValues } from '../lib/suggest.ts';
+import { filterHidden } from '../lib/listEdits.ts';
 import { buildPartsReportHtml, opticLabel } from '../lib/partsReport.ts';
 import { ConfirmSheet, DiscardChangesSheet } from './Sheet.tsx';
 import { useDirtyTracker } from './useDirtyTracker.ts';
@@ -160,6 +161,7 @@ export function PartForm({ id, onSaved, onCancel, onDirtyChange }: {
   // load — otherwise the baseline is empty strings and a clean close fires
   // "Discard changes?" untouched. On NEW, loaded starts true immediately.
   const [loaded, setLoaded] = useState<boolean>(!editing);
+  const [hiddenSuggestions, setHiddenSuggestions] = useState<Record<string, string[]>>({});
   const dirty = useDirtyTracker({ firearmIdSel, name, quantity, partNumber, cost, vendor, datePurchased, notes }, loaded);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
@@ -182,6 +184,9 @@ export function PartForm({ id, onSaved, onCancel, onDirtyChange }: {
         setLoaded(true); // AUDIT FIX: seed dirty baseline once state is populated.
       });
     }
+    void getSettings<{ hiddenSuggestions?: Record<string, string[]> }>().then((s) => {
+      if (alive) setHiddenSuggestions(s?.hiddenSuggestions ?? {});
+    });
     return () => { alive = false; };
   }, [id]);
 
@@ -232,7 +237,7 @@ export function PartForm({ id, onSaved, onCancel, onDirtyChange }: {
       <FormProblem problem={problem} />
       <div className="card">
         <SuggestField label="Part name" value={name} onChange={setName} name="fl-part-name"
-          suggestions={nameSuggestions} placeholder="Recoil spring" />
+          suggestions={filterHidden(nameSuggestions, hiddenSuggestions, 'part-names')} placeholder="Recoil spring" />
         <label className="field">Firearm
           <select value={firearmIdSel} onChange={(e) => setFirearmIdSel(e.target.value)}>
             <option value="">Any / Universal</option>
@@ -252,7 +257,7 @@ export function PartForm({ id, onSaved, onCancel, onDirtyChange }: {
             onChange={(e) => setCost(e.target.value)} placeholder="0.00" />
         </label>
         <SuggestField label="Vendor (optional)" value={vendor} onChange={setVendor} name="fl-part-vendor"
-          suggestions={vendorSuggestions} placeholder="Brownells" />
+          suggestions={filterHidden(vendorSuggestions, hiddenSuggestions, 'vendors')} placeholder="Brownells" />
         <label className="field">Date purchased
           <input type="date" value={datePurchased} onChange={(e) => setDatePurchased(e.target.value)} />
         </label>

@@ -1,13 +1,14 @@
 // Settings (App & Data group). A lean preferences home: the coaching-remarks
-// toggle, and a second entry to the guarded "Clear all data" wipe (also kept in
-// Tour & Setup). Preferences read/write through the existing settings-save path
-// (putSettings) — no new storage mechanism.
+// toggle, manage-lists entry, and a second entry to the guarded "Clear all data"
+// wipe (also kept in Tour & Setup). Preferences read/write through the existing
+// settings-save path (putSettings) — no new storage mechanism.
 import { useEffect, useState } from 'react';
 import { getSettings, putSettings } from '../lib/db.ts';
 import type { AppSettings } from '../lib/types.ts';
 import { ClearAllSheet } from './ClearAllSheet.tsx';
+import type { View } from './nav.ts';
 
-export function SettingsScreen({ onBack }: { onBack: () => void }) {
+export function SettingsScreen({ onBack, open }: { onBack: () => void; open?: (v: View) => void }) {
   const [remarks, setRemarks] = useState(true);
   const [loaded, setLoaded] = useState(false);
   const [clearing, setClearing] = useState(false);
@@ -47,6 +48,17 @@ export function SettingsScreen({ onBack }: { onBack: () => void }) {
             </span>
           </span>
           <span className={`switch${remarks ? ' on' : ''}`} aria-hidden="true"><span className="switch-thumb" /></span>
+        </button>
+      </div>
+
+      <div className="card">
+        <h2>Lists</h2>
+        <button className="row-tap" onClick={() => open?.({ kind: 'manage-lists' })}>
+          <span className="label">
+            Manage lists
+            <div className="row-sub">Rename or tidy the names your log suggests — locations, brands, vendors, and more.</div>
+          </span>
+          <span className="row-chev" aria-hidden="true">›</span>
         </button>
       </div>
 
