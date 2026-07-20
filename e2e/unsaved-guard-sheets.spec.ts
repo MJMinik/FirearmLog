@@ -194,7 +194,10 @@ test.describe('edit-mode dirty gate (audit fix)', () => {
     await expect(page.getByRole('heading', { name: 'Edit Gun' })).toBeVisible();
     // Change the name — now the form is genuinely dirty.
     const nameField = page.getByLabel('What this Gun is called');
-    const original = (await nameField.inputValue()) || '';
+    // Wait for the async record load to populate the field BEFORE reading it —
+    // otherwise `original` reads '' and the fill races the load (July 20 2026).
+    await expect(nameField).not.toHaveValue('');
+    const original = await nameField.inputValue();
     await nameField.fill(original + ' edited');
     await page.getByRole('main').getByRole('button', { name: 'Cancel' }).click();
     // Discard confirm appears; Keep editing brings us back with the edit intact.
