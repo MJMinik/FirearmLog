@@ -71,10 +71,19 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange }: {
   // once state is populated; useDirtyTracker holds off until then. On a NEW
   // gun `loaded` starts true (nothing to load) so tracking begins immediately.
   const [loaded, setLoaded] = useState<boolean>(!editing);
+  // AUDIT FIX follow-up (July 20 2026): `lifetime` is populated by a SECOND
+  // async effect (the A1 lifetime math below reads the gun plus every session
+  // and match), which usually resolves AFTER the record load above flips
+  // `loaded`. Seeding the baseline on `loaded` alone let lifetime jump from
+  // its initial '0' to the real total after the baseline latched — so a clean
+  // edit read dirty and Cancel fired "Discard changes?" (the exact HIGH the
+  // gate exists to prevent; it was a race, which is why CI sometimes passed).
+  // The tracker now waits for BOTH loads. New gun: both start true.
+  const [lifetimeLoaded, setLifetimeLoaded] = useState<boolean>(!editing);
   const dirty = useDirtyTracker({
     name, manufacturer, model, caliber, category, serial, acquired,
     startCount, lifetime, deepClean, recoilSpring, notes, referenceId,
-  }, loaded);
+  }, loaded && lifetimeLoaded);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
@@ -141,6 +150,9 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange }: {
       setLoggedRounds(logged);
       setStoredLifetime(total);
       setLifetime(String(total));
+      // AUDIT FIX follow-up: only now is the full signature at its true
+      // loaded values — release the dirty-tracker's baseline gate.
+      setLifetimeLoaded(true);
     })();
     return () => { alive = false; };
   }, [id]);
