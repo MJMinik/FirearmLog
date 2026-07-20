@@ -142,12 +142,15 @@ export function collectValues(
     for (const rec of records) {
       const v = getField(rec, src.field);
       if (!v.trim()) continue;
-      // Use updatedAt (ms) as the date key for ordering — convert to a string
-      // that sorts correctly (zero-padded numeric string sorts like a number).
-      const rawKey = src.recencyField === 'date'
-        ? String(rec['date'] ?? '')
-        : String(rec['updatedAt'] ?? 0).padStart(15, '0');
-      const dateKey = rawKey;
+      // Normalize all recency keys to a zero-padded ms-epoch number so that
+      // date-sourced fields (ISO strings) and updatedAt-sourced fields (ms numbers)
+      // sort on the same scale. Without this, ISO strings ('2026-07-20') always
+      // compare greater than zero-padded ms strings, permanently boosting date-sourced
+      // vendors over parts vendors regardless of actual recency.
+      const epochMs = src.recencyField === 'date'
+        ? (Date.parse(String(rec['date'] ?? '')) || 0)
+        : Number(rec['updatedAt'] ?? 0);
+      const dateKey = String(epochMs).padStart(15, '0');
       rows.push({ date: dateKey, value: v });
     }
   }

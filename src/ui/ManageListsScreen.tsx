@@ -482,11 +482,24 @@ function RenameSheet({ def, oldValue, recordsByStore, hiddenSuggestions, metaIns
       }
       // For the instructors list: also update the legacy meta row so the old name
       // stops being suggested from there (spec fix 5b).
+      // Dedupe case-insensitively: replace the old entry with targetValue, then
+      // strip any remaining entries that are case-duplicates of the new name.
       if (def.id === 'instructors' && metaInstructors && metaInstructors.length > 0) {
         const oldNeedle = oldValue.trim().toLowerCase();
-        const updatedMeta = metaInstructors.map((v) =>
+        const targetNorm = targetValue.trim().toLowerCase();
+        const mapped = metaInstructors.map((v) =>
           v.trim().toLowerCase() === oldNeedle ? targetValue : v
         );
+        // Remove all case-duplicates of the new name, keeping only the first occurrence
+        const seen = new Set<string>();
+        const updatedMeta = mapped.filter((v) => {
+          const norm = v.trim().toLowerCase();
+          if (norm === targetNorm) {
+            if (seen.has(norm)) return false;
+            seen.add(norm);
+          }
+          return true;
+        });
         await putOne('meta', { key: 'instructors', value: updatedMeta });
       }
       onDone();

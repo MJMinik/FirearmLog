@@ -393,3 +393,37 @@ test('LIST_DEFS: every source has a recencyField', () => {
     }
   }
 });
+
+// ---------------------------------------------------------------------------
+// Fix 1: mixed-source recency normalization
+// A parts vendor updated more recently than a purchases vendor must rank first
+// even though purchases use date (ISO) and parts use updatedAt (ms-epoch).
+// ---------------------------------------------------------------------------
+
+test('collectValues: parts vendor (updatedAt) ranks before purchases vendor (date) when more recent', () => {
+  // purchases vendor last used 2026-01-15 (ISO date)
+  // parts vendor updatedAt = Date.parse('2026-06-15') = epoch ms for June 15 2026
+  // June 2026 is more recent than January 2026, so parts vendor must rank first.
+  const juneDateMs = Date.parse('2026-06-15'); // ~1750xxx ms
+  const records: RecordsByStore = {
+    purchases: [purchase({ id: 'pu-1', vendor: 'PurchaseVendor', date: '2026-01-15', updatedAt: 1000 })],
+    parts: [{ ...part({ id: 'pt-1', vendor: 'PartsVendor', updatedAt: juneDateMs }) }],
+  };
+  const { visible } = collectValues(records, vendorsDef, new Set());
+  // 'PartsVendor' (parts, updatedAt = June 2026) must rank before 'PurchaseVendor' (purchases, date = Jan 2026)
+  assert.equal(visible[0], 'PartsVendor', 'more-recent parts vendor must rank first');
+  assert.equal(visible[1], 'PurchaseVendor');
+});
+
+test('collectValues: purchases vendor (date) ranks before parts vendor (updatedAt) when more recent', () => {
+  // purchases vendor last used 2026-07-01 (July 2026) — most recent
+  // parts vendor updatedAt = Date.parse('2026-01-01') = January 2026 — older
+  const janDateMs = Date.parse('2026-01-01');
+  const records: RecordsByStore = {
+    purchases: [purchase({ id: 'pu-2', vendor: 'RecentPurchaseVendor', date: '2026-07-01', updatedAt: 1000 })],
+    parts: [{ ...part({ id: 'pt-2', vendor: 'OlderPartsVendor', updatedAt: janDateMs }) }],
+  };
+  const { visible } = collectValues(records, vendorsDef, new Set());
+  assert.equal(visible[0], 'RecentPurchaseVendor', 'more-recent purchases vendor must rank first');
+  assert.equal(visible[1], 'OlderPartsVendor');
+});
