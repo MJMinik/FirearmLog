@@ -2,12 +2,13 @@
 // moved to its own section (PartsScreen.tsx) per Michael's June 14 request.
 import { useEffect, useState } from 'react';
 import type { Firearm, Optic } from '../lib/types.ts';
-import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
+import { deleteOne, getAll, getOne, getSettings, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { isBatteryDue, normalizeBatteryLog } from '../lib/optics.ts';
 import { recentValues } from '../lib/suggest.ts';
+import { filterHidden } from '../lib/listEdits.ts';
 import { ConfirmSheet, DiscardChangesSheet, Sheet } from './Sheet.tsx';
 import { useDirtyTracker } from './useDirtyTracker.ts';
 import { ScreenError } from './ScreenState.tsx';
@@ -198,6 +199,7 @@ export function OpticForm({ id, firearmId, onSaved, onCancel, onDirtyChange }: {
   // AUDIT FIX (July 20 2026): gate the dirty baseline on the async load so
   // an untouched edit doesn't fire "Discard changes?".
   const [loaded, setLoaded] = useState<boolean>(!editing);
+  const [hiddenSuggestions, setHiddenSuggestions] = useState<Record<string, string[]>>({});
   const dirty = useDirtyTracker({ firearmIdSel, make, model, installDate, dotSize, zeroDist, mountHeight, torqueSpec, settingsSnapshot, notes }, loaded);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
@@ -223,6 +225,9 @@ export function OpticForm({ id, firearmId, onSaved, onCancel, onDirtyChange }: {
     } else if (firearmId) {
       setFirearmIdSel(firearmId);
     }
+    void getSettings<{ hiddenSuggestions?: Record<string, string[]> }>().then((s) => {
+      if (alive) setHiddenSuggestions(s?.hiddenSuggestions ?? {});
+    });
     return () => { alive = false; };
   }, [id, firearmId]);
 
@@ -281,9 +286,9 @@ export function OpticForm({ id, firearmId, onSaved, onCancel, onDirtyChange }: {
           </select>
         </label>
         <SuggestField label="Make" value={make} onChange={setMake} name="fl-optic-make"
-          suggestions={makeSuggestions} placeholder="Trijicon" />
+          suggestions={filterHidden(makeSuggestions, hiddenSuggestions, 'optic-makes')} placeholder="Trijicon" />
         <SuggestField label="Model" value={model} onChange={setModel} name="fl-optic-model"
-          suggestions={modelSuggestions} placeholder="RMR Type 2" />
+          suggestions={filterHidden(modelSuggestions, hiddenSuggestions, 'optic-models')} placeholder="RMR Type 2" />
         <label className="field">Install date
           <input type="date" value={installDate} onChange={(e) => setInstallDate(e.target.value)} />
         </label>

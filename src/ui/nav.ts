@@ -37,4 +37,6 @@ export type View =
   | { kind: 'sync' }
   | { kind: 'free-space' }
   | { kind: 'your-data' }
-  | { kind: 'drill-history'; name: string };
+  | { kind: 'drill-history'; name: string }
+  | { kind: 'manage-lists' }
+  | { kind: 'list-detail'; listId: string };

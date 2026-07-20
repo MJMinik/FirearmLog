@@ -14,6 +14,7 @@ import { drillsForContext } from '../lib/drillFilter.ts';
 import { inventoryAfterUsageChange } from '../lib/costing.ts';
 import { MALF_TYPES, CLEAR_METHODS, mergeOptions, magazinesForFirearm, parseRoundCount } from '../lib/malfunctions.ts';
 import { recentValues } from '../lib/suggest.ts';
+import { filterHidden } from '../lib/listEdits.ts';
 import { suggestAmmoRow, sharedCaliber } from '../lib/ammoSuggest.ts';
 import {
   buildChecklistPrintHtml, checklistItemsForCategory, checklistProgress, itemState, newChecklist,
@@ -93,6 +94,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const [ammoTouched, setAmmoTouched] = useState(false);
   const [recentAmmoIds, setRecentAmmoIds] = useState<string[]>([]);
   const [pastLocations, setPastLocations] = useState<string[]>([]);
+  const [hiddenSuggestions, setHiddenSuggestions] = useState<Record<string, string[]>>({});
 
   const [kind, setKind] = useState('practice');
   const [date, setDate] = useState(initialDate ?? todayKey());
@@ -209,8 +211,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       const instructorRow = await getOne<{ key: string; value: string[] }>('meta', 'instructors');
       const sessionInstructors = recentValues(activeOnly(allSessions).map((s) => ({ date: s.date, value: s.instructor ?? '' })));
       if (alive) setInstructors([...new Set([...sessionInstructors, ...(instructorRow?.value ?? [])])]);
-      const settings = await getSettings<AppSettings>();
-      if (alive) setCustomItems(normalizeCustomItems(settings?.checklistCustomItems));
+      const settings = await getSettings<AppSettings & { hiddenSuggestions?: Record<string, string[]> }>();
+      if (alive) {
+        setCustomItems(normalizeCustomItems(settings?.checklistCustomItems));
+        setHiddenSuggestions(settings?.hiddenSuggestions ?? {});
+      }
       if (id !== undefined) {
         const [s, allMedia, allMalfs] = await Promise.all([
           getOne<Session>('sessions', id),
@@ -690,7 +695,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         {/* F3: tapping a suggestion sets the value by click alone (no change
             event bubbles), so these two SuggestFields flip `touched` directly. */}
         <SuggestField label="Where" value={location} onChange={(v) => { setLocation(v); setTouched(true); }}
-          suggestions={pastLocations} placeholder="Shoot Straight: University" />
+          suggestions={filterHidden(pastLocations, hiddenSuggestions, 'locations')} placeholder="Shoot Straight: University" />
         {kind === 'class' && (
           // One "creatable" field (same as Where): type a name or tap a past
           // instructor from the suggestions — whatever's in the box IS the
@@ -698,7 +703,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           // "add" step, and shows up as a suggestion next time. name="instructor"
           // (no "name" token) keeps iOS's contact AutoFill bar away.
           <SuggestField label="Instructor" value={instructor} onChange={(v) => { setInstructor(v); setTouched(true); }}
-            suggestions={instructors} placeholder="Ben Stoeger" name="instructor" />
+            suggestions={filterHidden(instructors, hiddenSuggestions, 'instructors')} placeholder="Ben Stoeger" name="instructor" />
         )}
       </div>
 
