@@ -9,6 +9,8 @@ import { exportSnapshot, getSettings, localLastModified, restoreSnapshot, putSet
 import type { AppSettings } from '../lib/types.ts';
 import { fileTooLargeMessage, storageShortfallMessage, MAX_FLOG_BYTES } from '../lib/inputLimits.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
+import { deliverFile, isIOS, isStandalone } from './deliverFile.ts';
+import type { DeliveryOutcome } from './deliverFile.ts';
 
 // iOS/iPadOS is the one platform where a saved file goes through the Files
 // picker (the user chooses the spot, and the app never learns it). Everywhere
@@ -17,8 +19,12 @@ import { ConfirmSheet, Sheet } from './Sheet.tsx';
 // a narrow desktop window is still a desktop. (iPadOS reports itself as
 // "MacIntel" with touch, hence the second clause.)
 function isIOSDevice(): boolean {
-  return /iP(hone|ad|od)/.test(navigator.userAgent)
-    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return isIOS();
+}
+
+/** Installed-to-home-screen iPhone/iPad: the standalone-PWA delivery path. */
+function isStandaloneIOS(): boolean {
+  return isIOS() && isStandalone();
 }
 
 function stampWords(ms: number): string {
@@ -30,7 +36,7 @@ function stampWords(ms: number): string {
 
 type Stage =
   | { name: 'idle'; message?: string }
-  | { name: 'save-ready'; url: string; summary: string }
+  | { name: 'save-ready'; blob: Blob; summary: string }
   | { name: 'confirm'; snapshot: Snapshot; warning: string; label: string }
   | { name: 'working'; message: string };
 
@@ -58,11 +64,10 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
       const ab = new ArrayBuffer(bytes.length);
       new Uint8Array(ab).set(bytes);
       const blob = new Blob([ab], { type: 'application/octet-stream' });
-      const url = URL.createObjectURL(blob);
       const sessions = (snapshot.stores.sessions ?? []).length;
       setStage({
         name: 'save-ready',
-        url,
+        blob,
         summary: `${sessions} sessions and ${snapshot.media.length} photos/videos, packed and ready.`
       });
     } catch (e) {
@@ -70,34 +75,57 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
     }
   }
 
-  function saveDone(url: string, saved = false) {
-    setTimeout(() => URL.revokeObjectURL(url), 120000);
-    // Only stamp the backup time when the user actually tapped Save (not when
-    // they just closed the sheet). Additive write — records are untouched.
-    if (saved) {
-      const now = Date.now();
-      // S-6: stamp the backup time and clear the Home reminder only AFTER the
-      // write succeeds. It was fire-and-forget before, so a failed settings write
-      // still moved the "last saved" line and cleared the reminder — claiming a
-      // backup we couldn’t record (a charter §1 honesty bug). On failure the
-      // reminder stays up (honest) and the card says so; the file itself has
-      // already downloaded either way.
-      void putSettings<AppSettings>({ lastBackupAt: now })
-        .then(() => {
-          setLastSavedAt(now);
-          onBackedUp?.();
-        })
-        .catch(() => setStage({
-          name: 'idle',
-          message: 'File saved — but I couldn’t record the backup time on this device, so your Home reminder will stay up until the next successful save.',
-        }));
+  function afterDelivery(outcome: DeliveryOutcome) {
+    // The user cancelled the Share sheet on iOS — treat as "backed out without
+    // saving." The Home reminder stays up (honest); no time stamped.
+    if (outcome.kind === 'share' && !outcome.shared) {
+      setStage({ name: 'idle' });
+      return;
     }
+    const now = Date.now();
+    // S-6: stamp the backup time and clear the Home reminder only AFTER the
+    // write succeeds. It was fire-and-forget before, so a failed settings write
+    // still moved the "last saved" line and cleared the reminder — claiming a
+    // backup we couldn't record (a charter §1 honesty bug). On failure the
+    // reminder stays up (honest) and the card says so; the file itself has
+    // already reached the user either way.
+    void putSettings<AppSettings>({ lastBackupAt: now })
+      .then(() => {
+        setLastSavedAt(now);
+        onBackedUp?.();
+      })
+      .catch(() => setStage({
+        name: 'idle',
+        message: 'File handed off — but I couldn’t record the backup time on this device, so your Home reminder will stay up until the next successful save.',
+      }));
     setStage({
       name: 'idle',
-      message: isIOSDevice()
-        ? 'File saved — FirearmLog.flog is in the spot you picked in Save to Files. Load it on your other device and you\u2019re in sync.'
-        : 'File saved — FirearmLog.flog is in your Downloads folder, unless you chose another spot. Put it where your other device can see it, then load it there.'
+      message: doneMessage(outcome),
     });
+  }
+
+  function doneMessage(outcome: DeliveryOutcome): string {
+    if (outcome.kind === 'share') {
+      return 'File handed to the iPhone Share sheet — pick Save to Files (or AirDrop, Mail, etc.) to keep it. Load it on your other device and you’re in sync.';
+    }
+    if (outcome.kind === 'window') {
+      return 'File opened in a new window — use your browser’s Save to keep it, then put it where your other device can see it.';
+    }
+    return isIOSDevice()
+      ? 'File saved — FirearmLog.flog is in the spot you picked in Save to Files. Load it on your other device and you’re in sync.'
+      : 'File saved — FirearmLog.flog is in your Downloads folder, unless you chose another spot. Put it where your other device can see it, then load it there.';
+  }
+
+  async function handleSaveNow(blob: Blob) {
+    try {
+      const outcome = await deliverFile(blob, 'FirearmLog.flog', 'application/octet-stream');
+      afterDelivery(outcome);
+    } catch (e) {
+      setStage({
+        name: 'idle',
+        message: e instanceof Error ? `The save did not finish: ${e.message}` : 'The save did not finish.',
+      });
+    }
   }
 
   async function filePicked(file: File) {
@@ -126,7 +154,7 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
   async function reallyLoad(snapshot: Snapshot) {
     // S-3: preflight free space before a whole-log restore. Media is written
     // add-before-delete (never loses photos), so peak storage briefly holds BOTH
-    // the old and new photos — if the device can’t fit that, say so up front in
+    // the old and new photos — if the device can't fit that, say so up front in
     // plain words instead of dying on a raw QuotaExceededError mid-write. An
     // unknown estimate never blocks (storageShortfallMessage returns null).
     const mediaBytes = snapshot.media.reduce(
@@ -182,9 +210,26 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
         </>
       )}
       {stage.name === 'save-ready' && (
-        <Sheet title="Your Data File Is Ready" onClose={() => saveDone(stage.url)}>
+        <Sheet title="Your Data File Is Ready" onClose={() => setStage({ name: 'idle' })}>
           <p className="report-note" style={{ marginBottom: 10 }}>{stage.summary}</p>
-          {isIOSDevice() ? (
+          {isStandaloneIOS() ? (
+            <>
+              <p className="report-note" style={{ marginBottom: 10 }}>
+                After you tap <strong>Save the File Now</strong> below, your iPhone slides up the
+                Share sheet. Here's what to do on it:
+              </p>
+              <ol className="sync-steps">
+                <li>Tap <strong>Save to Files</strong>.</li>
+                <li>Pick where to keep it — <strong>iCloud Drive</strong> works well, and Google Drive
+                  or any folder works too. Then tap <strong>Save</strong>.</li>
+                <li>If it asks about an existing FirearmLog.flog, choose <strong>Replace</strong>.</li>
+              </ol>
+              <p className="report-note" style={{ marginBottom: 12 }}>
+                From the Share sheet you can also AirDrop the file straight to your Mac or another
+                iPhone, or send it to yourself in Mail.
+              </p>
+            </>
+          ) : isIOSDevice() ? (
             <>
               <p className="report-note" style={{ marginBottom: 10 }}>
                 After you tap <strong>Save the File Now</strong> below, your iPhone shows a file preview screen.
@@ -213,10 +258,9 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
             Heads up: your "back up your data" reminder on the Home screen only clears once you've
             actually saved the file. If you back out without saving, the reminder stays — on purpose.
           </p>
-          <a className="button" href={stage.url} download="FirearmLog.flog"
-            onClick={() => saveDone(stage.url, true)}>
+          <button className="button" onClick={() => void handleSaveNow(stage.blob)}>
             Save the File Now
-          </a>
+          </button>
         </Sheet>
       )}
       {stage.name === 'confirm' && (
