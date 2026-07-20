@@ -328,7 +328,8 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange }: {
             {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
           </select>
         </label>
-        <SuggestField label="Item" value={item} onChange={setItem} suggestions={pastItems}
+        <SuggestField label="Item" value={item} onChange={setItem}
+          suggestions={filterHidden(pastItems, hiddenSuggestions, 'purchase-items')}
           placeholder={category === 'Ammo Purchase' ? '1,000 rds Blazer Brass 115gr' : 'Safariland holster'} />
         <SuggestField label="Vendor (optional)" value={vendor} onChange={setVendor}
           suggestions={filterHidden(pastVendors, hiddenSuggestions, 'vendors')} placeholder="Primary Arms" />

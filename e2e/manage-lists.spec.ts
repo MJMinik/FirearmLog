@@ -3,7 +3,7 @@
 // Selector discipline: scope to getByRole('main'), { exact: true } where names
 // could collide with stepper buttons or other controls.
 import { test, expect } from '@playwright/test';
-import { seedDemo, gotoSection } from './helpers';
+import { seedDemo, gotoSection, gotoTab } from './helpers';
 
 /** Navigate to Settings → Manage lists from any starting point. */
 async function gotoManageLists(page: import('@playwright/test').Page) {
@@ -118,6 +118,83 @@ test.describe('Rename: basic flow', () => {
     await expect(page.getByRole('dialog', { name: 'Rename' })).toHaveCount(0);
     await expect(page.getByRole('heading', { name: 'Locations', exact: true })).toBeVisible();
     await expect(main.getByText(`${safeName} (dry)`, { exact: false })).toBeVisible();
+
+    // Verify the form's suggestion field reflects the rename:
+    // NEW name is suggested, OLD name is NOT.
+    await gotoTab(page, 'Log');
+    await page.getByRole('main').getByRole('button', { name: /Log Session/i }).first().click();
+    await expect(page.getByRole('heading', { name: 'Log Session' }).or(
+      page.getByRole('heading', { name: 'New Session' })
+    ).first()).toBeVisible();
+    const whereField = page.getByLabel('Where').first();
+    await whereField.click();
+    await page.waitForTimeout(300);
+    const suggestions = page.locator('.suggest-list');
+    await expect(suggestions.getByText(`${safeName} (dry)`, { exact: true })).toBeVisible();
+    await expect(suggestions.getByText(safeName, { exact: true })).toHaveCount(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// 3b. Rename: combine / collision
+// ---------------------------------------------------------------------------
+
+test.describe('Rename: combine / collision', () => {
+  test('renaming onto an existing value shows combine dialog; surviving casing is the existing value', async ({ page }) => {
+    await seedDemo(page);
+
+    // Navigate to Locations which should have multiple values from demo data
+    await gotoList(page, 'Locations');
+    const main = page.getByRole('main');
+
+    // We need at least two visible values to test a combine.
+    const rows = main.locator('.setting-row');
+    const rowCount = await rows.count();
+    if (rowCount < 2) { test.skip(); return; }
+
+    // Read the first two names
+    const firstName = ((await rows.nth(0).locator('.setting-label').first().textContent()) ?? '').trim();
+    const secondName = ((await rows.nth(1).locator('.setting-label').first().textContent()) ?? '').trim();
+    if (!firstName || !secondName) { test.skip(); return; }
+
+    // Rename the first value onto the second (case-insensitively)
+    await rows.nth(0).getByRole('button', { name: 'Rename', exact: true }).click();
+    const sheet = page.getByRole('dialog', { name: 'Rename', exact: true });
+    await expect(sheet).toBeVisible();
+    const input = sheet.locator('input').first();
+    await input.clear();
+    // Use uppercase of the second name to confirm casing resolves to the existing one
+    await input.fill(secondName.toUpperCase());
+    await sheet.getByRole('button', { name: 'Save', exact: true }).click();
+
+    // Combine dialog appears (not rename) with a count
+    await expect(sheet.getByText('already exists', { exact: false })).toBeVisible();
+    await expect(sheet.getByText('Combine', { exact: false })).toBeVisible();
+    // Count must mention at least 1 record
+    await expect(sheet.getByText(/\d+/, { })).toBeVisible();
+
+    // Confirm the combine
+    await sheet.getByRole('button', { name: 'Combine', exact: true }).click();
+
+    // Sheet closes; list detail shows the EXISTING casing (secondName), not the typed uppercase
+    await expect(page.getByRole('dialog', { name: 'Rename' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Locations', exact: true })).toBeVisible();
+    await expect(main.getByText(secondName, { exact: true })).toBeVisible();
+    await expect(main.getByText(secondName.toUpperCase(), { exact: true })).toHaveCount(0);
+    // The old first name is gone
+    await expect(main.getByText(firstName, { exact: true })).toHaveCount(0);
+
+    // Verify the affected records now display the surviving casing
+    // Navigate to Log to confirm sessions show secondName as location
+    await gotoTab(page, 'Log');
+    await page.waitForTimeout(300);
+    // At least one session should list the surviving name in the session list
+    // (demo data sessions should have their location updated)
+    const logMain = page.getByRole('main');
+    // We just verify no session still shows the old firstName as location
+    // (open a session that had firstName and confirm it shows secondName)
+    const sessionWithOldName = logMain.getByText(firstName, { exact: true });
+    await expect(sessionWithOldName).toHaveCount(0);
   });
 });
 
@@ -304,16 +381,7 @@ test.describe('Suggestion filtering', () => {
     await page.getByRole('button', { name: '‹ Back' }).first().click(); // back to More/main
 
     // Navigate to Log and open session form
-    const gotoTabFn = async (name: string) => {
-      const navLocator = page.getByRole('navigation', { name: 'Main' });
-      const isDesk = (page.viewportSize()?.width ?? 0) >= 900;
-      if (isDesk) {
-        await navLocator.getByRole('button', { name }).first().click();
-      } else {
-        await navLocator.getByRole('button', { name: 'More' }).first().click();
-      }
-    };
-    await gotoTabFn('Log');
+    await gotoTab(page, 'Log');
 
     await page.getByRole('main').getByRole('button', { name: /Log Session/i }).first().click();
     await expect(page.getByRole('heading', { name: 'Log Session' }).or(

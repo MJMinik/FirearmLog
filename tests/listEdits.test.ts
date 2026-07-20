@@ -101,10 +101,12 @@ test('collectValues: multi-store calibers span both stores', () => {
 });
 
 test('collectValues: case-insensitive dedup keeps newest casing', () => {
+  // Sessions use the 'date' field for recency (mirrors SessionForm). The newer
+  // date wins the dedup, so its casing is kept.
   const records: RecordsByStore = {
     sessions: [
-      session({ id: 's-1', location: 'home', updatedAt: 1000 }),
-      session({ id: 's-2', location: 'Home', updatedAt: 3000 }), // newer
+      session({ id: 's-1', location: 'home', date: '2026-01-01', updatedAt: 1000 }),
+      session({ id: 's-2', location: 'Home', date: '2026-06-01', updatedAt: 1000 }), // newer date
     ],
   };
   const { visible } = collectValues(records, locationsDef, new Set());
@@ -277,6 +279,38 @@ test('filterHidden: list with no hidden entries returns all values', () => {
 });
 
 // ---------------------------------------------------------------------------
+// collectValues: hidden-value collision detection (Fix 4 — hidden values must
+// appear so existingCollision can detect them)
+// ---------------------------------------------------------------------------
+
+test('collectValues: a hidden value still appears in the hidden array (collision can be detected)', () => {
+  const records: RecordsByStore = {
+    sessions: [
+      session({ id: 's-1', location: 'Home', updatedAt: 3000 }),
+      session({ id: 's-2', location: 'Range', updatedAt: 2000 }),
+    ],
+  };
+  // 'range' is hidden — it must still come back in the hidden array so the
+  // rename sheet can detect a collision when the user types "Range".
+  const { visible, hidden } = collectValues(records, locationsDef, new Set(['range']));
+  assert.ok(hidden.includes('Range'), 'hidden array must contain the hidden value');
+  assert.ok(!visible.includes('Range'), 'visible array must not contain the hidden value');
+});
+
+test('collectValues: all-sources combine — hidden value in hidden array for collision detection', () => {
+  const records: RecordsByStore = {
+    ammunition: [ammo({ caliber: '9mm', updatedAt: 3000 })],
+    firearms: [firearm({ caliber: '.45 ACP', updatedAt: 2000 })],
+  };
+  const calDef = LIST_DEFS.find((d) => d.id === 'calibers')!;
+  // Hide 9mm — it must still be detectable as a collision target
+  const { visible, hidden } = collectValues(records, calDef, new Set(['9mm']));
+  assert.ok(hidden.includes('9mm'), 'hidden caliber must appear in hidden array');
+  assert.ok(visible.includes('.45 ACP'));
+  assert.ok(!visible.includes('9mm'));
+});
+
+// ---------------------------------------------------------------------------
 // LIST_DEFS completeness
 // ---------------------------------------------------------------------------
 
@@ -299,4 +333,63 @@ test('vendors def has two sources (purchases + parts)', () => {
   const stores = vendorsDef.sources.map((s) => s.store);
   assert.ok(stores.includes('purchases'));
   assert.ok(stores.includes('parts'));
+});
+
+// ---------------------------------------------------------------------------
+// collectValues: recencyField ordering (Fix 7)
+// ---------------------------------------------------------------------------
+
+test('collectValues: sessions use date field for recency ordering', () => {
+  // Two sessions — the one with the LATER date string should rank first.
+  // This mirrors what SessionForm does: recentValues(sessions.map(s => ({ date: s.date, value: s.location })))
+  const records: RecordsByStore = {
+    sessions: [
+      session({ id: 's-1', location: 'Older Range', updatedAt: 9999, date: '2026-01-01' }),
+      session({ id: 's-2', location: 'Newer Range', updatedAt: 1000, date: '2026-06-01' }),
+    ],
+  };
+  const { visible } = collectValues(records, locationsDef, new Set());
+  // 'Newer Range' has the later date and should rank first, even though its updatedAt is smaller
+  assert.equal(visible[0], 'Newer Range');
+  assert.equal(visible[1], 'Older Range');
+});
+
+test('collectValues: ammo uses updatedAt field for recency ordering', () => {
+  // Two ammo cans — the one with the higher updatedAt should rank first.
+  // This mirrors AmmoScreens: recentValues(allAmmo.map(a => ({ date: String(a.updatedAt), value: a.brand })))
+  const ammoDef = LIST_DEFS.find((d) => d.id === 'ammo-brands')!;
+  const records: RecordsByStore = {
+    ammunition: [
+      ammo({ id: 'am-1', brand: 'OlderBrand', updatedAt: 1000 }),
+      ammo({ id: 'am-2', brand: 'NewerBrand', updatedAt: 9999 }),
+    ],
+  };
+  const { visible } = collectValues(records, ammoDef, new Set());
+  assert.equal(visible[0], 'NewerBrand');
+  assert.equal(visible[1], 'OlderBrand');
+});
+
+test('collectValues: purchases use date field for recency ordering', () => {
+  // Mirrors CostsScreen: recentValues(all.map(p => ({ date: p.date, value: p.item })))
+  const itemsDef = LIST_DEFS.find((d) => d.id === 'purchase-items')!;
+  const records: RecordsByStore = {
+    purchases: [
+      purchase({ id: 'pu-1', item: 'OlderItem', updatedAt: 9999, date: '2026-01-01' }),
+      purchase({ id: 'pu-2', item: 'NewerItem', updatedAt: 1000, date: '2026-06-01' }),
+    ],
+  };
+  const { visible } = collectValues(records, itemsDef, new Set());
+  assert.equal(visible[0], 'NewerItem');
+  assert.equal(visible[1], 'OlderItem');
+});
+
+test('LIST_DEFS: every source has a recencyField', () => {
+  for (const def of LIST_DEFS) {
+    for (const src of def.sources) {
+      assert.ok(
+        src.recencyField === 'date' || src.recencyField === 'updatedAt',
+        `${def.id}/${src.store}/${src.field} missing recencyField`
+      );
+    }
+  }
 });

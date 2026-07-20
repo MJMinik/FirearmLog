@@ -4,7 +4,7 @@
 // existing putOne / putSettings.
 import { useEffect, useState } from 'react';
 import type { AppSettings, Ammunition, Firearm, Goal, Optic, Part, Purchase, Session } from '../lib/types.ts';
-import { getAll, getSettings, putOne, putSettings } from '../lib/db.ts';
+import { getAll, getOne, getSettings, putOne, putSettings } from '../lib/db.ts';
 import {
   LIST_DEFS, collectValues, countMatches, applyRename, filterHidden,
 } from '../lib/listEdits.ts';
@@ -189,6 +189,9 @@ export function ListDetailScreen({ listId, onBack }: {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
+  // For the instructors list: legacy meta row values (ghost names not in any session)
+  const [metaInstructors, setMetaInstructors] = useState<string[]>([]);
+
   // Which value is currently being renamed / hidden-confirmed
   const [renaming, setRenaming] = useState<string | null>(null);
   const [hidingValue, setHidingValue] = useState<string | null>(null);
@@ -198,7 +201,7 @@ export function ListDetailScreen({ listId, onBack }: {
     let alive = true;
     void (async () => {
       try {
-        const [sessions, ammunition, firearms, purchases, parts, optics, goals, settings] =
+        const [sessions, ammunition, firearms, purchases, parts, optics, goals, settings, instructorRow] =
           await Promise.all([
             getAll<Session>('sessions'),
             getAll<Ammunition>('ammunition'),
@@ -208,9 +211,27 @@ export function ListDetailScreen({ listId, onBack }: {
             getAll<Optic>('optics'),
             getAll<Goal>('goals'),
             getSettings<SettingsWithHidden>(),
+            def.id === 'instructors'
+              ? getOne<{ key: string; value: string[] }>('meta', 'instructors')
+              : Promise.resolve(undefined),
           ]);
         if (!alive) return;
-        setRecordsByStore({ sessions, ammunition, firearms, purchases, parts, optics, goals });
+        // For the instructors list: inject meta-only names as synthetic sessions so
+        // collectValues sees them. A ghost session has a blank date (sorts last) and
+        // a fake id — it is never written back, only used for display/collection.
+        const metaNames = def.id === 'instructors' ? (instructorRow?.value ?? []) : [];
+        const sessionInstructorNorms = new Set(sessions.map((s) => (s.instructor ?? '').trim().toLowerCase()).filter(Boolean));
+        const ghostSessions: Session[] = metaNames
+          .filter((n) => n.trim() && !sessionInstructorNorms.has(n.trim().toLowerCase()))
+          .map((n, i): Session => ({
+            id: `__ghost_instructor_${i}`, createdAt: 0, updatedAt: 0,
+            date: '', type: 'class', guns: [], location: '', distances: '',
+            notes: '', ammoUsage: [], drills: [], targetMediaIds: [], malfunctions: [],
+            selfRating: null, rangeFee: null, planned: false, checklist: null,
+            instructor: n.trim(),
+          }));
+        setMetaInstructors(metaNames);
+        setRecordsByStore({ sessions: [...sessions, ...ghostSessions], ammunition, firearms, purchases, parts, optics, goals });
         setHiddenSuggestions(settings?.hiddenSuggestions ?? {});
       } catch (e) {
         if (alive) setError(String(e));
@@ -296,6 +317,7 @@ export function ListDetailScreen({ listId, onBack }: {
           oldValue={renaming}
           recordsByStore={recordsByStore}
           hiddenSuggestions={hiddenSuggestions}
+          metaInstructors={metaInstructors}
           onClose={() => setRenaming(null)}
           onDone={() => { setRenaming(null); setReloadKey((k) => k + 1); }}
         />
@@ -374,11 +396,13 @@ type RenameStep =
   | { kind: 'confirming-rename'; newValue: string; counts: Array<{ store: string; count: number; word: string }> }
   | { kind: 'confirming-combine'; newValue: string; counts: Array<{ store: string; count: number; word: string }> };
 
-function RenameSheet({ def, oldValue, recordsByStore, hiddenSuggestions, onClose, onDone }: {
+function RenameSheet({ def, oldValue, recordsByStore, hiddenSuggestions, metaInstructors, onClose, onDone }: {
   def: ListDef;
   oldValue: string;
   recordsByStore: RecordsByStore;
   hiddenSuggestions: Record<string, string[]>;
+  /** For the instructors list: the raw meta row values so rename can update them too. */
+  metaInstructors?: string[];
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -392,13 +416,14 @@ function RenameSheet({ def, oldValue, recordsByStore, hiddenSuggestions, onClose
   // Only "editing" step is dirty-guarded; confirm dialogs dismiss cleanly
   const isEditing = step.kind === 'editing';
 
-  // Is there a collision? (an existing visible value that matches newValue case-insensitively,
-  // excluding the old value itself)
+  // Is there a collision? Check ALL values (visible + hidden) case-insensitively,
+  // excluding the old value itself.
   function existingCollision(candidate: string): string | undefined {
     const hiddenSet = new Set(hiddenSuggestions[def.id]?.map((v) => v.toLowerCase()) ?? []);
-    const { visible } = collectValues(recordsByStore, def, hiddenSet);
+    const { visible, hidden } = collectValues(recordsByStore, def, hiddenSet);
+    const all = [...visible, ...hidden];
     const norm = candidate.trim().toLowerCase();
-    return visible.find((v) =>
+    return all.find((v) =>
       v.toLowerCase() === norm && v.toLowerCase() !== oldValue.trim().toLowerCase()
     );
   }
@@ -418,7 +443,7 @@ function RenameSheet({ def, oldValue, recordsByStore, hiddenSuggestions, onClose
     const trimmed = newValue.trim();
     if (!trimmed) { setProblem('Enter a name.'); return; }
     if (trimmed.toLowerCase() === oldValue.trim().toLowerCase() && trimmed === oldValue.trim()) {
-      setProblem('The name is the same — try a different one.'); return;
+      setProblem('That\'s the current name.'); return;
     }
     // A case-change alone IS a valid rename — only block if trim+lowercase both match
     // AND it's not actually a casing change
@@ -435,17 +460,34 @@ function RenameSheet({ def, oldValue, recordsByStore, hiddenSuggestions, onClose
     setSaving(true);
     try {
       const now = Date.now();
-      // If the old value was hidden, remove the hidden entry for it
+      // Remove the OLD value's hidden entry (renaming away from it — no longer relevant).
+      // Also remove the TARGET value's hidden entry if it was hidden: renaming records
+      // into a name is using it, so it must not stay suppressed (spec §4 combine rule).
       const currentHidden = hiddenSuggestions[def.id] ?? [];
       const oldNorm = oldValue.trim().toLowerCase();
-      const newHidden = currentHidden.filter((v) => v.toLowerCase() !== oldNorm);
+      const targetNorm = targetValue.trim().toLowerCase();
+      const newHidden = currentHidden.filter(
+        (v) => v.toLowerCase() !== oldNorm && v.toLowerCase() !== targetNorm
+      );
       if (newHidden.length !== currentHidden.length) {
         const nextHidden = { ...hiddenSuggestions, [def.id]: newHidden };
         await putSettings<SettingsWithHidden>({ hiddenSuggestions: nextHidden });
       }
       const renamed = applyRename(recordsByStore, def, oldValue, targetValue, now);
       for (const { store, record } of renamed) {
+        // Skip synthetic ghost records injected for the meta-instructors display —
+        // they have no real DB row; the meta row is updated separately below.
+        if (typeof record['id'] === 'string' && record['id'].startsWith('__ghost_')) continue;
         await putOne(store, record);
+      }
+      // For the instructors list: also update the legacy meta row so the old name
+      // stops being suggested from there (spec fix 5b).
+      if (def.id === 'instructors' && metaInstructors && metaInstructors.length > 0) {
+        const oldNeedle = oldValue.trim().toLowerCase();
+        const updatedMeta = metaInstructors.map((v) =>
+          v.trim().toLowerCase() === oldNeedle ? targetValue : v
+        );
+        await putOne('meta', { key: 'instructors', value: updatedMeta });
       }
       onDone();
     } catch (e) {
@@ -497,18 +539,22 @@ function RenameSheet({ def, oldValue, recordsByStore, hiddenSuggestions, onClose
     };
   }
 
-  // In combine mode, the surviving casing is the EXISTING value's casing
+  // In combine mode, the surviving casing is the EXISTING value's casing.
+  // Search both visible and hidden — a collision can be a hidden value.
   function survivingCasing(candidateValue: string): string {
     const hiddenSet = new Set(hiddenSuggestions[def.id]?.map((v) => v.toLowerCase()) ?? []);
-    const { visible } = collectValues(recordsByStore, def, hiddenSet);
-    const match = visible.find(
+    const { visible, hidden } = collectValues(recordsByStore, def, hiddenSet);
+    const all = [...visible, ...hidden];
+    const match = all.find(
       (v) => v.toLowerCase() === candidateValue.trim().toLowerCase()
         && v.toLowerCase() !== oldValue.trim().toLowerCase()
     );
     return match ?? candidateValue;
   }
 
-  const sheetDirty = isEditing && dirty;
+  // The sheet is dirty whenever a name has been typed (even at the confirm step —
+  // backdrop-tapping "Confirm" must not silently discard the typed name).
+  const sheetDirty = dirty;
 
   return (
     <Sheet title="Rename" onClose={onClose} dirty={sheetDirty}>

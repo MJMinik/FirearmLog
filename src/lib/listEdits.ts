@@ -12,6 +12,14 @@ import type { Ammunition, Firearm, Goal, Optic, Part, Purchase, Session } from '
 export interface ListSource {
   store: 'sessions' | 'ammunition' | 'firearms' | 'purchases' | 'parts' | 'optics' | 'goals';
   field: string;
+  /**
+   * Which record property to use as the recency key for recentValues() ordering.
+   * Must match exactly what the corresponding form's recentValues() call uses:
+   *   sessions  → 'date'   (ISO date string, e.g. '2026-01-15')
+   *   purchases → 'date'   (ISO date string)
+   *   all others → 'updatedAt' (ms timestamp, converted to string)
+   */
+  recencyField: 'date' | 'updatedAt';
 }
 
 export interface ListDef {
@@ -27,27 +35,27 @@ export const LIST_DEFS: ListDef[] = [
   {
     id: 'locations',
     uiName: 'Locations',
-    sources: [{ store: 'sessions', field: 'location' }],
+    sources: [{ store: 'sessions', field: 'location', recencyField: 'date' }],
     recordsWord: () => 'sessions',
   },
   {
     id: 'instructors',
     uiName: 'Instructors',
-    sources: [{ store: 'sessions', field: 'instructor' }],
+    sources: [{ store: 'sessions', field: 'instructor', recencyField: 'date' }],
     recordsWord: () => 'sessions',
   },
   {
     id: 'ammo-brands',
     uiName: 'Ammo brands',
-    sources: [{ store: 'ammunition', field: 'brand' }],
+    sources: [{ store: 'ammunition', field: 'brand', recencyField: 'updatedAt' }],
     recordsWord: () => 'ammo cans',
   },
   {
     id: 'calibers',
     uiName: 'Calibers',
     sources: [
-      { store: 'ammunition', field: 'caliber' },
-      { store: 'firearms', field: 'caliber' },
+      { store: 'ammunition', field: 'caliber', recencyField: 'updatedAt' },
+      { store: 'firearms', field: 'caliber', recencyField: 'updatedAt' },
     ],
     recordsWord: (store) => store === 'firearms' ? 'guns' : 'ammo cans',
   },
@@ -55,39 +63,39 @@ export const LIST_DEFS: ListDef[] = [
     id: 'vendors',
     uiName: 'Vendors',
     sources: [
-      { store: 'purchases', field: 'vendor' },
-      { store: 'parts', field: 'vendor' },
+      { store: 'purchases', field: 'vendor', recencyField: 'date' },
+      { store: 'parts', field: 'vendor', recencyField: 'updatedAt' },
     ],
     recordsWord: (store) => store === 'parts' ? 'parts' : 'purchases',
   },
   {
     id: 'purchase-items',
     uiName: 'Purchase items',
-    sources: [{ store: 'purchases', field: 'item' }],
+    sources: [{ store: 'purchases', field: 'item', recencyField: 'date' }],
     recordsWord: () => 'purchases',
   },
   {
     id: 'part-names',
     uiName: 'Part names',
-    sources: [{ store: 'parts', field: 'name' }],
+    sources: [{ store: 'parts', field: 'name', recencyField: 'updatedAt' }],
     recordsWord: () => 'parts',
   },
   {
     id: 'optic-makes',
     uiName: 'Optic makes',
-    sources: [{ store: 'optics', field: 'make' }],
+    sources: [{ store: 'optics', field: 'make', recencyField: 'updatedAt' }],
     recordsWord: () => 'optics',
   },
   {
     id: 'optic-models',
     uiName: 'Optic models',
-    sources: [{ store: 'optics', field: 'model' }],
+    sources: [{ store: 'optics', field: 'model', recencyField: 'updatedAt' }],
     recordsWord: () => 'optics',
   },
   {
     id: 'goal-categories',
     uiName: 'Goal categories',
-    sources: [{ store: 'goals', field: 'category' }],
+    sources: [{ store: 'goals', field: 'category', recencyField: 'updatedAt' }],
     recordsWord: () => 'goals',
   },
 ];
@@ -136,7 +144,10 @@ export function collectValues(
       if (!v.trim()) continue;
       // Use updatedAt (ms) as the date key for ordering — convert to a string
       // that sorts correctly (zero-padded numeric string sorts like a number).
-      const dateKey = String(rec['updatedAt'] ?? 0).padStart(15, '0');
+      const rawKey = src.recencyField === 'date'
+        ? String(rec['date'] ?? '')
+        : String(rec['updatedAt'] ?? 0).padStart(15, '0');
+      const dateKey = rawKey;
       rows.push({ date: dateKey, value: v });
     }
   }
