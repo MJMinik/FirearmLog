@@ -38,7 +38,7 @@ export function isTopmost(token: symbol): boolean {
   return sheetStack[sheetStack.length - 1] === token;
 }
 
-export function Sheet({ title, onClose, children, dirty = false }: {
+export function Sheet({ title, onClose, children, dirty = false, onSaveRequest }: {
   title: string; onClose: () => void; children: ReactNode;
   // F-Universal-Guard (July 20 2026): when true, ANY dismiss gesture (backdrop
   // tap, Escape, X close button) first asks "Discard changes?" via the shared
@@ -46,6 +46,11 @@ export function Sheet({ title, onClose, children, dirty = false }: {
   // keep instant dismissal so a plain viewer never asks a question it doesn't
   // need to. Callers pass `dirty` and get the confirm-before-close for free.
   dirty?: boolean;
+  // Save-from-guard (July 21 2026): when provided AND dirty is true, the discard
+  // sheet shows a third "Save" button. Callers pass this ONLY when the hosted form
+  // currently passes validation — undefined removes the button without any render
+  // flicker, so the two-button variant appears automatically when invalid.
+  onSaveRequest?: () => void;
 }) {
   const downOnBackdrop = useRef(false);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -135,11 +140,14 @@ export function Sheet({ title, onClose, children, dirty = false }: {
       </div>
       {/* F-Universal-Guard: the shared "Discard changes?" confirm — same
           component and wording as the screen-form ‹ Cancel button and App's
-          own nav guard. Keep editing stays put; Discard closes the sheet. */}
+          own nav guard. Keep editing stays put; Discard closes the sheet.
+          Save-from-guard: when onSaveRequest is set the three-button variant
+          appears (Save → Keep editing → Discard); otherwise two buttons only. */}
       {confirming && (
         <DiscardChangesSheet
           onConfirm={() => { setConfirming(false); onClose(); }}
-          onClose={() => setConfirming(false)} />
+          onClose={() => setConfirming(false)}
+          onSave={onSaveRequest ? () => { setConfirming(false); onSaveRequest(); } : undefined} />
       )}
     </div>
   );
@@ -176,12 +184,54 @@ export function ConfirmSheet({ title, message, confirmLabel, cancelLabel = 'Canc
 // FROM a discard sheet — the user would meet the same question about their
 // answer. The prop type explicitly forbids `dirty` (Omit) and the inner Sheet
 // hardcodes dirty=false, so the recursion is impossible by construction.
-export function DiscardChangesSheet({ onConfirm, onClose }: {
+//
+// Save-from-guard (July 21 2026): optional `onSave`. When provided, a "Save"
+// button appears as the constructive first choice. Button order:
+//   Save (primary)  →  Keep editing (secondary)  →  Discard (destructive)
+// When absent the two-button form is unchanged so every call site that omits it
+// keeps working with zero code change. ConfirmSheet (two-button) is still the
+// two-button variant; DiscardChangesSheet switches its rendering based on onSave.
+// An in-flight guard (`saving` state) prevents a double-tap from firing twice.
+export function DiscardChangesSheet({ onConfirm, onClose, onSave }: {
   onConfirm: () => void; onClose: () => void;
+  // Present → three-button form (Save / Keep editing / Discard).
+  // Absent  → original two-button form (Keep editing / Discard). Unchanged call
+  // sites keep working with zero modifications.
+  onSave?: () => void;
 }) {
+  const [saving, setSaving] = useState(false);
+
+  if (!onSave) {
+    // Original two-button form — ConfirmSheet unchanged.
+    return (
+      <ConfirmSheet title="Discard changes?" message="Your edits on this screen will be lost."
+        cancelLabel="Keep editing" confirmLabel="Discard"
+        onConfirm={onConfirm} onClose={onClose} />
+    );
+  }
+
+  // Three-button form: Save (constructive, first) → Keep editing → Discard.
+  // The same Sheet recursion guard applies: dirty=false, never spawns another
+  // discard sheet (ConfirmSheet already sets dirty=false; we build our own sheet
+  // here with the same guard). `saving` disables all buttons after the first tap
+  // so a double-tap can't fire the persist path twice.
+  const handleSave = () => {
+    if (saving) return;
+    setSaving(true);
+    // onSave is synchronous from the caller's perspective (it dispatches the
+    // async persist and closes on its own). We don't await — any error surfaces
+    // inside the form's own handler; the guard here just prevents a double-tap.
+    onSave();
+  };
+
   return (
-    <ConfirmSheet title="Discard changes?" message="Your edits on this screen will be lost."
-      cancelLabel="Keep editing" confirmLabel="Discard"
-      onConfirm={onConfirm} onClose={onClose} />
+    <Sheet title="Discard changes?" onClose={onClose} dirty={false}>
+      <p className="report-note" style={{ marginBottom: 14 }}>Your edits on this screen will be lost.</p>
+      <button className="button" disabled={saving} onClick={handleSave}>Save</button>
+      <div style={{ height: 8 }} />
+      <button className="button secondary" disabled={saving} onClick={onClose}>Keep editing</button>
+      <div style={{ height: 8 }} />
+      <button className="button danger" disabled={saving} onClick={onConfirm}>Discard</button>
+    </Sheet>
   );
 }

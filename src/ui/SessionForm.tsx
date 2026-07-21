@@ -1,7 +1,7 @@
 // Log or edit a session (spec §8.1): kind, date, guns with per-gun rounds,
 // multiple drills via the context-aware picker, photos/videos, malfunctions,
 // ratings, fee, notes. Removals are STAGED — cancel really cancels (rule F3).
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   Ammunition, AppSettings, ChecklistCustomItems, DrillDef, DrillResult, Firearm, GunCategory,
   Magazine, MalfunctionEntry, Media, Session, SessionChecklist
@@ -71,7 +71,7 @@ const fromRow = (r: DrillRow): DrillResult => ({
   notes: r.notes.trim()
 });
 
-export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved, onCancel, onDeleted, onDirtyChange }: {
+export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved, onCancel, onDeleted, onDirtyChange, onSaverChange }: {
   id?: string; initialPlanned?: boolean; convert?: boolean; initialDate?: string;
   onSaved: (sessionId: string) => void; onCancel: () => void;
   onDeleted?: () => void;
@@ -79,6 +79,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   // (tab bar, sidebar, browser Back) can show the same Discard-changes? guard
   // this form's own Cancel button uses. Must be reference-stable (useCallback).
   onDirtyChange?: (dirty: boolean) => void;
+  // Save-from-discard: reports a persist function when the form is valid, null
+  // when invalid or unmounted, so App's DiscardChangesSheet can show Save.
+  onSaverChange?: (fn: (() => Promise<boolean>) | null) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Session | null>(null);
@@ -536,27 +539,55 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   }
 
 
-  async function save() {
-    if (saving) return;
-    const guns = Object.entries(rounds).map(([firearmId, text]) => ({
-      firearmId, rounds: text.trim() === '' ? 0 : Number(text)
+  function saveProblem(): string | null {
+    const guns = Object.entries(rounds).map(([, text]) => ({
+      rounds: text.trim() === '' ? 0 : Number(text)
     }));
-    if (!date) { setProblem('Pick a date.'); return; }
-    if (guns.length === 0) { setProblem('Pick at least one gun.'); return; }
+    if (!date) return 'Pick a date.';
+    if (Object.keys(rounds).length === 0) return 'Pick at least one gun.';
     if (guns.some((g) => !Number.isFinite(g.rounds) || g.rounds < 0)) {
-      setProblem('Rounds need to be plain numbers.'); return;
+      return 'Rounds need to be plain numbers.';
     }
     const badDrill = drills.map(fromRow).find((d) =>
       (d.time !== null && !Number.isFinite(d.time)) ||
       (d.score !== null && !Number.isFinite(d.score)) ||
       (d.maxScore !== null && !Number.isFinite(d.maxScore)));
-    if (badDrill) { setProblem(`Check the numbers on "${badDrill.name}".`); return; }
+    if (badDrill) return `Check the numbers on "${badDrill.name}".`;
+    const ammoUsage = ammoRows
+      .filter((r) => r.ammoId !== '')
+      .map((r) => ({ rounds: r.rounds.trim() === '' ? 0 : Number(r.rounds) }));
+    if (ammoUsage.some((u) => !Number.isFinite(u.rounds) || u.rounds < 0)) {
+      return 'Ammo rounds need to be plain numbers.';
+    }
+    const fee = rangeFee.trim() === '' ? null : Number(rangeFee);
+    if (fee !== null && !Number.isFinite(fee)) return 'Range fee needs to be a number.';
+    return null;
+  }
+
+  // doPersist: the full validate+write core. Returns the session id on success,
+  // null on validation failure or write error. Does NOT call onSaved — save()
+  // owns navigation so the guard path (persistForm) can't double-navigate.
+  async function doPersist(): Promise<string | null> {
+    if (saving) return null;
+    const guns = Object.entries(rounds).map(([firearmId, text]) => ({
+      firearmId, rounds: text.trim() === '' ? 0 : Number(text)
+    }));
+    if (!date) { setProblem('Pick a date.'); return null; }
+    if (guns.length === 0) { setProblem('Pick at least one gun.'); return null; }
+    if (guns.some((g) => !Number.isFinite(g.rounds) || g.rounds < 0)) {
+      setProblem('Rounds need to be plain numbers.'); return null;
+    }
+    const badDrill = drills.map(fromRow).find((d) =>
+      (d.time !== null && !Number.isFinite(d.time)) ||
+      (d.score !== null && !Number.isFinite(d.score)) ||
+      (d.maxScore !== null && !Number.isFinite(d.maxScore)));
+    if (badDrill) { setProblem(`Check the numbers on "${badDrill.name}".`); return null; }
 
     const ammoUsage = ammoRows
       .filter((r) => r.ammoId !== '')
       .map((r) => ({ ammoId: r.ammoId, rounds: r.rounds.trim() === '' ? 0 : Number(r.rounds) }));
     if (ammoUsage.some((u) => !Number.isFinite(u.rounds) || u.rounds < 0)) {
-      setProblem('Ammo rounds need to be plain numbers.'); return;
+      setProblem('Ammo rounds need to be plain numbers.'); return null;
     }
 
     const ratingEntries = Object.entries(ratings).filter(([, v]) => v !== '');
@@ -564,7 +595,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       ? Object.fromEntries(ratingEntries.map(([k, v]) => [k, Number(v)]))
       : null;
     const fee = rangeFee.trim() === '' ? null : Number(rangeFee);
-    if (fee !== null && !Number.isFinite(fee)) { setProblem('Range fee needs to be a number.'); return; }
+    if (fee !== null && !Number.isFinite(fee)) { setProblem('Range fee needs to be a number.'); return null; }
 
     setSaving(true);
     try {
@@ -624,16 +655,21 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       // F3: the edits are saved — nothing left to guard. Clear the dirty flag
       // before onSaved navigates (its setTab would otherwise hit App's guard).
       onDirtyChange?.(false);
-      onSaved(sid);
+      return sid;
     } catch {
       // Review 7.1 / rule 23: a failed IndexedDB write (quota, locked txn, bad
       // record) must not fail silently. Surface a plain-language message through
       // the existing problem channel and leave the form usable to retry.
       setProblem('Could not save this session — please try again.');
+      return null;
     } finally {
       setSaving(false);
     }
   }
+
+  async function persistForm(): Promise<boolean> { return (await doPersist()) !== null; }
+
+  async function save() { const sid = await doPersist(); if (sid) onSaved(sid); }
 
   // Delete is now a SOFT delete (App 7): the session moves to Recently Deleted
   // and is recoverable for 30 days, then purged. A real (non-planned) session's
@@ -649,6 +685,24 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     onDirtyChange?.(false);
     onDeleted?.();
   }
+
+  // Always-fresh saver: the ref holds the LATEST persistForm (re-pointed after
+  // every render), and the reported wrapper is reference-stable so App's ref
+  // write never churns. This replaces a hand-maintained dep list that could — and
+  // did — go stale and save old values.
+  const persistRef = useRef(persistForm);
+  useEffect(() => { persistRef.current = persistForm; });
+  const stablePersist = useCallback(() => persistRef.current(), []);
+
+  // Report after every render (cheap: App just writes a ref) so the reported
+  // validity can never lag the form state. Saver present ⟺ touched AND valid.
+  // The `touched` guard mirrors MatchForm: a new session form is always
+  // technically valid (date defaults to today), so without this guard every
+  // fresh form would show "Save" in the discard sheet.
+  useEffect(() => {
+    onSaverChange?.(touched && saveProblem() === null ? stablePersist : null);
+  });
+  useEffect(() => () => onSaverChange?.(null), [onSaverChange]);
 
 
   return (
@@ -667,7 +721,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           // which fires popstate — without this, App's own F3 guard would see a
           // still-dirty form and show a SECOND sheet on top of this one.
           onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
-          onClose={() => setDiscarding(false)} />
+          onClose={() => setDiscarding(false)}
+          // Local ‹ Cancel sheet uses full save() so post-save navigation runs.
+          onSave={saveProblem() === null ? () => void save() : undefined} />
       )}
 
       {editing && original?.planned && !converting && (
@@ -1043,7 +1099,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
 
       {picking && (
         <Sheet title="Pick Drills" onClose={() => { setPicking(false); setQuickAdding(false); setQuickName(''); setQuickProblem(''); }}
-          dirty={picked.size > 0 || quickName.trim() !== '' || quickProblem.trim() !== ''}>
+          dirty={picked.size > 0 || quickName.trim() !== '' || quickProblem.trim() !== ''}
+          // Save-from-guard: when drills are selected, "Save" means "Add them".
+          // Only valid when at least one drill is actually picked (not during the
+          // quick-add flow, where the saver is the quick-add save button itself).
+          onSaveRequest={picked.size > 0 && !quickAdding ? () => addPickedDrills() : undefined}>
           {!quickAdding && pickable.length === 0 && (
             <>
               {/* Dead-end no more: the empty state's prominent call-to-action is to

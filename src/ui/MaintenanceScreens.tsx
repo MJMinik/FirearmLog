@@ -1,5 +1,5 @@
 // Maintenance: the all-guns overview (More → Maintenance) and the log form.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScreenLoading } from './ScreenState.tsx';
 import type { Firearm, MaintenanceEntry, Reference, Session } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
@@ -91,9 +91,10 @@ export function MaintenanceOverview({ refreshKey, onBack, openGun, logFor }: {
 // Audit #16: maintenance entries are now editable and deletable. With an `id`
 // this edits an existing entry (and offers delete); without one it logs a new
 // entry as before.
-export function MaintenanceForm({ gunId, id, onSaved, onCancel, onDirtyChange }: {
+export function MaintenanceForm({ gunId, id, onSaved, onCancel, onDirtyChange, onSaverChange }: {
   gunId: string; id?: string; onSaved: () => void; onCancel: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onSaverChange?: (fn: (() => Promise<boolean>) | null) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<MaintenanceEntry | null>(null);
@@ -131,10 +132,16 @@ export function MaintenanceForm({ gunId, id, onSaved, onCancel, onDirtyChange }:
     return () => { alive = false; };
   }, [id]);
 
-  async function save() {
-    // N4: never log a silent default — an accidental Save would reset the deep-clean
-    // counters. Require an explicit choice of what was done.
-    if (!type) { setProblem('Choose what was done.'); return; }
+  // N4: never log a silent default — an accidental Save would reset the deep-clean
+  // counters. Require an explicit choice of what was done.
+  function saveProblem(): string | null {
+    if (!type) return 'Choose what was done.';
+    return null;
+  }
+
+  async function persistForm(): Promise<boolean> {
+    const p = saveProblem();
+    if (p) { setProblem(p); return false; }
     const fields = {
       date, firearmId: gunId, type,
       performedBy: performedBy.trim(), partsReplaced: parts.trim(), notes: notes.trim()
@@ -145,8 +152,25 @@ export function MaintenanceForm({ gunId, id, onSaved, onCancel, onDirtyChange }:
       await putOne('maintenance', stampNew(fields, newId('ma'), Date.now()));
     }
     onDirtyChange?.(false);
-    onSaved();
+    return true;
   }
+
+  async function save() { if (await persistForm()) onSaved(); }
+
+  // Always-fresh saver: the ref holds the LATEST persistForm (re-pointed after
+  // every render), and the reported wrapper is reference-stable so App's ref
+  // write never churns. This replaces a hand-maintained dep list that could — and
+  // did — go stale and save old values.
+  const persistRef = useRef(persistForm);
+  useEffect(() => { persistRef.current = persistForm; });
+  const stablePersist = useCallback(() => persistRef.current(), []);
+
+  // Report after every render (cheap: App just writes a ref) so the reported
+  // validity can never lag the form state. Saver present ⟺ dirty AND valid.
+  useEffect(() => {
+    onSaverChange?.(dirty && saveProblem() === null ? stablePersist : null);
+  });
+  useEffect(() => () => onSaverChange?.(null), [onSaverChange]);
 
   async function reallyDelete() {
     if (original) await deleteOne('maintenance', original.id);
@@ -163,7 +187,8 @@ export function MaintenanceForm({ gunId, id, onSaved, onCancel, onDirtyChange }:
       {discarding && (
         <DiscardChangesSheet
           onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
-          onClose={() => setDiscarding(false)} />
+          onClose={() => setDiscarding(false)}
+          onSave={saveProblem() === null ? () => void save() : undefined} />
       )}
       <h1 className="large-title">{editing ? 'Edit Work' : 'Log Work'}{gunName ? ` — ${gunName}` : ''}</h1>
       <FormProblem problem={problem} />

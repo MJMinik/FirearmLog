@@ -1,6 +1,6 @@
 // The Compete tab (spec §11): matches, classifiers, classification progress,
 // and the season at a glance.
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScreenLoading } from './ScreenState.tsx';
 import type { Classifier, Firearm, Match, Media } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
@@ -179,12 +179,15 @@ export function CompeteScreen({ refreshKey, open }: {
   );
 }
 
-export function ClassifierForm({ id, onSaved, onCancel, onDirtyChange }: {
+export function ClassifierForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }: {
   id?: string; onSaved: () => void; onCancel: () => void;
   // F3 parity: reports unsaved-edits state up to App, so the exits App owns
   // (tab bar, sidebar, browser Back) show the same Discard-changes? guard this
   // form's own ‹ Cancel uses. Must be reference-stable (useCallback in App).
   onDirtyChange?: (dirty: boolean) => void;
+  // Save-from-discard: reports a persist function when the form is valid, null
+  // when invalid or unmounted, so App's DiscardChangesSheet can show Save.
+  onSaverChange?: (fn: (() => Promise<boolean>) | null) => void;
 }) {
   const [original, setOriginal] = useState<Classifier | null>(null);
   const [code, setCode] = useState('');
@@ -237,13 +240,21 @@ export function ClassifierForm({ id, onSaved, onCancel, onDirtyChange }: {
   }, [id]);
 
 
-  async function save() {
-    if (!code.trim()) { setProblem('Enter the classifier code (like 23-01).'); return; }
+  function saveProblem(): string | null {
+    if (!code.trim()) return 'Enter the classifier code (like 23-01).';
     const pct = percent.trim() === '' ? null : Number(percent);
     const hfNum = hf.trim() === '' ? null : Number(hf);
     if ((pct !== null && !Number.isFinite(pct)) || (hfNum !== null && !Number.isFinite(hfNum))) {
-      setProblem('Percent and hit factor need to be plain numbers.'); return;
+      return 'Percent and hit factor need to be plain numbers.';
     }
+    return null;
+  }
+
+  async function persistForm(): Promise<boolean> {
+    const p = saveProblem();
+    if (p) { setProblem(p); return false; }
+    const pct = percent.trim() === '' ? null : Number(percent);
+    const hfNum = hf.trim() === '' ? null : Number(hf);
     const fields = {
       code: code.trim(), name: name.trim(), date, division,
       hitFactor: hfNum, percent: pct, notes: notes.trim()
@@ -260,8 +271,28 @@ export function ClassifierForm({ id, onSaved, onCancel, onDirtyChange }: {
     // F3 parity: the edits are saved — nothing left to guard. Clear the dirty
     // flag before onSaved navigates (its replace would otherwise hit App's guard).
     onDirtyChange?.(false);
-    onSaved();
+    return true;
   }
+
+  async function save() {
+    const ok = await persistForm();
+    if (ok) onSaved();
+  }
+
+  // Always-fresh saver: the ref holds the LATEST persistForm (re-pointed after
+  // every render), and the reported wrapper is reference-stable so App's ref
+  // write never churns. This replaces a hand-maintained dep list that could — and
+  // did — go stale and save old values.
+  const persistRef = useRef(persistForm);
+  useEffect(() => { persistRef.current = persistForm; });
+  const stablePersist = useCallback(() => persistRef.current(), []);
+
+  // Report after every render (cheap: App just writes a ref) so the reported
+  // validity can never lag the form state. Saver present ⟺ touched AND valid.
+  useEffect(() => {
+    onSaverChange?.(touched && saveProblem() === null ? stablePersist : null);
+  });
+  useEffect(() => () => onSaverChange?.(null), [onSaverChange]);
 
   async function reallyDelete() {
     if (original) await deleteOne('classifiers', original.id);
@@ -286,7 +317,9 @@ export function ClassifierForm({ id, onSaved, onCancel, onDirtyChange }: {
           // which fires popstate — without this, App's own F3 guard would see a
           // still-dirty form and show a SECOND sheet on top of this one.
           onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
-          onClose={() => setDiscarding(false)} />
+          onClose={() => setDiscarding(false)}
+          // Local ‹ Cancel sheet uses full save() so post-save navigation runs.
+          onSave={saveProblem() === null ? () => void save() : undefined} />
       )}
       <div className="card">
         <label className="field">Classifier code

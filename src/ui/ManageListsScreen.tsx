@@ -569,6 +569,9 @@ function RenameSheet({ def, oldValue, recordsByStore, hiddenSuggestions, metaIns
   // backdrop-tapping "Confirm" must not silently discard the typed name).
   const sheetDirty = dirty;
 
+  // Save-from-guard excluded: RenameSheet flows through a multi-step dry-run
+  // count confirmation before persisting — the Save action needs the confirm
+  // dialog in all paths, so onSaveRequest is not wired here.
   return (
     <Sheet title="Rename" onClose={onClose} dirty={sheetDirty}>
       {isEditing && (

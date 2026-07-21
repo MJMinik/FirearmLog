@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Firearm, GunCategory, Match, Reference, Session } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
 import { countAll, getAll, getOne, putOne } from '../lib/db.ts';
@@ -16,9 +16,13 @@ import { FormProblem } from './FormProblem.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { Reveal } from './Reveal.tsx';
 
-export function GunForm({ id, onSaved, onCancel, onDirtyChange }: {
+export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }: {
   id?: string; onSaved: (gunId: string) => void; onCancel: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  // Save-from-guard (July 21 2026): App calls this with persistForm when the form
+  // is valid, null when invalid or on unmount, so App's nav-guard sheet can offer
+  // a "Save" button. Must be reference-stable (useCallback in App).
+  onSaverChange?: (fn: (() => Promise<boolean>) | null) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Firearm | null>(null);
@@ -209,15 +213,29 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange }: {
     if (clamped) setLifetime(String(loggedRounds));
   }
 
-  async function save() {
-    if (!name.trim()) { setProblem('Give the gun a name.'); return; }
+  // ONE source of validation truth: both the Save button and the
+  // unsaved-changes sheet's Save option consult this.
+  function saveProblem(): string | null {
+    if (!name.trim()) return 'Give the gun a name.';
     const start = Number(startCount);
-    if (!Number.isFinite(start) || start < 0) { setProblem('Rounds fired before FirearmLog needs to be a number.'); return; }
+    if (!Number.isFinite(start) || start < 0) return 'Rounds fired before FirearmLog needs to be a number.';
     const dcNum = deepClean.trim() === '' ? null : Number(deepClean);
     const rsNum = recoilSpring.trim() === '' ? null : Number(recoilSpring);
     if ((dcNum !== null && !(dcNum > 0)) || (rsNum !== null && !(rsNum > 0))) {
-      setProblem('Schedule intervals need to be plain round counts (or left blank).'); return;
+      return 'Schedule intervals need to be plain round counts (or left blank).';
     }
+    return null;
+  }
+
+  // Persist the form's current state. Returns the saved gun id on success, null
+  // on validation failure (which also sets the problem message). Used by both the
+  // Save button (which then navigates via onSaved) and the nav-guard sheet's Save.
+  async function persistForm(): Promise<string | null> {
+    const p = saveProblem();
+    if (p) { setProblem(p); return null; }
+    const start = Number(startCount);
+    const dcNum = deepClean.trim() === '' ? null : Number(deepClean);
+    const rsNum = recoilSpring.trim() === '' ? null : Number(recoilSpring);
     const fields = {
       name: name.trim(), manufacturer: manufacturer.trim(), model: model.trim(),
       caliber: caliber.trim(), category, serialNumber: serial.trim() || null,
@@ -230,7 +248,7 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange }: {
       // F-Universal-Guard: clear before navigating so App's guard doesn't
       // stop the onSaved replace() with a second discard sheet.
       onDirtyChange?.(false);
-      onSaved(updated.id);
+      return updated.id;
     } else {
       const created: Firearm = stampNew({
         ...fields,
@@ -240,9 +258,32 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange }: {
       }, newId('fa'), Date.now());
       await putOne('firearms', created);
       onDirtyChange?.(false);
-      onSaved(created.id);
+      return created.id;
     }
   }
+
+  async function save() {
+    const gid = await persistForm();
+    if (gid) onSaved(gid);
+  }
+
+  // Always-fresh saver: the ref holds the LATEST persistForm (re-pointed after
+  // every render), and the reported wrapper is reference-stable so App's ref
+  // write never churns. This replaces a hand-maintained dep list that could — and
+  // did — go stale and save old values.
+  const persistRef = useRef(persistForm);
+  useEffect(() => { persistRef.current = persistForm; });
+  const stablePersist = useCallback(async (): Promise<boolean> => {
+    const gid = await persistRef.current();
+    return gid !== null;
+  }, []);
+
+  // Report after every render (cheap: App just writes a ref) so the reported
+  // validity can never lag the form state. Saver present ⟺ dirty AND valid.
+  useEffect(() => {
+    onSaverChange?.(dirty && saveProblem() === null ? stablePersist : null);
+  });
+  useEffect(() => () => onSaverChange?.(null), [onSaverChange]);
 
   return (
     <div className="screen">
@@ -253,7 +294,9 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange }: {
       {discarding && (
         <DiscardChangesSheet
           onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
-          onClose={() => setDiscarding(false)} />
+          onClose={() => setDiscarding(false)}
+          // Local ‹ Cancel sheet uses full save() so post-save navigation runs.
+          onSave={saveProblem() === null ? () => void save() : undefined} />
       )}
       {/* Session 59: anchored right under the navbar, arrow up at Save. */}
       {saveMark && (

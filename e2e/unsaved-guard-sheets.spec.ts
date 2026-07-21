@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
-import { seedDemo, gotoSection } from './helpers';
+import { seedDemo, gotoSection, gotoTab } from './helpers';
 
 // Feature 1 — universal unsaved-changes guard on SHEET-hosted forms.
 // Policy (Michael, July 20 2026): every dismiss gesture on a form sheet — a
@@ -246,5 +246,175 @@ test.describe('lightbox Esc stacking + backdrop (audit fix)', () => {
     await page.locator('.lightbox-backdrop').click({ position: { x: 5, y: 5 } });
     await expect(closeX).toHaveCount(0);
     await expect(photoSheet).toBeVisible();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Save-from-discard (July 21 2026): the DiscardChangesSheet now has a third
+// "Save" button when the form is valid, so the user can save without going
+// back to the form first. These specs cover:
+//   (a) dirty VALID form + ‹ Cancel → three buttons (Save / Keep editing / Discard)
+//   (b) dirty INVALID form + ‹ Cancel → two buttons (Keep editing / Discard, no Save)
+//   (c) Save in the three-button sheet persists the data and exits the form
+//   (d) PhotoSheet (sheet-hosted form) shows Save button when dirty+valid
+// ---------------------------------------------------------------------------
+
+test.describe('Save-from-discard (three-button DiscardChangesSheet)', () => {
+  test('(a) dirty VALID GunForm: ‹ Cancel shows three-button sheet (Save / Keep editing / Discard)', async ({ page }) => {
+    await seedDemo(page);
+    await gotoSection(page, 'Guns');
+    await page.getByRole('main').getByRole('button', { name: '+ Add Gun' }).click();
+    await expect(page.getByRole('heading', { name: 'New Gun' })).toBeVisible();
+
+    // Fill in a valid name — GunForm's only required field.
+    await page.getByLabel('What this Gun is called').fill('Sig P320 Test');
+
+    // ‹ Cancel → discard sheet.
+    await page.getByRole('main').getByRole('button', { name: 'Cancel' }).click();
+    const discard = page.getByRole('dialog', { name: 'Discard changes?' });
+    await expect(discard).toBeVisible();
+
+    // Three buttons present: Save, Keep editing, Discard.
+    await expect(discard.getByRole('button', { name: 'Save' })).toBeVisible();
+    await expect(discard.getByRole('button', { name: 'Keep editing' })).toBeVisible();
+    await expect(discard.getByRole('button', { name: 'Discard' })).toBeVisible();
+  });
+
+  test('(b) dirty INVALID GunForm: ‹ Cancel shows two-button sheet only (no Save)', async ({ page }) => {
+    await seedDemo(page);
+    await gotoSection(page, 'Guns');
+    await page.getByRole('main').getByRole('button', { name: '+ Add Gun' }).click();
+    await expect(page.getByRole('heading', { name: 'New Gun' })).toBeVisible();
+
+    // Dirty the form without a valid name: GunForm requires a non-empty name,
+    // so filling only "Made by" (always visible, no Reveal to open) makes the
+    // form dirty AND invalid at the same time.
+    await page.getByLabel('Made by').fill('Atlas Gunworks');
+
+    // ‹ Cancel → discard sheet.
+    await page.getByRole('main').getByRole('button', { name: 'Cancel' }).click();
+    const discard = page.getByRole('dialog', { name: 'Discard changes?' });
+    await expect(discard).toBeVisible();
+
+    // Only two buttons: Keep editing and Discard. No Save.
+    await expect(discard.getByRole('button', { name: 'Keep editing' })).toBeVisible();
+    await expect(discard.getByRole('button', { name: 'Discard' })).toBeVisible();
+    await expect(discard.getByRole('button', { name: 'Save' })).toHaveCount(0);
+  });
+
+  test('(c) Save in three-button sheet persists the gun and exits the form', async ({ page }) => {
+    await seedDemo(page);
+    await gotoSection(page, 'Guns');
+    await page.getByRole('main').getByRole('button', { name: '+ Add Gun' }).click();
+    await expect(page.getByRole('heading', { name: 'New Gun' })).toBeVisible();
+
+    const gunName = `E2E Save-from-Discard ${Date.now()}`;
+    await page.getByLabel('What this Gun is called').fill(gunName);
+
+    // ‹ Cancel → three-button sheet → tap Save.
+    await page.getByRole('main').getByRole('button', { name: 'Cancel' }).click();
+    const discard = page.getByRole('dialog', { name: 'Discard changes?' });
+    await expect(discard.getByRole('button', { name: 'Save' })).toBeVisible();
+    await discard.getByRole('button', { name: 'Save' }).click();
+
+    // The form should close (navigated away to gun detail or guns list).
+    await expect(page.getByRole('heading', { name: 'New Gun' })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: 'Discard changes?' })).toHaveCount(0);
+
+    // The saved gun should appear in the Guns list.
+    await gotoSection(page, 'Guns');
+    await expect(page.getByText(gunName)).toBeVisible();
+  });
+
+  test('(d) dirty PhotoSheet: discard sheet shows Save button; Save persists and closes', async ({ page }) => {
+    await seedDemo(page);
+    await openGunPhotoSheet(page);
+    const photoSheet = page.getByRole('dialog', { name: 'Photo' }).first();
+
+    const testCaption = `E2E caption ${Date.now()}`;
+    await photoSheet.getByLabel('Caption').fill(testCaption);
+
+    // Backdrop tap → discard sheet.
+    await page.locator('.sheet-backdrop').first().click({ position: { x: 50, y: 20 }, force: true });
+    const discard = page.getByRole('dialog', { name: 'Discard changes?' });
+    await expect(discard).toBeVisible();
+
+    // Three-button form: Save button present.
+    await expect(discard.getByRole('button', { name: 'Save' })).toBeVisible();
+
+    // Tap Save → sheet closes, photo persists.
+    await discard.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByRole('dialog', { name: 'Discard changes?' })).toHaveCount(0);
+    await expect(page.getByRole('dialog', { name: 'Photo' })).toHaveCount(0);
+
+    // Reopen the photo — the caption should be saved.
+    const photoCard = page.getByRole('main').locator('.card', {
+      has: page.getByRole('heading', { name: 'Photos' })
+    });
+    await photoCard.locator('.thumb-tap').first().click();
+    await expect(page.getByRole('dialog', { name: 'Photo' }).first()).toBeVisible();
+    await expect(page.getByRole('dialog', { name: 'Photo' }).first().getByLabel('Caption')).toHaveValue(testCaption);
+  });
+
+  test('(e) tab-bar tap with dirty valid GunForm: Save persists and lands on the tapped tab', async ({ page }) => {
+    await seedDemo(page);
+    await gotoSection(page, 'Guns');
+    await page.getByRole('main').getByRole('button', { name: '+ Add Gun' }).click();
+    await expect(page.getByRole('heading', { name: 'New Gun' })).toBeVisible();
+
+    const gunName = `E2E Tab-Save ${Date.now()}`;
+    await page.getByLabel('What this Gun is called').fill(gunName);
+
+    // Tap the Log tab — App's guard intercepts and parks the navigation.
+    await gotoTab(page, 'Log');
+    const discard = page.getByRole('dialog', { name: 'Discard changes?' });
+    await expect(discard).toBeVisible();
+
+    // Three buttons present (form is dirty AND valid).
+    await expect(discard.getByRole('button', { name: 'Save' })).toBeVisible();
+
+    // Tap Save — should persist the gun, clear the form, and land on the Log tab.
+    await discard.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByRole('dialog', { name: 'Discard changes?' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'New Gun' })).toHaveCount(0);
+
+    // Log tab is the landing — its h1 starts with "Log" (the InfoTip button
+    // inside the heading contributes to the accessible name; match loosely).
+    await expect(page.getByRole('main').getByRole('heading', { name: /^Log/ })).toBeVisible();
+
+    // Verify the gun was actually saved.
+    await gotoSection(page, 'Guns');
+    await expect(page.getByText(gunName)).toBeVisible();
+  });
+
+  test('(f) browser Back with dirty valid GunForm: Save persists and Back lands once', async ({ page }) => {
+    await seedDemo(page);
+    await gotoSection(page, 'Guns');
+    await page.getByRole('main').getByRole('button', { name: '+ Add Gun' }).click();
+    await expect(page.getByRole('heading', { name: 'New Gun' })).toBeVisible();
+
+    const gunName = `E2E Back-Save ${Date.now()}`;
+    await page.getByLabel('What this Gun is called').fill(gunName);
+
+    // Browser Back — App's guard intercepts and parks the navigation.
+    await page.goBack();
+    const discard = page.getByRole('dialog', { name: 'Discard changes?' });
+    await expect(discard).toBeVisible();
+
+    // Three buttons present (form is dirty AND valid).
+    await expect(discard.getByRole('button', { name: 'Save' })).toBeVisible();
+
+    // Tap Save — should persist, close the form, and return to the Guns list
+    // (not overshoot past it to whatever was before the Guns section).
+    await discard.getByRole('button', { name: 'Save' }).click();
+    await expect(page.getByRole('dialog', { name: 'Discard changes?' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'New Gun' })).toHaveCount(0);
+
+    // Should be on the Guns list (the Back target), not overshot.
+    // The Guns h1 includes an InfoTip button inside it; match loosely.
+    await expect(page.getByRole('main').getByRole('heading', { name: /^Guns/ })).toBeVisible();
+
+    // The gun should be listed.
+    await expect(page.getByText(gunName)).toBeVisible();
   });
 });

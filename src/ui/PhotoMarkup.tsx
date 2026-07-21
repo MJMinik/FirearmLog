@@ -62,8 +62,13 @@ export function PhotoMarkup({ url, initial, onSave, onClose }: {
     ? [...marks, { id: 'draft', cx: draft.cx, cy: draft.cy, rx: draft.rx, ry: draft.ry, color, label: '' }]
     : marks;
 
+  // Save-from-guard: markup has no required fields — any dirty state (mark
+  // drawn or edited) is always valid to save. Done just commits the current
+  // marks. Pass onSaveRequest unconditionally when dirty.
+  const onSaveRequest = dirty ? () => { onSave(marks); onClose(); } : undefined;
+
   return (
-    <Sheet title="Mark up photo" onClose={onClose} dirty={dirty}>
+    <Sheet title="Mark up photo" onClose={onClose} dirty={dirty} onSaveRequest={onSaveRequest}>
       <div className="markup-colors">
         {COLORS.map((c) => (
           <button key={c} aria-label={`Pen color ${c}`}

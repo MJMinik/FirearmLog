@@ -1,7 +1,7 @@
 // Reference (spec §9): built-in manufacturer guides PLUS the user's own.
 // Custom guides live in the database, sync in the .flog file, and appear in
 // the gun link picker right beside the built-ins.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { GunCategory, Reference } from '../lib/types.ts';
 import { Icon } from './Icon.tsx';
 import { GUN_CATEGORIES } from '../lib/types.ts';
@@ -196,10 +196,11 @@ export function ReferenceDetail({ id, onBack, onEdit, onCopy, onDeleted, refresh
   );
 }
 
-export function ReferenceForm({ id, copyFrom, onSaved, onCancel, onDirtyChange }: {
+export function ReferenceForm({ id, copyFrom, onSaved, onCancel, onDirtyChange, onSaverChange }: {
   id?: string; copyFrom?: string;
   onSaved: (refId: string) => void; onCancel: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onSaverChange?: (fn: (() => Promise<boolean>) | null) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Reference | null>(null);
@@ -252,12 +253,20 @@ export function ReferenceForm({ id, copyFrom, onSaved, onCancel, onDirtyChange }
     try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
   }
 
-  async function save() {
-    if (!name.trim()) { setProblem('Give the guide a name (the maker or the gun).'); return; }
+  function saveProblem(): string | null {
+    if (!name.trim()) return 'Give the guide a name (the maker or the gun).';
     const dc = Number(deepClean);
-    if (!(dc > 0)) { setProblem('Deep clean needs a round count, like 5000.'); return; }
+    if (!(dc > 0)) return 'Deep clean needs a round count, like 5000.';
     const rs = recoilSpring.trim() === '' ? null : Number(recoilSpring);
-    if (rs !== null && !(rs > 0)) { setProblem('Recoil spring needs a plain round count (or leave it blank).'); return; }
+    if (rs !== null && !(rs > 0)) return 'Recoil spring needs a plain round count (or leave it blank).';
+    return null;
+  }
+
+  async function persistForm(): Promise<string | null> {
+    const p = saveProblem();
+    if (p) { setProblem(p); return null; }
+    const dc = Number(deepClean);
+    const rs = recoilSpring.trim() === '' ? null : Number(recoilSpring);
     const linkList = links.split('\n').map((l) => l.trim()).filter(Boolean)
       .map((url) => ({ label: linkLabel(url), url: url.startsWith('http') ? url : `https://${url}` }));
     const fields = {
@@ -271,14 +280,37 @@ export function ReferenceForm({ id, copyFrom, onSaved, onCancel, onDirtyChange }
       const updated = stampUpdate({ ...original, ...fields }, Date.now());
       await putOne('references', updated);
       onDirtyChange?.(false);
-      onSaved(updated.id);
+      return updated.id;
     } else {
       const created: Reference = stampNew(fields, newId('refx'), Date.now());
       await putOne('references', created);
       onDirtyChange?.(false);
-      onSaved(created.id);
+      return created.id;
     }
   }
+
+  async function save() {
+    const rid = await persistForm();
+    if (rid) onSaved(rid);
+  }
+
+  // Always-fresh saver: the ref holds the LATEST persistForm (re-pointed after
+  // every render), and the reported wrapper is reference-stable so App's ref
+  // write never churns. This replaces a hand-maintained dep list that could — and
+  // did — go stale and save old values.
+  const persistRef = useRef(persistForm);
+  useEffect(() => { persistRef.current = persistForm; });
+  const stablePersist = useCallback(async (): Promise<boolean> => {
+    const rid = await persistRef.current();
+    return rid !== null;
+  }, []);
+
+  // Report after every render (cheap: App just writes a ref) so the reported
+  // validity can never lag the form state. Saver present ⟺ dirty AND valid.
+  useEffect(() => {
+    onSaverChange?.(dirty && saveProblem() === null ? stablePersist : null);
+  });
+  useEffect(() => () => onSaverChange?.(null), [onSaverChange]);
 
   return (
     <div className="screen">
@@ -289,7 +321,8 @@ export function ReferenceForm({ id, copyFrom, onSaved, onCancel, onDirtyChange }
       {discarding && (
         <DiscardChangesSheet
           onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
-          onClose={() => setDiscarding(false)} />
+          onClose={() => setDiscarding(false)}
+          onSave={saveProblem() === null ? () => void save() : undefined} />
       )}
       <h1 className="large-title">{original ? 'Edit Guide' : 'New Guide'}</h1>
       <FormProblem problem={problem} />

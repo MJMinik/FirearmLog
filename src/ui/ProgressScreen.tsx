@@ -886,8 +886,13 @@ function SkillSheet({ assessment, onClose, onSaved }: {
     onSaved();
   }
 
+  // Save-from-guard: valid only when at least one rating area is set.
+  const hasRating = Object.values(ratings).some((v) => v !== '');
+  const onSaveRequest = (dirty && hasRating) ? () => void save() : undefined;
+
   return (
-    <Sheet title={assessment ? 'Edit Check' : 'New Check'} onClose={onClose} dirty={dirty}>
+    <Sheet title={assessment ? 'Edit Check' : 'New Check'} onClose={onClose} dirty={dirty}
+      onSaveRequest={onSaveRequest}>
       <FormProblem problem={problem} />
       <label className="field">Date
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
@@ -940,8 +945,11 @@ function GoalEditSheet({ goal, categories, onClose, onSaved }: {
     onSaved();
   }
 
+  // Save-from-guard: valid only when the goal text is non-empty.
+  const onSaveRequest = (dirty && !!text.trim()) ? () => void save() : undefined;
+
   return (
-    <Sheet title="Edit Goal" onClose={onClose} dirty={dirty}>
+    <Sheet title="Edit Goal" onClose={onClose} dirty={dirty} onSaveRequest={onSaveRequest}>
       <FormProblem problem={problem} />
       <label className="field">Goal
         <input value={text} {...noAutofillProps} name="fl-goal-text"

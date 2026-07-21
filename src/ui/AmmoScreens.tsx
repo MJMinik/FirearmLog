@@ -100,9 +100,14 @@ export function AmmoScreen({ refreshKey, onBack, openForm }: {
 
 const BULLET_TYPES = ['FMJ', 'JHP', 'TMJ', 'LRN', 'Frangible', 'Birdshot', 'Buckshot', 'Slug', 'Other'];
 
-export function AmmoForm({ id, onSaved, onCancel, onDirtyChange }: {
+export function AmmoForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }: {
   id?: string; onSaved: () => void; onCancel: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  // Save-from-guard excluded: AmmoForm's save can open a duplicate-ammo confirm
+  // dialog (setDupe) before persisting — that multi-step path can't safely run
+  // from inside the discard sheet. onSaverChange is accepted but never reports
+  // a saver, so the guard always shows two buttons on this form.
+  onSaverChange?: (fn: (() => Promise<boolean>) | null) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Ammunition | null>(null);
@@ -133,6 +138,9 @@ export function AmmoForm({ id, onSaved, onCancel, onDirtyChange }: {
   const dirty = useDirtyTracker({ brand, caliber, grain, bulletType, quantity, costPerRound, notes, purchRounds, purchCost, purchVendor, justCounting }, loaded);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+  // Save-from-guard excluded (see prop comment). Report null on mount/unmount so
+  // App's ref is always clear when this form is shown.
+  useEffect(() => { onSaverChange?.(null); return () => onSaverChange?.(null); }, [onSaverChange]);
 
   useEffect(() => {
     let alive = true;

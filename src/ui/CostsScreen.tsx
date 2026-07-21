@@ -2,7 +2,7 @@
 // exactly once. Range fees come straight off sessions, match fees straight off
 // matches (the single-source rule) — purchases cover everything else. Per-gun
 // spend prorates multi-gun sessions by rounds (the old F2 bug, now unit-tested).
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScreenLoading } from './ScreenState.tsx';
 import type { Ammunition, Firearm, Match, Part, Purchase, Session } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, getSettings, putOne } from '../lib/db.ts';
@@ -182,9 +182,10 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
   );
 }
 
-export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange }: {
+export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }: {
   id?: string; onSaved: () => void; onCancel: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onSaverChange?: (fn: (() => Promise<boolean>) | null) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Purchase | null>(null);
@@ -256,15 +257,23 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange }: {
       { ...can, quantity: Math.max(0, (can.quantity || 0) - link.rounds) }, Date.now()));
   }
 
-  async function save() {
-    if (saving) return;
-    if (!item.trim()) { setProblem('Name the item — "1,000 rds Blazer 115gr", "match belt", whatever it was.'); return; }
+  function saveProblem(): string | null {
+    if (!item.trim()) return 'Name the item — "1,000 rds Blazer 115gr", "match belt", whatever it was.';
     const c = cost.trim() === '' ? 0 : Number(cost);
-    if (!Number.isFinite(c) || c < 0) { setProblem('Cost needs to be a plain number.'); return; }
+    if (!Number.isFinite(c) || c < 0) return 'Cost needs to be a plain number.';
     const isAmmo = category === 'Ammo Purchase';
     const r = isAmmo && rounds.trim() !== '' ? Number(rounds) : null;
-    if (r !== null && (!Number.isFinite(r) || r < 0)) { setProblem('Rounds needs to be a plain number.'); return; }
+    if (r !== null && (!Number.isFinite(r) || r < 0)) return 'Rounds needs to be a plain number.';
+    return null;
+  }
 
+  async function persistForm(): Promise<boolean> {
+    if (saving) return false;
+    const p = saveProblem();
+    if (p) { setProblem(p); return false; }
+    const c = cost.trim() === '' ? 0 : Number(cost);
+    const isAmmo = category === 'Ammo Purchase';
+    const r = isAmmo && rounds.trim() !== '' ? Number(rounds) : null;
     setSaving(true);
     try {
       const now = Date.now();
@@ -289,11 +298,28 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange }: {
         }
       }
       onDirtyChange?.(false);
-      onSaved();
+      return true;
     } finally {
       setSaving(false);
     }
   }
+
+  async function save() { if (await persistForm()) onSaved(); }
+
+  // Always-fresh saver: the ref holds the LATEST persistForm (re-pointed after
+  // every render), and the reported wrapper is reference-stable so App's ref
+  // write never churns. This replaces a hand-maintained dep list that could — and
+  // did — go stale and save old values.
+  const persistRef = useRef(persistForm);
+  useEffect(() => { persistRef.current = persistForm; });
+  const stablePersist = useCallback(() => persistRef.current(), []);
+
+  // Report after every render (cheap: App just writes a ref) so the reported
+  // validity can never lag the form state. Saver present ⟺ dirty AND valid.
+  useEffect(() => {
+    onSaverChange?.(dirty && saveProblem() === null ? stablePersist : null);
+  });
+  useEffect(() => () => onSaverChange?.(null), [onSaverChange]);
 
   async function reallyDelete() {
     if (original) {
@@ -315,7 +341,8 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange }: {
       {discarding && (
         <DiscardChangesSheet
           onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
-          onClose={() => setDiscarding(false)} />
+          onClose={() => setDiscarding(false)}
+          onSave={saveProblem() === null ? () => void save() : undefined} />
       )}
       <h1 className="large-title">{editing ? 'Edit Purchase' : 'Add Purchase'}</h1>
       <FormProblem problem={problem} />

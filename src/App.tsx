@@ -59,13 +59,25 @@ export function App() {
   // shared ref is safe. When a guarded navigation hits a dirty form, the
   // navigation is parked in pendingNav and the shared Discard-changes? sheet asks first.
   const formDirty = useRef(false);
-  const [pendingNav, setPendingNav] = useState<null | (() => void)>(null);
+  // Save-from-guard (July 21 2026): forms report a persist function alongside dirty.
+  // When the form currently passes validation, saver is the persistForm() function
+  // (returns true on success, false if validation raced false). When the form is
+  // invalid or no form is mounted, saver is null. The function is stable (useCallback
+  // inside each form) so this ref update never triggers a re-render. A single shared
+  // ref is safe for the same reason as formDirty — only one form is mounted at a time.
+  const formSaver = useRef<(() => Promise<boolean>) | null>(null);
+  // pendingNav now carries the saver snapshotted AT THE MOMENT the nav was parked
+  // (not read live from the ref) so the sheet's Save presence is decided at park
+  // time and can't flicker if validity changes while the sheet is open.
+  const [pendingNav, setPendingNav] = useState<null | { go: () => void; saver: (() => Promise<boolean>) | null }>(null);
   const guardNav = (go: () => void) => {
-    if (formDirty.current) setPendingNav(() => go);
+    if (formDirty.current) setPendingNav({ go, saver: formSaver.current });
     else go();
   };
   // Stable identity so the forms' dirty-sync effects don't re-run per render.
   const reportFormDirty = useCallback((d: boolean) => { formDirty.current = d; }, []);
+  // Stable identity so forms' saver-sync effects don't re-run per render.
+  const reportFormSaver = useCallback((fn: (() => Promise<boolean>) | null) => { formSaver.current = fn; }, []);
   // Bump this to make every screen re-read the database after a save/import.
   const [refreshKey, setRefreshKey] = useState(0);
   const refresh = () => setRefreshKey((k) => k + 1);
@@ -127,9 +139,11 @@ export function App() {
       // on (neutralizing the pop — the screen never changes), then ask. On
       // Discard the guard is disarmed and Back is replayed for real; the
       // replay lands in the branch below and navigates normally.
+      // Save-from-guard: snapshot the saver at park time (same as guardNav).
       if (formDirty.current) {
         history.pushState({ view: viewRef.current }, '');
-        setPendingNav(() => () => { formDirty.current = false; history.back(); });
+        const saver = formSaver.current;
+        setPendingNav({ go: () => { formDirty.current = false; history.back(); }, saver });
         return;
       }
       const st = e.state as { view?: View | null } | null;
@@ -275,14 +289,14 @@ export function App() {
     content = <GunForm id={v.id}
       onCancel={back}
       onSaved={(gid) => { refresh(); replace({ kind: 'gun-detail', id: gid }); }}
-      onDirtyChange={reportFormDirty} />;
+      onDirtyChange={reportFormDirty} onSaverChange={reportFormSaver} />;
   } else if (view?.kind === 'session-form') {
     const v = view;
     content = <SessionForm id={v.id} initialPlanned={v.planned} convert={v.convert} initialDate={v.date}
       onCancel={back}
       onDeleted={() => { refresh(); setTab('log'); }}
       onSaved={() => { refresh(); setTab('log'); }}
-      onDirtyChange={reportFormDirty} />;
+      onDirtyChange={reportFormDirty} onSaverChange={reportFormSaver} />;
   } else if (view?.kind === 'drills') {
     content = <DrillsScreen refreshKey={refreshKey}
       onBack={back}
@@ -296,7 +310,7 @@ export function App() {
     content = <DrillForm id={v.id}
       onCancel={back}
       onSaved={() => { refresh(); back(); }}
-      onDirtyChange={reportFormDirty} />;
+      onDirtyChange={reportFormDirty} onSaverChange={reportFormSaver} />;
   } else if (view?.kind === 'magazines') {
     content = <MagazinesScreen refreshKey={refreshKey}
       onBack={back}
@@ -306,7 +320,7 @@ export function App() {
     content = <MagazineForm id={v.id}
       onCancel={back}
       onSaved={() => { refresh(); back(); }}
-      onDirtyChange={reportFormDirty} />;
+      onDirtyChange={reportFormDirty} onSaverChange={reportFormSaver} />;
   } else if (view?.kind === 'references') {
     content = <ReferenceList refreshKey={refreshKey}
       onBack={back}
@@ -324,7 +338,7 @@ export function App() {
     content = <ReferenceForm id={v.id} copyFrom={v.copyFrom}
       onCancel={back}
       onSaved={(rid) => { refresh(); replace({ kind: 'reference-detail', id: rid }); }}
-      onDirtyChange={reportFormDirty} />;
+      onDirtyChange={reportFormDirty} onSaverChange={reportFormSaver} />;
   } else if (view?.kind === 'maintenance') {
     content = <MaintenanceOverview refreshKey={refreshKey}
       onBack={back}
@@ -335,7 +349,7 @@ export function App() {
     content = <MaintenanceForm gunId={v.gunId} id={v.id}
       onCancel={back}
       onSaved={() => { refresh(); replace({ kind: 'gun-detail', id: v.gunId }); }}
-      onDirtyChange={reportFormDirty} />;
+      onDirtyChange={reportFormDirty} onSaverChange={reportFormSaver} />;
   } else if (view?.kind === 'reminders') {
     content = <RemindersScreen refreshKey={refreshKey} onBack={back} open={push} />;
   } else if (view?.kind === 'reminder-form') {
@@ -350,7 +364,7 @@ export function App() {
       // save, so it never re-runs to re-arm the guard before the pop. formDirty is
       // provably false when back()'s popstate fires, so it navigates normally.
       onSaved={() => { refresh(); back(); }}
-      onDirtyChange={reportFormDirty} />;
+      onDirtyChange={reportFormDirty} onSaverChange={reportFormSaver} />;
   } else if (view?.kind === 'malfunctions') {
     content = <MalfunctionsScreen refreshKey={refreshKey}
       onBack={back}
@@ -366,7 +380,7 @@ export function App() {
     content = <MatchForm id={v.id}
       onCancel={back}
       onSaved={(mid) => { refresh(); replace({ kind: 'match-detail', id: mid }); }}
-      onDirtyChange={reportFormDirty} />;
+      onDirtyChange={reportFormDirty} onSaverChange={reportFormSaver} />;
   } else if (view?.kind === 'ammo') {
     content = <AmmoScreen refreshKey={refreshKey}
       onBack={back}
@@ -385,7 +399,7 @@ export function App() {
     content = <AmmoForm id={v.id}
       onCancel={back}
       onSaved={() => { refresh(); back(); }}
-      onDirtyChange={reportFormDirty} />;
+      onDirtyChange={reportFormDirty} onSaverChange={reportFormSaver} />;
   } else if (view?.kind === 'costs') {
     content = <CostsScreen refreshKey={refreshKey}
       onBack={back}
@@ -396,7 +410,7 @@ export function App() {
     content = <PurchaseForm id={v.id}
       onCancel={back}
       onSaved={() => { refresh(); back(); }}
-      onDirtyChange={reportFormDirty} />;
+      onDirtyChange={reportFormDirty} onSaverChange={reportFormSaver} />;
   } else if (view?.kind === 'optics') {
     content = <OpticsScreen refreshKey={refreshKey}
       onBack={back}
@@ -413,7 +427,7 @@ export function App() {
       // F-Universal-Guard: onDirtyChange keeps App's browser-Back / tab-bar
       // guard in step; the form clears dirty before onSaved so back() runs.
       onSaved={() => { refresh(); back(); }}
-      onDirtyChange={reportFormDirty} />;
+      onDirtyChange={reportFormDirty} onSaverChange={reportFormSaver} />;
   } else if (view?.kind === 'parts') {
     content = <PartsScreen refreshKey={refreshKey}
       onBack={back}
@@ -424,7 +438,7 @@ export function App() {
     content = <PartForm id={v.id}
       onCancel={back}
       onSaved={() => { refresh(); back(); }}
-      onDirtyChange={reportFormDirty} />;
+      onDirtyChange={reportFormDirty} onSaverChange={reportFormSaver} />;
   } else if (view?.kind === 'reports') {
     content = <ReportsScreen refreshKey={refreshKey} onBack={back} popupBlocked={view.blocked} />;
   } else if (view?.kind === 'classifier-form') {
@@ -432,7 +446,7 @@ export function App() {
     content = <ClassifierForm id={v.id}
       onCancel={back}
       onSaved={() => { refresh(); replace(null); }}
-      onDirtyChange={reportFormDirty} />;
+      onDirtyChange={reportFormDirty} onSaverChange={reportFormSaver} />;
   } else if (view?.kind === 'practiscore-import') {
     content = <PractiScoreImport
       onCancel={back}
@@ -504,11 +518,30 @@ export function App() {
       <TabBar active={tab} onChange={setTab} view={view} onOpen={openSection} />
       {/* F3: the parked navigation's Discard-changes? sheet — same component
           and wording as the form's own Cancel guard. Keep editing stays put;
-          Discard disarms the guard and runs the parked navigation. */}
+          Discard disarms the guard and runs the parked navigation.
+          Save-from-guard (July 21 2026): when the form was valid at park time
+          (saver is set), a "Save" button appears. On success: clear dirty, call
+          refresh() (persistForm no longer calls onSaved, so lists won't update
+          otherwise), clear pendingNav, run the parked go(). On failure
+          (validation raced false): close the sheet — the problem message is
+          visible in the form. On write error: close the sheet so the user isn't
+          stuck on disabled buttons; the form's own handler shows the error. */}
       {pendingNav && (
         <DiscardChangesSheet
-          onConfirm={() => { formDirty.current = false; const go = pendingNav; setPendingNav(null); go(); }}
-          onClose={() => setPendingNav(null)} />
+          onConfirm={() => { formDirty.current = false; const { go } = pendingNav; setPendingNav(null); go(); }}
+          onClose={() => setPendingNav(null)}
+          onSave={pendingNav.saver ? async () => {
+            const { go, saver } = pendingNav;
+            try {
+              const ok = await saver!();
+              if (ok) { formDirty.current = false; refresh(); setPendingNav(null); go(); }
+              else setPendingNav(null); // validation raced false; problem shown in form
+            } catch {
+              // Failed write (quota, locked txn): the form's own handler shows the
+              // problem; close the sheet so the user isn't stuck on disabled buttons.
+              setPendingNav(null);
+            }
+          } : undefined} />
       )}
     </div>
   );

@@ -1,6 +1,6 @@
 // Match logging (spec §11): the full match record with stage-by-stage entry,
 // auto hit factors, stage videos, entry fee, and PractiScore link.
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppSettings, Firearm, Match, MatchStage, Media } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, getSettings, putOne, putSettings } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
@@ -30,7 +30,7 @@ import { pickableGuns } from '../lib/gunStatus.ts';
 function fmtMetric(s: { percent: number | null; hitFactor: number | null }, by: 'percent' | 'hitFactor' | 'none'): string {
   if (by === 'percent' && s.percent !== null) return `${s.percent}%`;
   if (by === 'hitFactor' && s.hitFactor !== null) return `HF ${s.hitFactor}`;
-  return '—';
+  return '--';
 }
 
 /**
@@ -43,7 +43,7 @@ function SpeedAccuracyCard({ sa, coachingRemarks, onDisableRemarks }: {
 }) {
   const nudge = sa.discipline !== 'steel' && sa.overAccuracy && coachingRemarks ? (
     <p className="report-note" style={{ marginTop: 8 }}>
-      You kept almost all your points — on the closer targets, was there room to push the pace?{' '}
+      You kept almost all your points -- on the closer targets, was there room to push the pace?{' '}
       <button className="link-btn" onClick={onDisableRemarks}>Turn off (Settings)</button>
     </p>
   ) : null;
@@ -56,10 +56,10 @@ function SpeedAccuracyCard({ sa, coachingRemarks, onDisableRemarks }: {
     ].filter(Boolean).join(', ');
     return (
       <div className="card">
-        <h2>Speed &amp; Accuracy <InfoTip title="Speed & Accuracy">Two things, kept separate — the sport has no single "speed vs accuracy" number. Accuracy is the share of the available points you kept; a miss counts against it, while no-shoots and procedurals are separate errors. One match is a small sample, so read it as this match — the real signal is the trend across matches.</InfoTip></h2>
+        <h2>Speed &amp; Accuracy <InfoTip title="Speed & Accuracy">Two things, kept separate -- the sport has no single "speed vs accuracy" number. Accuracy is the share of the available points you kept; a miss counts against it, while no-shoots and procedurals are separate errors. One match is a small sample, so read it as this match -- the real signal is the trend across matches.</InfoTip></h2>
         <p className="report-note" style={{ marginTop: 0 }}>
           Accuracy: you kept <strong>{Math.round(sa.pointsKept * 100)}%</strong> of your points ({sa.pointsDown} down)
-          {sa.stagesUsed < sa.stagesTotal ? ` — from ${sa.stagesUsed} of ${sa.stagesTotal} stages` : ''}.
+          {sa.stagesUsed < sa.stagesTotal ? ` -- from ${sa.stagesUsed} of ${sa.stagesTotal} stages` : ''}.
           {errors ? ` Errors: ${errors}.` : ''}
         </p>
         {nudge}
@@ -69,7 +69,7 @@ function SpeedAccuracyCard({ sa, coachingRemarks, onDisableRemarks }: {
   if (sa.discipline === 'idpa') {
     return (
       <div className="card">
-        <h2>Speed &amp; Accuracy <InfoTip title="Speed & Accuracy">IDPA's time-plus scoring already splits your total into three parts: the raw time (speed), the seconds added by dropped points (1s each — accuracy), and any penalties. Read it as this match; the real signal is the trend across matches.</InfoTip></h2>
+        <h2>Speed &amp; Accuracy <InfoTip title="Speed & Accuracy">IDPA's time-plus scoring already splits your total into three parts: the raw time (speed), the seconds added by dropped points (1s each -- accuracy), and any penalties. Read it as this match; the real signal is the trend across matches.</InfoTip></h2>
         <p className="report-note" style={{ marginTop: 0 }}>
           Your <strong>{sa.totalTime}s</strong>: <strong>{sa.timeSeconds}s</strong> time · <strong>{sa.downSeconds}s</strong> dropped points
           {sa.penaltySeconds > 0 ? ` · ${sa.penaltySeconds}s penalties` : ''}.
@@ -80,11 +80,11 @@ function SpeedAccuracyCard({ sa, coachingRemarks, onDisableRemarks }: {
   }
   return (
     <div className="card">
-      <h2>Speed &amp; Accuracy <InfoTip title="Speed & Accuracy">Steel is a time sport — accuracy shows up only as missed plates (3 seconds each). There's no points breakdown to weigh against the clock.</InfoTip></h2>
+      <h2>Speed &amp; Accuracy <InfoTip title="Speed & Accuracy">Steel is a time sport -- accuracy shows up only as missed plates (3 seconds each). There's no points breakdown to weigh against the clock.</InfoTip></h2>
       <p className="report-note" style={{ marginTop: 0 }}>
         {sa.misses > 0
           ? `${sa.misses} missed plate${sa.misses > 1 ? 's' : ''} added ${sa.missSeconds}s.`
-          : 'Clean — no missed plates.'}
+          : 'Clean -- no missed plates.'}
       </p>
     </div>
   );
@@ -132,7 +132,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
   if (error) return <ScreenError onRetry={() => setLocalBump((n) => n + 1)} />;
   if (notFound) return <NotFound what="This match no longer exists." onBack={onBack} />;
   if (!match) return <ScreenLoading />;
-  const gunName = firearms.find((f) => f.id === match.firearmId)?.name ?? '—';
+  const gunName = firearms.find((f) => f.id === match.firearmId)?.name ?? '--';
   const isSteel = match.scoringType === 'steel';
   const isIdpa = match.scoringType === 'idpa';
   const wikiSection = isSteel ? 'steel' : isIdpa ? 'idpa' : 'uspsa'; // deep-link target into the wiki
@@ -224,7 +224,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
 
       {match.stages.length > 0 && !isSteel && !isIdpa && (
         <div className="card">
-          <h2>Stage breakdown <InfoTip title="Stage breakdown">Hit factor is your points divided by your time (higher is better). Stage percent is your score against the stage winner. We flag your toughest stage — where you lost the most ground — and your strongest. Add a stage's A/C/D/miss breakdown (when you log or edit the match) and we'll show what it would have scored with all A's, plus your % of available points.</InfoTip></h2>
+          <h2>Stage breakdown <InfoTip title="Stage breakdown">Hit factor is your points divided by your time (higher is better). Stage percent is your score against the stage winner. We flag your toughest stage -- where you lost the most ground -- and your strongest. Add a stage's A/C/D/miss breakdown (when you log or edit the match) and we'll show what it would have scored with all A's, plus your % of available points.</InfoTip></h2>
           <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers', section: wikiSection })}>How the numbers work ›</button>
           {insights.rankedBy !== 'none' && insights.strongest && insights.toughest.length > 0 && (
             <p className="report-note" style={{ marginTop: 0, marginBottom: 10 }}>
@@ -243,8 +243,8 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
                   <div className="row-sub">
                     A {st.score.alphas} · C {st.score.charlies} · D {st.score.deltas} · M {st.score.misses}
                     {(st.score.noShoots > 0 || st.score.procedurals > 0) ? ` · NS ${st.score.noShoots} · P ${st.score.procedurals}` : ''}
-                    {st.score.allAlphaDelta != null && st.score.allAlphaDelta > 0 ? ` — all A's ${st.score.allAlphaHitFactor} (+${st.score.allAlphaDelta})` : ''}
-                    {st.score.pctAvailable != null ? ` — ${Math.round(st.score.pctAvailable * 100)}% of points` : ''}
+                    {st.score.allAlphaDelta != null && st.score.allAlphaDelta > 0 ? ` -- all A's ${st.score.allAlphaHitFactor} (+${st.score.allAlphaDelta})` : ''}
+                    {st.score.pctAvailable != null ? ` -- ${Math.round(st.score.pctAvailable * 100)}% of points` : ''}
                   </div>
                 )}
               </span>
@@ -252,7 +252,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
                 {[(st.score ? st.score.stagePoints : st.points) !== null ? `${st.score ? st.score.stagePoints : st.points} pts` : null,
                   st.time !== null ? `${st.time}s` : null,
                   st.hitFactor !== null ? `HF ${st.hitFactor}` : null,
-                  st.percent !== null ? `${st.percent}%` : null].filter(Boolean).join(' · ') || '—'}
+                  st.percent !== null ? `${st.percent}%` : null].filter(Boolean).join(' · ') || '--'}
               </span>
             </div>
           ))}
@@ -261,7 +261,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
 
       {match.stages.length > 0 && isSteel && (
         <div className="card">
-          <h2>Stage times <InfoTip title="Steel Challenge scoring">Steel is scored on time — lowest wins. Each string is your raw time plus 3 seconds for every missed plate, capped at 30 seconds (a string whose stop plate you never hit scores the full 30). A stage keeps your best 4 of 5 strings — the single slowest is dropped — and Outer Limits keeps your best 3 of 4 (the slowest is still dropped). Your match total is the sum of your stage times. Full details in "How the numbers work."</InfoTip></h2>
+          <h2>Stage times <InfoTip title="Steel Challenge scoring">Steel is scored on time -- lowest wins. Each string is your raw time plus 3 seconds for every missed plate, capped at 30 seconds (a string whose stop plate you never hit scores the full 30). A stage keeps your best 4 of 5 strings -- the single slowest is dropped -- and Outer Limits keeps your best 3 of 4 (the slowest is still dropped). Your match total is the sum of your stage times. Full details in "How the numbers work."</InfoTip></h2>
           <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers', section: wikiSection })}>How the numbers work ›</button>
           {steelTotal != null && (
             <div className="row">
@@ -272,7 +272,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
           {steelRows.map(({ st, score }, i) => (
             <div className="row" key={i}>
               <span className="label">
-                Stage {st.number}{st.steelStage ? ` — ${st.steelStage}` : ''}
+                Stage {st.number}{st.steelStage ? ` -- ${st.steelStage}` : ''}
                 {st.notes && <div className="row-sub">{st.notes}</div>}
                 {score.stageTime != null && score.droppedIndex != null && (
                   <div className="row-sub">Dropped the slowest string (String {score.droppedIndex + 1})</div>
@@ -285,7 +285,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
                   </div>
                 )}
               </span>
-              <span className="value">{score.stageTime != null ? `${score.stageTime}s` : '—'}</span>
+              <span className="value">{score.stageTime != null ? `${score.stageTime}s` : '--'}</span>
             </div>
           ))}
         </div>
@@ -293,7 +293,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
 
       {match.stages.length > 0 && isIdpa && (
         <div className="card">
-          <h2>Stage times <InfoTip title="IDPA scoring">IDPA is time-plus — lowest total wins. Your stage score is your raw time, plus 1 second for each point down (a -1 is 1, a -3 is 3, a miss is 5), plus penalties: a hit on a non-threat is 5s, a procedural is 3s, a flagrant is 10s, and a failure to do right is 20s. Full math and the exact rules are in "How the numbers work."</InfoTip></h2>
+          <h2>Stage times <InfoTip title="IDPA scoring">IDPA is time-plus -- lowest total wins. Your stage score is your raw time, plus 1 second for each point down (a -1 is 1, a -3 is 3, a miss is 5), plus penalties: a hit on a non-threat is 5s, a procedural is 3s, a flagrant is 10s, and a failure to do right is 20s. Full math and the exact rules are in "How the numbers work."</InfoTip></h2>
           <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers', section: wikiSection })}>How the numbers work ›</button>
           {idpaTotal != null && (
             <div className="row">
@@ -314,7 +314,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
                   </div>
                 )}
               </span>
-              <span className="value">{score.stageTime != null ? `${score.stageTime}s` : '—'}</span>
+              <span className="value">{score.stageTime != null ? `${score.stageTime}s` : '--'}</span>
             </div>
           ))}
         </div>
@@ -331,7 +331,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
             <>
               <p className="report-note" style={{ marginTop: 0 }}>
                 Enter your official time for each stage. A gap almost always means a number was entered
-                differently than the official card — we&rsquo;ll flag which stage and where to look.
+                differently than the official card -- we&rsquo;ll flag which stage and where to look.
               </p>
               {oursByStage.map((ours, i) => {
                 const { diff, matches } = reconcileTime(ours, parseNum(officialTimes[i]));
@@ -339,12 +339,12 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
                   <div className="row" key={i}>
                     <span className="label">
                       Stage {i + 1}
-                      <div className="row-sub">Ours: {ours != null ? `${ours}s` : '—'}</div>
+                      <div className="row-sub">Ours: {ours != null ? `${ours}s` : '--'}</div>
                       {diff !== null && (matches ? (
                         <div className="row-sub" style={{ color: 'var(--success)' }}>Matches <span aria-hidden="true">✓</span></div>
                       ) : (
                         <div className="row-sub" style={{ color: 'var(--warn-text)' }}>
-                          Off by {diff > 0 ? '+' : ''}{diff}s — {isIdpa
+                          Off by {diff > 0 ? '+' : ''}{diff}s -- {isIdpa
                             ? "recheck this stage's points down and penalties"
                             : "recheck this stage's string times and missed-plate counts"}.
                         </div>
@@ -464,12 +464,13 @@ function emptyStageRow(): StageRow {
   };
 }
 
-export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
+export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }: {
   id?: string; onSaved: (matchId: string) => void; onCancel: () => void;
   // F3 parity: reports unsaved-edits state up to App, so the exits App owns
   // (tab bar, sidebar, browser Back) show the same Discard-changes? guard this
   // form's own ‹ Cancel uses. Must be reference-stable (useCallback in App).
   onDirtyChange?: (dirty: boolean) => void;
+  onSaverChange?: (fn: (() => Promise<boolean>) | null) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Match | null>(null);
@@ -499,7 +500,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
   // M4: watch for any real user edit (bubbled change). Programmatic loads and the
   // async first-gun auto-select don't fire input events, so this never false-fires.
   // Click-only mutators (add/remove stage, staged-media changes) fire no change
-  // event, so they call setTouched(true) explicitly — same pattern as SessionForm.
+  // event, so they call setTouched(true) explicitly -- same pattern as SessionForm.
   const [touched, setTouched] = useState(false);
 
   // F3 parity: keep App's dirty flag in step with `touched`, and clear it on
@@ -509,7 +510,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
     return () => onDirtyChange?.(false);
   }, [touched, onDirtyChange]);
 
-  // F3 parity: last-resort guard for exits the app can't intercept — closing the
+  // F3 parity: last-resort guard for exits the app can't intercept -- closing the
   // tab, a reload, typing a new URL. Best-effort on iOS Safari/PWA (often skipped);
   // the in-app exits are the real fix.
   useEffect(() => {
@@ -644,14 +645,13 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
     [stageObjs, scoringType]);
 
 
-  async function save() {
-    if (saving) return;
-    if (!date) { setProblem('Pick a date.'); return; }
-    if (!firearmId) { setProblem('Pick a gun.'); return; }
-    // M2: don't save an empty shell — require at least something that identifies the
-    // match (a name, the rounds fired, or one stage). Cancel stays free.
+  // ONE source of validation truth for both Save button and nav-guard Save.
+  function saveProblem(): string | null {
+    if (!date) return 'Pick a date.';
+    if (!firearmId) return 'Pick a gun.';
+    // M2: don't save an empty shell -- require at least something that identifies the match.
     if (!name.trim() && !num(totalRounds) && stageObjs.length === 0) {
-      setProblem('Add a name, the rounds fired, or a stage before saving.'); return;
+      return 'Add a name, the rounds fired, or a stage before saving.';
     }
     const numbers = [num(totalRounds), num(matchPercent), num(divPlace), num(divOf),
       num(overallPlace), num(overallOf), num(entryFee),
@@ -662,8 +662,15 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
         st.idpaNonThreatHits ?? null, st.idpaProceduralErrors ?? null,
         st.idpaFlagrantPenalties ?? null, st.idpaFailureToDoRight ?? null])];
     if (numbers.some((n) => n !== null && !Number.isFinite(n))) {
-      setProblem('One of the numbers isn’t a plain number.'); return;
+      return "One of the numbers isn't a plain number.";
     }
+    return null;
+  }
+
+  async function persistForm(): Promise<string | null> {
+    if (saving) return null;
+    const p = saveProblem();
+    if (p) { setProblem(p); return null; }
     setSaving(true);
     try {
       const mid = original ? original.id : newId('mt');
@@ -682,14 +689,37 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
         await putOne('matches', stampNew(fields, mid, now));
       }
       await commitMedia('match', mid, newFiles, removedMedia, existingMedia.length);
-      // F3 parity: the edits are saved — nothing left to guard. Clear the dirty
+      // F3 parity: the edits are saved -- nothing left to guard. Clear the dirty
       // flag before onSaved navigates (its replace/back would otherwise hit App's guard).
       onDirtyChange?.(false);
-      onSaved(mid);
+      return mid;
     } finally {
       setSaving(false);
     }
   }
+
+  async function save() {
+    const mid = await persistForm();
+    if (mid) onSaved(mid);
+  }
+
+  // Always-fresh saver: the ref holds the LATEST persistForm (re-pointed after
+  // every render), and the reported wrapper is reference-stable so App's ref
+  // write never churns. This replaces a hand-maintained dep list that could — and
+  // did — go stale and save old values.
+  const persistRef = useRef(persistForm);
+  useEffect(() => { persistRef.current = persistForm; });
+  const stablePersist = useCallback(async (): Promise<boolean> => {
+    const mid = await persistRef.current();
+    return mid !== null;
+  }, []);
+
+  // Report after every render (cheap: App just writes a ref) so the reported
+  // validity can never lag the form state. Saver present ⟺ touched AND valid.
+  useEffect(() => {
+    onSaverChange?.(touched && saveProblem() === null ? stablePersist : null);
+  });
+  useEffect(() => () => onSaverChange?.(null), [onSaverChange]);
 
   return (
     <div className="screen" onChange={() => setTouched(true)}>
@@ -704,10 +734,12 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
       {discarding && (
         <DiscardChangesSheet
           // Clear App's dirty flag BEFORE leaving: onCancel is history.back(),
-          // which fires popstate — without this, App's own F3 guard would see a
+          // which fires popstate -- without this, App's own F3 guard would see a
           // still-dirty form and show a SECOND sheet on top of this one.
           onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
-          onClose={() => setDiscarding(false)} />
+          onClose={() => setDiscarding(false)}
+          // Local ‹ Cancel sheet uses full save() so post-save navigation runs.
+          onSave={saveProblem() === null ? () => void save() : undefined} />
       )}
 
       <div className="card">
@@ -751,7 +783,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
 
       <div className="card">
         {/* Progressive disclosure: placement + percent usually arrive AFTER the match (or
-            via a PractiScore import), so they're collapsed — the default match is
+            via a PractiScore import), so they're collapsed -- the default match is
             name/date/type/division/power-factor/gun/stages. Values live in form state,
             so an unopened block simply saves empty, exactly as leaving them blank did. */}
         <Reveal label="Results & placement">
@@ -779,10 +811,10 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
 
       <div className="card">
         <h2>{scoringType === 'steel' ? 'Stages & strings' : 'Stages'} <InfoTip title="How the numbers work">{scoringType === 'steel'
-          ? <>Steel is scored on time — lowest wins. Enter each string's raw time; if a plate was missed or the stop plate was never hit, tap "+ miss / penalty" on that string. Each miss adds 3 seconds, a string is capped at 30 seconds, and a missed stop plate scores the full 30. A stage keeps your best 4 of 5 strings (the slowest is dropped) — and Outer Limits keeps your best 3 of 4 (the slowest is still dropped). Full math and sources are in "How the numbers work."</>
+          ? <>Steel is scored on time -- lowest wins. Enter each string's raw time; if a plate was missed or the stop plate was never hit, tap "+ miss / penalty" on that string. Each miss adds 3 seconds, a string is capped at 30 seconds, and a missed stop plate scores the full 30. A stage keeps your best 4 of 5 strings (the slowest is dropped) -- and Outer Limits keeps your best 3 of 4 (the slowest is still dropped). Full math and sources are in "How the numbers work."</>
           : scoringType === 'idpa'
-          ? <>IDPA is time-plus — lowest total wins. Enter each stage's raw time; tap "+ points down / penalties" to record accuracy (down-1, down-3, misses) and any penalties. Each point down adds 1 second (a -1 is 1, a -3 is 3, a miss is 5); a non-threat hit (hitting a target you weren't meant to shoot) is 5s, a procedural (a rule/procedure penalty) 3s, a flagrant 10s, and failure to do right 20s. Full math and sources are in "How the numbers work."</>
-          : <>Hit factor = points / time. Add a stage's A/C/D/miss breakdown and the points are computed from your hits — A is 5; C is 4 major / 3 minor; D is 2 major / 1 minor — minus 10 for each miss, no-shoot (a penalty target you weren't meant to hit), and procedural (a rule/procedure penalty), and never below zero (the Points field then becomes read-only). The full math and sources are in "How the numbers work," under More or from a saved match's debrief.</>}</InfoTip></h2>
+          ? <>IDPA is time-plus -- lowest total wins. Enter each stage's raw time; tap "+ points down / penalties" to record accuracy (down-1, down-3, misses) and any penalties. Each point down adds 1 second (a -1 is 1, a -3 is 3, a miss is 5); a non-threat hit (hitting a target you weren't meant to shoot) is 5s, a procedural (a rule/procedure penalty) 3s, a flagrant 10s, and failure to do right 20s. Full math and sources are in "How the numbers work."</>
+          : <>Hit factor = points / time. Add a stage's A/C/D/miss breakdown and the points are computed from your hits -- A is 5; C is 4 major / 3 minor; D is 2 major / 1 minor -- minus 10 for each miss, no-shoot (a penalty target you weren't meant to hit), and procedural (a rule/procedure penalty), and never below zero (the Points field then becomes read-only). The full math and sources are in "How the numbers work," under More or from a saved match's debrief.</>}</InfoTip></h2>
         {scoringType === 'steel' ? stages.map((st, i) => {
           const expected = steelStringsExpected(st.steelStage);
           const ss = scoreSteelStage({
@@ -794,7 +826,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
           return (
             <div className="drill-edit" key={i}>
               <div className="drill-edit-head">
-                <strong>Stage {i + 1}{ss.stageTime !== null ? ` — ${ss.stageTime}s` : ''}</strong>
+                <strong>Stage {i + 1}{ss.stageTime !== null ? ` -- ${ss.stageTime}s` : ''}</strong>
                 <button className="icon-btn" aria-label={`Remove stage ${i + 1}`}
                   onClick={() => { setTouched(true); setStages((p) => p.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
               </div>
@@ -834,7 +866,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
               ))}
               {ss.stageTime !== null && (
                 <p className="report-note" style={{ marginTop: 2 }}>
-                  Stage time <InfoTip title="How this is derived">Each string = raw time + 3 seconds per missed plate, capped at 30s (a missed stop plate scores the full 30). The stage keeps the best 4 of 5 strings — the slowest is dropped — and Outer Limits keeps the best 3 of its 4 (slowest dropped too). Lowest total wins.</InfoTip>: {ss.stageTime}s{ss.droppedIndex !== null ? ` · dropped String ${ss.droppedIndex + 1}` : ''}
+                  Stage time <InfoTip title="How this is derived">Each string = raw time + 3 seconds per missed plate, capped at 30s (a missed stop plate scores the full 30). The stage keeps the best 4 of 5 strings -- the slowest is dropped -- and Outer Limits keeps the best 3 of its 4 (slowest dropped too). Lowest total wins.</InfoTip>: {ss.stageTime}s{ss.droppedIndex !== null ? ` · dropped String ${ss.droppedIndex + 1}` : ''}
                 </p>
               )}
               <label className="field">Stage notes
@@ -853,7 +885,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
           return (
             <div className="drill-edit" key={i}>
               <div className="drill-edit-head">
-                <strong>Stage {i + 1}{is.stageTime !== null ? ` — ${is.stageTime}s` : ''}</strong>
+                <strong>Stage {i + 1}{is.stageTime !== null ? ` -- ${is.stageTime}s` : ''}</strong>
                 <button className="icon-btn" aria-label={`Remove stage ${i + 1}`}
                   onClick={() => { setTouched(true); setStages((p) => p.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
               </div>
@@ -913,7 +945,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
           return (
             <div className="drill-edit" key={i}>
               <div className="drill-edit-head">
-                <strong>Stage {i + 1}{hf !== null ? ` — HF ${hf}` : ''}</strong>
+                <strong>Stage {i + 1}{hf !== null ? ` -- HF ${hf}` : ''}</strong>
                 <button className="icon-btn" aria-label={`Remove stage ${i + 1}`}
                   onClick={() => { setTouched(true); setStages((p) => p.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
               </div>
@@ -950,7 +982,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
                   </div>
                   {sc && (
                     <p className="report-note" style={{ marginTop: 2 }}>
-                      Derived <InfoTip title="How this is derived">Hit factor = points / time. Points come from your hits — A is 5; C is 4 major / 3 minor; D is 2 major / 1 minor — minus 10 for each miss, no-shoot, and procedural, and never below zero. "All A's" is what it would be if every hit were an alpha, at the same time. Full math and sources: "How the numbers work" (under More, or from any saved match).</InfoTip>: {sc.stagePoints} pts{sc.hitFactor != null ? ` · HF ${sc.hitFactor}` : ''}
+                      Derived <InfoTip title="How this is derived">Hit factor = points / time. Points come from your hits -- A is 5; C is 4 major / 3 minor; D is 2 major / 1 minor -- minus 10 for each miss, no-shoot, and procedural, and never below zero. "All A's" is what it would be if every hit were an alpha, at the same time. Full math and sources: "How the numbers work" (under More, or from any saved match).</InfoTip>: {sc.stagePoints} pts{sc.hitFactor != null ? ` · HF ${sc.hitFactor}` : ''}
                       {sc.allAlphaDelta != null && sc.allAlphaDelta > 0 ? ` · all A's ${sc.allAlphaHitFactor} (+${sc.allAlphaDelta})` : ''}
                       {sc.pctAvailable != null ? ` · ${Math.round(sc.pctAvailable * 100)}% of points` : ''}
                     </p>
@@ -966,12 +998,12 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
         })}
         {scoringType === 'steel' && stages.length > 0 && steelTotal !== null && (
           <p className="report-note" style={{ marginTop: 4 }}>
-            Match total: <strong>{steelTotal}s</strong> — lowest wins.
+            Match total: <strong>{steelTotal}s</strong> -- lowest wins.
           </p>
         )}
         {scoringType === 'idpa' && stages.length > 0 && idpaTotal !== null && (
           <p className="report-note" style={{ marginTop: 4 }}>
-            Match total: <strong>{idpaTotal}s</strong> — lowest wins.
+            Match total: <strong>{idpaTotal}s</strong> -- lowest wins.
           </p>
         )}
         <button className="button secondary"
@@ -990,7 +1022,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange }: {
 
       <div className="card">
         <h2>Wrap-Up</h2>
-        <label className="field">Entry fee ($) — feeds your Costs, never double-counted
+        <label className="field">Entry fee ($) -- feeds your Costs, never double-counted
           <input type="number" inputMode="decimal" min="0" value={entryFee} onChange={(e) => setEntryFee(e.target.value)} />
         </label>
         <label className="field">PractiScore link

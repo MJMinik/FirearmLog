@@ -50,8 +50,13 @@ export function PhotoSheet({ media, onClose, onChanged, allowDelete = true }: {
     onClose();
   }
 
+  // Save-from-guard: photo/video edits have no required fields — any dirty
+  // state is always valid to save. Pass the saver unconditionally when dirty.
+  const onSaveRequest = dirty ? () => void save() : undefined;
+
   return (
-    <Sheet title={media.kind === 'video' ? 'Video' : 'Photo'} onClose={onClose} dirty={dirty}>
+    <Sheet title={media.kind === 'video' ? 'Video' : 'Photo'} onClose={onClose} dirty={dirty}
+      onSaveRequest={onSaveRequest}>
       {media.kind === 'video' ? (
         // Tap the video preview to open the full-screen lightbox (the sheet's
         // preview caps at 45dvh, which is small on a phone — the lightbox is

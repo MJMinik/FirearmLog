@@ -2,7 +2,7 @@
 // Michael's June 14 request). Spare parts (tied to a gun or "Any / Universal")
 // PLUS any optic not currently mounted on a firearm, which lives here as
 // inventory until you assign it to a gun. Includes a printable report.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Firearm, Optic, Part } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, getSettings, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
@@ -138,9 +138,10 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
   );
 }
 
-export function PartForm({ id, onSaved, onCancel, onDirtyChange }: {
+export function PartForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }: {
   id?: string; onSaved: () => void; onCancel: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onSaverChange?: (fn: (() => Promise<boolean>) | null) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Part | null>(null);
@@ -190,14 +191,20 @@ export function PartForm({ id, onSaved, onCancel, onDirtyChange }: {
     return () => { alive = false; };
   }, [id]);
 
-  async function save() {
-    if (!name.trim()) { setProblem('Name the part — "Recoil spring", "Extractor", etc.'); return; }
+  function saveProblem(): string | null {
+    if (!name.trim()) return 'Name the part — "Recoil spring", "Extractor", etc.';
     const qty = Number(quantity);
-    if (!Number.isFinite(qty) || qty < 0) { setProblem('Quantity needs to be a plain number.'); return; }
+    if (!Number.isFinite(qty) || qty < 0) return 'Quantity needs to be a plain number.';
     const partCost = cost.trim() === '' ? null : Number(cost);
-    if (partCost !== null && (!Number.isFinite(partCost) || partCost < 0)) {
-      setProblem('Cost needs to be a plain number.'); return;
-    }
+    if (partCost !== null && (!Number.isFinite(partCost) || partCost < 0)) return 'Cost needs to be a plain number.';
+    return null;
+  }
+
+  async function persistForm(): Promise<boolean> {
+    const p = saveProblem();
+    if (p) { setProblem(p); return false; }
+    const qty = Number(quantity);
+    const partCost = cost.trim() === '' ? null : Number(cost);
     const fields = {
       firearmId: firearmIdSel, name: name.trim(), quantity: qty,
       partNumber: partNumber.trim(), datePurchased, notes: notes.trim(),
@@ -209,8 +216,25 @@ export function PartForm({ id, onSaved, onCancel, onDirtyChange }: {
       await putOne('parts', stampNew(fields, newId('pt'), Date.now()));
     }
     onDirtyChange?.(false);
-    onSaved();
+    return true;
   }
+
+  async function save() { if (await persistForm()) onSaved(); }
+
+  // Always-fresh saver: the ref holds the LATEST persistForm (re-pointed after
+  // every render), and the reported wrapper is reference-stable so App's ref
+  // write never churns. This replaces a hand-maintained dep list that could — and
+  // did — go stale and save old values.
+  const persistRef = useRef(persistForm);
+  useEffect(() => { persistRef.current = persistForm; });
+  const stablePersist = useCallback(() => persistRef.current(), []);
+
+  // Report after every render (cheap: App just writes a ref) so the reported
+  // validity can never lag the form state. Saver present ⟺ dirty AND valid.
+  useEffect(() => {
+    onSaverChange?.(dirty && saveProblem() === null ? stablePersist : null);
+  });
+  useEffect(() => () => onSaverChange?.(null), [onSaverChange]);
 
   async function reallyDelete() {
     if (original) await deleteOne('parts', original.id);
@@ -231,7 +255,8 @@ export function PartForm({ id, onSaved, onCancel, onDirtyChange }: {
       {discarding && (
         <DiscardChangesSheet
           onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
-          onClose={() => setDiscarding(false)} />
+          onClose={() => setDiscarding(false)}
+          onSave={saveProblem() === null ? () => void save() : undefined} />
       )}
       <h1 className="large-title">{original ? 'Edit Part' : 'New Part'}</h1>
       <FormProblem problem={problem} />

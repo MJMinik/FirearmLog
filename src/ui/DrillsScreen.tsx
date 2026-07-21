@@ -1,6 +1,6 @@
 // The drill library: see every drill, fix its dry/live setting, gun types,
 // and descriptions, or add your own (reqs. 19–20).
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DrillDef, GunCategory } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
@@ -95,10 +95,11 @@ export function DrillsScreen({ refreshKey, onBack, openForm, openHistory }: {
   );
 }
 
-export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, onCancel, onDirtyChange }: {
+export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, onCancel, onDirtyChange, onSaverChange }: {
   id?: string; initialName?: string; initialFire?: DrillDef['fire'];
   initialCats?: GunCategory[]; onSaved: () => void; onCancel: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onSaverChange?: (fn: (() => Promise<boolean>) | null) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<DrillDef | null>(null);
@@ -140,9 +141,16 @@ export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, 
     setCats((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]);
   }
 
-  async function save() {
-    if (!name.trim()) { setProblem('Give the drill a name.'); return; }
-    if (cats.length === 0) { setProblem('Pick at least one gun type.'); return; }
+  // ONE source of validation truth.
+  function saveProblem(): string | null {
+    if (!name.trim()) return 'Give the drill a name.';
+    if (cats.length === 0) return 'Pick at least one gun type.';
+    return null;
+  }
+
+  async function persistForm(): Promise<boolean> {
+    const p = saveProblem();
+    if (p) { setProblem(p); return false; }
     const fields = {
       name: name.trim(), fire, gunCategories: cats,
       briefDescription: brief.trim(), fullDescription: full.trim(),
@@ -155,8 +163,25 @@ export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, 
       await putOne('drills', stampNew({ ...fields, tags: [] }, newId('drx'), Date.now()));
     }
     onDirtyChange?.(false);
-    onSaved();
+    return true;
   }
+
+  async function save() { if (await persistForm()) onSaved(); }
+
+  // Always-fresh saver: the ref holds the LATEST persistForm (re-pointed after
+  // every render), and the reported wrapper is reference-stable so App's ref
+  // write never churns. This replaces a hand-maintained dep list that could — and
+  // did — go stale and save old values.
+  const persistRef = useRef(persistForm);
+  useEffect(() => { persistRef.current = persistForm; });
+  const stablePersist = useCallback(() => persistRef.current(), []);
+
+  // Report after every render (cheap: App just writes a ref) so the reported
+  // validity can never lag the form state. Saver present ⟺ dirty AND valid.
+  useEffect(() => {
+    onSaverChange?.(dirty && saveProblem() === null ? stablePersist : null);
+  });
+  useEffect(() => () => onSaverChange?.(null), [onSaverChange]);
 
   // Audit #10: only YOUR custom drills (drx- IDs) can be deleted — the built-in
   // library drills stay put (and would return on a re-import anyway). Deleting a
@@ -177,7 +202,8 @@ export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, 
       {discarding && (
         <DiscardChangesSheet
           onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
-          onClose={() => setDiscarding(false)} />
+          onClose={() => setDiscarding(false)}
+          onSave={saveProblem() === null ? () => void save() : undefined} />
       )}
       <h1 className="large-title">{original ? 'Edit Drill' : 'New Drill'}</h1>
       <FormProblem problem={problem} />

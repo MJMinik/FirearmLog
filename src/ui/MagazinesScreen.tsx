@@ -1,5 +1,5 @@
 // Magazines: the user's magazine list, fully editable.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Firearm, Magazine } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
@@ -70,9 +70,10 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
   );
 }
 
-export function MagazineForm({ id, onSaved, onCancel, onDirtyChange }: {
+export function MagazineForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }: {
   id?: string; onSaved: () => void; onCancel: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onSaverChange?: (fn: (() => Promise<boolean>) | null) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Magazine | null>(null);
@@ -111,10 +112,17 @@ export function MagazineForm({ id, onSaved, onCancel, onDirtyChange }: {
     return () => { alive = false; };
   }, [id]);
 
-  async function save() {
-    if (!label.trim()) { setProblem('Give the magazine a label (like A01).'); return; }
+  function saveProblem(): string | null {
+    if (!label.trim()) return 'Give the magazine a label (like A01).';
     const rounds = Number(totalRounds);
-    if (!Number.isFinite(rounds) || rounds < 0) { setProblem('Rounds needs to be a plain number.'); return; }
+    if (!Number.isFinite(rounds) || rounds < 0) return 'Rounds needs to be a plain number.';
+    return null;
+  }
+
+  async function persistForm(): Promise<boolean> {
+    const p = saveProblem();
+    if (p) { setProblem(p); return false; }
+    const rounds = Number(totalRounds);
     const fields = { label: label.trim(), firearmIds: gunIds, active, totalRounds: rounds, notes: notes.trim() };
     if (original) {
       await putOne('magazines', stampUpdate({ ...original, ...fields }, Date.now()));
@@ -122,8 +130,25 @@ export function MagazineForm({ id, onSaved, onCancel, onDirtyChange }: {
       await putOne('magazines', stampNew({ ...fields, springHistory: [] }, newId('mg'), Date.now()));
     }
     onDirtyChange?.(false);
-    onSaved();
+    return true;
   }
+
+  async function save() { if (await persistForm()) onSaved(); }
+
+  // Always-fresh saver: the ref holds the LATEST persistForm (re-pointed after
+  // every render), and the reported wrapper is reference-stable so App's ref
+  // write never churns. This replaces a hand-maintained dep list that could — and
+  // did — go stale and save old values.
+  const persistRef = useRef(persistForm);
+  useEffect(() => { persistRef.current = persistForm; });
+  const stablePersist = useCallback(() => persistRef.current(), []);
+
+  // Report after every render (cheap: App just writes a ref) so the reported
+  // validity can never lag the form state. Saver present ⟺ dirty AND valid.
+  useEffect(() => {
+    onSaverChange?.(dirty && saveProblem() === null ? stablePersist : null);
+  });
+  useEffect(() => () => onSaverChange?.(null), [onSaverChange]);
 
   // Audit #10: magazines can be deleted (nothing else references them — sessions
   // don't link to magazines). "Retire" still exists for mags you want to keep on record.
@@ -142,7 +167,8 @@ export function MagazineForm({ id, onSaved, onCancel, onDirtyChange }: {
       {discarding && (
         <DiscardChangesSheet
           onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
-          onClose={() => setDiscarding(false)} />
+          onClose={() => setDiscarding(false)}
+          onSave={saveProblem() === null ? () => void save() : undefined} />
       )}
       <h1 className="large-title">{original ? 'Edit Magazine' : 'New Magazine'}</h1>
       <FormProblem problem={problem} />

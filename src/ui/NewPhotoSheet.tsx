@@ -34,8 +34,12 @@ export function NewPhotoSheet({ file, onSave, onClose }: {
   // caption/notes/marks have moved off the file's starting draft.
   const dirty = useDirtyTracker({ name, notes, marks });
   const label = file.kind === 'video' ? 'Video' : 'Photo';
+  // Save-from-guard: caption and notes are optional — any dirty state is always
+  // valid to save (Done just commits the current draft values). Pass
+  // onSaveRequest unconditionally when dirty so the discard sheet shows Save.
+  const onSaveRequest = dirty ? () => { onSave(name, notes, marks); onClose(); } : undefined;
   return (
-    <Sheet title={label} onClose={onClose} dirty={dirty}>
+    <Sheet title={label} onClose={onClose} dirty={dirty} onSaveRequest={onSaveRequest}>
       {file.kind === 'video'
         ? <video className="photo-full" src={file.url} controls playsInline preload="metadata" />
         : <MarkedImage url={file.url} alt={name || `New ${label.toLowerCase()}`} marks={marks} />}

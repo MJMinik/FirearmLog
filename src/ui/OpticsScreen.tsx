@@ -1,6 +1,6 @@
 // Optics (PT parity, Phase F). Each optic carries a battery log. Spare Parts
 // moved to its own section (PartsScreen.tsx) per Michael's June 14 request.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Firearm, Optic } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, getSettings, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
@@ -161,8 +161,12 @@ function BatteryLogSheet({ optic, onClose, onSaved }: {
     onSaved();
   }
 
+  // Save-from-guard: date always has a value (today by default) and notes are
+  // optional — any dirty state is valid to save. Pass onSaveRequest when dirty.
+  const onSaveRequest = dirty ? () => void save() : undefined;
+
   return (
-    <Sheet title="Log Battery Change" onClose={onClose} dirty={dirty}>
+    <Sheet title="Log Battery Change" onClose={onClose} dirty={dirty} onSaveRequest={onSaveRequest}>
       <label className="field">Date
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
       </label>
@@ -175,9 +179,10 @@ function BatteryLogSheet({ optic, onClose, onSaved }: {
   );
 }
 
-export function OpticForm({ id, firearmId, onSaved, onCancel, onDirtyChange }: {
+export function OpticForm({ id, firearmId, onSaved, onCancel, onDirtyChange, onSaverChange }: {
   id?: string; firearmId?: string; onSaved: () => void; onCancel: () => void;
   onDirtyChange?: (dirty: boolean) => void;
+  onSaverChange?: (fn: (() => Promise<boolean>) | null) => void;
 }) {
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Optic | null>(null);
@@ -231,8 +236,14 @@ export function OpticForm({ id, firearmId, onSaved, onCancel, onDirtyChange }: {
     return () => { alive = false; };
   }, [id, firearmId]);
 
-  async function save() {
-    if (!make.trim() && !model.trim()) { setProblem('Give the optic a make or model.'); return; }
+  function saveProblem(): string | null {
+    if (!make.trim() && !model.trim()) return 'Give the optic a make or model.';
+    return null;
+  }
+
+  async function persistForm(): Promise<boolean> {
+    const p = saveProblem();
+    if (p) { setProblem(p); return false; }
     const fields = {
       firearmId: firearmIdSel, make: make.trim(), model: model.trim(),
       installDate, dotSize: dotSize.trim(), zeroDist: zeroDist.trim(),
@@ -245,8 +256,25 @@ export function OpticForm({ id, firearmId, onSaved, onCancel, onDirtyChange }: {
       await putOne('optics', stampNew({ ...fields, batteryLog: [] }, newId('op'), Date.now()));
     }
     onDirtyChange?.(false);
-    onSaved();
+    return true;
   }
+
+  async function save() { if (await persistForm()) onSaved(); }
+
+  // Always-fresh saver: the ref holds the LATEST persistForm (re-pointed after
+  // every render), and the reported wrapper is reference-stable so App's ref
+  // write never churns. This replaces a hand-maintained dep list that could — and
+  // did — go stale and save old values.
+  const persistRef = useRef(persistForm);
+  useEffect(() => { persistRef.current = persistForm; });
+  const stablePersist = useCallback(() => persistRef.current(), []);
+
+  // Report after every render (cheap: App just writes a ref) so the reported
+  // validity can never lag the form state. Saver present ⟺ dirty AND valid.
+  useEffect(() => {
+    onSaverChange?.(dirty && saveProblem() === null ? stablePersist : null);
+  });
+  useEffect(() => () => onSaverChange?.(null), [onSaverChange]);
 
   async function reallyDelete() {
     if (original) await deleteOne('optics', original.id);
@@ -274,7 +302,8 @@ export function OpticForm({ id, firearmId, onSaved, onCancel, onDirtyChange }: {
       {discarding && (
         <DiscardChangesSheet
           onConfirm={() => { onDirtyChange?.(false); onCancel(); }}
-          onClose={() => setDiscarding(false)} />
+          onClose={() => setDiscarding(false)}
+          onSave={saveProblem() === null ? () => void save() : undefined} />
       )}
       <h1 className="large-title">{original ? 'Edit Optic' : 'New Optic'}</h1>
       <FormProblem problem={problem} />

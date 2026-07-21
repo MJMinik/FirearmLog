@@ -2,7 +2,7 @@
 // grouped by URGENCY — Overdue / Coming up / Later — not by gun, because a shooter
 // asks "what's due?" (spec §6b LOCKED). Templates are an on-demand library; the
 // empty state does the discovery. Date reminders can be exported to the calendar.
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScreenLoading, ScreenError } from './ScreenState.tsx';
 import type { Firearm, Match, Reminder, Session } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
@@ -192,9 +192,12 @@ export function RemindersScreen({ refreshKey, onBack, open }: {
 
 // ---- Add / edit a reminder ----
 
-export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onSaved, onCancel, onDirtyChange }: {
+export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onSaved, onCancel, onDirtyChange, onSaverChange }: {
   id?: string; templateKey?: string; firearmId?: string;
   onSaved: () => void; onCancel: () => void; onDirtyChange?: (dirty: boolean) => void;
+  // Save-from-discard: reports a persist function when the form is valid, null
+  // when invalid or unmounted, so App's DiscardChangesSheet can show Save.
+  onSaverChange?: (fn: (() => Promise<boolean>) | null) => void;
 }) {
   const editing = id !== undefined;
   const tpl = getReminderTemplate(templateKey);
@@ -263,13 +266,50 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
   }, [sig, initialSig, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
+  // saveProblem: mirrors save()'s validation without side-effects.
+  function saveProblem(): string | null {
+    if (!title.trim()) return 'Give the reminder a short title.';
+    if (trigger === 'date') {
+      if (!dueDate) return 'Pick a due date, or switch this to a round count.';
+    } else {
+      if (!firearmId) return 'Pick which gun this round-count reminder is for.';
+      if (firearms.length > 0 && !firearms.some((g) => g.id === firearmId)) {
+        return 'That gun is no longer in your log — pick one of your guns, or delete this reminder.';
+      }
+      const iv = Number(everyRounds);
+      if (!Number.isFinite(iv) || iv <= 0) return 'Enter how many rounds between reminders — a number over 0.';
+    }
+    return null;
+  }
+
+  // Only report a saver when the form is dirty AND valid, so the discard sheet
+  // only shows Save when it can actually work. ReminderForm uses a sig-based
+  // dirty check: `initialSig !== null && sig !== initialSig`.
+  const isDirty = initialSig !== null && sig !== initialSig;
+
+  // Always-fresh saver: the ref holds the LATEST persistForm (re-pointed after
+  // every render), and the reported wrapper is reference-stable so App's ref
+  // write never churns. This replaces a hand-maintained dep list that could — and
+  // did — go stale and save old values.
+  const persistRef = useRef(persistForm);
+  useEffect(() => { persistRef.current = persistForm; });
+  const stablePersist = useCallback(() => persistRef.current(), []);
+
+  // Report after every render (cheap: App just writes a ref) so the reported
+  // validity can never lag the form state. Saver present ⟺ dirty AND valid.
+  useEffect(() => {
+    onSaverChange?.(isDirty && saveProblem() === null ? stablePersist : null);
+  });
+  useEffect(() => () => onSaverChange?.(null), [onSaverChange]);
+
   if (!recordReady) return <ScreenLoading />;
 
   const gunOptions = ownedGuns(firearms, original?.firearmId ? [original.firearmId] : []);
   const selectedRounds = firearmId ? roundsForFirearm(firearmId, firearms, sessions, matches) : null;
 
-  async function save() {
-    if (!title.trim()) { setProblem('Give the reminder a short title.'); return; }
+  async function persistForm(): Promise<boolean> {
+    const p = saveProblem();
+    if (p) { setProblem(p); return false; }
     const now = Date.now();
     const base = {
       title: title.trim(),
@@ -282,27 +322,16 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
     };
     let record: ReminderFields;
     if (trigger === 'date') {
-      if (!dueDate) { setProblem('Pick a due date, or switch this to a round count.'); return; }
       const months = repeat === 'months' ? Math.max(1, Math.round(Number(repeatMonths) || 1)) : null;
       record = {
         ...base, trigger: 'date',
-        dueDate, repeat: repeat ?? 'none', repeatMonths: months,
+        dueDate: dueDate!, repeat: repeat ?? 'none', repeatMonths: months,
         everyRounds: null, baselineRounds: null,
       };
     } else {
-      if (!firearmId) { setProblem('Pick which gun this round-count reminder is for.'); return; }
-      // An orphaned reminder (its gun left the log) opens with its old gun id
-      // still in state while the picker shows the placeholder — refuse a save
-      // that would quietly re-point at a gun that isn't there. (Only when guns
-      // actually loaded; a read hiccup must not block an unrelated edit.)
-      if (firearms.length > 0 && !firearms.some((g) => g.id === firearmId)) {
-        setProblem('That gun is no longer in your log — pick one of your guns, or delete this reminder.');
-        return;
-      }
-      const iv = Number(everyRounds);
-      if (!Number.isFinite(iv) || iv <= 0) { setProblem('Enter how many rounds between reminders — a number over 0.'); return; }
       // Keep the existing baseline when the gun and kind are unchanged; otherwise
       // anchor to the gun's rounds right now, so "every N rounds" runs from here.
+      const iv = Number(everyRounds);
       const current = roundsForFirearm(firearmId, firearms, sessions, matches);
       const baseline = (original && original.trigger === 'rounds' && original.firearmId === firearmId && original.baselineRounds != null)
         ? original.baselineRounds
@@ -316,8 +345,10 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
     onDirtyChange?.(false);
     if (original) await putOne('reminders', stampUpdate({ ...original, ...record }, now));
     else await putOne('reminders', stampNew(record, newId('rm'), now));
-    onSaved();
+    return true;
   }
+
+  async function save() { if (await persistForm()) onSaved(); }
 
   async function markDone() {
     if (!original) return;
