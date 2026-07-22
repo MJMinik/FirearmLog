@@ -31,6 +31,7 @@ import { ConfirmSheet, DiscardChangesSheet, Sheet } from './Sheet.tsx';
 import { Icon } from './Icon.tsx';
 import { MediaField, commitMedia } from './MediaField.tsx';
 import type { StagedFile } from './MediaField.tsx';
+import { FieldProblem, type SaveProblem } from './FieldProblem.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { Reveal } from './Reveal.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
@@ -146,7 +147,12 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const [fullEditor, setFullEditor] = useState(false);
   const [saving, setSaving] = useState(false);
   const [confirming, setConfirming] = useState(false);
-  const [problem, setProblem] = useState('');
+  const [problem, setProblem] = useState<SaveProblem>(null);
+  const dateFieldRef = useRef<HTMLInputElement>(null);
+  const gunsCardRef = useRef<HTMLDivElement>(null);
+  const drillsCardRef = useRef<HTMLDivElement>(null);
+  const ammoCardRef = useRef<HTMLDivElement>(null);
+  const rangeFeeFieldRef = useRef<HTMLInputElement>(null);
   // M4: this form is large and full of arrays (drills, ammo, malfunctions,
   // checklist), so instead of a field signature we watch for any user edit via a
   // bubbled change event. Programmatic loads don't fire input events, so `touched`
@@ -345,6 +351,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       return next;
     });
     setChecklist((cl) => setItemTake(cl, `f_${fid}`, on));
+    if (problem?.field === 'guns') setProblem(null);
   }
 
   const checklistProgressInfo = useMemo(
@@ -365,7 +372,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
 
   function openPrintWindow(html: string) {
     const win = window.open('', '_blank');
-    if (!win) { setProblem('Pop-ups blocked — please allow pop-ups and try again.'); return; }
+    if (!win) { setProblem({ field: 'print', message: 'Pop-ups blocked — please allow pop-ups and try again.' }); return; }
     win.document.write(html);
     win.document.close();
     win.focus();
@@ -401,7 +408,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     // window inside the tap and builds the page from the SAVED session, then
     // hands off to the print dialog.
     const trouble = await openSessionReport(original, { autoPrint: true });
-    if (trouble) setProblem(trouble);
+    if (trouble) setProblem({ field: 'print', message: trouble });
   }
 
   function addPickedDrills() {
@@ -539,28 +546,28 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   }
 
 
-  function saveProblem(): string | null {
+  function saveProblem(): SaveProblem {
     const guns = Object.entries(rounds).map(([, text]) => ({
       rounds: text.trim() === '' ? 0 : Number(text)
     }));
-    if (!date) return 'Pick a date.';
-    if (Object.keys(rounds).length === 0) return 'Pick at least one gun.';
+    if (!date) return { field: 'date', message: 'Pick a date.' };
+    if (Object.keys(rounds).length === 0) return { field: 'guns', message: 'Pick at least one gun.' };
     if (guns.some((g) => !Number.isFinite(g.rounds) || g.rounds < 0)) {
-      return 'Rounds need to be plain numbers.';
+      return { field: 'guns', message: 'Rounds need to be plain numbers.' };
     }
     const badDrill = drills.map(fromRow).find((d) =>
       (d.time !== null && !Number.isFinite(d.time)) ||
       (d.score !== null && !Number.isFinite(d.score)) ||
       (d.maxScore !== null && !Number.isFinite(d.maxScore)));
-    if (badDrill) return `Check the numbers on "${badDrill.name}".`;
+    if (badDrill) return { field: 'drills', message: `Check the numbers on "${badDrill.name}".` };
     const ammoUsage = ammoRows
       .filter((r) => r.ammoId !== '')
       .map((r) => ({ rounds: r.rounds.trim() === '' ? 0 : Number(r.rounds) }));
     if (ammoUsage.some((u) => !Number.isFinite(u.rounds) || u.rounds < 0)) {
-      return 'Ammo rounds need to be plain numbers.';
+      return { field: 'ammo', message: 'Ammo rounds need to be plain numbers.' };
     }
     const fee = rangeFee.trim() === '' ? null : Number(rangeFee);
-    if (fee !== null && !Number.isFinite(fee)) return 'Range fee needs to be a number.';
+    if (fee !== null && !Number.isFinite(fee)) return { field: 'rangeFee', message: 'Range fee needs to be a number.' };
     return null;
   }
 
@@ -572,30 +579,30 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     const guns = Object.entries(rounds).map(([firearmId, text]) => ({
       firearmId, rounds: text.trim() === '' ? 0 : Number(text)
     }));
-    if (!date) { setProblem('Pick a date.'); return null; }
-    if (guns.length === 0) { setProblem('Pick at least one gun.'); return null; }
-    if (guns.some((g) => !Number.isFinite(g.rounds) || g.rounds < 0)) {
-      setProblem('Rounds need to be plain numbers.'); return null;
+    const sp = saveProblem();
+    if (sp) {
+      setProblem(sp);
+      const scrollTarget =
+        sp.field === 'date' ? dateFieldRef.current :
+        sp.field === 'rangeFee' ? rangeFeeFieldRef.current :
+        sp.field === 'drills' ? drillsCardRef.current :
+        sp.field === 'ammo' ? ammoCardRef.current :
+        gunsCardRef.current;
+      setTimeout(() => {
+        scrollTarget?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (sp.field === 'date') dateFieldRef.current?.focus();
+        else if (sp.field === 'rangeFee') rangeFeeFieldRef.current?.focus();
+      }, 0);
+      return null;
     }
-    const badDrill = drills.map(fromRow).find((d) =>
-      (d.time !== null && !Number.isFinite(d.time)) ||
-      (d.score !== null && !Number.isFinite(d.score)) ||
-      (d.maxScore !== null && !Number.isFinite(d.maxScore)));
-    if (badDrill) { setProblem(`Check the numbers on "${badDrill.name}".`); return null; }
-
     const ammoUsage = ammoRows
       .filter((r) => r.ammoId !== '')
       .map((r) => ({ ammoId: r.ammoId, rounds: r.rounds.trim() === '' ? 0 : Number(r.rounds) }));
-    if (ammoUsage.some((u) => !Number.isFinite(u.rounds) || u.rounds < 0)) {
-      setProblem('Ammo rounds need to be plain numbers.'); return null;
-    }
-
     const ratingEntries = Object.entries(ratings).filter(([, v]) => v !== '');
     const selfRating = ratingEntries.length
       ? Object.fromEntries(ratingEntries.map(([k, v]) => [k, Number(v)]))
       : null;
     const fee = rangeFee.trim() === '' ? null : Number(rangeFee);
-    if (fee !== null && !Number.isFinite(fee)) { setProblem('Range fee needs to be a number.'); return null; }
 
     setSaving(true);
     try {
@@ -660,7 +667,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       // Review 7.1 / rule 23: a failed IndexedDB write (quota, locked txn, bad
       // record) must not fail silently. Surface a plain-language message through
       // the existing problem channel and leave the form usable to retry.
-      setProblem('Could not save this session — please try again.');
+      setProblem({ field: 'save', message: 'Could not save this session — please try again.' });
       return null;
     } finally {
       setSaving(false);
@@ -714,7 +721,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         </button>
       </div>
       <h1 className="large-title">{converting ? 'Log Session (from Plan)' : editing ? 'Edit Session' : planned ? 'Plan Session' : 'Log Session'}</h1>
-      <FormProblem problem={problem} />
+      {problem && !['date', 'guns', 'drills', 'ammo', 'rangeFee'].includes(problem.field) && (
+        <p className="form-problem" role="alert">{problem.message}</p>
+      )}
       {discarding && (
         <DiscardChangesSheet
           // Clear App's dirty flag BEFORE leaving: onCancel is history.back(),
@@ -745,8 +754,16 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             </button>
           ))}
         </div>
-        <label className="field">Date
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <label className={`field${problem?.field === 'date' ? ' invalid' : ''}`}>Date <span className="field-required-marker">(required)</span>
+          <input
+            ref={dateFieldRef}
+            id="session-date-input"
+            type="date"
+            value={date}
+            onChange={(e) => { setDate(e.target.value); if (problem?.field === 'date') setProblem(null); }}
+            aria-invalid={problem?.field === 'date' || undefined}
+            aria-describedby={problem?.field === 'date' ? 'session-date-err' : undefined} />
+          <FieldProblem id="session-date-err" problem={problem} field="date" />
         </label>
         {/* F3: tapping a suggestion sets the value by click alone (no change
             event bubbles), so these two SuggestFields flip `touched` directly. */}
@@ -763,8 +780,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         )}
       </div>
 
-      <div className="card">
-        <h2>Guns &amp; Rounds</h2>
+      <div className="card" ref={gunsCardRef}>
+        <h2>Guns &amp; Rounds <span className="field-required-marker">(required)</span></h2>
+        <FieldProblem id="session-guns-err" problem={problem} field="guns" />
         {firearms.length === 0 && <p className="report-note">No guns yet — add one from the Guns screen.</p>}
         {/* Audit #10: active guns, plus any already on this session (so a since-retired gun still shows on its own record). */}
         {pickableGuns(firearms, Object.keys(rounds)).map((f) => {
@@ -780,7 +798,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                   placeholder={planned ? 'planned rounds' : kind === 'dry_fire' ? 'reps' : 'rounds'}
                   aria-label={`Rounds for ${f.name}`}
                   value={rounds[f.id]}
-                  onChange={(e) => setRounds((prev) => ({ ...prev, [f.id]: e.target.value }))} />
+                  onChange={(e) => { setRounds((prev) => ({ ...prev, [f.id]: e.target.value })); if (problem?.field === 'guns') setProblem(null); }} />
               )}
             </div>
           );
@@ -872,18 +890,19 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       )}
 
       {kind !== 'dry_fire' && ammoLib.length > 0 && (
-        <div className="card">
+        <div className="card" ref={ammoCardRef}>
           <h2>Ammo Used</h2>
+          <FieldProblem id="session-ammo-err" problem={problem} field="ammo" />
           {ammoRows.map((r, i) => (
             <div className="row" key={i}>
               <select className="category-pick ammo-pick" aria-label={`Ammo ${i + 1}`} value={r.ammoId}
-                onChange={(e) => { setAmmoTouched(true); setAmmoRows((p) => p.map((x, n) => n === i ? { ...x, ammoId: e.target.value } : x)); }}>
+                onChange={(e) => { setAmmoTouched(true); setAmmoRows((p) => p.map((x, n) => n === i ? { ...x, ammoId: e.target.value } : x)); if (problem?.field === 'ammo') setProblem(null); }}>
                 <option value="">Pick ammo…</option>
                 {ammoLib.map((a) => <option key={a.id} value={a.id}>{ammoLabel(a)}</option>)}
               </select>
               <input className="rounds-input" type="number" inputMode="numeric" min="0"
                 placeholder="rounds" aria-label={`Rounds of ammo ${i + 1}`} value={r.rounds}
-                onChange={(e) => { setAmmoTouched(true); setAmmoRows((p) => p.map((x, n) => n === i ? { ...x, rounds: e.target.value } : x)); }} />
+                onChange={(e) => { setAmmoTouched(true); setAmmoRows((p) => p.map((x, n) => n === i ? { ...x, rounds: e.target.value } : x)); if (problem?.field === 'ammo') setProblem(null); }} />
               <button className="icon-btn" aria-label="Remove ammo row"
                 onClick={() => { setTouched(true); setAmmoTouched(true); setAmmoRows((prev) => prev.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
             </div>
@@ -913,7 +932,8 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         </div>
       )}
 
-      <div className="card">
+      <div className="card" ref={drillsCardRef}>
+        <FieldProblem id="session-drills-err" problem={problem} field="drills" />
         <h2>Drills <InfoTip title="Drills">Pick from your drill library below, or add a new drill right here — it saves to your library and lands on this session. Manage every drill (edit, delete, full details) under More &rarr; Drills.</InfoTip></h2>
         {drills.map((d, i) => (
           <div className="drill-edit" key={i}>
@@ -929,15 +949,15 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               </label>
               <label className="field small">Time (s)
                 <input type="number" inputMode="decimal" value={d.time}
-                  onChange={(e) => setDrills((p) => p.map((x, n) => n === i ? { ...x, time: e.target.value } : x))} />
+                  onChange={(e) => { setDrills((p) => p.map((x, n) => n === i ? { ...x, time: e.target.value } : x)); if (problem?.field === 'drills') setProblem(null); }} />
               </label>
               <label className="field small">Score
                 <input type="number" inputMode="decimal" value={d.score}
-                  onChange={(e) => setDrills((p) => p.map((x, n) => n === i ? { ...x, score: e.target.value } : x))} />
+                  onChange={(e) => { setDrills((p) => p.map((x, n) => n === i ? { ...x, score: e.target.value } : x)); if (problem?.field === 'drills') setProblem(null); }} />
               </label>
               <label className="field small">Out of
                 <input type="number" inputMode="decimal" value={d.maxScore}
-                  onChange={(e) => setDrills((p) => p.map((x, n) => n === i ? { ...x, maxScore: e.target.value } : x))} />
+                  onChange={(e) => { setDrills((p) => p.map((x, n) => n === i ? { ...x, maxScore: e.target.value } : x)); if (problem?.field === 'drills') setProblem(null); }} />
               </label>
             </div>
             <label className="field">Drill notes
@@ -1070,8 +1090,16 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
 
       <div className="card">
         <h2>Wrap-Up</h2>
-        <label className="field">Range fee ($)
-          <input type="number" inputMode="decimal" min="0" value={rangeFee} onChange={(e) => setRangeFee(e.target.value)} />
+        <label className={`field${problem?.field === 'rangeFee' ? ' invalid' : ''}`}>Range fee ($)
+          <input
+            ref={rangeFeeFieldRef}
+            id="session-rangefee-input"
+            type="number" inputMode="decimal" min="0"
+            value={rangeFee}
+            onChange={(e) => { setRangeFee(e.target.value); if (problem?.field === 'rangeFee') setProblem(null); }}
+            aria-invalid={problem?.field === 'rangeFee' || undefined}
+            aria-describedby={problem?.field === 'rangeFee' ? 'session-rangefee-err' : undefined} />
+          <FieldProblem id="session-rangefee-err" problem={problem} field="rangeFee" />
         </label>
         <label className="field">Notes
           <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} />

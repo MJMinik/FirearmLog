@@ -20,7 +20,7 @@ import { PhotoSheet } from './PhotoSheet.tsx';
 import { MediaField, commitMedia } from './MediaField.tsx';
 import type { StagedFile } from './MediaField.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
-import { FormProblem } from './FormProblem.tsx';
+import { FieldProblem, type SaveProblem } from './FieldProblem.tsx';
 import { NotFound } from './NotFound.tsx';
 import { ScreenError, ScreenLoading } from './ScreenState.tsx';
 import { Icon } from './Icon.tsx';
@@ -495,7 +495,10 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
   const [psUrl, setPsUrl] = useState('');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
-  const [problem, setProblem] = useState('');
+  const [problem, setProblem] = useState<SaveProblem>(null);
+  const matchGroupRef = useRef<HTMLDivElement>(null);
+  const dateFieldRef = useRef<HTMLInputElement>(null);
+  const gunFieldRef = useRef<HTMLSelectElement>(null);
   const [discarding, setDiscarding] = useState(false);
   // M4: watch for any real user edit (bubbled change). Programmatic loads and the
   // async first-gun auto-select don't fire input events, so this never false-fires.
@@ -646,23 +649,29 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
 
 
   // ONE source of validation truth for both Save button and nav-guard Save.
-  function saveProblem(): string | null {
-    if (!date) return 'Pick a date.';
-    if (!firearmId) return 'Pick a gun.';
+  function saveProblem(): SaveProblem {
+    if (!date) return { field: 'date', message: 'Pick a date.' };
+    if (!firearmId) return { field: 'gun', message: 'Pick a gun.' };
     // M2: don't save an empty shell -- require at least something that identifies the match.
     if (!name.trim() && !num(totalRounds) && stageObjs.length === 0) {
-      return 'Add a name, the rounds fired, or a stage before saving.';
+      return { field: 'matchGroup', message: 'Add a name, the rounds fired, or a stage before saving.' };
     }
-    const numbers = [num(totalRounds), num(matchPercent), num(divPlace), num(divOf),
-      num(overallPlace), num(overallOf), num(entryFee),
-      ...stageObjs.flatMap((st) => [st.points, st.time, st.percent,
+    const topNumbers = [num(totalRounds), num(matchPercent), num(divPlace), num(divOf),
+      num(overallPlace), num(overallOf), num(entryFee)];
+    if (topNumbers.some((n) => n !== null && !Number.isFinite(n))) {
+      return { field: 'numbers', message: "One of the match numbers isn't a plain number — check rounds, places, percent, and entry fee." };
+    }
+    for (let si = 0; si < stageObjs.length; si++) {
+      const st = stageObjs[si];
+      const stNums = [st.points, st.time, st.percent,
         st.alphas ?? null, st.charlies ?? null, st.deltas ?? null,
         st.misses ?? null, st.noShoots ?? null, st.procedurals ?? null,
         st.idpaDown0 ?? null, st.idpaDown1 ?? null, st.idpaDown3 ?? null, st.idpaMisses ?? null,
         st.idpaNonThreatHits ?? null, st.idpaProceduralErrors ?? null,
-        st.idpaFlagrantPenalties ?? null, st.idpaFailureToDoRight ?? null])];
-    if (numbers.some((n) => n !== null && !Number.isFinite(n))) {
-      return "One of the numbers isn't a plain number.";
+        st.idpaFlagrantPenalties ?? null, st.idpaFailureToDoRight ?? null];
+      if (stNums.some((n) => n !== null && !Number.isFinite(n))) {
+        return { field: 'numbers', message: `Stage ${si + 1} has a value that isn't a plain number.` };
+      }
     }
     return null;
   }
@@ -670,7 +679,19 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
   async function persistForm(): Promise<string | null> {
     if (saving) return null;
     const p = saveProblem();
-    if (p) { setProblem(p); return null; }
+    if (p) {
+      setProblem(p);
+      setTimeout(() => {
+        const target =
+          p.field === 'date' ? dateFieldRef.current :
+          p.field === 'gun' ? gunFieldRef.current :
+          matchGroupRef.current;
+        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (p.field === 'date') dateFieldRef.current?.focus();
+        else if (p.field === 'gun') gunFieldRef.current?.focus();
+      }, 0);
+      return null;
+    }
     setSaving(true);
     try {
       const mid = original ? original.id : newId('mt');
@@ -722,7 +743,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
   useEffect(() => () => onSaverChange?.(null), [onSaverChange]);
 
   return (
-    <div className="screen" onChange={() => setTouched(true)}>
+    <div className="screen" onChange={() => { setTouched(true); if (problem?.field === 'numbers') setProblem(null); }}>
       <div className="navbar">
         <button className="back-btn" onClick={() => (touched ? setDiscarding(true) : onCancel())}>‹ Cancel</button>
         <button className="navbar-action" disabled={saving} onClick={() => void save()}>
@@ -730,7 +751,9 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         </button>
       </div>
       <h1 className="large-title">{editing ? 'Edit Match' : 'Log Match'}</h1>
-      <FormProblem problem={problem} />
+      {problem && !['date', 'gun', 'matchGroup', 'numbers'].includes(problem.field) && (
+        <p className="form-problem" role="alert">{problem.message}</p>
+      )}
       {discarding && (
         <DiscardChangesSheet
           // Clear App's dirty flag BEFORE leaving: onCancel is history.back(),
@@ -742,13 +765,22 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
           onSave={saveProblem() === null ? () => void save() : undefined} />
       )}
 
-      <div className="card">
+      <div className="card" ref={matchGroupRef}>
+        <FieldProblem id="match-group-err" problem={problem} field="matchGroup" />
         <label className="field">What this match is called
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="June Club Match"
+          <input value={name} onChange={(e) => { setName(e.target.value); if (problem?.field === 'matchGroup') setProblem(null); }} placeholder="June Club Match"
             {...noAutofillProps} name="match-title" />
         </label>
-        <label className="field">Date
-          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <label className={`field${problem?.field === 'date' ? ' invalid' : ''}`}>Date
+          <input
+            ref={dateFieldRef}
+            id="match-date-input"
+            type="date"
+            value={date}
+            onChange={(e) => { setDate(e.target.value); if (problem?.field === 'date') setProblem(null); }}
+            aria-invalid={problem?.field === 'date' || undefined}
+            aria-describedby={problem?.field === 'date' ? 'match-date-err' : undefined} />
+          <FieldProblem id="match-date-err" problem={problem} field="date" />
         </label>
         <label className="field">Match type
           <select value={matchType} onChange={(e) => setMatchType(e.target.value)}>
@@ -771,14 +803,24 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
             </div>
           </>
         )}
-        <label className="field">Gun
-          <select value={firearmId} onChange={(e) => setFirearmId(e.target.value)}>
+        <label className={`field${problem?.field === 'gun' ? ' invalid' : ''}`}>Gun
+          <select
+            ref={gunFieldRef}
+            id="match-gun-select"
+            value={firearmId}
+            onChange={(e) => { setFirearmId(e.target.value); if (problem?.field === 'gun') setProblem(null); }}
+            aria-invalid={problem?.field === 'gun' || undefined}
+            aria-describedby={problem?.field === 'gun' ? 'match-gun-err' : undefined}>
+            {firearms.length === 0 && <option value="">No guns yet</option>}
             {pickableGuns(firearms, [firearmId]).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
+          <FieldProblem id="match-gun-err" problem={problem} field="gun" />
         </label>
         <label className="field">Rounds fired (adds to the gun's round count)
-          <input type="number" inputMode="numeric" min="0" value={totalRounds} onChange={(e) => setTotalRounds(e.target.value)} />
+          <input type="number" inputMode="numeric" min="0" value={totalRounds}
+            onChange={(e) => { setTotalRounds(e.target.value); if (problem?.field === 'matchGroup') setProblem(null); }} />
         </label>
+        <FieldProblem id="match-numbers-err" problem={problem} field="numbers" />
       </div>
 
       <div className="card">
@@ -1007,7 +1049,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
           </p>
         )}
         <button className="button secondary"
-          onClick={() => { setTouched(true); setStages((p) => [...p, emptyStageRow()]); }}>
+          onClick={() => { setTouched(true); setStages((p) => [...p, emptyStageRow()]); if (problem?.field === 'matchGroup') setProblem(null); }}>
           + Add Stage
         </button>
       </div>

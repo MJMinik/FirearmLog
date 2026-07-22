@@ -286,10 +286,10 @@ test.describe('Save-from-discard (three-button DiscardChangesSheet)', () => {
     await page.getByRole('main').getByRole('button', { name: '+ Add Gun' }).click();
     await expect(page.getByRole('heading', { name: 'New Gun' })).toBeVisible();
 
-    // Dirty the form without a valid name: GunForm requires a non-empty name,
-    // so filling only "Made by" (always visible, no Reveal to open) makes the
-    // form dirty AND invalid at the same time.
-    await page.getByLabel('Made by').fill('Atlas Gunworks');
+    // Dirty the form by filling a field that doesn't enable derivation — use Caliber.
+    // With name, Made by, and Model all blank, derivedName is empty, so saveProblem()
+    // returns an error (form is invalid). The form is also dirty (Caliber changed from '').
+    await page.getByLabel('Caliber').fill('9mm');
 
     // ‹ Cancel → discard sheet.
     await page.getByRole('main').getByRole('button', { name: 'Cancel' }).click();

@@ -7,7 +7,7 @@ import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { InfoTip } from './InfoTip.tsx';
-import { FormProblem } from './FormProblem.tsx';
+import { FieldProblem, type SaveProblem } from './FieldProblem.tsx';
 import { ConfirmSheet, DiscardChangesSheet } from './Sheet.tsx';
 import { useDirtyTracker } from './useDirtyTracker.ts';
 import { ScreenError } from './ScreenState.tsx';
@@ -113,7 +113,9 @@ export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, 
   const [full, setFull] = useState('');
   const [scoring, setScoring] = useState('');
   const [holster, setHolster] = useState(false);
-  const [problem, setProblem] = useState('');
+  const [problem, setProblem] = useState<SaveProblem>(null);
+  const nameFieldRef = useRef<HTMLInputElement>(null);
+  const gunTypeCardRef = useRef<HTMLDivElement>(null);
   const [confirming, setConfirming] = useState(false);
   const [discarding, setDiscarding] = useState(false);
   // AUDIT FIX (July 20 2026): edit forms wait for the getOne load before
@@ -139,18 +141,27 @@ export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, 
 
   function toggleCat(c: GunCategory) {
     setCats((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]);
+    if (problem?.field === 'cats') setProblem(null);
   }
 
   // ONE source of validation truth.
-  function saveProblem(): string | null {
-    if (!name.trim()) return 'Give the drill a name.';
-    if (cats.length === 0) return 'Pick at least one gun type.';
+  function saveProblem(): SaveProblem {
+    if (!name.trim()) return { field: 'name', message: 'Give the drill a name.' };
+    if (cats.length === 0) return { field: 'cats', message: 'Pick at least one gun type.' };
     return null;
   }
 
   async function persistForm(): Promise<boolean> {
     const p = saveProblem();
-    if (p) { setProblem(p); return false; }
+    if (p) {
+      setProblem(p);
+      const target = p.field === 'name' ? nameFieldRef.current : gunTypeCardRef.current;
+      setTimeout(() => {
+        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        if (p.field === 'name') nameFieldRef.current?.focus();
+      }, 0);
+      return false;
+    }
     const fields = {
       name: name.trim(), fire, gunCategories: cats,
       briefDescription: brief.trim(), fullDescription: full.trim(),
@@ -206,12 +217,19 @@ export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, 
           onSave={saveProblem() === null ? () => void save() : undefined} />
       )}
       <h1 className="large-title">{original ? 'Edit Drill' : 'New Drill'}</h1>
-      <FormProblem problem={problem} />
 
       <div className="card">
-        <label className="field">What this Drill is called
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Bill Drill"
+        <label className={`field${problem?.field === 'name' ? ' invalid' : ''}`}>What this Drill is called <span className="field-required-marker">(required)</span>
+          <input
+            ref={nameFieldRef}
+            id="drill-name-input"
+            value={name}
+            onChange={(e) => { setName(e.target.value); if (problem?.field === 'name') setProblem(null); }}
+            placeholder="Bill Drill"
+            aria-invalid={problem?.field === 'name' || undefined}
+            aria-describedby={problem?.field === 'name' ? 'drill-name-err' : undefined}
             {...noAutofillProps} name="drill-title" />
+          <FieldProblem id="drill-name-err" problem={problem} field="name" />
         </label>
         <h2 style={{ marginTop: 4 }}>Fire Type</h2>
         <div className="seg" role="group" aria-label="Fire type">
@@ -222,7 +240,8 @@ export function DrillForm({ id, initialName, initialFire, initialCats, onSaved, 
             </button>
           ))}
         </div>
-        <h2>Gun Types It Applies To</h2>
+        <h2 ref={gunTypeCardRef}>Gun Types It Applies To <span className="field-required-marker">(required)</span></h2>
+        <FieldProblem id="drill-cats-err" problem={problem} field="cats" />
         {GUN_CATEGORIES.map((c) => {
           const on = cats.includes(c);
           return (

@@ -16,7 +16,7 @@ import { useDirtyTracker } from './useDirtyTracker.ts';
 import { ScreenError } from './ScreenState.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { InfoTip } from './InfoTip.tsx';
-import { FormProblem } from './FormProblem.tsx';
+import { FieldProblem, type SaveProblem } from './FieldProblem.tsx';
 
 export function ReferenceList({ refreshKey, onBack, openDetail, openForm }: {
   refreshKey: number; onBack: () => void;
@@ -211,7 +211,10 @@ export function ReferenceForm({ id, copyFrom, onSaved, onCancel, onDirtyChange, 
   const [checklist, setChecklist] = useState('');
   const [guidance, setGuidance] = useState('');
   const [links, setLinks] = useState('');
-  const [problem, setProblem] = useState('');
+  const [problem, setProblem] = useState<SaveProblem>(null);
+  const nameFieldRef = useRef<HTMLInputElement>(null);
+  const deepCleanFieldRef = useRef<HTMLInputElement>(null);
+  const recoilSpringFieldRef = useRef<HTMLInputElement>(null);
   const [discarding, setDiscarding] = useState(false);
   // AUDIT FIX (July 20 2026): wait for the async load before seeding baseline.
   // copyFrom path populates state SYNCHRONOUSLY from getReference(), so if
@@ -253,18 +256,29 @@ export function ReferenceForm({ id, copyFrom, onSaved, onCancel, onDirtyChange, 
     try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
   }
 
-  function saveProblem(): string | null {
-    if (!name.trim()) return 'Give the guide a name (the maker or the gun).';
+  function saveProblem(): SaveProblem {
+    if (!name.trim()) return { field: 'name', message: 'Give the guide a name (the maker or the gun).' };
     const dc = Number(deepClean);
-    if (!(dc > 0)) return 'Deep clean needs a round count, like 5000.';
+    if (!(dc > 0)) return { field: 'deepClean', message: 'Deep clean needs a round count, like 5000.' };
     const rs = recoilSpring.trim() === '' ? null : Number(recoilSpring);
-    if (rs !== null && !(rs > 0)) return 'Recoil spring needs a plain round count (or leave it blank).';
+    if (rs !== null && !(rs > 0)) return { field: 'recoilSpring', message: 'Recoil spring needs a plain round count (or leave it blank).' };
     return null;
   }
 
   async function persistForm(): Promise<string | null> {
     const p = saveProblem();
-    if (p) { setProblem(p); return null; }
+    if (p) {
+      setProblem(p);
+      const target =
+        p.field === 'name' ? nameFieldRef.current :
+        p.field === 'recoilSpring' ? recoilSpringFieldRef.current :
+        deepCleanFieldRef.current;
+      setTimeout(() => {
+        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target?.focus();
+      }, 0);
+      return null;
+    }
     const dc = Number(deepClean);
     const rs = recoilSpring.trim() === '' ? null : Number(recoilSpring);
     const linkList = links.split('\n').map((l) => l.trim()).filter(Boolean)
@@ -325,23 +339,46 @@ export function ReferenceForm({ id, copyFrom, onSaved, onCancel, onDirtyChange, 
           onSave={saveProblem() === null ? () => void save() : undefined} />
       )}
       <h1 className="large-title">{original ? 'Edit Guide' : 'New Guide'}</h1>
-      <FormProblem problem={problem} />
 
       <div className="card">
-        <label className="field">What this Guide is called
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Wilson Combat, Grandpa's 1911…"
+        <label className={`field${problem?.field === 'name' ? ' invalid' : ''}`}>What this Guide is called <span className="field-required-marker">(required)</span>
+          <input
+            ref={nameFieldRef}
+            id="reference-name-input"
+            value={name}
+            onChange={(e) => { setName(e.target.value); if (problem?.field === 'name') setProblem(null); }}
+            placeholder="Wilson Combat, Grandpa's 1911…"
+            aria-invalid={problem?.field === 'name' || undefined}
+            aria-describedby={problem?.field === 'name' ? 'reference-name-err' : undefined}
             {...noAutofillProps} name="reference-title" />
+          <FieldProblem id="reference-name-err" problem={problem} field="name" />
         </label>
         <label className="field">Gun type
           <select value={category} onChange={(e) => setCategory(e.target.value as GunCategory)}>
             {GUN_CATEGORIES.map((c) => <option key={c} value={c}>{c}</option>)}
           </select>
         </label>
-        <label className="field">Deep clean every … rounds
-          <input type="number" inputMode="numeric" min="1" value={deepClean} onChange={(e) => setDeepClean(e.target.value)} />
+        <label className={`field${problem?.field === 'deepClean' ? ' invalid' : ''}`}>Deep clean every … rounds <span className="field-required-marker">(required)</span>
+          <input
+            ref={deepCleanFieldRef}
+            id="reference-deepclean-input"
+            type="number" inputMode="numeric" min="1"
+            value={deepClean}
+            onChange={(e) => { setDeepClean(e.target.value); if (problem?.field === 'deepClean') setProblem(null); }}
+            aria-invalid={problem?.field === 'deepClean' || undefined}
+            aria-describedby={problem?.field === 'deepClean' ? 'reference-deepclean-err' : undefined} />
+          <FieldProblem id="reference-deepclean-err" problem={problem} field="deepClean" />
         </label>
-        <label className="field">Recoil spring every … rounds (blank if not tracked)
-          <input type="number" inputMode="numeric" min="1" value={recoilSpring} onChange={(e) => setRecoilSpring(e.target.value)} />
+        <label className={`field${problem?.field === 'recoilSpring' ? ' invalid' : ''}`}>Recoil spring every … rounds (blank if not tracked)
+          <input
+            ref={recoilSpringFieldRef}
+            id="reference-recoilspring-input"
+            type="number" inputMode="numeric" min="1"
+            value={recoilSpring}
+            onChange={(e) => { setRecoilSpring(e.target.value); if (problem?.field === 'recoilSpring') setProblem(null); }}
+            aria-invalid={problem?.field === 'recoilSpring' || undefined}
+            aria-describedby={problem?.field === 'recoilSpring' ? 'reference-recoilspring-err' : undefined} />
+          <FieldProblem id="reference-recoilspring-err" problem={problem} field="recoilSpring" />
         </label>
         <label className="field">Cleaning checklist (one step per line)
           <textarea rows={5} value={checklist} onChange={(e) => setChecklist(e.target.value)}

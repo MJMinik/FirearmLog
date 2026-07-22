@@ -12,7 +12,7 @@ import { coachMarkDismissals, dismissCoachMark } from '../lib/coachMarks.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { suggestReferenceMatch, type ReferenceEntry } from '../lib/referenceData.ts';
-import { FormProblem } from './FormProblem.tsx';
+import { FieldProblem, type SaveProblem } from './FieldProblem.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { Reveal } from './Reveal.tsx';
 
@@ -50,7 +50,11 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }:
   const [deepClean, setDeepClean] = useState('');
   const [recoilSpring, setRecoilSpring] = useState('');
   const [notes, setNotes] = useState('');
-  const [problem, setProblem] = useState('');
+  const [problem, setProblem] = useState<SaveProblem>(null);
+  const nameFieldRef = useRef<HTMLInputElement>(null);
+  const startCountFieldRef = useRef<HTMLInputElement>(null);
+  const deepCleanFieldRef = useRef<HTMLInputElement>(null);
+  const recoilSpringFieldRef = useRef<HTMLInputElement>(null);
   const [referenceId, setReferenceId] = useState<string | null>(null);
   const [customRefs, setCustomRefs] = useState<Reference[]>([]);
   const [refSuggestion, setRefSuggestion] = useState<ReferenceEntry | null>(null);
@@ -215,14 +219,23 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }:
 
   // ONE source of validation truth: both the Save button and the
   // unsaved-changes sheet's Save option consult this.
-  function saveProblem(): string | null {
-    if (!name.trim()) return 'Give the gun a name.';
+  // Derived name: when name is blank but Made by and/or Model have text,
+  // propose "[Made by] [Model]" trimmed. Committed as the real name on save.
+  const derivedName = [manufacturer.trim(), model.trim()].filter(Boolean).join(' ');
+
+  function saveProblem(): SaveProblem {
+    if (!name.trim() && !derivedName) {
+      return { field: 'name', message: 'Give the gun a name — or fill in Made by and Model and we\'ll name it for you.' };
+    }
     const start = Number(startCount);
-    if (!Number.isFinite(start) || start < 0) return 'Rounds fired before FirearmLog needs to be a number.';
+    if (!Number.isFinite(start) || start < 0) return { field: 'startCount', message: 'Rounds fired before FirearmLog needs to be a number.' };
     const dcNum = deepClean.trim() === '' ? null : Number(deepClean);
     const rsNum = recoilSpring.trim() === '' ? null : Number(recoilSpring);
-    if ((dcNum !== null && !(dcNum > 0)) || (rsNum !== null && !(rsNum > 0))) {
-      return 'Schedule intervals need to be plain round counts (or left blank).';
+    if (dcNum !== null && !(dcNum > 0)) {
+      return { field: 'deepClean', message: 'Schedule intervals need to be plain round counts (or left blank).' };
+    }
+    if (rsNum !== null && !(rsNum > 0)) {
+      return { field: 'recoilSpring', message: 'Schedule intervals need to be plain round counts (or left blank).' };
     }
     return null;
   }
@@ -232,12 +245,26 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }:
   // Save button (which then navigates via onSaved) and the nav-guard sheet's Save.
   async function persistForm(): Promise<string | null> {
     const p = saveProblem();
-    if (p) { setProblem(p); return null; }
+    if (p) {
+      setProblem(p);
+      const fieldRef =
+        p.field === 'startCount' ? startCountFieldRef :
+        p.field === 'deepClean' ? deepCleanFieldRef :
+        p.field === 'recoilSpring' ? recoilSpringFieldRef :
+        nameFieldRef;
+      setTimeout(() => {
+        fieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        fieldRef.current?.focus();
+      }, 0);
+      return null;
+    }
+    // Commit derived name if name field was blank
+    const effectiveName = name.trim() || derivedName;
     const start = Number(startCount);
     const dcNum = deepClean.trim() === '' ? null : Number(deepClean);
     const rsNum = recoilSpring.trim() === '' ? null : Number(recoilSpring);
     const fields = {
-      name: name.trim(), manufacturer: manufacturer.trim(), model: model.trim(),
+      name: effectiveName, manufacturer: manufacturer.trim(), model: model.trim(),
       caliber: caliber.trim(), category, serialNumber: serial.trim() || null,
       dateAcquired: acquired, startingRoundCount: start, notes: notes.trim(),
       deepCleanInterval: dcNum, recoilSpringInterval: rsNum, referenceId
@@ -305,12 +332,20 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }:
         </CoachMark>
       )}
       <h1 className="large-title">{editing ? 'Edit Gun' : 'New Gun'}</h1>
-      <FormProblem problem={problem} />
+
 
       <div className="card">
-        <label className="field">What this Gun is called
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Atlas Erebus"
+        <label className={`field${problem?.field === 'name' ? ' invalid' : ''}`}>What this Gun is called
+          <input
+            ref={nameFieldRef}
+            id="gun-name-input"
+            value={name}
+            onChange={(e) => { setName(e.target.value); if (problem?.field === 'name') setProblem(null); }}
+            placeholder={name.trim() === '' && derivedName ? derivedName : 'Atlas Erebus'}
+            aria-invalid={problem?.field === 'name' || undefined}
+            aria-describedby={problem?.field === 'name' ? 'gun-name-err' : undefined}
             {...noAutofillProps} name="gun-title" />
+          <FieldProblem id="gun-name-err" problem={problem} field="name" />
         </label>
         <label className="field">Made by
           <input value={manufacturer} onChange={(e) => setManufacturer(e.target.value)} placeholder="Atlas Gunworks" />
@@ -351,8 +386,16 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }:
           {/* A1: the stored field is still startingRoundCount only. "Rounds fired
               before FirearmLog" edits it directly; "Lifetime rounds (total)" edits
               the same number the other way (lifetime = this + rounds logged here). */}
-          <label className="field">Rounds fired before FirearmLog
-            <input type="number" inputMode="numeric" min="0" value={startCount} onChange={(e) => onStartChange(e.target.value)} />
+          <label className={`field${problem?.field === 'startCount' ? ' invalid' : ''}`}>Rounds fired before FirearmLog
+            <input
+              ref={startCountFieldRef}
+              id="gun-startcount-input"
+              type="number" inputMode="numeric" min="0"
+              value={startCount}
+              onChange={(e) => { onStartChange(e.target.value); if (problem?.field === 'startCount') setProblem(null); }}
+              aria-invalid={problem?.field === 'startCount' || undefined}
+              aria-describedby={problem?.field === 'startCount' ? 'gun-startcount-err' : undefined} />
+            <FieldProblem id="gun-startcount-err" problem={problem} field="startCount" />
           </label>
           {/* A1: gate the lifetime view to editing (like the read-only line above).
               On a new gun loggedRounds is always 0, so lifetime = starting count —
@@ -367,11 +410,27 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }:
               You've already logged {loggedRounds.toLocaleString()} rounds with this gun, so its lifetime can't be lower than that. Rounds fired before FirearmLog is set to 0.
             </p>
           )}
-          <label className="field">Deep clean every … rounds (blank = use the linked Maintenance Guide or 10,000)
-            <input type="number" inputMode="numeric" min="1" value={deepClean} onChange={(e) => setDeepClean(e.target.value)} />
+          <label className={`field${problem?.field === 'deepClean' ? ' invalid' : ''}`}>Deep clean every … rounds (blank = use the linked Maintenance Guide or 10,000)
+            <input
+              ref={deepCleanFieldRef}
+              id="gun-deepclean-input"
+              type="number" inputMode="numeric" min="1"
+              value={deepClean}
+              onChange={(e) => { setDeepClean(e.target.value); if (problem?.field === 'deepClean') setProblem(null); }}
+              aria-invalid={problem?.field === 'deepClean' || undefined}
+              aria-describedby={problem?.field === 'deepClean' ? 'gun-deepclean-err' : undefined} />
+            <FieldProblem id="gun-deepclean-err" problem={problem} field="deepClean" />
           </label>
-          <label className="field">Recoil spring every … rounds (blank = use the linked Maintenance Guide)
-            <input type="number" inputMode="numeric" min="1" value={recoilSpring} onChange={(e) => setRecoilSpring(e.target.value)} />
+          <label className={`field${problem?.field === 'recoilSpring' ? ' invalid' : ''}`}>Recoil spring every … rounds (blank = use the linked Maintenance Guide)
+            <input
+              ref={recoilSpringFieldRef}
+              id="gun-recoilspring-input"
+              type="number" inputMode="numeric" min="1"
+              value={recoilSpring}
+              onChange={(e) => { setRecoilSpring(e.target.value); if (problem?.field === 'recoilSpring') setProblem(null); }}
+              aria-invalid={problem?.field === 'recoilSpring' || undefined}
+              aria-describedby={problem?.field === 'recoilSpring' ? 'gun-recoilspring-err' : undefined} />
+            <FieldProblem id="gun-recoilspring-err" problem={problem} field="recoilSpring" />
           </label>
         </Reveal>
       </div>

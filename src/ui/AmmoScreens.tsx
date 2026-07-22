@@ -2,7 +2,7 @@
 // grain, bullet type, rounds on hand, and what those rounds cost. The
 // cost/round shown prefers the FIFO "in the can" number (from linked Ammo
 // Purchases) and falls back to the manually typed figure.
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ScreenLoading } from './ScreenState.tsx';
 import type { Ammunition, Purchase, Session } from '../lib/types.ts';
 import { applyAmmoMerge, deleteOne, getAll, getOne, getSettings, putOne } from '../lib/db.ts';
@@ -18,7 +18,7 @@ import { SuggestField } from './SuggestField.tsx';
 import { ConfirmSheet, DiscardChangesSheet, Sheet } from './Sheet.tsx';
 import { useDirtyTracker } from './useDirtyTracker.ts';
 import { InfoTip } from './InfoTip.tsx';
-import { FormProblem } from './FormProblem.tsx';
+import { FieldProblem, type SaveProblem } from './FieldProblem.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { ScreenError } from './ScreenState.tsx';
 
@@ -126,7 +126,11 @@ export function AmmoForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [justCounting, setJustCounting] = useState(false);
-  const [problem, setProblem] = useState('');
+  const [problem, setProblem] = useState<SaveProblem>(null);
+  const ammoGroupRef = useRef<HTMLDivElement>(null);
+  const quantityFieldRef = useRef<HTMLInputElement>(null);
+  const costPerRoundFieldRef = useRef<HTMLInputElement>(null);
+  const purchNumbersRef = useRef<HTMLDivElement>(null);
   const [confirming, setConfirming] = useState(false);
   const [dupe, setDupe] = useState<Ammunition | null>(null);
   const [discarding, setDiscarding] = useState(false);
@@ -198,24 +202,26 @@ export function AmmoForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }
   );
 
   function checkNumbers(): { qty: number; cpr: number; pr: number; pc: number } | null {
-    if (!brand.trim() && !caliber.trim()) { setProblem('Give it at least a brand or a caliber.'); return null; }
+    if (!brand.trim() && !caliber.trim()) { setProblem({ field: 'ammoGroup', message: 'Give it at least a brand or a caliber.' }); setTimeout(() => { ammoGroupRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 0); return null; }
     // On Add, the shelf-count fields only exist when "just counting" is open.
     const counting = editing || justCounting;
     const qty = !counting || quantity.trim() === '' ? 0 : Number(quantity);
     const cpr = !counting || costPerRound.trim() === '' ? 0 : Number(costPerRound);
     const pr = purchRounds.trim() === '' ? 0 : Number(purchRounds);
     const pc = purchCost.trim() === '' ? 0 : Number(purchCost);
-    if (!Number.isFinite(qty) || qty < 0) { setProblem('Rounds on the shelf needs to be a plain number.'); return null; }
-    if (!Number.isFinite(cpr) || cpr < 0) { setProblem('Cost per round needs to be a plain number, like 0.30.'); return null; }
+    if (!Number.isFinite(qty) || qty < 0) { setProblem({ field: 'quantity', message: 'Rounds on the shelf needs to be a plain number.' }); setTimeout(() => { quantityFieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); quantityFieldRef.current?.focus(); }, 0); return null; }
+    if (!Number.isFinite(cpr) || cpr < 0) { setProblem({ field: 'costPerRound', message: 'Cost per round needs to be a plain number, like 0.30.' }); setTimeout(() => { costPerRoundFieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); costPerRoundFieldRef.current?.focus(); }, 0); return null; }
     if (!Number.isFinite(pr) || pr < 0 || !Number.isFinite(pc) || pc < 0) {
-      setProblem('The buy needs plain numbers for rounds and price.'); return null;
+      setProblem({ field: 'purchNumbers', message: 'The buy needs plain numbers for rounds and price.' });
+      setTimeout(() => { purchNumbersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 0); return null;
     }
     if ((pr > 0) !== (pc > 0)) {
-      setProblem('Fill in both the rounds and what you paid for the buy.'); return null;
+      setProblem({ field: 'purchNumbers', message: 'Fill in both the rounds and what you paid for the buy.' });
+      setTimeout(() => { purchNumbersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 0); return null;
     }
     if (!editing && !justCounting && !(pr > 0)) {
-      setProblem('Fill in the buy — rounds and what you paid. Not buying? Tap "Just counting the shelf" below.');
-      return null;
+      setProblem({ field: 'purchNumbers', message: 'Fill in the buy — rounds and what you paid. Not buying? Tap "Just counting the shelf" below.' });
+      setTimeout(() => { purchNumbersRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 0); return null;
     }
     return { qty, cpr, pr, pc };
   }
@@ -323,11 +329,14 @@ export function AmmoForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }
           onClose={() => setDiscarding(false)} />
       )}
       <h1 className="large-title">{editing ? 'Edit Ammo' : 'Add Ammo'}</h1>
-      <FormProblem problem={problem} />
-      <div className="card">
-        <SuggestField label="Brand" value={brand} onChange={setBrand}
+      {problem && !['ammoGroup', 'quantity', 'costPerRound', 'purchNumbers'].includes(problem.field) && (
+        <p className="form-problem" role="alert">{problem.message}</p>
+      )}
+      <div className="card" ref={ammoGroupRef}>
+        <FieldProblem id="ammo-group-err" problem={problem} field="ammoGroup" />
+        <SuggestField label="Brand" value={brand} onChange={(v) => { setBrand(v); if (problem?.field === 'ammoGroup') setProblem(null); }}
           suggestions={filterHidden(pastBrands, hiddenSuggestions, 'ammo-brands')} placeholder="Blazer Brass" />
-        <SuggestField label="Caliber" value={caliber} onChange={setCaliber}
+        <SuggestField label="Caliber" value={caliber} onChange={(v) => { setCaliber(v); if (problem?.field === 'ammoGroup') setProblem(null); }}
           suggestions={filterHidden(pastCalibers, hiddenSuggestions, 'calibers')} placeholder="9mm" />
         <label className="field">Grain
           <input type="number" inputMode="numeric" value={grain} onChange={(e) => setGrain(e.target.value)} placeholder="115" />
@@ -339,15 +348,31 @@ export function AmmoForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }
         </label>
         {editing && (
           <>
-            <label className="field">Rounds on hand (live count)
-              <input type="number" inputMode="numeric" min="0" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+            <label className={`field${problem?.field === 'quantity' ? ' invalid' : ''}`}>Rounds on hand (live count)
+              <input
+                ref={quantityFieldRef}
+                id="ammo-quantity-input"
+                type="number" inputMode="numeric" min="0"
+                value={quantity}
+                onChange={(e) => { setQuantity(e.target.value); if (problem?.field === 'quantity') setProblem(null); }}
+                aria-invalid={problem?.field === 'quantity' || undefined}
+                aria-describedby={problem?.field === 'quantity' ? 'ammo-quantity-err' : undefined} />
+              <FieldProblem id="ammo-quantity-err" problem={problem} field="quantity" />
             </label>
             <p className="report-note">
               This count runs itself — purchases add to it, sessions subtract. Only change it here to match a real shelf recount.
             </p>
-            <label className="field">Cost per round ($, optional)
-              <input type="number" inputMode="decimal" step="0.001" min="0" value={costPerRound}
-                onChange={(e) => setCostPerRound(e.target.value)} placeholder="0.30" />
+            <label className={`field${problem?.field === 'costPerRound' ? ' invalid' : ''}`}>Cost per round ($, optional)
+              <input
+                ref={costPerRoundFieldRef}
+                id="ammo-cpr-input"
+                type="number" inputMode="decimal" step="0.001" min="0"
+                value={costPerRound}
+                onChange={(e) => { setCostPerRound(e.target.value); if (problem?.field === 'costPerRound') setProblem(null); }}
+                aria-invalid={problem?.field === 'costPerRound' || undefined}
+                aria-describedby={problem?.field === 'costPerRound' ? 'ammo-cpr-err' : undefined}
+                placeholder="0.30" />
+              <FieldProblem id="ammo-cpr-err" problem={problem} field="costPerRound" />
             </label>
             <p className="report-note">
               Only needed for sessions older than your purchase history — once you log
@@ -375,12 +400,28 @@ export function AmmoForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }
             </div>
             {justCounting && (
               <>
-                <label className="field" style={{ marginTop: 8 }}>Rounds on the shelf right now
-                  <input type="number" inputMode="numeric" min="0" value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+                <label className={`field${problem?.field === 'quantity' ? ' invalid' : ''}`} style={{ marginTop: 8 }}>Rounds on the shelf right now
+                  <input
+                    ref={quantityFieldRef}
+                    id="ammo-quantity-input"
+                    type="number" inputMode="numeric" min="0"
+                    value={quantity}
+                    onChange={(e) => { setQuantity(e.target.value); if (problem?.field === 'quantity') setProblem(null); }}
+                    aria-invalid={problem?.field === 'quantity' || undefined}
+                    aria-describedby={problem?.field === 'quantity' ? 'ammo-quantity-input-err' : undefined} />
+                  <FieldProblem id="ammo-quantity-input-err" problem={problem} field="quantity" />
                 </label>
-                <label className="field">Cost per round ($, optional)
-                  <input type="number" inputMode="decimal" step="0.001" min="0" value={costPerRound}
-                    onChange={(e) => setCostPerRound(e.target.value)} placeholder="0.30" />
+                <label className={`field${problem?.field === 'costPerRound' ? ' invalid' : ''}`}>Cost per round ($, optional)
+                  <input
+                    ref={costPerRoundFieldRef}
+                    id="ammo-cpr-new-input"
+                    type="number" inputMode="decimal" step="0.001" min="0"
+                    value={costPerRound}
+                    onChange={(e) => { setCostPerRound(e.target.value); if (problem?.field === 'costPerRound') setProblem(null); }}
+                    aria-invalid={problem?.field === 'costPerRound' || undefined}
+                    aria-describedby={problem?.field === 'costPerRound' ? 'ammo-cpr-new-err' : undefined}
+                    placeholder="0.30" />
+                  <FieldProblem id="ammo-cpr-new-err" problem={problem} field="costPerRound" />
                 </label>
                 <p className="report-note">
                   For ammo you already own — bought before you started tracking. The
@@ -391,15 +432,16 @@ export function AmmoForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }
           </div>
 
           {!justCounting && (
-            <div className="card">
+            <div className="card" ref={purchNumbersRef}>
               <h2>The Buy</h2>
+              <FieldProblem id="ammo-purch-err" problem={problem} field="purchNumbers" />
               <label className="field">Rounds purchased
                 <input type="number" inputMode="numeric" min="0" value={purchRounds}
-                  onChange={(e) => setPurchRounds(e.target.value)} placeholder="1000" />
+                  onChange={(e) => { setPurchRounds(e.target.value); if (problem?.field === 'purchNumbers') setProblem(null); }} placeholder="1000" />
               </label>
               <label className="field">What you paid, total ($)
                 <input type="number" inputMode="decimal" min="0" step="0.01" value={purchCost}
-                  onChange={(e) => setPurchCost(e.target.value)} placeholder="299.99" />
+                  onChange={(e) => { setPurchCost(e.target.value); if (problem?.field === 'purchNumbers') setProblem(null); }} placeholder="299.99" />
               </label>
               <SuggestField label="Vendor (optional)" value={purchVendor} onChange={setPurchVendor}
                 suggestions={filterHidden(pastVendors, hiddenSuggestions, 'vendors')} placeholder="Primary Arms" />
