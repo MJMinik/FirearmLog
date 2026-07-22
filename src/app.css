@@ -507,6 +507,15 @@ select.category-pick {
   background: var(--bg); color: var(--text); padding: 8px 10px; text-align: right;
 }
 
+/* ---------- Per-session magazines (Log/Plan Session) ----------
+   Nests under its gun row in Guns & Rounds; the left rule ties the mag list
+   to its gun visually. The disclosure reuses the checklist classes. */
+.session-mags {
+  margin: 0 0 8px 12px; padding-left: 12px;
+  border-left: 2px solid var(--separator);
+}
+.session-mags .checklist-disclosure { margin-bottom: 0; }
+
 /* ---------- Gear Checklist (Log/Plan Session) ---------- */
 .checklist-disclosure {
   display: flex; align-items: center; justify-content: space-between; width: 100%;

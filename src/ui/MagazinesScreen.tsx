@@ -1,6 +1,9 @@
-// Magazines: the user's magazine list, fully editable.
+// Magazines: the user's magazine list, fully editable. Round counts shown
+// here are DERIVED (starting count + logged-session attributions — lib/mags.ts);
+// the form edits only the starting count.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Firearm, Magazine } from '../lib/types.ts';
+import type { Firearm, Magazine, Session } from '../lib/types.ts';
+import { magLifetimeRounds } from '../lib/mags.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -17,6 +20,7 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
 }) {
   const [mags, setMags] = useState<Magazine[]>([]);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [q, setQ] = useState('');
   const [error, setError] = useState(false);
   const [nonce, setNonce] = useState(0);
@@ -25,10 +29,13 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
     setError(false);
     void (async () => {
       try {
-        const [m, f] = await Promise.all([getAll<Magazine>('magazines'), getAll<Firearm>('firearms')]);
+        const [m, f, s] = await Promise.all([
+          getAll<Magazine>('magazines'), getAll<Firearm>('firearms'), getAll<Session>('sessions')
+        ]);
         if (!alive) return;
         setMags(m.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })));
         setFirearms(f);
+        setSessions(s);
       } catch (e) {
         console.error('Magazines load failed', e);
         if (alive) setError(true);
@@ -48,7 +55,7 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
         <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Magazines <InfoTip title="Magazines">Your magazines, grouped by the guns they fit.</InfoTip></h1>
+      <h1 className="large-title">Magazines <InfoTip title="Magazines">Your magazines, grouped by the guns they fit. The round count is each mag&rsquo;s starting count plus every round your logged sessions attribute to it — pick the mags you ran when logging a session and the counts keep themselves.</InfoTip></h1>
       <button className="button" onClick={() => openForm()}>+ Add Magazine</button>
       {mags.length > 8 && <ListSearch value={q} onChange={setQ} placeholder="Search magazines" />}
       <div className="card" style={{ marginTop: 16 }}>
@@ -62,7 +69,7 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
               {m.label}{m.active ? '' : ' (retired)'}
               <div className="row-sub">{gunNames(m.firearmIds) || 'No gun assigned'}</div>
             </span>
-            <span className="value">{m.totalRounds.toLocaleString()} rds ›</span>
+            <span className="value">{magLifetimeRounds(m, sessions).toLocaleString()} rds ›</span>
           </button>
         ))}
       </div>
@@ -78,6 +85,7 @@ export function MagazineForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Magazine | null>(null);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
+  const [sessions, setSessions] = useState<Session[]>([]);
   const [label, setLabel] = useState('');
   const [gunIds, setGunIds] = useState<string[]>([]);
   const [active, setActive] = useState(true);
@@ -100,6 +108,7 @@ export function MagazineForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
     void getAll<Firearm>('firearms').then((f) => {
       if (alive) setFirearms(f.sort((a, b) => a.name.localeCompare(b.name)));
     });
+    void getAll<Session>('sessions').then((s) => { if (alive) setSessions(s); });
     if (id !== undefined) {
       void getOne<Magazine>('magazines', id).then((m) => {
         if (!alive || !m) return;
@@ -150,8 +159,10 @@ export function MagazineForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
   });
   useEffect(() => () => onSaverChange?.(null), [onSaverChange]);
 
-  // Audit #10: magazines can be deleted (nothing else references them — sessions
-  // don't link to magazines). "Retire" still exists for mags you want to keep on record.
+  // Audit #10: magazines can be deleted. Sessions (magIds) and malfunctions
+  // (magazineId) MAY reference one, but every reader skips unknown ids, so a
+  // deleted mag just stops appearing — no dangling-reference breakage.
+  // "Retire" still exists for mags you want to keep on record.
   async function reallyDelete() {
     if (original) await deleteOne('magazines', original.id);
     onDirtyChange?.(false);
@@ -188,10 +199,26 @@ export function MagazineForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
             </div>
           );
         })}
-        <label className="field" style={{ marginTop: 12 }}>Rounds through it
+        <label className="field" style={{ marginTop: 12 }}>Rounds through it before FirearmLog
           <input type="number" inputMode="numeric" min="0" value={totalRounds}
             onChange={(e) => setTotalRounds(e.target.value)} />
         </label>
+        {(() => {
+          // Derived lifetime, live as the starting count is typed: sessions
+          // that logged this mag add on top of the number above.
+          const logged = original
+            ? magLifetimeRounds({ id: original.id, totalRounds: 0 }, sessions) : 0;
+          if (!logged) return (
+            <p className="report-note">New rounds add on automatically — pick this mag when logging a session.</p>
+          );
+          const start = Number(totalRounds) || 0;
+          return (
+            <p className="report-note">
+              Lifetime: {(start + logged).toLocaleString()} rds — the starting count above plus{' '}
+              {logged.toLocaleString()} from your logged sessions.
+            </p>
+          );
+        })()}
         <div className="row">
           <button className={`gun-toggle ${active ? 'on' : ''}`} aria-pressed={active}
             onClick={() => setActive(!active)}>
