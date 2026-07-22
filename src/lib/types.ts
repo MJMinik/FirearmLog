@@ -51,6 +51,17 @@ export interface Firearm extends BaseRecord, Imported {
 export interface SessionGun {
   firearmId: string;
   rounds: number;
+  /**
+   * Per-session magazine tracking (July 2026). `magIds` = the mags this gun
+   * ran; `magOverrides` exists only when the shooter overrode the default
+   * even split, and its counts must sum to `rounds`. Both optional +
+   * additive — older records simply lack them, and the data-file validator
+   * imposes no per-field allow-list, so sync/import are unaffected. A mag's
+   * lifetime count is DERIVED from these in lib/mags.ts; session saves never
+   * write to Magazine records.
+   */
+  magIds?: string[];
+  magOverrides?: { magId: string; rounds: number }[];
 }
 
 /** A single gear-checklist item (default or custom). */
@@ -179,6 +190,13 @@ export interface Magazine extends BaseRecord, Imported {
   label: string;
   firearmIds: string[];
   active: boolean;
+  /**
+   * STARTING count: rounds through this mag before FirearmLog began
+   * attributing session rounds to it (July 2026 mags feature). The lifetime
+   * figure shown in the UI is derived — this plus per-session attributions
+   * (lib/mags.ts magLifetimeRounds). Pre-feature records need no migration:
+   * the hand-kept odometer they stored here IS the starting count.
+   */
   totalRounds: number;
   springHistory: unknown[];
   notes: string;

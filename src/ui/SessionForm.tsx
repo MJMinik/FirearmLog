@@ -1,11 +1,12 @@
 // Log or edit a session (spec §8.1): kind, date, guns with per-gun rounds,
 // multiple drills via the context-aware picker, photos/videos, malfunctions,
 // ratings, fee, notes. Removals are STAGED — cancel really cancels (rule F3).
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   Ammunition, AppSettings, ChecklistCustomItems, DrillDef, DrillResult, Firearm, GunCategory,
-  Magazine, MalfunctionEntry, Media, Session, SessionChecklist
+  Magazine, MalfunctionEntry, Media, Session, SessionChecklist, SessionGun
 } from '../lib/types.ts';
+import { splitRounds } from '../lib/mags.ts';
 import { deleteOne, getAll, getOne, getSettings, putOne, putSettings } from '../lib/db.ts';
 import { todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
@@ -107,6 +108,15 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const [instructors, setInstructors] = useState<string[]>([]);
   const [instructor, setInstructor] = useState('');
   const [rounds, setRounds] = useState<Record<string, string>>({});
+  // Per-session magazine tracking (spec July 22 2026). All keyed by firearmId.
+  // magPick = mags chosen for that gun; magOverride = per-mag round counts as
+  // typed, present ONLY once the shooter edits a number (absent = even split,
+  // derived live); magOpen = the disclosure state; lastMags = the sticky
+  // preselection (that gun's mags from its most recent logged session).
+  const [magPick, setMagPick] = useState<Record<string, string[]>>({});
+  const [magOverride, setMagOverride] = useState<Record<string, Record<string, string>>>({});
+  const [magOpen, setMagOpen] = useState<Record<string, boolean>>({});
+  const [lastMags, setLastMags] = useState<Record<string, string[]>>({});
   const [drills, setDrills] = useState<DrillRow[]>([]);
   const [malfs, setMalfs] = useState<MalfRow[]>([]);
   const [oldMalfIds, setOldMalfIds] = useState<string[]>([]);
@@ -212,6 +222,17 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         }
       }
       setRecentAmmoIds(recentAmmo);
+      // Sticky mag preselection: each gun's mags from its most recent LOGGED
+      // session that attributed any (most-recent first, mirroring the ammo
+      // default). Planned sessions are intent, not history — skip them.
+      const last: Record<string, string[]> = {};
+      for (const s of [...activeOnly(allSessions)].sort((a, b) => b.date.localeCompare(a.date))) {
+        if (s.planned) continue;
+        for (const g of s.guns ?? []) {
+          if (!last[g.firearmId] && g.magIds?.length) last[g.firearmId] = g.magIds;
+        }
+      }
+      setLastMags(last);
       setSavedMalfTypes([...new Set(allMalf.map((m) => m.type).filter(Boolean))]);
       setSavedClearMethods([...new Set(allMalf.map((m) => m.resolution).filter(Boolean))]);
       // Instructor suggestions = past sessions' instructors (most-recent first,
@@ -241,6 +262,20 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         const r: Record<string, string> = {};
         for (const g of s.guns) r[g.firearmId] = String(g.rounds);
         setRounds(r);
+        // Seed saved mag attributions; open those sections so the record is
+        // visible when editing (mirrors the ratings Reveal defaultOpen).
+        const mp: Record<string, string[]> = {};
+        const mo: Record<string, Record<string, string>> = {};
+        const mopen: Record<string, boolean> = {};
+        for (const g of s.guns) {
+          if (!g.magIds?.length) continue;
+          mp[g.firearmId] = g.magIds;
+          mopen[g.firearmId] = true;
+          if (g.magOverrides?.length) {
+            mo[g.firearmId] = Object.fromEntries(g.magOverrides.map((o) => [o.magId, String(o.rounds)]));
+          }
+        }
+        setMagPick(mp); setMagOverride(mo); setMagOpen(mopen);
         setDrills(s.drills.map(toRow));
         setAmmoRows((s.ammoUsage ?? []).map((u) => ({ ammoId: u.ammoId, rounds: String(u.rounds) })));
         // Editing/converting an existing session: never auto-overwrite its saved
@@ -288,6 +323,64 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     () => firearms.filter((f) => rounds[f.id] !== undefined),
     [firearms, rounds]
   );
+
+  // ---- Per-session magazine tracking (spec July 22 2026) ----
+  // Mags offered for a gun: its linked, in-service mags, plus any already on
+  // this session even if since retired (the pickableGuns precedent).
+  const magsForGun = (fid: string) => magazines
+    .filter((m) => m.firearmIds.includes(fid) && (m.active || (magPick[fid] ?? []).includes(m.id)))
+    .sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true }));
+
+  // The live even split for a gun's picked mags, as input-ready strings.
+  const evenSplitFor = (fid: string): Record<string, string> => {
+    const ids = magPick[fid] ?? [];
+    const parts = splitRounds(Number(rounds[fid]) || 0, ids.length);
+    return Object.fromEntries(ids.map((id, i) => [id, String(parts[i])]));
+  };
+
+  const magCount = (fid: string, magId: string): string =>
+    magOverride[fid]?.[magId] ?? evenSplitFor(fid)[magId] ?? '0';
+
+  const toggleMagSection = (fid: string) => {
+    const opening = !magOpen[fid];
+    setMagOpen((p) => ({ ...p, [fid]: !p[fid] }));
+    // First open with nothing picked: sticky preselect from this gun's most
+    // recent logged mags, so one tap confirms the usual loadout. Only mags
+    // still linked AND in service qualify — a since-retired mag shouldn't be
+    // silently attributed by habit.
+    if (opening && !(magPick[fid]?.length)) {
+      const seed = (lastMags[fid] ?? [])
+        .filter((id) => magazines.some((m) => m.id === id && m.firearmIds.includes(fid) && m.active));
+      if (seed.length) { setTouched(true); setMagPick((p) => ({ ...p, [fid]: seed })); }
+    }
+  };
+
+  const toggleMag = (fid: string, magId: string) => {
+    setTouched(true);
+    setMagPick((p) => {
+      const cur = p[fid] ?? [];
+      return { ...p, [fid]: cur.includes(magId) ? cur.filter((x) => x !== magId) : [...cur, magId] };
+    });
+    // Changing WHICH mags resets any custom counts — old numbers can't line
+    // up with a different set; the visible values update to the even split.
+    setMagOverride((p) => {
+      if (!p[fid]) return p;
+      const next = { ...p }; delete next[fid]; return next;
+    });
+    if (problem?.field === 'mags') setProblem(null);
+  };
+
+  const editMagCount = (fid: string, magId: string, value: string) => {
+    setTouched(true);
+    setMagOverride((p) => ({ ...p, [fid]: { ...(p[fid] ?? evenSplitFor(fid)), [magId]: value } }));
+    if (problem?.field === 'mags') setProblem(null);
+  };
+
+  const resetMagSplit = (fid: string) => {
+    setTouched(true);
+    setMagOverride((p) => { const next = { ...p }; delete next[fid]; return next; });
+    if (problem?.field === 'mags') setProblem(null);
+  };
   const selectedCategories = useMemo(() => {
     const cats = new Set<GunCategory>();
     for (const f of selectedGuns) cats.add(f.category);
@@ -350,6 +443,13 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       else delete next[fid];
       return next;
     });
+    if (!on) {
+      // Removing a gun drops its rounds (above), so its mag picks and custom
+      // counts go with them — re-adding the gun starts clean, same as rounds.
+      setMagPick((p) => { const next = { ...p }; delete next[fid]; return next; });
+      setMagOverride((p) => { const next = { ...p }; delete next[fid]; return next; });
+      setMagOpen((p) => { const next = { ...p }; delete next[fid]; return next; });
+    }
     setChecklist((cl) => setItemTake(cl, `f_${fid}`, on));
     if (problem?.field === 'guns') setProblem(null);
   }
@@ -552,8 +652,38 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     }));
     if (!date) return { field: 'date', message: 'Pick a date.' };
     if (Object.keys(rounds).length === 0) return { field: 'guns', message: 'Pick at least one gun.' };
-    if (guns.some((g) => !Number.isFinite(g.rounds) || g.rounds < 0)) {
-      return { field: 'guns', message: 'Rounds need to be plain numbers.' };
+    if (guns.some((g) => !Number.isFinite(g.rounds) || g.rounds < 0 || !Number.isInteger(g.rounds))) {
+      // Whole numbers only — rounds don't come in halves, and a decimal total
+      // would make a custom mag split impossible to sum (whole mag counts can
+      // never equal 50.5).
+      return { field: 'guns', message: 'Rounds need to be plain whole numbers.' };
+    }
+    // Mag overrides must sum to their GUN's rounds (spec decision 5). The even
+    // split needs no check — it sums exactly by construction. An untouched mag
+    // section blocks nothing.
+    if (kind !== 'dry_fire') {
+      for (const [fid, ids] of Object.entries(magPick)) {
+        if (rounds[fid] === undefined || !ids.length) continue;
+        const ov = magOverride[fid];
+        if (!ov) continue;
+        const gunTotal = rounds[fid].trim() === '' ? 0 : Number(rounds[fid]);
+        let sum = 0;
+        for (const magId of ids) {
+          const v = (ov[magId] ?? '').trim();
+          const n = v === '' ? 0 : Number(v);
+          if (!Number.isFinite(n) || n < 0 || Math.floor(n) !== n) {
+            return { field: 'mags', message: 'Mag rounds need to be plain whole numbers.' };
+          }
+          sum += n;
+        }
+        if (sum !== gunTotal) {
+          const name = firearms.find((f) => f.id === fid)?.name ?? 'this gun';
+          return {
+            field: 'mags',
+            message: `Mag rounds for ${name} total ${sum.toLocaleString()}, but the gun logged ${gunTotal.toLocaleString()} — match them to save.`
+          };
+        }
+      }
     }
     const badDrill = drills.map(fromRow).find((d) =>
       (d.time !== null && !Number.isFinite(d.time)) ||
@@ -576,9 +706,23 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   // owns navigation so the guard path (persistForm) can't double-navigate.
   async function doPersist(): Promise<string | null> {
     if (saving) return null;
-    const guns = Object.entries(rounds).map(([firearmId, text]) => ({
-      firearmId, rounds: text.trim() === '' ? 0 : Number(text)
-    }));
+    const guns = Object.entries(rounds).map(([firearmId, text]) => {
+      const g: SessionGun = { firearmId, rounds: text.trim() === '' ? 0 : Number(text) };
+      // Mag attribution rides on the gun (optional + additive). Overrides are
+      // stored only when they differ from the even split, so a hand-typed
+      // match keeps redistributing if the rounds change later.
+      const ids = kind === 'dry_fire' ? [] : (magPick[firearmId] ?? []);
+      if (ids.length) {
+        g.magIds = ids;
+        const ov = magOverride[firearmId];
+        if (ov) {
+          const counts = ids.map((magId) => ({ magId, rounds: Number(ov[magId]) || 0 }));
+          const even = splitRounds(g.rounds, ids.length);
+          if (!counts.every((c, i) => c.rounds === even[i])) g.magOverrides = counts;
+        }
+      }
+      return g;
+    });
     const sp = saveProblem();
     if (sp) {
       setProblem(sp);
@@ -783,24 +927,108 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       <div className="card" ref={gunsCardRef}>
         <h2>Guns &amp; Rounds <span className="field-required-marker">(required)</span></h2>
         <FieldProblem id="session-guns-err" problem={problem} field="guns" />
+        <FieldProblem id="session-mags-err" problem={problem} field="mags" />
         {firearms.length === 0 && <p className="report-note">No guns yet — add one from the Guns screen.</p>}
         {/* Audit #10: active guns, plus any already on this session (so a since-retired gun still shows on its own record). */}
         {pickableGuns(firearms, Object.keys(rounds)).map((f) => {
           const on = rounds[f.id] !== undefined;
+          // Per-session magazine tracking: a quiet per-gun disclosure, shown
+          // only for live-fire guns that have linked mags — hidden the same
+          // way ammo and drills are, and never a nag (spec decision 3).
+          const gunMags = on && kind !== 'dry_fire' ? magsForGun(f.id) : [];
+          const picked = magPick[f.id] ?? [];
+          // Ghosts: mags this session saved that have since been deleted or
+          // unlinked from the gun. They must stay VISIBLE — an invisible pick
+          // would still re-save and still soak up a share of the split — so
+          // they render as removable rows instead of vanishing.
+          const ghostIds = on && kind !== 'dry_fire'
+            ? picked.filter((id) => !gunMags.some((m) => m.id === id)) : [];
+          const open = !!magOpen[f.id];
           return (
-            <div className="row" key={f.id}>
-              <button className={`gun-toggle ${on ? 'on' : ''}`} aria-pressed={on}
-                onClick={() => { syncGun(f.id, rounds[f.id] === undefined); setTouched(true); }}>
-                {f.name}
-              </button>
-              {on && (
-                <input className="rounds-input" type="number" inputMode="numeric" min="0"
-                  placeholder={planned ? 'planned rounds' : kind === 'dry_fire' ? 'reps' : 'rounds'}
-                  aria-label={`Rounds for ${f.name}`}
-                  value={rounds[f.id]}
-                  onChange={(e) => { setRounds((prev) => ({ ...prev, [f.id]: e.target.value })); if (problem?.field === 'guns') setProblem(null); }} />
+            <Fragment key={f.id}>
+              <div className="row">
+                <button className={`gun-toggle ${on ? 'on' : ''}`} aria-pressed={on}
+                  onClick={() => { syncGun(f.id, rounds[f.id] === undefined); setTouched(true); }}>
+                  {f.name}
+                </button>
+                {on && (
+                  <input className="rounds-input" type="number" inputMode="numeric" min="0"
+                    placeholder={planned ? 'planned rounds' : kind === 'dry_fire' ? 'reps' : 'rounds'}
+                    aria-label={`Rounds for ${f.name}`}
+                    value={rounds[f.id]}
+                    onChange={(e) => { setRounds((prev) => ({ ...prev, [f.id]: e.target.value })); if (problem?.field === 'guns') setProblem(null); }} />
+                )}
+              </div>
+              {(gunMags.length > 0 || ghostIds.length > 0) && (
+                <div className="session-mags">
+                  <button className="checklist-disclosure" aria-expanded={open}
+                    onClick={() => toggleMagSection(f.id)}>
+                    <span className="checklist-disclosure-title">
+                      Magazines{picked.length > 0 && !open
+                        ? ` — ${picked.map((id) => magazines.find((m) => m.id === id)?.label ?? '—').join(', ')}`
+                        : ''}
+                    </span>
+                    <span className="checklist-disclosure-toggle">{open ? 'Hide' : 'Show'} <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
+                  </button>
+                  {open && (
+                    <>
+                      {gunMags.map((m) => {
+                        const magOn = picked.includes(m.id);
+                        return (
+                          <div className="row" key={m.id}>
+                            <button className={`gun-toggle ${magOn ? 'on' : ''}`} aria-pressed={magOn}
+                              onClick={() => toggleMag(f.id, m.id)}>
+                              {m.label}{m.active ? '' : ' (retired)'}
+                            </button>
+                            {magOn && (
+                              <input className="rounds-input" type="number" inputMode="numeric" min="0"
+                                aria-label={`Rounds through ${m.label} with ${f.name}`}
+                                value={magCount(f.id, m.id)}
+                                onChange={(e) => editMagCount(f.id, m.id, e.target.value)} />
+                            )}
+                          </div>
+                        );
+                      })}
+                      {ghostIds.map((id) => {
+                        const m = magazines.find((x) => x.id === id);
+                        const label = m ? `${m.label} (no longer linked)` : 'Deleted magazine';
+                        return (
+                          <div className="row" key={id}>
+                            <button className="gun-toggle on" aria-pressed={true}
+                              onClick={() => toggleMag(f.id, id)}>
+                              {label}
+                            </button>
+                            <input className="rounds-input" type="number" inputMode="numeric" min="0"
+                              aria-label={`Rounds through ${m?.label ?? 'a deleted magazine'} with ${f.name}`}
+                              value={magCount(f.id, id)}
+                              onChange={(e) => editMagCount(f.id, id, e.target.value)} />
+                          </div>
+                        );
+                      })}
+                      {picked.length > 0 && (magOverride[f.id] ? (
+                        <>
+                          {(() => {
+                            const ov = magOverride[f.id] ?? {};
+                            const sum = picked.reduce((t, id) => t + (Number(ov[id]) || 0), 0);
+                            const gunTotal = Number(rounds[f.id]) || 0;
+                            if (sum !== gunTotal) return (
+                              <p className="report-note warn">
+                                These mag rounds total {sum.toLocaleString()}, but {f.name} logged{' '}
+                                {gunTotal.toLocaleString()} — match them to save.
+                              </p>
+                            );
+                            return <p className="report-note">Custom split — each mag&rsquo;s lifetime count uses these numbers.</p>;
+                          })()}
+                          <button className="button secondary" onClick={() => resetMagSplit(f.id)}>Reset to even split</button>
+                        </>
+                      ) : (
+                        <p className="report-note">Rounds split evenly across the mags you pick — tap a number to adjust.</p>
+                      ))}
+                    </>
+                  )}
+                </div>
               )}
-            </div>
+            </Fragment>
           );
         })}
       </div>

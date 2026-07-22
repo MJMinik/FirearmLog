@@ -87,7 +87,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Logging a session',
       view: { kind: 'session-form' },
-      body: 'Start a session from Home or the Log tab: set the date and place, pick the gun or guns and the rounds for each, and choose live-fire or dry-fire. Add drills (the picker only shows ones that fit the gun and dry/live), record any malfunctions — you can note what happened, how you cleared it, and optionally which ammo and magazine were in play and the round number it happened on, so the Malfunctions report can show your patterns — attach photos or video, and add notes. A range fee you enter here is stored on the session itself and is the single place that fee counts toward Costs — it\'s never entered or counted twice. Sessions stay editable forever. On a phone or iPad, swipe a row left to remove it: a planned session goes straight to Recently Deleted, and a logged one shows you how (open it and tap Delete session). On a computer, planned sessions have a small delete icon on the row; for a logged session, open it and tap Delete session. Either way, deletions wait 30 days in Recently Deleted where you can restore them before they\'re gone for good.',
+      body: 'Start a session from Home or the Log tab: set the date and place, pick the gun or guns and the rounds for each, and choose live-fire or dry-fire. If a gun has magazines linked to it, a Magazines line sits under it — pick the mags you ran and the gun\'s rounds split evenly across them, or tap a number to set the exact count; each mag\'s lifetime round count keeps itself from there, and skipping it changes nothing. Add drills (the picker only shows ones that fit the gun and dry/live), record any malfunctions — you can note what happened, how you cleared it, and optionally which ammo and magazine were in play and the round number it happened on, so the Malfunctions report can show your patterns — attach photos or video, and add notes. A range fee you enter here is stored on the session itself and is the single place that fee counts toward Costs — it\'s never entered or counted twice. Sessions stay editable forever. On a phone or iPad, swipe a row left to remove it: a planned session goes straight to Recently Deleted, and a logged one shows you how (open it and tap Delete session). On a computer, planned sessions have a small delete icon on the row; for a logged session, open it and tap Delete session. Either way, deletions wait 30 days in Recently Deleted where you can restore them before they\'re gone for good.',
     },
     {
       title: 'Photos, captions & markup',
@@ -137,7 +137,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Optics, magazines & spare parts',
       view: { kind: 'optics' },
-      body: `Optics, magazines, and spare parts each have their own section — ${at('Optics')}, ${at('Magazines')}, and ${at('Parts')}. Parts and optics you buy feed into Costs & Purchases, and unassigned optics are grouped so you can see what's on the shelf.`,
+      body: `Optics, magazines, and spare parts each have their own section — ${at('Optics')}, ${at('Magazines')}, and ${at('Parts')}. Parts and optics you buy feed into Costs & Purchases, and unassigned optics are grouped so you can see what's on the shelf. A magazine's round count is its starting count plus every round your logged sessions attribute to it — pick the mags you ran when logging a session and the counts keep themselves.`,
     },
     {
       title: 'Ammo & costs',
