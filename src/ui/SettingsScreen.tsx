@@ -43,8 +43,8 @@ export function SettingsScreen({ onBack, open }: { onBack: () => void; open?: (v
           <span className="setting-label">
             Coaching remarks
             <span className="setting-sub">
-              Occasional questions on your match debrief — like whether there was room to push the
-              pace. Turn off to just see the numbers.
+              The short coaching read on your match debrief and its occasional questions — like
+              whether there was room to push the pace. Turn off to just see the numbers.
             </span>
           </span>
           <span className={`switch${remarks ? ' on' : ''}`} aria-hidden="true"><span className="switch-thumb" /></span>

@@ -648,3 +648,184 @@ export function matchAccuracyTrend(matches: Match[]): AccuracyTrend {
     && recent.every((p) => p.pointsKept >= SPEED_ACCURACY_CLEAN_USPSA);
   return { points, consistentlyClean };
 }
+
+// ---- "What it cost" (T3-4): the match-level cost of the day's mistakes, in the ----
+// shooter's own units -- points and percent (USPSA), seconds (IDPA, Steel). Answers
+// the drive-home question directly, from data already entered. All hypotheticals
+// follow the codebase's honesty convention: no-shoot/procedural penalties are kept
+// in every what-if (they're separate errors, not accuracy -- same rule as
+// scoreStageHits's all-alpha and scoreIdpaStage's cleanTime), and a Steel string
+// whose stop plate was never hit stays at the 30s maximum (its real time is unknown).
+//
+// The USPSA hypothetical percent is anchored to ENTERED stage percents: a stage's
+// percent plus its hit factor implies the stage winner's hit factor, so the all-A
+// run's percent against that same winner is derivable. It only appears when EVERY
+// stage anchors (breakdown + time + percent) -- a partial-day "match percent" would
+// be a guess, so the card stops at points instead. We deliberately do NOT estimate
+// places gained: that would need the other shooters' results, which aren't stored.
+
+export type WhatItCost =
+  | { discipline: 'uspsa';
+      misses: number; noShoots: number; procedurals: number;
+      penaltyPoints: number;   // 10 per miss / no-shoot / procedural, summed
+      pointsDown: number;      // hit-zone points dropped (C's, D's, and missed hits)
+      stagesUsed: number; stagesTotal: number;
+      actualPercent: number | null;       // recomputed from stage percents, weighted by available points
+      hypotheticalPercent: number | null; // every scoring hit an A at the same times (capped at 100)
+      exceeds100: boolean }               // the pre-cap hypothetical went over 100
+  | { discipline: 'idpa';
+      downSeconds: number; penaltySeconds: number; costSeconds: number;
+      totalTime: number; cleanTotal: number; // every hit a -0 at the same times (penalties kept)
+      stagesUsed: number; stagesTotal: number }
+  | { discipline: 'steel';
+      misses: number; missSeconds: number;
+      totalTime: number; cleanTotal: number; // misses zeroed at the same times, best-N re-dropped
+      stagesUsed: number; stagesTotal: number };
+
+const round1 = (x: number): number => Math.round(x * 10) / 10;
+
+/**
+ * Match-level "what did my mistakes cost me?", per discipline. Pure; never throws;
+ * returns null when nothing is computable. Display math only -- reads the same
+ * stage fields the debrief already uses and stores nothing.
+ */
+export function matchWhatItCost(
+  stages: MatchStage[], scoringType: 'uspsa' | 'idpa' | 'steel', powerFactor = 'Minor'
+): WhatItCost | null {
+  const all = stages ?? [];
+
+  if (scoringType === 'steel') {
+    let misses = 0, total = 0, clean = 0, used = 0;
+    for (const st of all) {
+      const s = scoreSteelStage(st);
+      if (s.stageTime === null) continue;
+      used++;
+      total += s.stageTime;
+      misses += s.strings.reduce((n, str) => n + (str.capped !== null ? str.misses : 0), 0);
+      // The clean what-if: same raw times, misses zeroed, stop-plate caps kept
+      // (an unfinished string's true time is unknowable), best-N re-dropped.
+      const cleanScore = scoreSteelStage({ ...st, stringMisses: (st.strings ?? []).map(() => 0) });
+      clean += cleanScore.stageTime ?? 0;
+    }
+    if (used === 0) return null;
+    return { discipline: 'steel', misses, missSeconds: round2(misses * STEEL_MISS_PENALTY),
+      totalTime: round2(total), cleanTotal: round2(clean), stagesUsed: used, stagesTotal: all.length };
+  }
+
+  if (scoringType === 'idpa') {
+    let down = 0, pen = 0, total = 0, clean = 0, used = 0;
+    for (const st of all) {
+      const s = scoreIdpaStage(st);
+      if (s.stageTime === null || s.cleanTime === null) continue;
+      used++;
+      down += s.accuracySeconds;
+      pen += s.penaltySeconds;
+      total += s.stageTime;
+      clean += s.cleanTime;
+    }
+    if (used === 0) return null;
+    return { discipline: 'idpa', downSeconds: round2(down), penaltySeconds: round2(pen),
+      costSeconds: round2(down + pen), totalTime: round2(total), cleanTotal: round2(clean),
+      stagesUsed: used, stagesTotal: all.length };
+  }
+
+  // USPSA
+  let misses = 0, noShoots = 0, procedurals = 0, pointsDown = 0, used = 0;
+  let anchored = 0, actW = 0, hypW = 0, availW = 0;
+  for (const st of all) {
+    const s = scoreStageHits(st, powerFactor, st.time);
+    if (!s) continue;
+    used++;
+    misses += s.misses;
+    noShoots += s.noShoots;
+    procedurals += s.procedurals;
+    pointsDown += s.availablePoints - s.rawHitPoints;
+    // Anchor guard: percent must be a real stage percent (0-100 -- the stage winner
+    // is 100 by definition, so anything higher is a typo and would poison the anchor).
+    if (st.percent !== null && Number.isFinite(st.percent) && st.percent > 0 && st.percent <= 100
+        && s.hitFactor !== null && s.hitFactor > 0 && s.allAlphaHitFactor !== null
+        && s.availablePoints > 0) {
+      anchored++;
+      // percent x (allAlphaHF / HF) = the all-A run's percent of the same stage winner.
+      const hypPct = st.percent * (s.allAlphaHitFactor / s.hitFactor);
+      actW += st.percent * s.availablePoints;
+      hypW += hypPct * s.availablePoints;
+      availW += s.availablePoints;
+    }
+  }
+  if (used === 0) return null;
+  const penaltyPoints = 10 * (misses + noShoots + procedurals);
+  const fullyAnchored = anchored > 0 && anchored === all.length && availW > 0;
+  const actualPercent = fullyAnchored ? round1(actW / availW) : null;
+  const rawHyp = fullyAnchored ? hypW / availW : null;
+  const exceeds100 = rawHyp !== null && rawHyp > 100;
+  const hypotheticalPercent = rawHyp !== null ? round1(Math.min(rawHyp, 100)) : null;
+  return { discipline: 'uspsa', misses, noShoots, procedurals, penaltyPoints, pointsDown,
+    stagesUsed: used, stagesTotal: all.length, actualPercent, hypotheticalPercent, exceeds100 };
+}
+
+// ---- Coaching read (T3-4): the debrief paragraph, said in one place ----
+
+/** "2 misses, 1 no-shoot" -- the error list, in words. Empty string when clean. */
+function fmtErrors(misses: number, noShoots: number, procedurals: number): string {
+  return [
+    misses ? `${misses} miss${misses > 1 ? 'es' : ''}` : null,
+    noShoots ? `${noShoots} no-shoot${noShoots > 1 ? 's' : ''}` : null,
+    procedurals ? `${procedurals} procedural${procedurals > 1 ? 's' : ''}` : null,
+  ].filter(Boolean).join(', ');
+}
+
+/** The reversible pace question -- asked, never asserted (same rule as the S&A nudge). */
+export const PACE_QUESTION =
+  'The pace question is the one worth sitting with: on the closer targets, was there room to push?';
+
+/**
+ * Assemble the coaching read: the debrief signals we already compute (toughest stage
+ * and what it cost there, points kept, the trend-style pace question), said together
+ * in one short paragraph. Questions, not verdicts. Returns [] when there's nothing
+ * worth saying (the caller hides the card). Pure; never throws. USPSA gets the full
+ * read; IDPA gets the pace question when the run was very clean; Steel has no
+ * separate read (its whole story is the miss seconds, already on the cost card).
+ */
+export function coachingRead(
+  insights: MatchInsights, sa: SpeedAccuracy | null
+): string[] {
+  const out: string[] = [];
+  if (!sa) return out;
+
+  if (sa.discipline === 'uspsa') {
+    // "The expensive one" is the stage whose penalties cost the most points -- ranked
+    // by actual cost, NOT by the toughest/strongest percent ranking (a low-percent
+    // stage can be slow-but-clean while another stage bled the points; calling the
+    // wrong one "expensive" would be a false claim). When the day had no penalties
+    // anywhere, fall back to the toughest-ranked stage's dropped-points read.
+    const cost = (s: StageScore): number => 10 * (s.misses + s.noShoots + s.procedurals);
+    let expensive: StageInsight | null = null;
+    for (const st of insights.stages) {
+      if (st.score && cost(st.score) > 0
+          && (expensive?.score == null || cost(st.score) > cost(expensive.score))) {
+        expensive = st;
+      }
+    }
+    if (expensive?.score) {
+      const s = expensive.score;
+      out.push(`Stage ${expensive.number} was the expensive one -- ${fmtErrors(s.misses, s.noShoots, s.procedurals)} there cost about ${cost(s)} points.`);
+    } else {
+      const tough = insights.toughest.length > 0
+        ? insights.toughest[insights.toughest.length - 1] : null; // the very lowest-ranked
+      if (tough?.score && tough.score.pctAvailable !== null && tough.score.pctAvailable < 1) {
+        out.push(`Stage ${tough.number} was the expensive one -- no penalties, just dropped points: you kept ${Math.round(tough.score.pctAvailable * 100)}% of its points.`);
+      } else if (tough) {
+        out.push(`Stage ${tough.number} is where the most ground went.`);
+      }
+    }
+    out.push(`Across the match you kept ${Math.round(sa.pointsKept * 100)}% of your points.`);
+    if (sa.overAccuracy) out.push(PACE_QUESTION);
+    return out;
+  }
+
+  if (sa.discipline === 'idpa' && sa.overAccuracy) {
+    out.push(PACE_QUESTION);
+  }
+  return out;
+}

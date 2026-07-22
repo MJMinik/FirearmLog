@@ -166,6 +166,35 @@ export function NumbersGuide({ onBack, section }: { onBack: () => void; section?
       </div>
 
       <div className="card">
+        <h2>What it cost (the match what-if)</h2>
+        <TheMath>
+          penalty cost: 10 points per miss, no-shoot, and procedural, summed across the match. The
+          what-if percent: on each stage, your entered stage percent &times; (all-A&rsquo;s hit factor
+          &divide; your hit factor) — your percent plus your hit factor implies the stage
+          winner&rsquo;s hit factor, so the all-A&rsquo;s run can be scored against that same winner —
+          then the stage what-ifs combine, weighted by each stage&rsquo;s available points.
+        </TheMath>
+        <p className="note-text">
+          The drive-home question — &ldquo;what did my mistakes cost me?&rdquo; — in match units:
+          penalty points, and the percent your day scores with every scoring hit an A at your same
+          times. In IDPA and Steel the cost is already in seconds, so the card adds them up (and for
+          Steel, re-drops the slowest string once the misses are zeroed — a miss on a dropped string
+          may have cost nothing).
+        </p>
+        <Why>
+          a hit-factor delta is engine units; points, seconds, and percent are the units you already
+          think in. The percent what-if only appears when <em>every</em> stage has its percent, hit
+          breakdown, and time entered — a partial-day anchor would be a guess, so the card stops at
+          points instead. It keeps your
+          no-shoots and procedurals (they aren&rsquo;t accuracy mistakes), a result past 100% just
+          shows as 100%, and it never estimates places gained — that would take the other
+          shooters&rsquo; results, which your log doesn&rsquo;t store. A what-if, not a redo — match
+          pressure doesn&rsquo;t replay.
+        </Why>
+        <OurRead />
+      </div>
+
+      <div className="card">
         <h2>Toughest &amp; strongest stage</h2>
         <TheMath>
           we rank your stages by stage percent (if you entered them), or by hit factor when you

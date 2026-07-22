@@ -8,8 +8,8 @@ import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { DIVISIONS, IDPA_DIVISIONS, STEEL_DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown,
   scoringTypeFor, scoreSteelStage, steelMatchTotal, steelStringsExpected, STEEL_STAGES,
-  scoreIdpaStage, idpaMatchTotal, reconcileTime, matchSpeedAccuracy } from '../lib/competition.ts';
-import type { SpeedAccuracy } from '../lib/competition.ts';
+  scoreIdpaStage, idpaMatchTotal, reconcileTime, matchSpeedAccuracy, matchWhatItCost, coachingRead } from '../lib/competition.ts';
+import type { SpeedAccuracy, WhatItCost } from '../lib/competition.ts';
 import { MarkThumb } from './MarkThumb.tsx';
 import { InfoTip } from './InfoTip.tsx';
 import { Reveal } from './Reveal.tsx';
@@ -90,6 +90,75 @@ function SpeedAccuracyCard({ sa, coachingRemarks, onDisableRemarks }: {
   );
 }
 
+/** "2 misses and 1 no-shoot" -- a natural-language list. */
+function joinAnd(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? '';
+  if (parts.length === 2) return `${parts[0]} and ${parts[1]}`;
+  return `${parts.slice(0, -1).join(', ')}, and ${parts[parts.length - 1]}`;
+}
+
+/**
+ * The "What it cost" card (T3-4): the match-level cost of the day's mistakes, in the
+ * shooter's own units -- penalty points and an anchored what-if percent (USPSA),
+ * seconds (IDPA, Steel). Renders nothing when the day was clean or nothing is
+ * computable. Display math only; clearly framed as a what-if, never a redo.
+ */
+function WhatItCostCard({ wic }: { wic: WhatItCost }) {
+  if (wic.discipline === 'uspsa') {
+    const errors = joinAnd([
+      wic.misses ? `${wic.misses} miss${wic.misses > 1 ? 'es' : ''}` : null,
+      wic.noShoots ? `${wic.noShoots} no-shoot${wic.noShoots > 1 ? 's' : ''}` : null,
+      wic.procedurals ? `${wic.procedurals} procedural${wic.procedurals > 1 ? 's' : ''}` : null,
+    ].filter((x): x is string => x !== null));
+    const hasWhatIf = wic.hypotheticalPercent !== null && wic.actualPercent !== null
+      && (wic.exceeds100 || wic.hypotheticalPercent > wic.actualPercent);
+    if (wic.penaltyPoints === 0 && !hasWhatIf) return null; // a clean day cost nothing
+    return (
+      <div className="card">
+        <h2>What it cost <InfoTip title="What it cost">Misses, no-shoots, and procedurals are 10-point penalties -- and a missed shot also earns nothing, so its full cost runs a little higher. The what-if replays your same times with every scoring hit an A; no-shoot and procedural penalties stay, because those are separate errors, not accuracy. Your entered stage percents anchor the percent math (your percent plus your hit factor implies the stage winner's pace), so it appears only when every stage has its percent, hit breakdown, and time entered. A what-if, not a redo -- match pressure doesn't replay.</InfoTip></h2>
+        <p className="report-note" style={{ marginTop: 0 }}>
+          {wic.penaltyPoints > 0
+            ? `Your ${errors} cost about ${wic.penaltyPoints} points in penalties`
+            : `No penalties -- your ${wic.pointsDown} points down came from C’s and D’s`}
+          {wic.stagesUsed < wic.stagesTotal ? ` -- from ${wic.stagesUsed} of ${wic.stagesTotal} stages` : ''}.
+          {hasWhatIf ? (wic.exceeds100
+            ? ' With every scoring hit an A at your same times, the what-if comes out above 100% -- a clean run at your pace would have outrun the day’s winners -- shown here as 100%.'
+            : ` With every scoring hit an A at your same times, this match scores about ${wic.hypotheticalPercent}% instead of ${wic.actualPercent}%.`) : ''}
+        </p>
+      </div>
+    );
+  }
+  if (wic.discipline === 'idpa') {
+    if (wic.costSeconds <= 0) return null;
+    const parts = joinAnd([
+      wic.downSeconds > 0 ? `dropped points added ${wic.downSeconds}s` : null,
+      wic.penaltySeconds > 0 ? `penalties added ${wic.penaltySeconds}s` : null,
+    ].filter((x): x is string => x !== null));
+    return (
+      <div className="card">
+        <h2>What it cost <InfoTip title="What it cost">In time-plus scoring the cost is already in seconds: each point down adds 1s, and each penalty adds its fixed seconds. The clean total replays your same raw times with every hit a -0 -- penalties stay, because they're separate errors, not accuracy. A what-if, not a redo.</InfoTip></h2>
+        <p className="report-note" style={{ marginTop: 0 }}>
+          {parts.charAt(0).toUpperCase() + parts.slice(1)} -- {wic.costSeconds}s of your {wic.totalTime}s total.
+          {wic.downSeconds > 0 ? ` With every hit a -0 at your same times, your day is about ${wic.cleanTotal}s.` : ''}
+        </p>
+      </div>
+    );
+  }
+  // Steel
+  if (wic.misses === 0) return null;
+  const trueCost = Math.round((wic.totalTime - wic.cleanTotal) * 100) / 100;
+  return (
+    <div className="card">
+      <h2>What it cost <InfoTip title="What it cost">Each missed plate adds 3s to its string. The clean what-if zeroes the misses at your same raw times and re-drops the slowest string -- so a miss on a string you dropped anyway can cost nothing, and a miss that forced a drop can cost less than 3s. A string whose stop plate was never hit stays at the 30s maximum -- its real time is unknown.</InfoTip></h2>
+      <p className="report-note" style={{ marginTop: 0 }}>
+        {trueCost > 0
+          ? `Your ${wic.misses} missed plate${wic.misses > 1 ? 's' : ''} cost ${trueCost}s -- clean at your same times, your match total is about ${wic.cleanTotal}s instead of ${wic.totalTime}s.`
+          : `Your ${wic.misses} missed plate${wic.misses > 1 ? 's' : ''} ended up free -- ${wic.misses > 1 ? 'they' : 'it'} landed on dropped strings, so your total didn’t change.`}
+      </p>
+    </div>
+  );
+}
+
 export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }: {
   id: string; onEdit: () => void; onBack: () => void; onDeleted: () => void; refreshKey: number;
   open: (v: View) => void;
@@ -138,6 +207,9 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
   const wikiSection = isSteel ? 'steel' : isIdpa ? 'idpa' : 'uspsa'; // deep-link target into the wiki
   const insights = analyzeMatch(match.stages, match.powerFactor);
   const sa = matchSpeedAccuracy(match.stages, match.scoringType ?? 'uspsa', match.powerFactor);
+  const wic = matchWhatItCost(match.stages, match.scoringType ?? 'uspsa', match.powerFactor);
+  const read = coachingRead(insights, sa);
+  const showRead = coachingRemarks && read.length > 0;
   const steelRows = isSteel ? match.stages.map((st) => ({ st, score: scoreSteelStage(st) })) : [];
   const steelTotal = isSteel ? steelMatchTotal(match.stages) : null;
   const idpaRows = isIdpa ? match.stages.map((st) => ({ st, score: scoreIdpaStage(st) })) : [];
@@ -195,6 +267,14 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
         </div>
       )}
 
+      {showRead && (
+        <div className="card">
+          <h2>Coaching read <InfoTip title="Coaching read">The debrief, said in one place: the stage whose mistakes cost the most (in penalty points -- a missed shot also earns nothing, so its full cost runs a little higher), the points you kept, and -- when the run was very clean -- the pace question. Assembled from this match's numbers. Questions, not verdicts, and one match is a small sample -- the real signal is the trend.</InfoTip></h2>
+          <p className="report-note" style={{ marginTop: 0 }}>{read.join(' ')}</p>
+          <button className="link-btn" onClick={() => void disableRemarks()}>Turn off (Settings)</button>
+        </div>
+      )}
+
       <div className="card">
         <h2>Match</h2>
         <div className="row"><span className="label">Date</span><span className="value">{formatDayKey(match.date)}</span></div>
@@ -220,7 +300,10 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
         )}
       </div>
 
-      {sa && <SpeedAccuracyCard sa={sa} coachingRemarks={coachingRemarks} onDisableRemarks={() => void disableRemarks()} />}
+      {sa && <SpeedAccuracyCard sa={sa} coachingRemarks={coachingRemarks && !showRead}
+        onDisableRemarks={() => void disableRemarks()} />}
+
+      {wic && <WhatItCostCard wic={wic} />}
 
       {match.stages.length > 0 && !isSteel && !isIdpa && (
         <div className="card">
