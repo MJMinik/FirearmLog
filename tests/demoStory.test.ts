@@ -12,6 +12,7 @@ import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseFlog } from '../src/lib/flog.ts';
 import { dryRepsForFirearm } from '../src/lib/stats.ts';
+import { scoreIdpaStage, scoreStageHits, hitFactor } from '../src/lib/competition.ts';
 
 const bin = readFileSync(join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'demo-dataset.bin'));
 const snap = parseFlog(new Uint8Array(bin));
@@ -220,4 +221,143 @@ test('demo story: the log is dry-fire-HEAVY — total dry reps run ~3x live roun
   const ratio = dry / live;
   assert.ok(ratio >= 2.5 && ratio <= 3.6, `dry:live-rounds ratio ${ratio.toFixed(2)} must land near 3:1 (dry-fire-heavy)`);
   assert.ok(dry > live * 2, 'dry-fire work must clearly dominate live volume — the story is dry-fire-heavy');
+});
+
+// ===================== IDPA CLUB MATCH THREAD (session 75, July 23 2026) =====================
+// The board-approved IDPA side-story: a solid-but-crossing-over B-class USPSA shooter
+// tries IDPA on the DR920 in Carry Optics, starting rough and genuinely improving,
+// with one honest mid-thread wobble — same story-frame discipline as the drill/
+// classifier arcs above, pinned against the SHIPPED artifact so a regeneration can't
+// silently lose or flatten it.
+type IdpaStage = {
+  time: number | null;
+  idpaDown1?: number | null; idpaDown3?: number | null; idpaMisses?: number | null;
+  idpaNonThreatHits?: number | null; idpaProceduralErrors?: number | null;
+  idpaFlagrantPenalties?: number | null; idpaFailureToDoRight?: number | null;
+};
+type IdpaMatch = {
+  date: string; name: string; division: string; scoringType?: string;
+  matchType: string; firearmId: string; totalRounds: number | null;
+  divisionPlace: number | null; divisionOf: number | null;
+  entryFee: number | null; stages: IdpaStage[];
+};
+function idpaPointsDownAndPenalties(m: IdpaMatch): { pointsDown: number; hasPenalty: boolean } {
+  let pointsDown = 0;
+  let hasPenalty = false;
+  for (const st of m.stages) {
+    const s = scoreIdpaStage(st);
+    pointsDown += s.pointsDown;
+    if (s.nonThreatHits || s.proceduralErrors || s.flagrantPenalties || s.failureToDoRight) hasPenalty = true;
+  }
+  return { pointsDown, hasPenalty };
+}
+
+test('demo story: the IDPA thread — at least 3 matches spanning 9+ months, improving, with an honest mid-thread wobble', () => {
+  const idpa = (stores.matches as unknown as IdpaMatch[])
+    .filter((m) => m.scoringType === 'idpa')
+    .sort((a, b) => a.date.localeCompare(b.date));
+  assert.ok(idpa.length >= 3, `needs at least 3 IDPA matches (got ${idpa.length})`);
+  const spanMonths = (Date.parse(idpa[idpa.length - 1].date) - Date.parse(idpa[0].date)) / (30 * 86400000);
+  assert.ok(spanMonths >= 9, `IDPA thread must span at least 9 months (got ${spanMonths.toFixed(1)})`);
+
+  // Every leg: DR920, Carry Optics (CO), unranked (no matchPercent — IDPA has no
+  // percent scoring in this app), IDPA Match type, entry fee and rounds present.
+  for (const m of idpa) {
+    assert.equal(m.firearmId, 'fa-dr920', `${m.date}: IDPA match must be on the DR920`);
+    assert.equal(m.division, 'Carry Optics (CO)', `${m.date}: must use the IDPA division label`);
+    assert.equal(m.matchType, 'IDPA Match');
+    assert.ok(typeof m.entryFee === 'number' && m.entryFee > 0, `${m.date}: needs an entry fee`);
+    assert.ok(typeof m.totalRounds === 'number' && m.totalRounds > 0, `${m.date}: needs rounds fired`);
+    assert.ok(m.divisionPlace !== null && m.divisionOf !== null && m.divisionPlace <= m.divisionOf,
+      `${m.date}: needs a plausible division finish`);
+  }
+
+  const rounds = idpa.map((m) => idpaPointsDownAndPenalties(m));
+  // Total points down improves from the first match to the last.
+  assert.ok(rounds[rounds.length - 1].pointsDown < rounds[0].pointsDown,
+    `points down must fall from the first IDPA match (${rounds[0].pointsDown}) to the last (${rounds[rounds.length - 1].pointsDown})`);
+  // The honest-wobble rule: at least one mid-thread match (not the first, not the
+  // last) either breaks the monotone improving trend or carries a penalty.
+  let wobbleFound = false;
+  for (let i = 1; i < idpa.length - 1; i++) {
+    const worseThanPrev = rounds[i].pointsDown > rounds[i - 1].pointsDown;
+    if (worseThanPrev || rounds[i].hasPenalty) wobbleFound = true;
+  }
+  assert.ok(wobbleFound, 'a mid-thread IDPA match must break the trend or carry a penalty — an honest arc, not a straight line');
+
+  // No IDPA classifier/rank record exists anywhere — this shooter stays unranked
+  // in IDPA on purpose. stores.classifiers is USPSA-only; assert it stays that way.
+  const classifiers = stores.classifiers as unknown as { division: string }[];
+  const idpaDivisionNames = ['Stock Service Pistol', 'Enhanced Service Pistol', 'Custom Defensive Pistol',
+    'Compact Carry Pistol', 'Revolver (REV)', 'Backup Gun (BUG)', 'Carry Optics (CO)'];
+  for (const c of classifiers) {
+    assert.ok(!idpaDivisionNames.includes(c.division), `no IDPA-division classifier/rank record may exist (found ${c.division})`);
+  }
+});
+
+test('demo story: the marketing-site invariant records are untouched by the IDPA addition', () => {
+  type UspsaStage = { number: number; time: number | null; percent: number | null; points: number | null;
+    alphas?: number | null; charlies?: number | null; deltas?: number | null;
+    misses?: number | null; noShoots?: number | null; procedurals?: number | null };
+  type UMatch = { date: string; name: string; powerFactor: string; matchPercent: number | null;
+    divisionPlace: number | null; divisionOf: number | null; stages: UspsaStage[] };
+  const matches = stores.matches as unknown as UMatch[];
+
+  // Cypress Creek Range Club Match, Jun 6 2026 — exact stage breakdown + 92% + 2 of 15.
+  const cc = matches.find((m) => m.date === '2026-06-06' && m.name === 'Cypress Creek Range Club Match');
+  assert.ok(cc, 'Cypress Creek Range Club Match Jun 6 2026 must still exist');
+  const ccExpected = ['65/9.12/7.1272/73.7', '70/23.55/2.9724/70.6', '56/7.55/7.4172/92', '91/13.24/6.8731/86.4'];
+  const ccActual = cc!.stages.map((st) => {
+    const score = scoreStageHits(st, cc!.powerFactor, st.time);
+    const points = score ? score.stagePoints : st.points; // legacy aggregate stage (no hit breakdown)
+    const hf = hitFactor(points, st.time); // same derivation the app uses either way
+    return `${points}/${st.time}/${hf}/${st.percent}`;
+  });
+  assert.deepEqual(ccActual, ccExpected, 'Cypress Creek Jun 6 2026 stage breakdown must be byte-identical');
+  assert.equal(cc!.matchPercent, 92);
+  assert.equal(cc!.divisionPlace, 2);
+  assert.equal(cc!.divisionOf, 15);
+
+  // Gator Classic, Feb 21 2026 — 4 of 20, 84.6%.
+  const gc = matches.find((m) => m.date === '2026-02-21' && m.name === 'Gator Classic');
+  assert.ok(gc, 'Gator Classic Feb 21 2026 must still exist');
+  assert.equal(gc!.divisionPlace, 4);
+  assert.equal(gc!.divisionOf, 20);
+  assert.equal(gc!.matchPercent, 84.6);
+
+  // Rimfire Steel Blast, Apr 19 2025 — all string times unchanged.
+  type SteelStage = { strings?: (number | null)[] };
+  const rf = (stores.matches as unknown as { date: string; name: string; stages: SteelStage[] }[])
+    .find((m) => m.date === '2025-04-19' && m.name === 'Rimfire Steel Blast');
+  assert.ok(rf, 'Rimfire Steel Blast Apr 19 2025 must still exist');
+  assert.deepEqual(rf!.stages.map((s) => s.strings), [
+    [2.83, 2.75, 2.79, 3.14],
+    [2.75, 3.3, 3.67, 3.48, 3.3],
+    [2.46, 3.81, 3.67, 2.7, 3.43],
+    [3.3, 3.18, 3.85, 3.93, 2.73],
+  ]);
+
+  // Classification tiles: CO best-6 70.3 -> B (gap 4.70 to A), LO 63.5 -> B, Production 49.8 -> C.
+  type Classifier = { date: string; division: string; percent: number };
+  const classifiers = stores.classifiers as unknown as Classifier[];
+  const best6 = (division: string) => {
+    const v = classifiers.filter((c) => c.division === division)
+      .sort((a, b) => b.date.localeCompare(a.date)).slice(0, 8)
+      .map((c) => c.percent).sort((a, b) => b - a).slice(0, 6);
+    return v.reduce((p, c) => p + c, 0) / v.length;
+  };
+  assert.equal(Math.round(best6('Carry Optics') * 10) / 10, 70.3);
+  assert.equal(Math.round(best6('Limited Optics') * 10) / 10, 63.5);
+  assert.equal(Math.round(best6('Production') * 10) / 10, 49.8);
+
+  // 2026 Season: Matches shot becomes 13 (was 11); fees become $618 + the two new
+  // 2026 IDPA fees; the average match percent must REMAIN 87.2% (only percent-
+  // bearing/USPSA matches feed the average — confirmed here, not just assumed).
+  const season2026 = matches.filter((m) => m.date.startsWith('2026'));
+  assert.equal(season2026.length, 13, '2026 "Matches shot" must be 13 (11 existing + 2 new 2026 IDPA matches)');
+  const fees = season2026.reduce((s, m) => s + ((m as unknown as { entryFee: number | null }).entryFee ?? 0), 0);
+  assert.equal(fees, 618 + 30 + 30, '2026 entry fees must be the prior $618 plus the two new 2026 IDPA fees');
+  const percents = season2026.map((m) => m.matchPercent).filter((p): p is number => p != null);
+  const avgPct = Math.round((percents.reduce((s, p) => s + p, 0) / percents.length) * 10) / 10;
+  assert.equal(avgPct, 87.2, 'adding IDPA matches (no matchPercent) must not move the season average — it is USPSA-only');
 });

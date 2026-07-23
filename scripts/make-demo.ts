@@ -441,6 +441,100 @@ for (const sp of steelSpecs) {
   });
 }
 
+// ===================== IDPA CLUB MATCH THREAD (session 75, July 23 2026) =====================
+// Four IDPA club matches on the DR920 in Carry Optics (CO) -- board conferral,
+// session 75 (July 23 2026; recorded in the build journal): a solid-but-crossing-over
+// B-class USPSA shooter tries IDPA on the side, starting rough and genuinely improving, with an honest wobble mid-thread
+// (nobody's arc is a straight line). The shooter is UNRANKED in IDPA on purpose: no
+// IDPA classifier/rank record is ever added anywhere -- IDPA has no classifier store
+// in this app (stores.classifiers is USPSA-only), so that's true by construction, not
+// by omission. Runs on its OWN rng stream (rIdpa) so every record already generated
+// (sessions, USPSA/Steel matches, classifiers, goals) stays byte-identical -- this
+// section only APPENDS. Placed BEFORE the dry-fire volume pass on purpose: that pass
+// sums totalRounds across stores.matches to size the dry:live ratio, so these rounds
+// must already be in the array when it runs (see its liveRoundTotal loop below).
+const rIdpa = rng(20260723);
+const idpaJitter = (): number => round((rIdpa() - 0.5) * 1.0, 2); // +/-0.5s organic wobble
+interface IdpaStageSpec {
+  rounds: number; pace: number; down1: number; down3: number; miss?: number;
+  pe?: number; hnt?: number; fp?: number; ftdr?: number;
+}
+function idpaStage(number: number, spec: IdpaStageSpec): Rec {
+  const time = round(spec.rounds * spec.pace + idpaJitter(), 2);
+  const down0 = spec.rounds - spec.down1 - spec.down3 - (spec.miss ?? 0);
+  return {
+    number, points: null, time, percent: null, notes: '',
+    idpaDown0: down0, idpaDown1: spec.down1, idpaDown3: spec.down3,
+    idpaMisses: spec.miss ?? 0, idpaNonThreatHits: spec.hnt ?? 0,
+    idpaProceduralErrors: spec.pe ?? 0, idpaFlagrantPenalties: spec.fp ?? 0,
+    idpaFailureToDoRight: spec.ftdr ?? 0,
+  };
+}
+const IDPA_VENUE = 'Cypress Creek Range'; // the shooter's home IDPA club -- same range each time
+const idpaSpecs: { d: string; fee: number; overallOf: number; overallPlace: number; divOf: number; divPlace: number; stages: IdpaStageSpec[]; notes: string }[] = [
+  {
+    // M1: "first IDPA" energy -- 5 stages, 95 rounds, heavy points down (42), ONE PE.
+    d: '2025-06-28', fee: 25, overallOf: 38, overallPlace: 30, divOf: 14, divPlace: 11,
+    notes: 'First IDPA match. A lot to think about besides just shooting.',
+    stages: [
+      { rounds: 18, pace: 1.30, down1: 5, down3: 1, miss: 1 },              // pts 13 -- the rough one
+      { rounds: 20, pace: 1.30, down1: 4, down3: 1, miss: 1 },              // pts 12
+      { rounds: 16, pace: 1.30, down1: 3, down3: 1 },                       // pts 6
+      { rounds: 23, pace: 1.30, down1: 3, down3: 1, pe: 1 },                // pts 6 + one Procedural Error
+      { rounds: 18, pace: 1.30, down1: 2, down3: 1 },                       // pts 5
+    ],
+  },
+  {
+    // M2: improving, honest wobble -- 5 stages, 95 rounds, 28 points down, ONE HNT.
+    d: '2025-10-04', fee: 25, overallOf: 36, overallPlace: 21, divOf: 13, divPlace: 8,
+    notes: 'Better pace, but target ID cost a non-threat hit on stage 3.',
+    stages: [
+      { rounds: 18, pace: 1.20, down1: 1, down3: 1 },                       // pts 4
+      { rounds: 20, pace: 1.20, down1: 3, down3: 1 },                       // pts 6
+      { rounds: 17, pace: 1.20, down1: 3, down3: 1, hnt: 1 },               // pts 6 + one Hit on Non-Threat
+      { rounds: 22, pace: 1.20, down1: 3, down3: 1 },                       // pts 6
+      { rounds: 18, pace: 1.20, down1: 3, down3: 1 },                       // pts 6
+    ],
+  },
+  {
+    // M3: 6 stages, 110 rounds, only 19 points down, NO penalties -- a genuinely clean day.
+    d: '2026-02-07', fee: 30, overallOf: 34, overallPlace: 14, divOf: 12, divPlace: 5,
+    notes: 'Clean match -- first one with no procedurals or non-threat hits.',
+    stages: [
+      { rounds: 16, pace: 1.10, down1: 2, down3: 0 },   // pts 2
+      { rounds: 18, pace: 1.10, down1: 3, down3: 0 },   // pts 3
+      { rounds: 20, pace: 1.10, down1: 3, down3: 0 },   // pts 3
+      { rounds: 17, pace: 1.10, down1: 2, down3: 1 },   // pts 5
+      { rounds: 19, pace: 1.10, down1: 2, down3: 0 },   // pts 2
+      { rounds: 20, pace: 1.10, down1: 4, down3: 0 },   // pts 4
+    ],
+  },
+  {
+    // M4: 5 stages, 95 rounds, 14 points down, ONE PE -- still not perfect, the arc stays honest.
+    d: '2026-05-30', fee: 30, overallOf: 40, overallPlace: 11, divOf: 15, divPlace: 4,
+    notes: 'Best finish yet. One procedural on stage 3 -- rushed the position.',
+    stages: [
+      { rounds: 18, pace: 1.00, down1: 1, down3: 0 },              // pts 1
+      { rounds: 20, pace: 1.00, down1: 3, down3: 0 },              // pts 3
+      { rounds: 17, pace: 1.00, down1: 3, down3: 0, pe: 1 },       // pts 3 + one Procedural Error
+      { rounds: 22, pace: 1.00, down1: 3, down3: 0 },              // pts 3
+      { rounds: 18, pace: 1.00, down1: 4, down3: 0 },              // pts 4
+    ],
+  },
+];
+for (const sp of idpaSpecs) {
+  mtN++;
+  const totalRounds = sp.stages.reduce((sum, st) => sum + st.rounds, 0);
+  const stages: Rec[] = sp.stages.map((st, i) => idpaStage(i + 1, st));
+  stores.matches.push({
+    id: `mt-${mtN}`, ...stamp(sp.d), date: sp.d, name: `${IDPA_VENUE} IDPA Club Match`,
+    matchType: 'IDPA Match', division: 'Carry Optics (CO)', powerFactor: 'Minor', scoringType: 'idpa',
+    firearmId: 'fa-dr920', totalRounds,
+    overallPlace: sp.overallPlace, overallOf: sp.overallOf, divisionPlace: sp.divPlace, divisionOf: sp.divOf,
+    matchPercent: null, stages, entryFee: sp.fee, practiScoreUrl: '', notes: sp.notes,
+  });
+}
+
 // ===================== DRY-FIRE VOLUME PASS (A5, batch 2, July 17 2026) =====================
 // Realism fix: the shooter's story is dry-fire-HEAVY (common training doctrine is
 // several dry reps per live round), but the in-rhythm loop above dry-fired only
