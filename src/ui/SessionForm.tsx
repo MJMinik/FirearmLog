@@ -7,7 +7,7 @@ import type {
   Magazine, MalfunctionEntry, Media, Session, SessionChecklist, SessionGun, SkillSet, TimedSkill
 } from '../lib/types.ts';
 import { splitRounds } from '../lib/mags.ts';
-import { deleteOne, getAll, getOne, getSettings, putOne, putSettings } from '../lib/db.ts';
+import { deleteOne, getAll, getOne, getSettings, putOne, putSettings, rewriteSessionSkillSets } from '../lib/db.ts';
 import { todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -449,6 +449,25 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     });
   }, [selectedGuns]);
 
+  // M3 (audit): same policy as the malfunctions effect just above, for the
+  // same reason — a timed-skill set left pointing at a gun that's no longer
+  // in this session must be re-pointed to a gun that IS, not silently keep
+  // referencing the absent one while the "Which gun" dropdown shows something
+  // else. Mirrors the malfs effect exactly (re-point to selectedGuns[0]).
+  useEffect(() => {
+    if (!selectedGuns.length) return;
+    const inSession = new Set(selectedGuns.map((f) => f.id));
+    setSkillSets((prev) => {
+      let changed = false;
+      const next = prev.map((s) => {
+        if (inSession.has(s.firearmId)) return s;
+        changed = true;
+        return { ...s, firearmId: selectedGuns[0].id };
+      });
+      return changed ? next : prev;
+    });
+  }, [selectedGuns]);
+
   const pickable = useMemo(
     () => drillsForContext(drillLib, selectedCategories, kind),
     [drillLib, selectedCategories, kind]
@@ -851,20 +870,26 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         }, newId('mf'), now));
       }
 
-      // T3-1: timed-skill sets — rewrite this session's set, same pattern as
-      // malfunctions above. Rows are validated before they ever land in
-      // `skillSets` (the add/edit sheet blocks a bad save), but a defensive
-      // Number() + finite check here means a malformed row can never write a
-      // NaN/garbage record even if that ever changed (crash-catalog bar).
-      for (const ssid of oldSkillSetIds) await deleteOne('skillSets', ssid);
-      for (const row of skillSets) {
+      // T3-1: timed-skill sets — rewrite this session's set in ONE atomic
+      // transaction (M2 audit fix: db.ts's rewriteSessionSkillSets, same
+      // shape as applyAmmoMerge/commitClassifiers), so a crash between the
+      // old rows' delete and the new rows' put can no longer leave a session
+      // with its timed-skill work gone and nothing written back.
+      // Rows are validated before they ever land in `skillSets` (the add/edit
+      // sheet blocks a bad save) — but a row that's ALREADY stored malformed
+      // (e.g. from a future importer, or hand-edited data) must not be
+      // silently dropped here either (L2 audit fix): it's written back as-is,
+      // NaN and all, rather than skipped. The row-summary above and the
+      // Session Report (sessionReport.ts) both render '—' for a non-finite
+      // number instead of "NaN" or "undefined", so a malformed set is visible
+      // and fixable, never a silent data loss.
+      const newSkillSetRows = skillSets.map((row) => {
         const count = Number(row.count);
         const bestSec = Number(row.bestSec);
-        if (!row.firearmId || !Number.isFinite(count) || count <= 0 || !Number.isFinite(bestSec) || bestSec <= 0) continue;
         const typicalSec = row.typicalSec.trim() === '' ? null : Number(row.typicalSec);
         const parSec = row.parSec.trim() === '' ? null : Number(row.parSec);
         const repTimesSec = parseRepTimes(row.repTimes);
-        await putOne('skillSets', stampNew({
+        return stampNew({
           sessionId: sid, date, skill: row.skill, firearmId: row.firearmId, dryFire: row.dryFire,
           count, bestSec,
           typicalSec: typicalSec != null && Number.isFinite(typicalSec) ? typicalSec : null,
@@ -872,8 +897,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           cold: row.cold,
           repTimesSec: repTimesSec.length ? repTimesSec : null,
           notes: row.notes.trim()
-        }, newId('ss'), now));
-      }
+        }, newId('ss'), now);
+      });
+      await rewriteSessionSkillSets(oldSkillSetIds, newSkillSetRows);
 
       // F3: the edits are saved — nothing left to guard. Clear the dirty flag
       // before onSaved navigates (its setTab would otherwise hit App's guard).
@@ -1301,15 +1327,22 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           {skillSets.map((row, i) => {
             const gunName = firearms.find((f) => f.id === row.firearmId)?.name ?? '—';
             const label = TIMED_SKILLS.find((s) => s.key === row.skill)?.label ?? row.skill;
+            // L2 (audit): reuse M1's Number.isFinite-guarded fallback here too —
+            // a malformed count/bestSec (preserved rather than dropped on save,
+            // see the save path below) must read as '—', never "undefined reps"
+            // or "best NaNs".
+            const countN = Number(row.count);
+            const bestN = Number(row.bestSec);
+            const summary = [
+              `${Number.isFinite(countN) && countN > 0 ? countN : '—'} rep${countN === 1 ? '' : 's'}`,
+              `best ${Number.isFinite(bestN) && bestN > 0 ? formatSec(bestN) : '—'}`,
+              gunName
+            ].join(' · ');
             return (
               <button className="row-tap" key={i} onClick={() => setSkillSheetIdx(i)}>
                 <span className="label">
                   {label}{row.cold ? ' · Cold' : ''}
-                  <div className="row-sub">
-                    {[row.count && `${row.count} rep${row.count === '1' ? '' : 's'}`,
-                      row.bestSec && `best ${formatSec(Number(row.bestSec))}`,
-                      gunName].filter(Boolean).join(' · ')}
-                  </div>
+                  <div className="row-sub">{summary}</div>
                 </span>
                 <span className="value">›</span>
               </button>
@@ -1557,6 +1590,13 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
 
       {skillSheetIdx !== null && (
         <SkillSetSheet
+          // M3 (audit): keyed on the row's (re-pointed) firearmId so the sheet
+          // REMOUNTS with fresh initial state when the M3 effect above
+          // re-points it out from under an open sheet — otherwise the
+          // sheet's own useState would keep showing the removed gun's id
+          // (a stale "Pick a gun…") since `initial` only seeds state on
+          // mount, not on every render.
+          key={`${skillSheetIdx}:${skillSheetIdx === -1 ? (selectedGuns[0]?.id ?? '') : (skillSets[skillSheetIdx]?.firearmId ?? '')}`}
           initial={skillSheetIdx === -1
             ? blankSkillSetRow(selectedGuns[0]?.id ?? '', kind === 'dry_fire')
             : skillSets[skillSheetIdx]}

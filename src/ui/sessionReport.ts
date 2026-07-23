@@ -24,6 +24,18 @@ export const SESSION_KIND_LABEL: Record<string, string> = {
   class: 'Class',
 };
 
+/** M1 (audit): a timed-skill time cell, guarded so a malformed/missing number
+ *  renders as '—' instead of "NaNs" or a thrown TypeError. Exported for the
+ *  unit test — the surrounding report builder needs a DOM (window.open). */
+export function formatFiniteSec(v: number | null | undefined): string {
+  return typeof v === 'number' && Number.isFinite(v) ? `${v.toFixed(2)}s` : '—';
+}
+
+/** M1 (audit): a timed-skill rep-count cell, same guard as formatFiniteSec. */
+export function formatFiniteCount(v: number | null | undefined): string {
+  return typeof v === 'number' && Number.isFinite(v) ? String(v) : '—';
+}
+
 /**
  * Open the printable Session Report for a saved session.
  *
@@ -70,14 +82,18 @@ export async function openSessionReport(
         m.notes || '',
       ]);
     // T3-1: the day's timed-skill sets, in the order they were logged.
+    // M1 (audit): a stored set is only as trustworthy as whatever wrote it —
+    // count/bestSec/typicalSec are guarded with Number.isFinite so one
+    // malformed record (e.g. an L2-preserved malformed row) renders '—' for
+    // that cell instead of throwing and blanking the WHOLE report.
     const skillRows = allSkillSets
       .filter((s) => s.sessionId === session.id)
       .map((s) => [
         skillLabel(s.skill),
         firearms.find((f) => f.id === s.firearmId)?.name ?? '—',
-        String(s.count),
-        `${s.bestSec.toFixed(2)}s`,
-        s.typicalSec != null ? `${s.typicalSec.toFixed(2)}s` : '—',
+        formatFiniteCount(s.count),
+        formatFiniteSec(s.bestSec),
+        formatFiniteSec(s.typicalSec),
         s.cold ? 'Cold' : '',
         s.notes || '',
       ]);

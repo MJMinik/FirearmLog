@@ -688,7 +688,14 @@ function TimedSkillsCard({ sets }: { sets: SkillSet[] }) {
   // Derived, not stateful: whenever `available` changes (e.g. the async load
   // finishes) the picked skill re-derives to the first one WITH data, unless
   // the shooter has already tapped a chip themselves.
-  const skill = skillOverride ?? available[0] ?? null;
+  // L5 (audit): a tapped chip's skill can fall OUT of `available` (its only
+  // set was edited/removed on the Log screen) — without the availability
+  // check below, `skill` would keep pointing at it: no chip would show
+  // pressed (the chip row only renders `available` skills) and the PR row
+  // and trend both dead-end empty, even though other skills still have data.
+  // Falling back to the default selection instead means the card always
+  // shows SOMETHING rather than a chip-less dead end.
+  const skill = (skillOverride && available.includes(skillOverride)) ? skillOverride : available[0] ?? null;
 
   if (available.length === 0 || skill === null) return null;
 

@@ -6,7 +6,17 @@ import { readZip, writeZip } from './zip.ts';
 import type { Media } from './types.ts';
 
 export const FLOG_FORMAT = 'FirearmLog';
-export const FLOG_VERSION = 1;
+// H1 (T3-1 audit): bumped 1 → 2 because the snapshot gained the 'skillSets'
+// store (spec §3.3). Without the bump, an OLD app pulling a NEW .flog would
+// silently drop skillSets on import (an unknown store just isn't read) and
+// then ERASE them on the very next Save to File, since a pull-then-push
+// round-trip on that device now writes a snapshot missing the store entirely.
+// The version fence below already refuses a file whose version is newer than
+// this app understands with a plain "update the app, then pull again"
+// message — the bump turns that silent erasure into that refusal instead.
+// Backward compat is untouched: a v1 file (version <= FLOG_VERSION) still
+// imports exactly as before; only a NEWER file into an OLDER app now refuses.
+export const FLOG_VERSION = 2;
 
 /** Everything in the app, ready to travel. */
 export interface Snapshot {

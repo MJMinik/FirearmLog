@@ -913,7 +913,7 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
       {forget && (
         <ConfirmSheet
           title="Delete this session for good?"
-          message="This permanently removes the session, its photos, and its malfunctions. It can't be undone."
+          message="This permanently removes the session, its photos, its timed skills, and its malfunctions. It can't be undone."
           confirmLabel="Delete forever"
           onConfirm={() => { const s = forget; setForget(null); void purgeSession(s.id).then(reload); }}
           onClose={() => setForget(null)} />

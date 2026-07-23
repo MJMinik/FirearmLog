@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildFlog, newestStamp, parseFlog } from '../src/lib/flog.ts';
+import { buildFlog, newestStamp, parseFlog, FLOG_FORMAT, FLOG_VERSION } from '../src/lib/flog.ts';
 import type { Snapshot } from '../src/lib/flog.ts';
 import { writeZip } from '../src/lib/zip.ts';
 import type { Media } from '../src/lib/types.ts';
@@ -55,4 +55,44 @@ test('files from a newer app version are refused with advice', () => {
     data: new TextEncoder().encode(JSON.stringify({ format: 'FirearmLog', version: 99, stores: {}, mediaMeta: [] }))
   }]);
   assert.throws(() => parseFlog(futuristic), /NEWER version/);
+});
+
+// H1 (T3-1 audit): FLOG_VERSION bumped 1 → 2 for the skillSets store. These
+// three pin the exact version-fence contract at the new number: a legacy v1
+// file (from before skillSets existed) still imports fine — backward compat
+// is untouched — the CURRENT version imports fine, and anything newer refuses
+// with the same plain-language advice as before.
+test('a legacy version-1 .flog (pre-skillSets) still imports fine', () => {
+  const legacy = writeZip([{
+    name: 'data.json',
+    data: new TextEncoder().encode(JSON.stringify({
+      format: FLOG_FORMAT, version: 1, exportedAt: 1, lastModified: 1,
+      stores: { firearms: [{ id: 'fa-legacy', name: 'Old Gun' }] }, mediaMeta: [],
+    }))
+  }]);
+  const back = parseFlog(legacy);
+  assert.deepEqual(back.stores.firearms, [{ id: 'fa-legacy', name: 'Old Gun' }]);
+});
+
+test('a version-2 .flog (current, with skillSets) imports fine', () => {
+  const current = writeZip([{
+    name: 'data.json',
+    data: new TextEncoder().encode(JSON.stringify({
+      format: FLOG_FORMAT, version: FLOG_VERSION, exportedAt: 1, lastModified: 1,
+      stores: { skillSets: [{ id: 'ss-1', sessionId: 'se-1' }] }, mediaMeta: [],
+    }))
+  }]);
+  const back = parseFlog(current);
+  assert.deepEqual(back.stores.skillSets, [{ id: 'ss-1', sessionId: 'se-1' }]);
+});
+
+test('a version-3 .flog (from a newer app) is refused, not silently dropped', () => {
+  const fromTheFuture = writeZip([{
+    name: 'data.json',
+    data: new TextEncoder().encode(JSON.stringify({
+      format: FLOG_FORMAT, version: 3, exportedAt: 1, lastModified: 1,
+      stores: {}, mediaMeta: [],
+    }))
+  }]);
+  assert.throws(() => parseFlog(fromTheFuture), /NEWER version/);
 });

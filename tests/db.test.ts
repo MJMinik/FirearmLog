@@ -9,6 +9,7 @@ import {
   restoreSnapshot,
   applyAmmoMerge,
   commitClassifiers,
+  rewriteSessionSkillSets,
   clearAllData,
   getAll,
   getMediaForOwner,
@@ -92,6 +93,39 @@ test('commitClassifiers writes all rows in one transaction (T1-5)', async () => 
   await commitClassifiers([{ id: 'cl-a' }, { id: 'cl-b' }, { id: 'cl-c' }]);
   const rows = await getAll<{ id: string }>('classifiers');
   assert.ok(has(rows, 'cl-a') && has(rows, 'cl-b') && has(rows, 'cl-c'));
+});
+
+test('M2: rewriteSessionSkillSets replaces one session\'s sets in one transaction', async () => {
+  await clearAllData();
+  await rewriteSessionSkillSets([], [
+    { id: 'ss-old-1', sessionId: 'se-rw', skill: 'draw', count: 5, bestSec: 1.4 },
+    { id: 'ss-old-2', sessionId: 'se-rw', skill: 'reload', count: 3, bestSec: 2.1 },
+  ]);
+  let rows = await getAll<{ id: string; sessionId: string }>('skillSets');
+  assert.ok(has(rows, 'ss-old-1') && has(rows, 'ss-old-2'));
+
+  // A save() rewrite: delete the old ids, put a fresh set — must land together.
+  await rewriteSessionSkillSets(['ss-old-1', 'ss-old-2'], [
+    { id: 'ss-new-1', sessionId: 'se-rw', skill: 'split', count: 10, bestSec: 0.9 },
+  ]);
+  rows = await getAll<{ id: string; sessionId: string }>('skillSets');
+  assert.ok(!has(rows, 'ss-old-1') && !has(rows, 'ss-old-2'), 'the old rows are gone');
+  assert.ok(has(rows, 'ss-new-1'), 'the new row landed');
+});
+
+test('M2: rewriteSessionSkillSets is atomic — a poisoned new row rolls the WHOLE rewrite back', async () => {
+  await clearAllData();
+  await rewriteSessionSkillSets([], [
+    { id: 'ss-keep-1', sessionId: 'se-rw2', skill: 'draw', count: 5, bestSec: 1.4 },
+  ]);
+  // IndexedDB cannot clone a function, so this put throws mid-transaction and
+  // the whole transaction (including the delete of ss-keep-1) aborts.
+  await assert.rejects(rewriteSessionSkillSets(['ss-keep-1'], [
+    { id: 'ss-poison', sessionId: 'se-rw2', skill: 'reload', oops: () => {} },
+  ]));
+  const rows = await getAll<{ id: string }>('skillSets');
+  assert.ok(has(rows, 'ss-keep-1'), 'the old row survived the failed rewrite (never deleted without a replacement)');
+  assert.ok(!has(rows, 'ss-poison'), 'no partial write from the failed rewrite');
 });
 
 test('validateSnapshotShape rejects a damaged file before any write', () => {
