@@ -51,9 +51,17 @@ test.describe('Log filter shows matches honestly (F2a)', () => {
     await rows.first().click();
     await expect(page.getByRole('heading', { name })).toBeVisible();
 
-    // Navigating back to Log resets the filter (fresh screen state) — the
-    // default list is sessions-only again.
+    // Session 75 (July 23 2026, board-approved — extension of the Compete
+    // filter conferral): the Log filter is now session-persistent, so leaving
+    // and returning to Log keeps the SAME filter, not a fresh one — the
+    // Matches chip is still on and the Matches card is still there.
     await gotoTab(page, 'Log');
+    await expect(main.getByRole('heading', { name: 'All Sessions' })).toHaveCount(0);
+    await expect(matchesCard).toBeVisible();
+
+    // Clear here so the remaining assertions (a fresh text search, then a
+    // fresh Matches-chip-plus-no-hit-query) start from an unfiltered list.
+    await main.getByRole('button', { name: 'Clear', exact: true }).click();
     await expect(main.getByRole('heading', { name: 'All Sessions' })).toBeVisible();
     await expect(matchesCard).toHaveCount(0);
 
@@ -90,5 +98,90 @@ test.describe('Log filter shows matches honestly (F2a)', () => {
 
     // The empty state answers the actual question instead of shrugging.
     await expect(main.getByText(/No matches logged yet — matches live in the Compete tab/)).toBeVisible();
+  });
+
+  // Session 75 (July 23 2026, board-approved): the Log filter is
+  // session-persistent in memory — it must survive a session-detail round trip
+  // AND leaving the Log tab, any number of times, within one app run (same
+  // decided behavior as the Compete filter; it still clears on a fresh launch,
+  // which these runs don't exercise since they don't reload).
+  test('filter survives opening a session detail and coming Back', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Log');
+
+    const main = page.getByRole('main');
+    const filterSheet = page.getByRole('dialog', { name: 'Search & Filter' });
+    const sessionsCard = main.locator('.card').filter({
+      has: page.getByRole('heading', { name: 'All Sessions' }),
+    }).or(main.locator('.card').filter({
+      has: page.getByRole('heading', { name: 'Matching Sessions' }),
+    }));
+
+    // Narrow to Practice-kind sessions only (this also drops any Matches card,
+    // so the first row is guaranteed to be a session, not a match).
+    await main.getByRole('button', { name: /Search & Filter/ }).click();
+    await filterSheet.getByRole('button', { name: 'Practice', exact: true }).click();
+    await filterSheet.getByRole('button', { name: 'Done' }).click();
+
+    await expect(main.getByRole('heading', { name: 'Matching Sessions' })).toBeVisible();
+    const rows = sessionsCard.locator('.row-tap');
+    await expect(rows.first()).toBeVisible();
+    const shownText = await main.getByText(/Showing \d+ of \d+\./).textContent();
+    expect(shownText).toBeTruthy();
+    const shown = await rows.count();
+    expect(shown).toBeGreaterThan(0);
+    await expect(main.getByRole('button', { name: 'Search & Filter (1)' })).toBeVisible();
+
+    // Open the first session's detail, then come Back (the form's ‹ Cancel,
+    // since nothing was edited).
+    await rows.first().click();
+    await expect(main.getByRole('button', { name: '‹ Cancel' })).toBeVisible();
+    await main.getByRole('button', { name: '‹ Cancel' }).click();
+
+    // The restored Log screen still shows the SAME filter, immediately.
+    await expect(main.getByRole('heading', { name: 'Matching Sessions' })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Search & Filter (1)' })).toBeVisible();
+    await expect(main.getByText(shownText!)).toBeVisible();
+    expect(await rows.count()).toBe(shown);
+
+    // Clear still works after the restore.
+    await main.getByRole('button', { name: 'Clear', exact: true }).click();
+    await expect(main.getByRole('heading', { name: 'All Sessions' })).toBeVisible();
+    await expect(main.getByText(/Showing \d+ of \d+\./)).toHaveCount(0);
+  });
+
+  test('filter survives leaving the Log tab and returning', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Log');
+
+    const main = page.getByRole('main');
+    const filterSheet = page.getByRole('dialog', { name: 'Search & Filter' });
+
+    await main.getByRole('button', { name: /Search & Filter/ }).click();
+    await filterSheet.getByRole('button', { name: 'Practice', exact: true }).click();
+    await filterSheet.getByRole('button', { name: 'Done' }).click();
+
+    await expect(main.getByRole('heading', { name: 'Matching Sessions' })).toBeVisible();
+    const shownText = await main.getByText(/Showing \d+ of \d+\./).textContent();
+    expect(shownText).toBeTruthy();
+
+    // Leave the tab, come back — any number of round trips.
+    await gotoTab(page, 'Home');
+    await expect(main.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();
+    await gotoTab(page, 'Log');
+    await expect(main.getByRole('heading', { name: 'Matching Sessions' })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Search & Filter (1)' })).toBeVisible();
+    await expect(main.getByText(shownText!)).toBeVisible();
+
+    // A second round trip (Home → Log again) still holds it.
+    await gotoTab(page, 'Home');
+    await gotoTab(page, 'Log');
+    await expect(main.getByRole('button', { name: 'Search & Filter (1)' })).toBeVisible();
+    await expect(main.getByText(shownText!)).toBeVisible();
+
+    // Clear still works after these restores.
+    await main.getByRole('button', { name: 'Clear', exact: true }).click();
+    await expect(main.getByRole('heading', { name: 'All Sessions' })).toBeVisible();
+    await expect(main.getByText(/Showing \d+ of \d+\./)).toHaveCount(0);
   });
 });

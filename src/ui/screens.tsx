@@ -30,7 +30,7 @@ import type { CalItem } from './Calendar.tsx';
 import { LogFilterBar } from './FilterBar.tsx';
 import { MatchRow } from './MatchRow.tsx';
 import { ChartReadout } from './ChartReadout.tsx';
-import { emptyLogFilter, filterCount, matchMatchesFilter, sessionKind, sessionMatchesFilter } from '../lib/searchFilter.ts';
+import { filterCount, getSessionLogFilter, matchMatchesFilter, sessionKind, sessionMatchesFilter, setSessionLogFilter } from '../lib/searchFilter.ts';
 import type { LogFilter } from '../lib/searchFilter.ts';
 import { activeOnly, trashedOnly, daysLeft } from '../lib/softDelete.ts';
 import { softDeleteSession, restoreSession, purgeSession, purgeExpiredSessions } from './sessionDelete.ts';
@@ -759,7 +759,17 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
 export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: View) => void }) {
   const { firearms, sessions, trashed, matches, ammo, loaded, error, reload } = useData(refreshKey);
   const [mode, setMode] = useState<'list' | 'calendar'>('list');
-  const [filter, setFilter] = useState<LogFilter>(emptyLogFilter());
+  // Session-persistent by design (session 75, July 23 2026 — extension of the
+  // Compete filter conferral, approved "1"): initialized from the module-scope
+  // holder rather than always-empty, and every change writes back to it — see
+  // searchFilter.ts for why. Survives this screen unmounting (a session/match
+  // detail and Back, or leaving and returning to the tab); a fresh app launch
+  // starts unfiltered because the module reloads clean.
+  const [filter, setFilterState] = useState<LogFilter>(getSessionLogFilter());
+  function setFilter(f: LogFilter) {
+    setSessionLogFilter(f);
+    setFilterState(f);
+  }
   const [explain, setExplain] = useState<Session | null>(null); // logged-session swipe
   const [forget, setForget] = useState<Session | null>(null);    // delete-forever confirm
 

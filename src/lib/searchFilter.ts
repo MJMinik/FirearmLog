@@ -27,6 +27,27 @@ export function emptyLogFilter(): LogFilter {
   return { from: '', to: '', category: '', firearmId: '', kinds: [], planned: 'show', query: '' };
 }
 
+// Session-persistent by design, relaunch clears (owner decision + board
+// conferral, session 75, July 23 2026 — extension of the Compete filter
+// conferral, approved "1"; see competeFilter.ts's getSessionCompeteFilter /
+// setSessionCompeteFilter for the identical pattern). The Log filter used to
+// live in LogScreen's own useState, so it was lost the moment the screen
+// unmounted — opening a session/match detail and coming Back, or leaving the
+// tab and returning, both reset it to empty. Both round trips must now
+// preserve it, so the value lives here at MODULE scope instead — LogScreen
+// initializes its state from this holder and writes every change back to it.
+// Deliberately NOT IndexedDB/localStorage/sessionStorage: a fresh app launch
+// (this module re-evaluating from scratch) must always start unfiltered.
+let sessionLogFilter: LogFilter = emptyLogFilter();
+
+export function getSessionLogFilter(): LogFilter {
+  return sessionLogFilter;
+}
+
+export function setSessionLogFilter(f: LogFilter): void {
+  sessionLogFilter = f;
+}
+
 /** How many criteria are narrowing things down (drives the badge on the button). */
 export function filterCount(f: LogFilter): number {
   let n = 0;
