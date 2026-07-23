@@ -243,6 +243,36 @@ export interface SkillAssessment extends BaseRecord, Imported {
   notes: string;
 }
 
+/** The five v1 timed-skill types (T3-1 spec, locked session 76). */
+export type TimedSkill = 'draw' | 'reload' | 'split' | 'transition' | 'par';
+
+/**
+ * A timed-skill SET (T3-1) — one entry per set of reps, not per rep: "10
+ * draws, best 1.42." Lives on a session (sessionId), same relationship as a
+ * MalfunctionEntry. `date` mirrors the session's date at save time (the same
+ * convenience MalfunctionEntry already carries) so trend/report code never
+ * needs to join back to the session just to sort or bucket by day.
+ * `repTimesSec` exists from day one, unused until the future PractiScore Log
+ * CSV importer can populate it — no model change when that lands.
+ * Every field is typed/structured (DATA_MOAT_SPEC §5): derived metrics (trend
+ * series, PRs, cold-vs-warm) are pure functions in lib/skillSets.ts so the
+ * future benchmark aggregation reuses them unchanged.
+ */
+export interface SkillSet extends BaseRecord {
+  sessionId: string;
+  date: string; // YYYY-MM-DD, copied from the owning session
+  skill: TimedSkill;
+  firearmId: string;
+  dryFire: boolean;
+  count: number;
+  bestSec: number;
+  typicalSec?: number | null;
+  parSec?: number | null;
+  cold: boolean;
+  repTimesSec?: number[] | null;
+  notes: string;
+}
+
 export interface MatchStage {
   number: number;
   points: number | null;
@@ -460,6 +490,7 @@ export interface DataSet {
   parts: Part[];
   goals: Goal[];
   skills: SkillAssessment[];
+  skillSets: SkillSet[];
   matches: Match[];
   classifiers: Classifier[];
   references: Reference[];

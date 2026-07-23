@@ -4,7 +4,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type {
   Ammunition, AppSettings, ChecklistCustomItems, DrillDef, DrillResult, Firearm, GunCategory,
-  Magazine, MalfunctionEntry, Media, Session, SessionChecklist, SessionGun
+  Magazine, MalfunctionEntry, Media, Session, SessionChecklist, SessionGun, SkillSet, TimedSkill
 } from '../lib/types.ts';
 import { splitRounds } from '../lib/mags.ts';
 import { deleteOne, getAll, getOne, getSettings, putOne, putSettings } from '../lib/db.ts';
@@ -38,6 +38,9 @@ import { Reveal } from './Reveal.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { DrillForm } from './DrillsScreen.tsx';
+import { TIMED_SKILLS, formatSec, parseRepTimes, formatRepTimes } from '../lib/skillSets.ts';
+import { Stepper } from './Stepper.tsx';
+import { useDirtyTracker } from './useDirtyTracker.ts';
 
 const KINDS = [
   { value: 'practice', label: 'Live practice' },
@@ -56,6 +59,27 @@ interface MalfRow {
   otherType?: boolean; otherRes?: boolean;
 }
 interface AmmoRow { ammoId: string; rounds: string; }
+
+// T3-1: one timed-skill SET per row — held as strings in the form, same
+// convention as DrillRow/MalfRow. `repTimes` is the free-text entry field
+// ("1.42, 1.51, 1.38…"); it's parsed to repTimesSec only at save time.
+interface SkillSetRow {
+  skill: TimedSkill; firearmId: string; dryFire: boolean;
+  count: string; bestSec: string; typicalSec: string; parSec: string;
+  cold: boolean; repTimes: string; notes: string;
+}
+
+function blankSkillSetRow(firearmId: string, dryFire: boolean): SkillSetRow {
+  return { skill: 'draw', firearmId, dryFire, count: '', bestSec: '', typicalSec: '', parSec: '', cold: false, repTimes: '', notes: '' };
+}
+
+const toSkillSetRow = (s: SkillSet): SkillSetRow => ({
+  skill: s.skill, firearmId: s.firearmId, dryFire: s.dryFire,
+  count: String(s.count), bestSec: String(s.bestSec),
+  typicalSec: s.typicalSec != null ? String(s.typicalSec) : '',
+  parSec: s.parSec != null ? String(s.parSec) : '',
+  cold: s.cold, repTimes: formatRepTimes(s.repTimesSec), notes: s.notes
+});
 
 const toRow = (d: DrillResult): DrillRow => ({
   name: d.name, distance: d.distance,
@@ -120,6 +144,13 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const [drills, setDrills] = useState<DrillRow[]>([]);
   const [malfs, setMalfs] = useState<MalfRow[]>([]);
   const [oldMalfIds, setOldMalfIds] = useState<string[]>([]);
+  // T3-1: timed-skill sets. Same rewrite-the-whole-set pattern as malfunctions —
+  // oldSkillSetIds tracks what's saved so save() can delete-then-recreate.
+  // skillSheetIdx: null = sheet closed, -1 = adding a new set, >=0 = editing
+  // that index in `skillSets`.
+  const [skillSets, setSkillSets] = useState<SkillSetRow[]>([]);
+  const [oldSkillSetIds, setOldSkillSetIds] = useState<string[]>([]);
+  const [skillSheetIdx, setSkillSheetIdx] = useState<number | null>(null);
   // App 2: custom malfunction types/methods the shooter has used before, so a
   // typed-in "Other" value reappears in the dropdown next time.
   const [savedMalfTypes, setSavedMalfTypes] = useState<string[]>([]);
@@ -247,10 +278,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         setHiddenSuggestions(settings?.hiddenSuggestions ?? {});
       }
       if (id !== undefined) {
-        const [s, allMedia, allMalfs] = await Promise.all([
+        const [s, allMedia, allMalfs, allSkillSets] = await Promise.all([
           getOne<Session>('sessions', id),
           getAll<Media>('media'),
-          getAll<MalfunctionEntry>('malfunctions')
+          getAll<MalfunctionEntry>('malfunctions'),
+          getAll<SkillSet>('skillSets')
         ]);
         if (!alive || !s) return;
         setOriginal(s);
@@ -298,6 +330,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         setRangeFee(s.rangeFee === null ? '' : String(s.rangeFee));
         setNotes(s.notes);
         setChecklist(normalizeChecklist(s.checklist));
+        const mySets = allSkillSets.filter((ss) => ss.sessionId === id);
+        setOldSkillSetIds(mySets.map((ss) => ss.id));
+        setSkillSets(mySets.map(toSkillSetRow));
       }
     })();
     return () => { alive = false; };
@@ -816,6 +851,30 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         }, newId('mf'), now));
       }
 
+      // T3-1: timed-skill sets — rewrite this session's set, same pattern as
+      // malfunctions above. Rows are validated before they ever land in
+      // `skillSets` (the add/edit sheet blocks a bad save), but a defensive
+      // Number() + finite check here means a malformed row can never write a
+      // NaN/garbage record even if that ever changed (crash-catalog bar).
+      for (const ssid of oldSkillSetIds) await deleteOne('skillSets', ssid);
+      for (const row of skillSets) {
+        const count = Number(row.count);
+        const bestSec = Number(row.bestSec);
+        if (!row.firearmId || !Number.isFinite(count) || count <= 0 || !Number.isFinite(bestSec) || bestSec <= 0) continue;
+        const typicalSec = row.typicalSec.trim() === '' ? null : Number(row.typicalSec);
+        const parSec = row.parSec.trim() === '' ? null : Number(row.parSec);
+        const repTimesSec = parseRepTimes(row.repTimes);
+        await putOne('skillSets', stampNew({
+          sessionId: sid, date, skill: row.skill, firearmId: row.firearmId, dryFire: row.dryFire,
+          count, bestSec,
+          typicalSec: typicalSec != null && Number.isFinite(typicalSec) ? typicalSec : null,
+          parSec: parSec != null && Number.isFinite(parSec) ? parSec : null,
+          cold: row.cold,
+          repTimesSec: repTimesSec.length ? repTimesSec : null,
+          notes: row.notes.trim()
+        }, newId('ss'), now));
+      }
+
       // F3: the edits are saved — nothing left to guard. Clear the dirty flag
       // before onSaved navigates (its setTab would otherwise hit App's guard).
       onDirtyChange?.(false);
@@ -1228,6 +1287,47 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         newFiles={newFiles} setNewFiles={(fn) => { setTouched(true); setNewFiles(fn); }} />
 
       <div className="card">
+        {/* T3-1: progressive disclosure — timed skill work (draws, reloads,
+            splits, transitions, par drills) is capture-after-the-fact ("10
+            draws, best 1.42, generally recorded when I get home"), so it
+            stays collapsed and out of a newcomer's default view (charter §7 /
+            DESIGN_DIRECTION §7). Opens itself once a set exists on an
+            existing session, same rule the ratings Reveal below uses. */}
+        <Reveal label="+ Timed skills" defaultOpen={editing && skillSets.length > 0}>
+          <p className="report-note" style={{ marginTop: 0 }}>
+            One entry per set — how many, your best time, and whether it was your first work of
+            the day with no warmup (cold).
+          </p>
+          {skillSets.map((row, i) => {
+            const gunName = firearms.find((f) => f.id === row.firearmId)?.name ?? '—';
+            const label = TIMED_SKILLS.find((s) => s.key === row.skill)?.label ?? row.skill;
+            return (
+              <button className="row-tap" key={i} onClick={() => setSkillSheetIdx(i)}>
+                <span className="label">
+                  {label}{row.cold ? ' · Cold' : ''}
+                  <div className="row-sub">
+                    {[row.count && `${row.count} rep${row.count === '1' ? '' : 's'}`,
+                      row.bestSec && `best ${formatSec(Number(row.bestSec))}`,
+                      gunName].filter(Boolean).join(' · ')}
+                  </div>
+                </span>
+                <span className="value">›</span>
+              </button>
+            );
+          })}
+          <button className="button secondary" onClick={() => {
+            if (!selectedGuns.length) return;
+            setSkillSheetIdx(-1);
+          }} disabled={!selectedGuns.length}>
+            + Add Set
+          </button>
+          {!selectedGuns.length && (
+            <p className="report-note">Pick a gun above first.</p>
+          )}
+        </Reveal>
+      </div>
+
+      <div className="card">
         <h2>Malfunctions</h2>
         {malfs.map((m, i) => (
           <div className="drill-edit" key={i}>
@@ -1454,6 +1554,138 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             onSaved={() => void onFullEditorSaved()} onCancel={() => setFullEditor(false)} />
         </div>
       )}
+
+      {skillSheetIdx !== null && (
+        <SkillSetSheet
+          initial={skillSheetIdx === -1
+            ? blankSkillSetRow(selectedGuns[0]?.id ?? '', kind === 'dry_fire')
+            : skillSets[skillSheetIdx]}
+          guns={selectedGuns}
+          editing={skillSheetIdx !== -1}
+          onSave={(row) => {
+            setTouched(true);
+            setSkillSets((prev) => skillSheetIdx === -1
+              ? [...prev, row]
+              : prev.map((r, i) => (i === skillSheetIdx ? row : r)));
+            setSkillSheetIdx(null);
+          }}
+          onDelete={skillSheetIdx !== -1 ? () => {
+            setTouched(true);
+            setSkillSets((prev) => prev.filter((_, i) => i !== skillSheetIdx));
+            setSkillSheetIdx(null);
+          } : undefined}
+          onClose={() => setSkillSheetIdx(null)}
+        />
+      )}
     </div>
+  );
+}
+
+// T3-1: the add/edit sheet for one timed-skill set — skill picker, gun, reps
+// (thumb-first Stepper — mobile wins the tie), best time, optional typical
+// and (par-drill-only) par time, the cold flag, an optional rep-times entry
+// (F-Universal — collapsed, feeds the future CSV importer's repTimesSec), and
+// notes. Validated here so a save() can trust every row it writes.
+function SkillSetSheet({ initial, guns, editing, onSave, onDelete, onClose }: {
+  initial: SkillSetRow;
+  guns: Firearm[];
+  editing: boolean;
+  onSave: (row: SkillSetRow) => void;
+  onDelete?: () => void;
+  onClose: () => void;
+}) {
+  const [skill, setSkill] = useState<TimedSkill>(initial.skill);
+  const [firearmId, setFirearmId] = useState(initial.firearmId);
+  const [dryFire, setDryFire] = useState(initial.dryFire);
+  const [count, setCount] = useState(initial.count);
+  const [bestSec, setBestSec] = useState(initial.bestSec);
+  const [typicalSec, setTypicalSec] = useState(initial.typicalSec);
+  const [parSec, setParSec] = useState(initial.parSec);
+  const [cold, setCold] = useState(initial.cold);
+  const [repTimes, setRepTimes] = useState(initial.repTimes);
+  const [notes, setNotes] = useState(initial.notes);
+  const [problem, setProblem] = useState('');
+  const dirty = useDirtyTracker({ skill, firearmId, dryFire, count, bestSec, typicalSec, parSec, cold, repTimes, notes });
+
+  function validate(): string | null {
+    if (!firearmId) return 'Pick a gun.';
+    const countNum = Number(count);
+    if (!Number.isFinite(countNum) || countNum <= 0 || !Number.isInteger(countNum)) {
+      return 'Reps need to be a whole number greater than 0.';
+    }
+    const bestNum = Number(bestSec);
+    if (!Number.isFinite(bestNum) || bestNum <= 0) return 'Best time needs to be a number greater than 0.';
+    if (typicalSec.trim() !== '' && (!Number.isFinite(Number(typicalSec)) || Number(typicalSec) <= 0)) {
+      return 'Typical time needs to be a number greater than 0.';
+    }
+    if (parSec.trim() !== '' && (!Number.isFinite(Number(parSec)) || Number(parSec) <= 0)) {
+      return 'Par time needs to be a number greater than 0.';
+    }
+    return null;
+  }
+
+  function save() {
+    const v = validate();
+    if (v) { setProblem(v); return; }
+    setProblem('');
+    onSave({ skill, firearmId, dryFire, count, bestSec, typicalSec, parSec, cold, repTimes, notes });
+  }
+
+  return (
+    <Sheet title={editing ? 'Edit Set' : 'Add Set'} onClose={onClose} dirty={dirty}
+      onSaveRequest={validate() === null ? save : undefined}>
+      <FormProblem problem={problem} />
+      <label className="field">Skill
+        <select value={skill} onChange={(e) => setSkill(e.target.value as TimedSkill)}>
+          {TIMED_SKILLS.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}
+        </select>
+      </label>
+      <label className="field">Gun
+        <select value={firearmId} onChange={(e) => setFirearmId(e.target.value)}>
+          <option value="">Pick a gun…</option>
+          {guns.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+        </select>
+      </label>
+      <Stepper label="Reps in this set" value={count} onChange={setCount} />
+      <div className="drill-edit-fields">
+        <label className="field small">Best (sec)
+          <input type="number" inputMode="decimal" min="0" step="0.01" value={bestSec}
+            onChange={(e) => setBestSec(e.target.value)} />
+        </label>
+        <label className="field small">Typical (sec)
+          <input type="number" inputMode="decimal" min="0" step="0.01" value={typicalSec}
+            placeholder="optional"
+            onChange={(e) => setTypicalSec(e.target.value)} />
+        </label>
+        {skill === 'par' && (
+          <label className="field small">Par (sec)
+            <input type="number" inputMode="decimal" min="0" step="0.01" value={parSec}
+              placeholder="optional"
+              onChange={(e) => setParSec(e.target.value)} />
+          </label>
+        )}
+      </div>
+      <div className="row">
+        <button type="button" className={`gun-toggle ${dryFire ? 'on' : ''}`} aria-pressed={dryFire}
+          onClick={() => setDryFire((v) => !v)}>Dry fire</button>
+      </div>
+      <div className="row">
+        <button type="button" className={`gun-toggle ${cold ? 'on' : ''}`} aria-pressed={cold}
+          onClick={() => setCold((v) => !v)}>Cold (first work of the day, no warmup)</button>
+      </div>
+      <Reveal label="Rep times (optional)">
+        <label className="field">Each rep&rsquo;s time, separated by commas or spaces
+          <input value={repTimes} placeholder="1.42, 1.51, 1.38…" inputMode="decimal"
+            onChange={(e) => setRepTimes(e.target.value)} />
+        </label>
+      </Reveal>
+      <label className="field">Notes
+        <input value={notes} onChange={(e) => setNotes(e.target.value)} />
+      </label>
+      <button className="button" onClick={save}>{editing ? 'Save changes' : 'Add Set'}</button>
+      {onDelete && (
+        <button className="button danger" style={{ marginTop: 8 }} onClick={onDelete}>Remove set</button>
+      )}
+    </Sheet>
   );
 }

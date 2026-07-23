@@ -385,7 +385,10 @@ export function importPistolTracker(
   const data: DataSet = {
     firearms, sessions, drills, ammunition, purchases, maintenance,
     malfunctions: carry(old.malfunctions, 'mf'),
-    magazines, optics, parts, goals, skills, matches, classifiers,
+    magazines, optics, parts, goals, skills,
+    // T3-1: the old export format predates timed-skill sets — nothing to carry.
+    skillSets: [],
+    matches, classifiers,
     references: [], media, trash
   };
 

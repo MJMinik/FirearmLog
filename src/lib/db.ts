@@ -6,18 +6,18 @@ import type { Snapshot } from './flog.ts';
 import { newestStamp } from './flog.ts';
 
 const DB_NAME = 'firearmlog';
-// v2 (Reminders feature): adds the additive 'reminders' object store. The bump is
-// what makes onupgradeneeded fire on an EXISTING install so the new store gets
-// created; the upgrade loop below creates any store that's missing, so it's a
-// purely additive migration — no existing store is touched and no data is
-// rewritten. Reminders travel in the .flog sync automatically (SNAPSHOT_STORES is
-// derived from STORE_NAMES) and Clear All wipes them like any other record.
-const SCHEMA_VERSION = 2;
+// v3 (T3-1, Timed Skills): adds the additive 'skillSets' object store. Same
+// purely-additive shape as v2's 'reminders' bump — the upgrade loop below
+// creates whatever store is missing, so an existing install gets the new
+// store with no rewrite of anything already there. Timed-skill sets travel in
+// the .flog sync automatically (SNAPSHOT_STORES is derived from STORE_NAMES)
+// and Clear All wipes them like any other record.
+const SCHEMA_VERSION = 3;
 
 export const STORE_NAMES = [
   'firearms', 'sessions', 'drills', 'ammunition', 'purchases',
   'maintenance', 'malfunctions', 'magazines', 'optics', 'parts',
-  'goals', 'skills', 'matches', 'classifiers', 'references',
+  'goals', 'skills', 'skillSets', 'matches', 'classifiers', 'references',
   'reminders', 'media', 'trash', 'meta'
 ] as const;
 
@@ -320,6 +320,7 @@ async function commitDataSetInner(
     putAll('parts', data.parts);
     putAll('goals', data.goals);
     putAll('skills', data.skills);
+    putAll('skillSets', data.skillSets);
     putAll('matches', data.matches);
     putAll('classifiers', data.classifiers);
     putAll('references', data.references); // M-4: was silently dropped before

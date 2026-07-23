@@ -24,7 +24,7 @@ function dataSetWith(over: Record<string, unknown[]>): DataSet {
   const base: Record<string, unknown[]> = {
     firearms: [], sessions: [], drills: [], ammunition: [], purchases: [],
     maintenance: [], malfunctions: [], magazines: [], optics: [], parts: [],
-    goals: [], skills: [], matches: [], classifiers: [], references: [], trash: [], media: [],
+    goals: [], skills: [], skillSets: [], matches: [], classifiers: [], references: [], trash: [], media: [],
   };
   return { ...base, ...over } as unknown as DataSet;
 }
@@ -137,7 +137,7 @@ test('clearAllData erases every store and the settings (hard-gate)', async () =>
 
   await clearAllData();
 
-  for (const store of ['firearms', 'sessions', 'goals', 'media', 'meta', 'matches', 'classifiers', 'trash'] as const) {
+  for (const store of ['firearms', 'sessions', 'goals', 'media', 'meta', 'matches', 'classifiers', 'trash', 'skillSets'] as const) {
     assert.equal((await getAll(store)).length, 0, `${store} is empty after clearAllData`);
   }
   assert.equal(await getSettings(), undefined, 'settings gone after clearAllData');

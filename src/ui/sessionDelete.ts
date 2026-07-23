@@ -10,7 +10,7 @@
 // interrupted run can't split a session across stores (the corruption risk we
 // deliberately avoided by tombstoning rather than moving records).
 
-import type { Ammunition, MalfunctionEntry, Media, Session } from '../lib/types.ts';
+import type { Ammunition, MalfunctionEntry, Media, Session, SkillSet } from '../lib/types.ts';
 import { deleteOne, getAll, putOne } from '../lib/db.ts';
 import { stampUpdate } from '../lib/stamps.ts';
 import { inventoryAfterUsageChange } from '../lib/costing.ts';
@@ -41,21 +41,26 @@ export async function restoreSession(session: Session, ammo: Ammunition[], now =
 }
 
 /**
- * Permanently remove a session and the photos/videos and malfunctions filed
- * against it. Ammo is NOT touched here — it was already returned when the
- * session was trashed. Safe to call on an already-purged id (the reads simply
- * find nothing). Used by "Delete Forever" and the automatic 30-day purge.
+ * Permanently remove a session and the photos/videos, malfunctions, and
+ * timed-skill sets filed against it. Ammo is NOT touched here — it was
+ * already returned when the session was trashed. Safe to call on an
+ * already-purged id (the reads simply find nothing). Used by "Delete
+ * Forever" and the automatic 30-day purge.
  */
 export async function purgeSession(sessionId: string): Promise<void> {
-  const [media, malfs] = await Promise.all([
+  const [media, malfs, sets] = await Promise.all([
     getAll<Media>('media'),
-    getAll<MalfunctionEntry>('malfunctions')
+    getAll<MalfunctionEntry>('malfunctions'),
+    getAll<SkillSet>('skillSets'),
   ]);
   for (const m of media) {
     if (m.ownerType === 'session' && m.ownerId === sessionId) await deleteOne('media', m.id);
   }
   for (const mf of malfs) {
     if (mf.sessionId === sessionId) await deleteOne('malfunctions', mf.id);
+  }
+  for (const ss of sets) {
+    if (ss.sessionId === sessionId) await deleteOne('skillSets', ss.id);
   }
   await deleteOne('sessions', sessionId);
 }
