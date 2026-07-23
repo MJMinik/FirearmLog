@@ -685,20 +685,29 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
   // T3-6a guardrail: Production, Carry Optics, Limited Optics, and PCC score Minor
   // only (competition.ts MINOR_ONLY_DIVISIONS) -- USPSA matches only, since IDPA and
   // Steel have no power-factor concept here. This keeps `powerFactor` in sync
-  // whenever the division lands on one of those four, whether that's a fresh pick
-  // from the dropdown, a scoring-type-driven division reset, or loading an existing
-  // record that stored Major in one of these divisions (the load effect below sets
-  // both `division` and `powerFactor` from the record; this effect runs after and
-  // corrects the DISPLAY only -- nothing is written to storage until the user's own
-  // Save, so an untouched old record is never silently rewritten). A real user edit
-  // (picking a new division in the <select>) already marks the form touched via the
-  // screen-level onChange handler below; this effect itself never calls setTouched,
-  // so a programmatic correction on load can't falsely dirty an unopened form.
+  // whenever it's out of step with the division, whether that's a fresh division
+  // pick from the dropdown, a scoring-type-driven division reset, or loading an
+  // existing record that stored Major in one of these divisions. `powerFactor` is
+  // deliberately IN the dependency array: the load effect above sets `division` and
+  // `powerFactor` from the record in the same tick, and when the loaded division
+  // equals the form's initial default ('Carry Optics'), `division` never actually
+  // changes -- so an effect keyed on [division, scoringType] alone would silently
+  // skip the correction for exactly that legacy case (found in a cold audit of the
+  // original build, July 23 2026: Carry Optics/Major loaded, rendered as pressed
+  // AND disabled at once, and Save wrote Major back unchanged). Depending on
+  // `powerFactor` too makes the effect re-evaluate every time it changes, but the
+  // guard condition (`powerFactor !== 'Minor'`) makes a second run on ITS OWN
+  // correction a no-op, so this can't loop. This corrects the DISPLAY only --
+  // nothing is written to storage until the user's own Save, so an untouched old
+  // record is never silently rewritten. A real user edit (picking a new division
+  // in the <select>) already marks the form touched via the screen-level onChange
+  // handler below; this effect itself never calls setTouched, so a programmatic
+  // correction on load can't falsely dirty an unopened form.
   useEffect(() => {
     if (scoringType === 'uspsa' && isMinorOnly(division) && powerFactor !== 'Minor') {
       setPowerFactor('Minor');
     }
-  }, [division, scoringType]); // eslint-disable-line react-hooks/exhaustive-deps -- powerFactor intentionally excluded: this only reacts to the division/scoringType changing, not to the power factor itself
+  }, [division, scoringType, powerFactor]);
 
   const stageObjs: MatchStage[] = useMemo(() => stages.map((st, i) => {
     if (scoringType === 'steel') {
