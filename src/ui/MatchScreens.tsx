@@ -8,7 +8,8 @@ import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { DIVISIONS, IDPA_DIVISIONS, STEEL_DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown,
   scoringTypeFor, scoreSteelStage, steelMatchTotal, steelStringsExpected, STEEL_STAGES,
-  scoreIdpaStage, idpaMatchTotal, reconcileTime, matchSpeedAccuracy, matchWhatItCost, coachingRead } from '../lib/competition.ts';
+  scoreIdpaStage, idpaMatchTotal, reconcileTime, matchSpeedAccuracy, matchWhatItCost, coachingRead,
+  isMinorOnly } from '../lib/competition.ts';
 import type { SpeedAccuracy, WhatItCost } from '../lib/competition.ts';
 import { MarkThumb } from './MarkThumb.tsx';
 import { InfoTip } from './InfoTip.tsx';
@@ -307,11 +308,11 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
 
       {match.stages.length > 0 && !isSteel && !isIdpa && (
         <div className="card">
-          <h2>Stage breakdown <InfoTip title="Stage breakdown">Hit factor is your points divided by your time (higher is better). Stage percent is your score against the stage winner. We flag your toughest stage -- where you lost the most ground -- and your strongest. Add a stage's A/C/D/miss breakdown (when you log or edit the match) and we'll show what it would have scored with all A's, plus your % of available points.</InfoTip></h2>
+          <h2>Stage breakdown <InfoTip title="Stage breakdown">Hit factor is your points divided by your time (higher is better). Stage percent is your score against the stage winner. We flag your weakest stage -- where you lost the most ground against the winners -- and your strongest. Add a stage's A/C/D/miss breakdown (when you log or edit the match) and we'll show what it would have scored with all A's, plus your % of available points.</InfoTip></h2>
           <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers', section: wikiSection })}>How the numbers work ›</button>
           {insights.rankedBy !== 'none' && insights.strongest && insights.toughest.length > 0 && (
             <p className="report-note" style={{ marginTop: 0, marginBottom: 10 }}>
-              Toughest: {insights.toughest.map((s) => `Stage ${s.number} (${fmtMetric(s, insights.rankedBy)})`).join(', ')}.{' '}
+              Weakest (by %): {insights.toughest.map((s) => `Stage ${s.number} (${fmtMetric(s, insights.rankedBy)})`).join(', ')}.{' '}
               Strongest: Stage {insights.strongest.number} ({fmtMetric(insights.strongest, insights.rankedBy)}).
             </p>
           )}
@@ -319,7 +320,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
             <div className="row" key={i}>
               <span className="label">
                 Stage {st.number}
-                {st.isToughest && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--text-dim)' }}>Toughest</span>}
+                {st.isToughest && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--text-dim)' }}>Weakest</span>}
                 {st.isStrongest && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--accent-ink)' }}>Strongest</span>}
                 {st.notes && <div className="row-sub">{st.notes}</div>}
                 {st.score && (
@@ -681,6 +682,24 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
     setDivision((d) => (opts.includes(d) ? d : opts[0]));
   }, [scoringType]);
 
+  // T3-6a guardrail: Production, Carry Optics, Limited Optics, and PCC score Minor
+  // only (competition.ts MINOR_ONLY_DIVISIONS) -- USPSA matches only, since IDPA and
+  // Steel have no power-factor concept here. This keeps `powerFactor` in sync
+  // whenever the division lands on one of those four, whether that's a fresh pick
+  // from the dropdown, a scoring-type-driven division reset, or loading an existing
+  // record that stored Major in one of these divisions (the load effect below sets
+  // both `division` and `powerFactor` from the record; this effect runs after and
+  // corrects the DISPLAY only -- nothing is written to storage until the user's own
+  // Save, so an untouched old record is never silently rewritten). A real user edit
+  // (picking a new division in the <select>) already marks the form touched via the
+  // screen-level onChange handler below; this effect itself never calls setTouched,
+  // so a programmatic correction on load can't falsely dirty an unopened form.
+  useEffect(() => {
+    if (scoringType === 'uspsa' && isMinorOnly(division) && powerFactor !== 'Minor') {
+      setPowerFactor('Minor');
+    }
+  }, [division, scoringType]); // eslint-disable-line react-hooks/exhaustive-deps -- powerFactor intentionally excluded: this only reacts to the division/scoringType changing, not to the power factor itself
+
   const stageObjs: MatchStage[] = useMemo(() => stages.map((st, i) => {
     if (scoringType === 'steel') {
       // Steel: source of truth is the raw strings; points/HF don't apply. Only the
@@ -877,12 +896,22 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         </label>
         {scoringType === 'uspsa' && (
           <>
-            <h2>Power Factor</h2>
+            <h2>Power Factor
+              {isMinorOnly(division) && (
+                <InfoTip title="Power Factor">Production, Carry Optics, Limited Optics, and PCC are scored
+                  Minor under USPSA rules — Major isn&rsquo;t available in this division.</InfoTip>
+              )}
+            </h2>
             <div className="seg" role="group" aria-label="Power factor">
-              {POWER_FACTORS.map((pf) => (
-                <button key={pf} type="button" aria-pressed={powerFactor === pf}
-                  className={powerFactor === pf ? 'on' : ''} onClick={() => { setPowerFactor(pf); setTouched(true); }}>{pf}</button>
-              ))}
+              {POWER_FACTORS.map((pf) => {
+                const disabled = pf === 'Major' && isMinorOnly(division);
+                return (
+                  <button key={pf} type="button" aria-pressed={powerFactor === pf}
+                    aria-disabled={disabled || undefined}
+                    className={powerFactor === pf ? 'on' : ''}
+                    onClick={() => { if (disabled) return; setPowerFactor(pf); setTouched(true); }}>{pf}</button>
+                );
+              })}
             </div>
           </>
         )}

@@ -7,7 +7,10 @@ import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
-import { DIVISIONS, MIN_SCORES_FOR_CLASSIFICATION, classificationProgress } from '../lib/competition.ts';
+import {
+  classificationProgress, classificationWindow, DIVISIONS, MIN_SCORES_FOR_CLASSIFICATION,
+  nextClassifierNeeded,
+} from '../lib/competition.ts';
 import { allClassifications } from '../lib/dashboard.ts';
 import { matchFee } from '../lib/costing.ts';
 import { competeFilterCount, competeFilterOptions, getSessionCompeteFilter, matchMatchesCompeteFilter, setSessionCompeteFilter } from '../lib/competeFilter.ts';
@@ -31,6 +34,9 @@ export function CompeteScreen({ refreshKey, open }: {
   const [classifiers, setClassifiers] = useState<Classifier[]>([]);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [division, setDivision] = useState('');
+  // T3-5: the "which scores count" reveal collapses again on a division switch,
+  // so it never shows stale scores/next-class math for a division you just left.
+  const [showWindow, setShowWindow] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
@@ -64,10 +70,17 @@ export function CompeteScreen({ refreshKey, open }: {
     return () => { alive = false; };
   }, [refreshKey, reloadNonce]);
 
-  const progress = useMemo(
-    () => classificationProgress(classifiers.filter((c) => c.division === division)),
+  const divisionClassifiers = useMemo(
+    () => classifiers.filter((c) => c.division === division),
     [classifiers, division]
   );
+  const progress = useMemo(() => classificationProgress(divisionClassifiers), [divisionClassifiers]);
+  // T3-5: the collapsed-by-default "which scores count" reveal (the audit's
+  // "show which 6-of-8 scores count" item) -- the window list and the solved
+  // "what would move you up" number, both derived from data already computed.
+  const windowRows = useMemo(() => classificationWindow(divisionClassifiers), [divisionClassifiers]);
+  const nextNeeded = useMemo(() => nextClassifierNeeded(divisionClassifiers), [divisionClassifiers]);
+  useEffect(() => { setShowWindow(false); }, [division]);
   // Every division you hold a class in — the at-a-glance grid (shared with Home).
   const divClasses = useMemo(() => allClassifications(classifiers), [classifiers]);
   // A3 (batch 2): the match list, narrowed by the Compete filter (matches are
@@ -125,6 +138,49 @@ export function CompeteScreen({ refreshKey, open }: {
                   {division}: {progress.currentClass} class at {progress.average}% — top of the ladder.
                 </p>
               )
+            )}
+            {windowRows.length > 0 && (
+              <>
+                <button className="link-btn" style={{ marginTop: 8 }} aria-expanded={showWindow}
+                  onClick={() => setShowWindow((o) => !o)}>
+                  {showWindow ? 'Hide the scores that count' : 'Show the scores that count ›'}
+                </button>
+                {showWindow && (
+                  <div className="reveal-body">
+                    <p className="report-note" style={{ marginTop: 4, marginBottom: 8 }}>
+                      Your most recent classifier scores in {division}, newest first
+                      <InfoTip title="The scores that count">Your classification average is the best 6 of
+                        your most recent 8 valid classifier scores in this division. A new score always
+                        enters the window; once you have 8 or more, it also pushes out the current oldest
+                        one shown here — whether or not that oldest score was one of the six counting
+                        toward your average.</InfoTip>
+                    </p>
+                    {windowRows.map((row, i) => (
+                      <div className="row" key={i}>
+                        <span className="label">
+                          {formatDayKey(row.date)}{row.name ? ` — ${row.name}` : ''}
+                          <div className="row-sub">
+                            {row.counts ? 'Counts toward your average' : 'Not counted'}
+                            {row.dropsNext ? ' · drops with your next classifier' : ''}
+                          </div>
+                        </span>
+                        <span className="value">{row.percent}%</span>
+                      </div>
+                    ))}
+                    {progress.currentClass !== null && nextNeeded && nextNeeded !== 'impossible' && progress.next && (
+                      <p className="report-note" style={{ marginTop: 8 }}>
+                        A {nextNeeded.percent}% or better on your next classifier moves you to {progress.next.name}.
+                      </p>
+                    )}
+                    {progress.currentClass !== null && nextNeeded === 'impossible' && (
+                      <p className="report-note" style={{ marginTop: 8 }}>
+                        No single classifier can move you up yet — it takes more than one high score
+                        from here.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}

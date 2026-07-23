@@ -488,6 +488,10 @@ select.category-pick {
   color: var(--text); font-size: var(--fs-subhead); cursor: pointer;
 }
 .seg button.on { background: var(--bg-card); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15); }
+/* T3-6a: a segmented choice disabled by a rule (e.g. Major isn't offered in a
+   Minor-only USPSA division) -- visually dimmed, but still focusable/announced
+   via aria-disabled (not the native attribute) so screen readers say why. */
+.seg button[aria-disabled='true'] { opacity: 0.4; cursor: default; }
 
 .gun-toggle {
   flex: 1; text-align: left; background: none; border: none; color: var(--text);

@@ -54,6 +54,36 @@ export const STEEL_DIVISIONS = [
 
 export const POWER_FACTORS = ['Minor', 'Major'];
 
+/** T3-6a guardrail: these four USPSA divisions score Minor power factor ONLY --
+ *  Major buys no points there, so letting the match form show an inflated Major
+ *  reading was a display bug, not a real choice. Corrected from the pro-grade
+ *  audit's original list (which missed Limited Optics) after Seat 12 (Domain)
+ *  checked it against the current rulebook (session 76, July 23 2026).
+ *
+ *  Source: the official USPSA Competition Rules, edition 2026-03, Appendix D's
+ *  per-division equipment tables -- rules.uspsa.org/uspsa/appendix/D4 (Production),
+ *  /D7 (Carry Optics), /D8 (PCC), /D9 (Limited Optics). Each division's "Power
+ *  Factor" row reads Major: "Not Applicable" / Minimum for Minor: "125" (PCC's row
+ *  states it outright: "125 (Minor Scoring Only)"). CAVEAT: the rulebook PDF itself
+ *  (uspsa.org/documents/rules/current/USPSA-Competition-Rules.pdf) is
+ *  robots-disallowed from this sandbox and a direct retrieval attempt was
+ *  proxy-rejected, so the lines above were read from the rules site's own HTML
+ *  appendix pages via a retrieve-and-extract tool rather than a raw verbatim PDF
+ *  dump -- flagged in the handoff notes for a follow-up pass to copy the literal
+ *  PDF wording once someone has unrestricted access. Independently corroborated
+ *  (July 23 2026) by the two
+ *  secondary sources named in the build spec:
+ *  https://www.targetbarn.com/broad-side/uspsa-divisions/ ("All four of these
+ *  divisions are limited to minor power factor scoring") and
+ *  https://www.swampfoxoptics.com/uspsa-divisions-explained ("Everyone is scored
+ *  Minor" -- Production; "Scored Minor only" -- Limited Optics). */
+export const MINOR_ONLY_DIVISIONS = ['Production', 'Carry Optics', 'Limited Optics', 'PCC'];
+
+/** True when a USPSA division scores Minor power factor only (T3-6a). */
+export function isMinorOnly(division: string): boolean {
+  return (MINOR_ONLY_DIVISIONS as readonly string[]).includes(division);
+}
+
 /** Stage hit factor: points per second. */
 export function hitFactor(points: number | null, time: number | null): number | null {
   if (points === null || time === null || !(time > 0) || points < 0) return null;
@@ -156,6 +186,126 @@ export function classificationProgress(scores: ClassifierScore[]): ClassProgress
     ? { name: USPSA_CLASSES[band - 1].name, threshold: USPSA_CLASSES[band - 1].min }
     : null;
   return { average, scoresUsed: used, scoresOnRecord: valid.length, currentClass, next };
+}
+
+/** One row of the "which scores count" window (T3-5): the same recent-8 slice
+ *  classificationProgress reasons about, but with each score's identity kept so
+ *  the UI can show it as a real list instead of just an average. */
+export interface ClassifierWindowFields {
+  percent: number;   // capped at MAX_CLASSIFIER_PERCENT, same as the average uses
+  counts: boolean;    // true when this score is one of the best-6 that made the average
+  dropsNext: boolean; // true for the oldest row, but only once 8+ valid scores exist
+}
+
+/**
+ * classificationProgress's windowed view: the most recent 8 valid scores, newest
+ * first, each flagged with whether it counts toward the best-6 average and
+ * whether it's the one a new score would push out of the window. Generic over T
+ * so callers can pass their own record type (e.g. a Classifier with code/name)
+ * and get it back annotated, rather than a bare {date, percent} tuple.
+ *
+ * Deliberately reuses classificationProgress's own selection rule (top-6 by
+ * capped percent, ties broken toward the more recent score via a stable sort
+ * over the already-newest-first array) so the two can never quietly disagree --
+ * a unit test asserts the same average from both paths.
+ */
+export function classificationWindow<T extends ClassifierScore>(
+  scores: T[]
+): (Omit<T, 'percent'> & ClassifierWindowFields)[] {
+  const valid = scores
+    .filter((s) => s.percent !== null && Number.isFinite(s.percent))
+    .sort((a, b) => b.date.localeCompare(a.date));
+  const recent = valid.slice(0, 8);
+  if (recent.length === 0) return [];
+  const cappedPercents = recent.map((s) => Math.min(s.percent as number, MAX_CLASSIFIER_PERCENT));
+  const rank = cappedPercents
+    .map((p, i) => ({ i, p }))
+    .sort((a, b) => b.p - a.p)
+    .slice(0, 6)
+    .map((r) => r.i);
+  const usedIdx = new Set(rank);
+  // The window is "most recent 8" -- once 8+ valid scores are on record, a new
+  // score always displaces the CURRENT oldest-of-window, whether or not that
+  // oldest score was one of the ones counting toward the average.
+  const oldestDrops = valid.length >= 8;
+  return recent.map((s, i) => ({
+    ...s,
+    percent: cappedPercents[i],
+    counts: usedIdx.has(i),
+    dropsNext: oldestDrops && i === recent.length - 1,
+  }));
+}
+
+/** best-min(6,n) average of a set of (already-capped) percents -- the same
+ *  selection rule classificationProgress uses, factored out so
+ *  nextClassifierNeeded can evaluate it for a hypothetical score. */
+function bestAverage(percents: number[]): number {
+  if (percents.length === 0) return 0;
+  const used = [...percents].sort((a, b) => b - a).slice(0, Math.min(6, percents.length));
+  return used.reduce((s, p) => s + p, 0) / used.length;
+}
+
+/** Round UP to one decimal -- used only for the minimal classifier score in
+ *  nextClassifierNeeded, so the number shown never overstates what's needed. */
+function roundUpTenth(x: number): number {
+  const scaled = x * 10;
+  const nearest = Math.round(scaled);
+  // Binary search converges within float noise of the true boundary; snap to the
+  // nearest tenth when we're within that noise so an exact boundary (e.g. 90.0)
+  // doesn't get bumped to 90.1 by a stray epsilon.
+  return (Math.abs(scaled - nearest) < 1e-6 ? nearest : Math.ceil(scaled)) / 10;
+}
+
+/**
+ * T3-5's "next-classifier" line: the minimal single score S (0 < S <= 110) that
+ * would move the shooter up to the next class, or 'impossible' if even a 110
+ * doesn't clear it, or null when there's no meaningful next-class claim to make
+ * (fewer than MIN_SCORES_FOR_CLASSIFICATION valid scores -- still unclassified --
+ * or already at the top of the ladder with nothing higher to reach).
+ *
+ * The math: USPSA's window is the most recent 8 valid scores. A new score always
+ * enters the window; if 8 (or more) already exist, the CURRENT oldest of the
+ * window drops to make room (a window over 8 already-recorded scores keeps only
+ * the 7 most recent of them before the new one is added). The new window's
+ * best-min(6, size) average must clear the next band's threshold. Pure; never
+ * throws; the search is a binary search over S because the best-6 average is
+ * monotonically non-decreasing in S, so there's exactly one boundary to find.
+ */
+export function nextClassifierNeeded(scores: ClassifierScore[]): { percent: number } | 'impossible' | null {
+  const valid = scores
+    .filter((s) => s.percent !== null && Number.isFinite(s.percent))
+    .sort((a, b) => b.date.localeCompare(a.date));
+  if (valid.length < MIN_SCORES_FOR_CLASSIFICATION) return null; // still unclassified -- no "move up" claim yet
+  const progress = classificationProgress(scores);
+  if (!progress.next) return null; // top of the ladder -- nothing higher to reach
+
+  const threshold = progress.next.threshold;
+  const capped = valid.map((s) => Math.min(s.percent as number, MAX_CLASSIFIER_PERCENT));
+  const currentWindow = capped.slice(0, 8);
+  // Drop the current oldest-of-window ONLY when a new score would actually
+  // displace one (8+ on record); otherwise every existing score is kept.
+  const keep = currentWindow.slice(0, Math.min(7, currentWindow.length));
+
+  const avgWith = (s: number): number => bestAverage([s, ...keep]);
+
+  if (avgWith(MAX_CLASSIFIER_PERCENT) < threshold) return 'impossible';
+
+  let lo = 0;
+  let hi = MAX_CLASSIFIER_PERCENT;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    if (avgWith(mid) >= threshold) hi = mid; else lo = mid;
+  }
+  let percent = roundUpTenth(hi);
+  // Safety net (bounded, so it can never loop forever): if rounding somehow left
+  // the shown number just short of the bar, nudge up until it provably clears --
+  // never show a number that wouldn't actually move the shooter up.
+  for (let guard = 0; guard < 20 && avgWith(percent) < threshold; guard++) {
+    percent = Math.round((percent + 0.1) * 10) / 10;
+  }
+  if (percent > MAX_CLASSIFIER_PERCENT) return 'impossible';
+  if (percent <= 0) percent = 0.1; // S must be a real, positive classifier score
+  return { percent };
 }
 
 // ---- Match-after analysis (Layer 1: derive + rank, no new stored data) ----

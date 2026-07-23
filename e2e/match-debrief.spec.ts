@@ -3,10 +3,12 @@ import { seedDemo, gotoTab } from './helpers';
 
 // Layer 1 -- the match-after debrief on the Match detail screen. We log a match
 // with two stages of clearly different hit factor, then confirm the detail view
-// renders the stage breakdown and flags the toughest (lower hit factor) stage.
+// renders the stage breakdown and flags the weakest (lower hit factor) stage.
+// T3-6b (July 23 2026): "Toughest" was renamed "Weakest" -- the metric ranks the
+// shooter's own stage percents, not how hard a stage was for the field.
 
 test.describe('Match-after debrief (Layer 1)', () => {
-  test('a logged match shows a stage breakdown that flags toughest + strongest', async ({ page }) => {
+  test('a logged match shows a stage breakdown that flags weakest + strongest', async ({ page }) => {
     await seedDemo(page); // seeds guns so the match form has a gun to pick
     await gotoTab(page, 'Compete');
 
@@ -30,8 +32,8 @@ test.describe('Match-after debrief (Layer 1)', () => {
     await expect(page.getByRole('heading', { name: 'Debrief Test Match' })).toBeVisible();
     await expect(page.getByRole('heading', { name: /Stage breakdown/ })).toBeVisible();
 
-    // Stage 2 has the lower hit factor, so it is flagged the toughest; stage 1 the strongest.
-    await expect(page.getByText('Toughest', { exact: true })).toBeVisible();
+    // Stage 2 has the lower hit factor, so it is flagged the weakest; stage 1 the strongest.
+    await expect(page.getByText('Weakest', { exact: true })).toBeVisible();
     await expect(page.getByText('Strongest', { exact: true })).toBeVisible();
   });
 

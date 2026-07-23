@@ -195,11 +195,11 @@ export function NumbersGuide({ onBack, section }: { onBack: () => void; section?
       </div>
 
       <div className="card">
-        <h2>Toughest &amp; strongest stage</h2>
+        <h2>Weakest &amp; strongest stage</h2>
         <TheMath>
           we rank your stages by stage percent (if you entered them), or by hit factor when you
           didn&rsquo;t; the top-ranked is your <strong>strongest</strong>, the bottom one or two are your
-          <strong> toughest</strong>.
+          <strong> weakest</strong>.
         </TheMath>
         <p className="note-text">
           A quick read on where the match went well and where it hurt — only shown when at least two
@@ -240,6 +240,13 @@ export function NumbersGuide({ onBack, section }: { onBack: () => void; section?
           Note: USPSA&rsquo;s own bracket lists Grand Master as &ldquo;95 to 110%&rdquo; — the top band runs
           past 100% because a classifier score can now exceed the reference hit factor. We show
           &ldquo;95%+&rdquo; as the plain-English band you cross to reach GM; the math is the same.
+        </p>
+        <p className="note-text">
+          <strong>Which scores count:</strong> the window is always your most recent 8 valid scores in a
+          division; your average uses whichever 6 of those 8 are highest. On Compete, tap &ldquo;Show the
+          scores that count&rdquo; under a division to see the window itself — each score marked whether
+          it counted, which one drops once a new score comes in, and the exact percent that would move
+          you up if you shot it next.
         </p>
       </div>
 
