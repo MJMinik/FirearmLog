@@ -97,10 +97,12 @@ test.describe('Per-session magazine tracking', () => {
     expect(await dr91Lifetime(page)).toBe(before + 80);
 
     // Editable forever: reopen the saved session — the custom split is seeded
-    // back exactly, and the sum re-validates against any new gun total.
+    // back exactly, and the sum re-validates against any new gun total. The
+    // section loads COLLAPSED (owner decision, session 75); Show reveals it.
     await gotoTab(page, 'Log');
     await page.getByRole('main').locator('.row-tap').first().click();
     await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
+    await page.locator('.session-mags .checklist-disclosure').click();
     await expect(page.getByLabel(`Rounds through DR9-1 with ${GUN}`)).toHaveValue('80');
     await expect(page.getByLabel(`Rounds through DR9-2 with ${GUN}`)).toHaveValue('20');
 
@@ -114,6 +116,41 @@ test.describe('Per-session magazine tracking', () => {
     await page.locator('.navbar-action').click();
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
     expect(await dr91Lifetime(page)).toBe(before + 100);
+  });
+
+  // Fix A collapsed the Magazines section by default on load (session 75).
+  // If a mag-sum validation problem fires while it's still collapsed, the
+  // section must open itself — otherwise the error message under Guns &
+  // Rounds refers to inputs the shooter can't see.
+  test('a mag-sum validation problem auto-opens its collapsed Magazines section', async ({ page }) => {
+    await seedDemo(page);
+    await startSessionWithGun(page, '100');
+    await page.locator('.session-mags .checklist-disclosure').click();
+    await page.getByRole('button', { name: 'DR9-1' }).click();
+    await page.getByRole('button', { name: 'DR9-2' }).click();
+    await page.getByLabel(`Rounds through DR9-1 with ${GUN}`).fill('80');
+    await page.getByLabel(`Rounds through DR9-2 with ${GUN}`).fill('20');
+    await page.locator('.navbar-action').click();
+    await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
+
+    // Reopen the saved session: the Magazines section loads collapsed.
+    await page.getByRole('main').locator('.row-tap').first().click();
+    await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
+    const disclosure = page.locator('.session-mags .checklist-disclosure');
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+
+    // Change the gun's rounds so the saved 80 + 20 split no longer sums, and
+    // save WITHOUT ever opening the section.
+    await page.getByLabel(`Rounds for ${GUN}`).fill('120');
+    await page.locator('.navbar-action').click();
+
+    // The error message appears AND the section auto-opened, so the mag
+    // inputs it refers to are actually visible.
+    await expect(page.locator('#session-mags-err')).toContainText(
+      `Mag rounds for ${GUN} total 100, but the gun logged 120`);
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByLabel(`Rounds through DR9-1 with ${GUN}`)).toHaveValue('80');
+    await expect(page.getByLabel(`Rounds through DR9-2 with ${GUN}`)).toHaveValue('20');
   });
 
   test('never a nag: dry fire hides the disclosure, and an untouched section blocks nothing', async ({ page }) => {
@@ -145,5 +182,88 @@ test.describe('Per-session magazine tracking', () => {
     await page.locator('.session-mags .checklist-disclosure').click();
     await expect(page.getByRole('button', { name: 'DR9-1' })).toHaveAttribute('aria-pressed', 'false');
     await expect(page.getByRole('button', { name: 'DR9-2' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  // Owner decision, session 75 (July 23 2026): saved sessions load with their
+  // Magazines section COLLAPSED — the summary row lists the saved picks, and
+  // opening is one tap. Supersedes the earlier "mirrors the ratings Reveal
+  // defaultOpen" choice.
+  test('reopening a saved session with mag attributions loads the Magazines section collapsed', async ({ page }) => {
+    await seedDemo(page);
+    await startSessionWithGun(page, '80');
+    await page.locator('.session-mags .checklist-disclosure').click();
+    await page.getByRole('button', { name: 'DR9-1' }).click();
+    await page.getByRole('button', { name: 'DR9-3' }).click();
+    await page.locator('.navbar-action').click();
+    await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
+
+    // Reopen the just-saved session: the disclosure loads COLLAPSED, its
+    // summary row lists the saved picks, and no checkboxes render until Show
+    // is tapped.
+    await page.getByRole('main').locator('.row-tap').first().click();
+    await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
+    const disclosure = page.locator('.session-mags .checklist-disclosure');
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    await expect(disclosure).toContainText('Magazines — DR9-1, DR9-3');
+    // The disclosure's own summary text contains "DR9-1" too, so scope to the
+    // per-mag toggle rows specifically, not the accessible-name substring match.
+    await expect(page.locator('.session-mags .gun-toggle')).toHaveCount(0);
+
+    // Tapping Show reveals the saved picks still checked.
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByRole('button', { name: 'DR9-1' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'DR9-3' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'DR9-2' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  // Owner decision, session 75: opening a saved session's Magazines section
+  // must never dirty the form (the 7/9 vs 7/21 inconsistency), and a saved
+  // session's history is never auto-backfilled from habit.
+  test('a saved session without mag attributions: Show pre-checks nothing, and Cancel exits with no discard sheet', async ({ page }) => {
+    await seedDemo(page);
+    await startSessionWithGun(page, '50');
+    // Save WITHOUT ever opening the Magazines section.
+    await page.locator('.navbar-action').click();
+    await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
+
+    await page.getByRole('main').locator('.row-tap').first().click();
+    await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
+    const disclosure = page.locator('.session-mags .checklist-disclosure');
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    await expect(disclosure).not.toContainText('—');
+
+    // Tapping Show does not pre-check anything.
+    await disclosure.click();
+    await expect(page.getByRole('button', { name: 'DR9-1' })).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.getByRole('button', { name: 'DR9-2' })).toHaveAttribute('aria-pressed', 'false');
+
+    // Hide, then ‹ Cancel: merely opening/closing the section must not dirty
+    // the form, so Cancel exits directly with NO discard sheet.
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    await page.getByRole('button', { name: '‹ Cancel' }).click();
+    await expect(page.getByRole('dialog', { name: 'Discard changes?' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
+  });
+
+  // The preserved feature: sticky preselect still fires for a brand-new
+  // session (never for an already-saved one — see the tests above).
+  test('preserved: a NEW session still preselects the gun last-used mags on first open', async ({ page }) => {
+    await seedDemo(page);
+    await startSessionWithGun(page, '40');
+    await page.locator('.session-mags .checklist-disclosure').click();
+    await page.getByRole('button', { name: 'DR9-2' }).click();
+    await page.getByRole('button', { name: 'DR9-4' }).click();
+    await page.locator('.navbar-action').click();
+    await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
+
+    // A brand-new session with the same gun: opening Magazines preselects the
+    // mags from that just-logged session.
+    await startSessionWithGun(page, '30');
+    await page.locator('.session-mags .checklist-disclosure').click();
+    await expect(page.getByRole('button', { name: 'DR9-2' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'DR9-4' })).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.getByRole('button', { name: 'DR9-1' })).toHaveAttribute('aria-pressed', 'false');
   });
 });

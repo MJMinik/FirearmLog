@@ -262,20 +262,20 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         const r: Record<string, string> = {};
         for (const g of s.guns) r[g.firearmId] = String(g.rounds);
         setRounds(r);
-        // Seed saved mag attributions; open those sections so the record is
-        // visible when editing (mirrors the ratings Reveal defaultOpen).
+        // Seed saved mag attributions, but the sections load COLLAPSED — the
+        // disclosure's summary row lists the saved mags, and opening is one
+        // tap (owner decision, session 75, July 23 2026; supersedes the
+        // earlier "mirrors the ratings Reveal defaultOpen" choice).
         const mp: Record<string, string[]> = {};
         const mo: Record<string, Record<string, string>> = {};
-        const mopen: Record<string, boolean> = {};
         for (const g of s.guns) {
           if (!g.magIds?.length) continue;
           mp[g.firearmId] = g.magIds;
-          mopen[g.firearmId] = true;
           if (g.magOverrides?.length) {
             mo[g.firearmId] = Object.fromEntries(g.magOverrides.map((o) => [o.magId, String(o.rounds)]));
           }
         }
-        setMagPick(mp); setMagOverride(mo); setMagOpen(mopen);
+        setMagPick(mp); setMagOverride(mo);
         setDrills(s.drills.map(toRow));
         setAmmoRows((s.ammoUsage ?? []).map((u) => ({ ammoId: u.ammoId, rounds: String(u.rounds) })));
         // Editing/converting an existing session: never auto-overwrite its saved
@@ -347,11 +347,17 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     // First open with nothing picked: sticky preselect from this gun's most
     // recent logged mags, so one tap confirms the usual loadout. Only mags
     // still linked AND in service qualify — a since-retired mag shouldn't be
-    // silently attributed by habit.
-    if (opening && !(magPick[fid]?.length)) {
+    // silently attributed by habit. The preselect is a suggestion for NEW
+    // logs and plan conversions, not a user edit — merely opening a saved
+    // session's Magazines section must not raise the discard sheet (owner
+    // decision, session 75: the 7/9 vs 7/21 inconsistency), and a saved
+    // session's history is never auto-backfilled from habit. In the flows
+    // where the seed still fires, real user edits (or the convert button)
+    // set `touched` before Save matters.
+    if (opening && (!original || converting) && !(magPick[fid]?.length)) {
       const seed = (lastMags[fid] ?? [])
         .filter((id) => magazines.some((m) => m.id === id && m.firearmIds.includes(fid) && m.active));
-      if (seed.length) { setTouched(true); setMagPick((p) => ({ ...p, [fid]: seed })); }
+      if (seed.length) { setMagPick((p) => ({ ...p, [fid]: seed })); }
     }
   };
 
@@ -672,7 +678,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           const v = (ov[magId] ?? '').trim();
           const n = v === '' ? 0 : Number(v);
           if (!Number.isFinite(n) || n < 0 || Math.floor(n) !== n) {
-            return { field: 'mags', message: 'Mag rounds need to be plain whole numbers.' };
+            return { field: 'mags', gunId: fid, message: 'Mag rounds need to be plain whole numbers.' };
           }
           sum += n;
         }
@@ -680,6 +686,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           const name = firearms.find((f) => f.id === fid)?.name ?? 'this gun';
           return {
             field: 'mags',
+            gunId: fid,
             message: `Mag rounds for ${name} total ${sum.toLocaleString()}, but the gun logged ${gunTotal.toLocaleString()} — match them to save.`
           };
         }
@@ -726,6 +733,12 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     const sp = saveProblem();
     if (sp) {
       setProblem(sp);
+      // The collapsed-by-default Magazines section (session 75) must open
+      // itself when its own validation blocks the save, so the mag-rounds
+      // inputs the message refers to aren't hidden behind Show.
+      if (sp.field === 'mags' && sp.gunId) {
+        setMagOpen((p) => ({ ...p, [sp.gunId!]: true }));
+      }
       const scrollTarget =
         sp.field === 'date' ? dateFieldRef.current :
         sp.field === 'rangeFee' ? rangeFeeFieldRef.current :

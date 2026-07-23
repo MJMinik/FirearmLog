@@ -16,7 +16,7 @@
 // The component is intentionally tiny — just the message paragraph. Scroll /
 // focus logic lives in persistForm() inside each form, keyed by the field ref.
 
-export type SaveProblem = { message: string; field: string } | null;
+export type SaveProblem = { message: string; field: string; gunId?: string } | null;
 
 export function FieldProblem({ id, problem, field }: {
   id: string;
