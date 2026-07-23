@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { seedDemo, isDesktop } from './helpers.ts';
+import { seedDemo, isDesktop, gotoTab } from './helpers.ts';
 
 // The desktop menu bar (MENUBAR_SPEC.md, July 2026) — spec §6's machine checks:
 // each menu opens and closes; items route to the right view through the SAME
@@ -99,6 +99,42 @@ test.describe('desktop menu bar', () => {
     await expect(
       page.getByRole('heading', { name: /Edit Session|Match/ }).first()
     ).toBeVisible();
+  });
+
+  test('File > Open Recent orders by recency of edit, not record date (owner decision, session 75)', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Log');
+    // The oldest LOGGED (non-planned) session on screen — last row of the
+    // newest-first "All Sessions" list. The demo log runs many months back
+    // (e.g. its June 2026 sessions), so this row is nowhere near today.
+    const sessionsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'All Sessions' }) });
+    const oldRow = sessionsCard.locator('.row-tap').filter({ hasNotText: 'Planned' }).last();
+    const dateText = await oldRow.locator('.label').evaluate((el) => el.childNodes[0]?.textContent?.trim() ?? '');
+    expect(dateText).toBeTruthy();
+
+    // It does NOT lead Open Recent before we touch it (it's the oldest-dated).
+    const before = await openMenu(page, 'File');
+    await before.getByRole('menuitem', { name: 'Open Recent', exact: true }).click();
+    const subBefore = page.getByRole('menu', { name: 'Open Recent', exact: true });
+    await expect(subBefore.getByRole('menuitem').first()).not.toContainText(dateText);
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape');
+
+    // Open it, make a small edit, and save.
+    await oldRow.click();
+    await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
+    const where = page.getByRole('textbox', { name: 'Where' });
+    const whereBefore = await where.inputValue();
+    await where.fill(`${whereBefore} (touched)`);
+    await page.locator('.navbar-action').click();
+    await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
+
+    // Despite carrying the oldest date on screen, the session was just saved —
+    // updatedAt is now the newest of any record, so it leads Open Recent.
+    const file = await openMenu(page, 'File');
+    await file.getByRole('menuitem', { name: 'Open Recent', exact: true }).click();
+    const sub = page.getByRole('menu', { name: 'Open Recent', exact: true });
+    await expect(sub.getByRole('menuitem').first()).toContainText(dateText);
   });
 
   test('Reports menu opens a printable report in a new window', async ({ page, context }) => {

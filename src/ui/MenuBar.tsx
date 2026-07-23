@@ -192,18 +192,24 @@ export function MenuBar({ onGoTab, onOpenView, sidebarHidden, onToggleSidebar }:
     setOpen(i);
     if (menus[i].label === 'File') {
       // Refresh Open Recent on every open — cheap reads, always current.
+      // Sorted by updatedAt (recently saved/edited), NOT record date — owner
+      // decision session 75 (July 23 2026): macOS's Open Recent convention is
+      // "what you last touched," not "what's dated newest." The date shown in
+      // the label is still the record's date — only the ORDER is recency of
+      // touch. Matches carry no trash/deletedAt concept (types.ts), so they
+      // aren't filtered here — mirrors the pre-existing treatment.
       setRecent(null);
       void (async () => {
         const [sessions, matches] = await Promise.all([getAll<Session>('sessions'), getAll<Match>('matches')]);
-        const rows: { date: string; a: Action }[] = [
+        const rows: { updatedAt: number; a: Action }[] = [
           ...activeOnly(sessions).filter((s) => !s.planned).map((s) => ({
-            date: s.date, a: { label: sessionLabel(s), onSelect: () => onOpenView({ kind: 'session-form', id: s.id }) } as Action
+            updatedAt: s.updatedAt || 0, a: { label: sessionLabel(s), onSelect: () => onOpenView({ kind: 'session-form', id: s.id }) } as Action
           })),
           ...matches.map((m) => ({
-            date: m.date, a: { label: `${formatDayKey(m.date)} — ${m.name || 'Match'}`, onSelect: () => onOpenView({ kind: 'match-detail', id: m.id }) } as Action
+            updatedAt: m.updatedAt || 0, a: { label: `${formatDayKey(m.date)} — ${m.name || 'Match'}`, onSelect: () => onOpenView({ kind: 'match-detail', id: m.id }) } as Action
           }))
         ];
-        rows.sort((x, y) => (y.date || '').localeCompare(x.date || ''));
+        rows.sort((x, y) => y.updatedAt - x.updatedAt);
         const top = rows.slice(0, 5).map((r) => r.a);
         setRecent(top.length ? top : [{ label: 'No records yet', onSelect: () => {}, disabled: true }]);
       })().catch(() => setRecent([{ label: 'Could not read your records', onSelect: () => {}, disabled: true }]));
