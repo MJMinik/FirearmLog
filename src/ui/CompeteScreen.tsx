@@ -10,7 +10,7 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { DIVISIONS, MIN_SCORES_FOR_CLASSIFICATION, classificationProgress } from '../lib/competition.ts';
 import { allClassifications } from '../lib/dashboard.ts';
 import { matchFee } from '../lib/costing.ts';
-import { competeFilterCount, competeFilterOptions, emptyCompeteFilter, matchMatchesCompeteFilter } from '../lib/competeFilter.ts';
+import { competeFilterCount, competeFilterOptions, getSessionCompeteFilter, matchMatchesCompeteFilter, setSessionCompeteFilter } from '../lib/competeFilter.ts';
 import type { CompeteFilter } from '../lib/competeFilter.ts';
 import { CompeteFilterBar } from './FilterBar.tsx';
 import { MatchRow } from './MatchRow.tsx';
@@ -38,7 +38,16 @@ export function CompeteScreen({ refreshKey, open }: {
   // classification/season status shows sooner instead of under four buttons.
   const [showImport, setShowImport] = useState(false);
   // A3 (batch 2): the Compete match list gets the app-wide Search & Filter.
-  const [filter, setFilter] = useState<CompeteFilter>(emptyCompeteFilter());
+  // Session-persistent by design (session 75, July 23 2026): initialized from
+  // the module-scope holder rather than always-empty, and every change writes
+  // back to it — see competeFilter.ts for why. Survives this screen unmounting
+  // (match/classifier detail and Back, or leaving and returning to the tab);
+  // a fresh app launch starts unfiltered because the module reloads clean.
+  const [filter, setFilterState] = useState<CompeteFilter>(getSessionCompeteFilter());
+  function setFilter(f: CompeteFilter) {
+    setSessionCompeteFilter(f);
+    setFilterState(f);
+  }
 
   useEffect(() => {
     let alive = true;

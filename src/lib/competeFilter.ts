@@ -18,6 +18,25 @@ export function emptyCompeteFilter(): CompeteFilter {
   return { from: '', to: '', matchType: '', division: '', firearmId: '' };
 }
 
+// Session-persistent by design, relaunch clears (owner decision + board
+// conferral, session 75, July 23 2026): the Compete match filter used to live
+// in CompeteScreen's own useState, so it was lost the moment the screen
+// unmounted — opening a match's detail and coming Back, or leaving the tab and
+// returning, both reset it to empty. Both round trips must now preserve it, so
+// the value lives here at MODULE scope instead — CompeteScreen initializes its
+// state from this holder and writes every change back to it. Deliberately NOT
+// IndexedDB/localStorage/sessionStorage: a fresh app launch (this module
+// re-evaluating from scratch) must always start unfiltered.
+let sessionCompeteFilter: CompeteFilter = emptyCompeteFilter();
+
+export function getSessionCompeteFilter(): CompeteFilter {
+  return sessionCompeteFilter;
+}
+
+export function setSessionCompeteFilter(f: CompeteFilter): void {
+  sessionCompeteFilter = f;
+}
+
 /** How many criteria are narrowing things down (drives the badge on the button). */
 export function competeFilterCount(f: CompeteFilter): number {
   let n = 0;
