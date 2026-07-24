@@ -17,7 +17,7 @@ import { SKILL_AREAS, assessmentAverage, assessmentsByDate, latestAssessment, re
 import {
   allClassifications, formatDrillScore, personalRecords, roundsByMonth, type RoundsFilter
 } from '../lib/dashboard.ts';
-import { bucketTotals, malfunctionsInRange, ratePerThousand, sessionRatioCounts, spanStartDate } from '../lib/trends.ts';
+import { bucketTotals, malfunctionsInRange, monthsSinceFirst, ratePerThousand, sessionRatioCounts, spanStartDate } from '../lib/trends.ts';
 import {
   TIMED_SKILLS, activeSkillSets, coldVsWarm, formatSec, skillLabel, skillPR, skillTrend, skillsWithData
 } from '../lib/skillSets.ts';
@@ -581,7 +581,9 @@ function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunct
   drills: DrillDef[]; classifiers: Classifier[]; malfunctions: MalfunctionEntry[];
   open: (v: View) => void;
 }) {
-  const [months, setMonths] = useState(12);
+  const [span, setSpan] = useState<number | 'all'>(12);
+  const months = span === 'all' ? monthsSinceFirst(sessions, matches) : span;
+  const spanLabel = span === 'all' ? 'all time' : `last ${months} mo`;
   const [filter, setFilter] = useState<RoundsFilter>({});
 
   const buckets = roundsByMonth(sessions, matches, months, new Date(), filter, firearms);
@@ -615,10 +617,11 @@ function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunct
             <option value="">All guns</option>
             {firearms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
-          <select aria-label="Months" value={months} onChange={(e) => setMonths(Number(e.target.value))}>
+          <select aria-label="Months" value={span} onChange={(e) => setSpan(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
             <option value={6}>6 mo</option>
             <option value={12}>12 mo</option>
             <option value={24}>24 mo</option>
+            <option value="all">All time</option>
           </select>
         </div>
       </Reveal>
@@ -627,14 +630,14 @@ function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunct
         ? <RoundsByMonthChart buckets={buckets} />
         : <p className="report-note">No rounds logged{(filter.category || filter.firearmId) ? ' for this gun.' : ' yet.'}</p>}
 
-      <div className="row"><span className="label">Live + match rounds (last {months} mo)</span><span className="value">{totals.liveAndMatch.toLocaleString()}</span></div>
-      <div className="row"><span className="label">Dry-fire reps (last {months} mo)</span><span className="value">{totals.dry.toLocaleString()}</span></div>
+      <div className="row"><span className="label">Live + match rounds ({spanLabel})</span><span className="value">{totals.liveAndMatch.toLocaleString()}</span></div>
+      <div className="row"><span className="label">Dry-fire reps ({spanLabel})</span><span className="value">{totals.dry.toLocaleString()}</span></div>
       <div className="row">
-        <span className="label">Dry : live sessions (last {months} mo)</span>
+        <span className="label">Dry : live sessions ({spanLabel})</span>
         <span className="value">{liveSessions > 0 ? `${(drySessions / liveSessions).toFixed(1)} : 1` : '—'}</span>
       </div>
       <div className="row">
-        <span className="label">Malfunctions / 1,000 rds</span>
+        <span className="label">Malfunctions / 1,000 rds ({spanLabel})</span>
         <span className="value">{malfRate != null ? `${malfRate.toFixed(1)} (${malfCount})` : '—'}</span>
       </div>
 

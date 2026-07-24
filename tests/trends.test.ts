@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Firearm, Session } from '../src/lib/types.ts';
 import type { MonthBucket } from '../src/lib/dashboard.ts';
-import { bucketTotals, malfunctionsInRange, ratePerThousand, sessionRatioCounts, spanStartDate } from '../src/lib/trends.ts';
+import { bucketTotals, malfunctionsInRange, monthsSinceFirst, ratePerThousand, sessionRatioCounts, spanStartDate } from '../src/lib/trends.ts';
 
 test('ratePerThousand scales events by rounds, null when no rounds', () => {
   assert.equal(ratePerThousand(3, 1500), 2);
@@ -36,6 +36,42 @@ test('malfunctionsInRange respects date cutoff and gun/category filter', () => {
 test('spanStartDate returns the first day of the span', () => {
   assert.equal(spanStartDate(12, new Date(2026, 5, 14)), '2025-07-01'); // 12 months back incl. current
   assert.equal(spanStartDate(1, new Date(2026, 5, 14)), '2026-06-01');
+});
+
+// ---- monthsSinceFirst ----
+
+test('monthsSinceFirst: earliest session Jan 2025, now Jul 2026 → 19', () => {
+  const sessions = [
+    { date: '2025-01-15', planned: false },
+    { date: '2025-06-01', planned: false },
+  ];
+  assert.equal(monthsSinceFirst(sessions, [], new Date(2026, 6, 1)), 19);
+});
+
+test('monthsSinceFirst: planned sessions and undated entries are ignored', () => {
+  const sessions = [
+    { date: '2025-01-15', planned: true },   // planned — ignored
+    { date: '', planned: false },             // no date — ignored
+    { date: '2026-03-01', planned: false },   // first real session
+  ];
+  // Earliest real: Mar 2026, now Jul 2026 → (2026-2026)*12 + (7-3) + 1 = 5
+  assert.equal(monthsSinceFirst(sessions, [], new Date(2026, 6, 1)), 5);
+});
+
+test('monthsSinceFirst: a match earlier than any session sets the floor', () => {
+  const sessions = [{ date: '2025-06-01', planned: false }];
+  const matches = [{ date: '2025-01-10' }];
+  // Earliest: Jan 2025, now Jul 2026 → 19
+  assert.equal(monthsSinceFirst(sessions, matches, new Date(2026, 6, 1)), 19);
+});
+
+test('monthsSinceFirst: no data → 12', () => {
+  assert.equal(monthsSinceFirst([], [], new Date(2026, 6, 1)), 12);
+});
+
+test('monthsSinceFirst: same-month first entry → 1', () => {
+  const sessions = [{ date: '2026-07-05', planned: false }];
+  assert.equal(monthsSinceFirst(sessions, [], new Date(2026, 6, 20)), 1);
 });
 
 // ---- sessionRatioCounts (Tester-2 Change-1): dry-fire vs live SESSION counts ----

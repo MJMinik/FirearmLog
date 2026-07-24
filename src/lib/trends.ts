@@ -1,7 +1,7 @@
 // Progress-tab trend helpers (spec §10.2). Pure + tested. The rounds-by-month
 // aggregation already lives in dashboard.ts and is reused; this adds the
 // malfunction-rate and dry/live math.
-import type { Firearm, GunCategory, MalfunctionEntry, Session } from './types.ts';
+import type { Firearm, GunCategory, MalfunctionEntry, Match, Session } from './types.ts';
 import type { MonthBucket, RoundsFilter } from './dashboard.ts';
 import { isLiveSession, isDrySession, sessionUsedFilteredGun } from './dashboard.ts';
 
@@ -40,6 +40,33 @@ export function malfunctionsInRange(
 export function spanStartDate(months: number, now: Date = new Date()): string {
   const d = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
+}
+
+/**
+ * Whole months from the earliest logged (non-planned) session or match up to
+ * `now`, inclusive — minimum 1. Powers the "All time" span so the chart and
+ * totals cover a user's entire history without a hardcoded month count. Falls
+ * back to 12 when there's no data yet.
+ */
+export function monthsSinceFirst(
+  sessions: Pick<Session, 'date' | 'planned'>[],
+  matches: Pick<Match, 'date'>[],
+  now: Date = new Date()
+): number {
+  let earliest: string | null = null;
+  for (const s of sessions) {
+    if (s.planned || !s.date) continue;
+    if (!earliest || s.date < earliest) earliest = s.date;
+  }
+  for (const m of matches) {
+    if (!m.date) continue;
+    if (!earliest || m.date < earliest) earliest = m.date;
+  }
+  if (!earliest) return 12;
+  const y = Number(earliest.slice(0, 4));
+  const mo = Number(earliest.slice(5, 7));
+  const diff = (now.getFullYear() - y) * 12 + (now.getMonth() + 1 - mo) + 1;
+  return Math.max(1, diff);
 }
 
 /** Dry-fire and live SESSION counts for the "Dry : live sessions" ratio. */
