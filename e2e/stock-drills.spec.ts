@@ -54,7 +54,7 @@ test.describe('Stock drill library (F4) + Drills empty state (F5)', () => {
     const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
 
-    const drillsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Drills' }) });
+    const drillsCard = page.locator('.card').filter({ hasText: 'Drills' }).first();
     await drillsCard.getByRole('button', { name: '+ Add Drill' }).click();
     const sheet = page.getByRole('dialog', { name: 'Pick Drills' });
     await expect(sheet).toBeVisible();

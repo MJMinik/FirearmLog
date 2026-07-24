@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { seedDemo, gotoTab } from './helpers';
+import { seedDemo, gotoTab, reopenGunsIfCollapsed } from './helpers';
 
 // Convert-to-logged is an in-place mode switch, not a navigation. The old flow
 // pushed a fresh convert view, which remounted the form, reloaded the saved
@@ -14,6 +14,7 @@ async function makePlan(page: import('@playwright/test').Page, location: string)
   await page.getByLabel('Where').fill(location);
   const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
   await gunsCard.locator('button.gun-toggle').first().click();
+  await reopenGunsIfCollapsed(gunsCard);
   await gunsCard.getByRole('spinbutton').first().fill('40');
   await page.locator('.navbar-action').click(); // Save
   await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();

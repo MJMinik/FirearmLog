@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { seedDemo, gotoTab } from './helpers';
+import { seedDemo, gotoTab, reopenGunsIfCollapsed } from './helpers';
 
 // Ammo Used auto-default: logging gun rounds on a NEW session pre-fills the
 // Ammo Used row so inventory actually moves, instead of the row staying blank
@@ -17,6 +17,7 @@ test.describe('Ammo Used auto-default', () => {
     // Enter 40 rounds on the first gun.
     const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
+    await reopenGunsIfCollapsed(gunsCard);
     await gunsCard.getByRole('spinbutton').first().fill('40');
 
     // The Ammo Used row auto-fills its count to match the gun total.
@@ -40,6 +41,7 @@ test.describe('Ammo Used auto-default', () => {
 
     const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
+    await reopenGunsIfCollapsed(gunsCard);
     await gunsCard.getByRole('spinbutton').first().fill('50');
 
     const ammoCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Ammo Used' }) });

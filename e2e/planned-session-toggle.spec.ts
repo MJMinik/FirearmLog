@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { seedDemo, gotoTab } from './helpers';
+import { seedDemo, gotoTab, reopenGunsIfCollapsed } from './helpers';
 
 // Removing the redundant "Planned session" toggle (the footgun): a session's
 // planned/logged state is set only by the entry point (+ Plan Session vs
@@ -23,6 +23,7 @@ test.describe('Planned session has no stray convert toggle', () => {
     await page.getByLabel('Where').fill('Footgun Range');
     const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
+    await reopenGunsIfCollapsed(gunsCard);
     await gunsCard.getByRole('spinbutton').first().fill('50');
     await page.locator('.navbar-action').click(); // Save
 

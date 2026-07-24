@@ -60,6 +60,17 @@ export async function swipeRowLeft(row: Locator): Promise<void> {
 }
 
 /**
+ * Guns & Rounds auto-collapses the moment the first gun is toggled on (484edc3),
+ * which unmounts the rounds input. Call this AFTER toggling a gun and BEFORE
+ * filling its rounds; it reopens the section only if it actually collapsed, so
+ * it is safe to call whether or not the auto-collapse fired.
+ */
+export async function reopenGunsIfCollapsed(gunsCard: Locator): Promise<void> {
+  const disclosure = gunsCard.locator('.checklist-disclosure').first();
+  if ((await disclosure.getAttribute('aria-expanded')) === 'false') await disclosure.click();
+}
+
+/**
  * Seed a fresh install with the bundled demo dataset via the in-app one-tap
  * loader — exactly what a tester does. Leaves the app on Home with data.
  */

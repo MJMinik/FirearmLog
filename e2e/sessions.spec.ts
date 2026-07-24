@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { seedDemo, gotoTab } from './helpers';
+import { seedDemo, gotoTab, reopenGunsIfCollapsed } from './helpers';
 
 test.describe('Sessions', () => {
   test('the Log tab shows sessions and toggles to the calendar', async ({ page }) => {
@@ -25,6 +25,7 @@ test.describe('Sessions', () => {
     // Pick the first gun in the "Guns & Rounds" card and enter a round count.
     const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
+    await reopenGunsIfCollapsed(gunsCard);
     await gunsCard.getByRole('spinbutton').first().fill('50');
 
     // Save via the navbar action (date is prefilled to today).

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { seedDemo, gotoTab } from './helpers';
+import { seedDemo, gotoTab, reopenGunsIfCollapsed } from './helpers';
 
 // App 2 — a custom "Other" malfunction type can be typed in, and is remembered
 // so it shows up in the dropdown next time. Driven in a real browser.
@@ -13,6 +13,7 @@ test.describe('Custom malfunction types (App 2)', () => {
     await page.getByRole('button', { name: '+ Log Session' }).click();
     const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
+    await reopenGunsIfCollapsed(gunsCard);
     await gunsCard.getByRole('spinbutton').first().fill('50');
 
     await page.getByRole('button', { name: '+ Add Malfunction' }).click();
@@ -40,6 +41,7 @@ test.describe('Malfunction details (App 3a)', () => {
     await page.getByRole('button', { name: '+ Log Session' }).click();
     const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
+    await reopenGunsIfCollapsed(gunsCard);
     await gunsCard.getByRole('spinbutton').first().fill('50');
 
     await page.getByRole('button', { name: '+ Add Malfunction' }).click();

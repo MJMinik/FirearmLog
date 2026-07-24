@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { seedDemo, gotoTab, isDesktop } from './helpers';
+import { seedDemo, gotoTab, isDesktop, reopenGunsIfCollapsed } from './helpers';
 
 // T3-1: timed-skill sets — a "+ Timed skills" progressive-disclosure reveal
 // inside Log Session, an add-set sheet, the day's sets on the Session Report,
@@ -12,6 +12,7 @@ async function startSessionWithGun(page: Page, rounds = '50'): Promise<void> {
   await page.getByRole('button', { name: '+ Log Session' }).click();
   const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
   await gunsCard.locator('button.gun-toggle').first().click();
+  await reopenGunsIfCollapsed(gunsCard);
   await gunsCard.getByRole('spinbutton').first().fill(rounds);
 }
 

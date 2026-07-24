@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { seedDemo, gotoTab } from './helpers';
+import { seedDemo, gotoTab, reopenGunsIfCollapsed } from './helpers';
 
 // Tester-2 F4 (July 16 2026): a NEW session must start UNRATED. New sessions
 // used to initialize the "how it felt" ratings to 5/5/5, so an untouched form
@@ -15,6 +15,7 @@ test.describe('New session ratings start blank, not 5', () => {
     await page.getByRole('button', { name: '+ Log Session' }).click();
     const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
+    await reopenGunsIfCollapsed(gunsCard);
     await gunsCard.getByRole('spinbutton').first().fill('50');
     await page.locator('.navbar-action').click();
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
