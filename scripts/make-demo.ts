@@ -784,6 +784,46 @@ stores.references.push({
   links: [{ label: 'shadowsystemscorp.com', url: 'https://shadowsystemscorp.com' }],
 });
 
+// ===================== MAGAZINE ATTRIBUTION (post-pass, live sessions only) =====================
+// Attributes magazines to LIVE sessions (type === 'practice' | 'class') only.
+// Runs AFTER the entire dataset is fully built — every other store is populated,
+// so the main RNG stream (r/randint/pick/chance) is finished.  We use a FRESH
+// independent RNG (magRng) seeded with a constant so the output is deterministic
+// and NEVER perturbs any downstream number from the main stream.
+//
+// Scaling rule: rounds < 100 → 1 mag; rounds < 200 → up to 2; rounds < 350 → up
+// to 4; rounds ≥ 350 → up to 6.  Pool size is always the hard cap.  We
+// deterministically pick a starting index into each gun's sorted mag array so
+// neighbouring sessions pick different mags (realistic rotation).
+const magRng = rng(0x6d61675a);
+const magsByGunForSessions = new Map<string, string[]>();
+for (const mg of stores.magazines as { id: string; firearmIds: string[] }[]) {
+  for (const fid of mg.firearmIds) {
+    magsByGunForSessions.set(fid, [...(magsByGunForSessions.get(fid) ?? []), mg.id]);
+  }
+}
+for (const se of stores.sessions as { type: string; planned: boolean; guns: { firearmId: string; rounds: number; magIds?: string[] }[] }[]) {
+  if (se.type !== 'practice' && se.type !== 'class') continue;
+  if (se.planned) continue;
+  for (const gun of se.guns) {
+    const pool = magsByGunForSessions.get(gun.firearmId);
+    if (!pool || pool.length === 0) continue;
+    // How many distinct mags to attribute, based on round count.
+    const maxMags = gun.rounds < 100 ? 1
+      : gun.rounds < 200 ? 2
+      : gun.rounds < 350 ? 4
+      : 6;
+    const count = Math.min(maxMags, pool.length);
+    // Deterministic rotation: pick a random starting index into the pool.
+    const start = Math.floor(magRng() * pool.length);
+    const chosen: string[] = [];
+    for (let i = 0; i < count; i++) {
+      chosen.push(pool[(start + i) % pool.length]);
+    }
+    gun.magIds = chosen;
+  }
+}
+
 // ===================== MALFUNCTION ↔ MAGAZINE TAGS =====================
 // Malfunctions carry the magazine when the shooter knew it (added July 9 2026,
 // Michael's catch: the site's malfunction walkthrough says the log knows the
