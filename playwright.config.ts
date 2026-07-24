@@ -26,7 +26,7 @@ export default defineConfig({
   // A flaky E2E test should retry in CI before it fails the run.
   retries: process.env.CI ? 2 : 0,
   // One worker in CI keeps the single dev server calm and logs readable.
-  workers: process.env.CI ? 2 : undefined,
+  workers: process.env.CI ? 1 : undefined,
   reporter: process.env.CI ? [['list'], ['html', { open: 'never' }]] : 'list',
   timeout: 30_000,
   expect: { timeout: 10_000 },
