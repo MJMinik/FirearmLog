@@ -23,7 +23,7 @@ test.describe('Sessions', () => {
     await page.getByRole('button', { name: '+ Log Session' }).click();
 
     // Pick the first gun in the "Guns & Rounds" card and enter a round count.
-    const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
     await gunsCard.getByRole('spinbutton').first().fill('50');
 

@@ -12,7 +12,7 @@ async function makePlan(page: import('@playwright/test').Page, location: string)
   await page.getByRole('button', { name: '+ Plan Session' }).click();
   await expect(page.getByRole('heading', { name: 'Plan Session' })).toBeVisible();
   await page.getByLabel('Where').fill(location);
-  const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+  const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
   await gunsCard.locator('button.gun-toggle').first().click();
   await gunsCard.getByRole('spinbutton').first().fill('40');
   await page.locator('.navbar-action').click(); // Save
@@ -31,7 +31,7 @@ test.describe('Convert to logged session preserves unsaved edits', () => {
     // flow destroyed (its remount reloaded 40 from the saved record).
     await row.click();
     await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
-    const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.getByRole('spinbutton').first().fill('75');
 
     await page.getByRole('button', { name: 'Convert to logged session' }).click();

@@ -11,7 +11,7 @@ test.describe('Custom malfunction types (App 2)', () => {
 
     // First session: log a malfunction with a custom type.
     await page.getByRole('button', { name: '+ Log Session' }).click();
-    const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
     await gunsCard.getByRole('spinbutton').first().fill('50');
 
@@ -38,7 +38,7 @@ test.describe('Malfunction details (App 3a)', () => {
     await gotoTab(page, 'Log');
 
     await page.getByRole('button', { name: '+ Log Session' }).click();
-    const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
     await gunsCard.getByRole('spinbutton').first().fill('50');
 

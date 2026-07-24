@@ -17,7 +17,7 @@ test.describe('Quick-add a drill inline (Pick Drills)', () => {
     await page.getByRole('button', { name: '+ Log Session' }).click();
 
     // Pick a gun so the session has a context (categories + live fire).
-    const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
     await gunsCard.getByRole('spinbutton').first().fill('50');
 
@@ -53,7 +53,7 @@ test.describe('Quick-add a drill inline (Pick Drills)', () => {
 
     await page.getByRole('button', { name: '+ Log Session' }).click();
 
-    const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
     await gunsCard.getByRole('spinbutton').first().fill('25');
 

@@ -40,7 +40,7 @@ test.describe('Dirty guard fires on button-only edits (F1)', () => {
 
     // Toggle ONE gun on — a pure <button> edit that fires no `change` event, so
     // before F1 the bubbled-onChange guard never saw it and ‹ Cancel left silently.
-    const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
 
     // ‹ Cancel must now confirm before discarding that toggle-only edit.

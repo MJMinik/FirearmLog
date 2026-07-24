@@ -13,7 +13,7 @@ test.describe('New session ratings start blank, not 5', () => {
 
     // Log a minimal session — pick a gun, set rounds, DO NOT open/touch ratings.
     await page.getByRole('button', { name: '+ Log Session' }).click();
-    const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
     await gunsCard.getByRole('spinbutton').first().fill('50');
     await page.locator('.navbar-action').click();
@@ -21,7 +21,7 @@ test.describe('New session ratings start blank, not 5', () => {
 
     // Reopen the session we just logged (newest row at the top of the list).
     await page.getByRole('main').locator('.row-tap').first().click();
-    await expect(page.getByRole('heading', { name: 'Guns & Rounds' })).toBeVisible();
+    await expect(page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first()).toBeVisible();
 
     // Expand the ratings section and confirm every field is blank (not 5).
     await page.getByRole('button', { name: /Rate how it felt/ }).click();

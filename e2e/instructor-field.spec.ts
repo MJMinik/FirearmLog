@@ -15,7 +15,7 @@ test.describe('Class session instructor field', () => {
     await page.getByRole('button', { name: '+ Log Session' }).click();
     await page.getByRole('button', { name: 'Class', exact: true }).click();
     await page.getByRole('textbox', { name: 'Instructor' }).fill('Test Coach');
-    const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
     await gunsCard.getByRole('spinbutton').first().fill('50');
     await page.locator('.navbar-action').click();

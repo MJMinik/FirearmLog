@@ -15,7 +15,7 @@ test.describe('Ammo Used auto-default', () => {
     await page.getByRole('button', { name: '+ Log Session' }).click();
 
     // Enter 40 rounds on the first gun.
-    const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
     await gunsCard.getByRole('spinbutton').first().fill('40');
 
@@ -38,7 +38,7 @@ test.describe('Ammo Used auto-default', () => {
     await gotoTab(page, 'Log');
     await page.getByRole('button', { name: '+ Log Session' }).click();
 
-    const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
     await gunsCard.getByRole('spinbutton').first().fill('50');
 

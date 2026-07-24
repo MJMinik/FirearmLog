@@ -10,7 +10,7 @@ import { seedDemo, gotoTab, isDesktop } from './helpers';
 async function startSessionWithGun(page: Page, rounds = '50'): Promise<void> {
   await gotoTab(page, 'Log');
   await page.getByRole('button', { name: '+ Log Session' }).click();
-  const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+  const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
   await gunsCard.locator('button.gun-toggle').first().click();
   await gunsCard.getByRole('spinbutton').first().fill(rounds);
 }

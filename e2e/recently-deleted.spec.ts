@@ -21,7 +21,7 @@ async function deleteRow(page: Page, row: Locator): Promise<void> {
 /** Make a clearly-identifiable session with a distinctive round count. */
 async function makeSession(page: Page, kind: 'log' | 'plan', rounds: string): Promise<void> {
   await page.getByRole('button', { name: kind === 'plan' ? '+ Plan Session' : '+ Log Session' }).click();
-  const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+  const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
   await gunsCard.locator('button.gun-toggle').first().click();
   await gunsCard.getByRole('spinbutton').first().fill(rounds);
   await page.locator('.navbar-action').click();

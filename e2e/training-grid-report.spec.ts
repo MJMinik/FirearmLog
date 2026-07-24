@@ -26,7 +26,7 @@ function todayKey(): string {
 async function logSessionToday(page: Page): Promise<void> {
   await gotoTab(page, 'Log');
   await page.getByRole('button', { name: '+ Log Session' }).click();
-  const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+  const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
   await gunsCard.locator('button.gun-toggle').first().click();
   await gunsCard.getByRole('spinbutton').first().fill('50');
   await page.locator('.navbar-action').click();

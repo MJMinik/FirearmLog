@@ -148,14 +148,14 @@ test.describe('Guided handoff (F2): Home points at the first session', () => {
 
     // Step 3's row is the action: it opens Log Session directly.
     await main.getByRole('button', { name: '3. Log your first session' }).click();
-    await expect(page.getByRole('heading', { name: 'Guns & Rounds' })).toBeVisible();
+    await expect(page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first()).toBeVisible();
     await page.getByRole('button', { name: '‹ Cancel' }).click();
 
     // Log the first session (same minimal flow the sessions spec uses).
     // exact: true — the checklist row's sub mentions "+ Log Session", so a
     // substring match would also hit the row (bit E2E #182, both projects).
     await main.getByRole('button', { name: '+ Log Session', exact: true }).click();
-    const gunsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Guns & Rounds' }) });
+    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
     await gunsCard.locator('button.gun-toggle').first().click();
     await gunsCard.getByRole('spinbutton').first().fill('50');
     await page.locator('.navbar-action').click();
