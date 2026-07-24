@@ -22,7 +22,7 @@ type Page = import('@playwright/test').Page;
 async function seedLegacyMatch(page: Page, overrides: Record<string, unknown> = {}): Promise<void> {
   await page.evaluate(async (overrides) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open('firearmlog', 2);
+      const req = indexedDB.open('firearmlog');
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
@@ -50,7 +50,7 @@ async function seedLegacyMatch(page: Page, overrides: Record<string, unknown> = 
 async function readMatchPowerFactor(page: Page, id: string): Promise<string | undefined> {
   return page.evaluate(async (id) => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
-      const req = indexedDB.open('firearmlog', 2);
+      const req = indexedDB.open('firearmlog');
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });

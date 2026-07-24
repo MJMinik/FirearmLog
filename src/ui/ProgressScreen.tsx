@@ -3,7 +3,8 @@
 // row without leaving the page, editable anytime).
 import { useEffect, useRef, useState } from 'react';
 import type {
-  AppSettings, Classifier, DrillDef, Firearm, Goal, GunCategory, MalfunctionEntry, Match, Session, SkillAssessment
+  AppSettings, Classifier, DrillDef, Firearm, Goal, GunCategory, MalfunctionEntry, Match, Session, SkillAssessment,
+  SkillSet, TimedSkill
 } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
 import { deleteOne, getAll, getSettings, putOne, putSettings } from '../lib/db.ts';
@@ -17,10 +18,13 @@ import {
   allClassifications, formatDrillScore, personalRecords, roundsByMonth, type RoundsFilter
 } from '../lib/dashboard.ts';
 import { bucketTotals, malfunctionsInRange, ratePerThousand, sessionRatioCounts, spanStartDate } from '../lib/trends.ts';
+import {
+  TIMED_SKILLS, activeSkillSets, coldVsWarm, formatSec, skillLabel, skillPR, skillTrend, skillsWithData
+} from '../lib/skillSets.ts';
 import { matchAccuracyTrend } from '../lib/competition.ts';
 import { buildHeatmap, monthLabels, sessionsOnDay } from '../lib/heatmap.ts';
 import { sessionRounds } from '../lib/stats.ts';
-import { chartDateLabel, dateMode, thinIndices } from '../lib/chartFurniture.ts';
+import { chartDateLabel, dateMode, labeledTicks, thinIndices } from '../lib/chartFurniture.ts';
 import { ChartReadout } from './ChartReadout.tsx';
 import type { View } from './nav.ts';
 import { RoundsByMonthChart } from './screens.tsx';
@@ -46,6 +50,7 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
   const [drills, setDrills] = useState<DrillDef[]>([]);
   const [classifiers, setClassifiers] = useState<Classifier[]>([]);
   const [malfunctions, setMalfunctions] = useState<MalfunctionEntry[]>([]);
+  const [skillSets, setSkillSets] = useState<SkillSet[]>([]);
   const [bump, setBump] = useState(0);
   const [error, setError] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -74,11 +79,12 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
     setError(false);
     void (async () => {
       try {
-        const [g, s, se, _hiddenSettings, m, f, d, c, mf] = await Promise.all([
+        const [g, s, se, _hiddenSettings, m, f, d, c, mf, ss] = await Promise.all([
           getAll<Goal>('goals'), getAll<SkillAssessment>('skills'), getAll<Session>('sessions'),
           getSettings<{ hiddenSuggestions?: Record<string, string[]> }>(),
           getAll<Match>('matches'), getAll<Firearm>('firearms'), getAll<DrillDef>('drills'),
-          getAll<Classifier>('classifiers'), getAll<MalfunctionEntry>('malfunctions')
+          getAll<Classifier>('classifiers'), getAll<MalfunctionEntry>('malfunctions'),
+          getAll<SkillSet>('skillSets')
         ]);
         if (!alive) return;
         // App 7: drop trashed sessions and any malfunctions filed against them, so
@@ -89,6 +95,8 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
         setHiddenSuggestions((_hiddenSettings as { hiddenSuggestions?: Record<string, string[]> } | undefined)?.hiddenSuggestions ?? {});
         setFirearms(f); setDrills(d); setClassifiers(c);
         setMalfunctions(activeMalfunctions(mf, trashedIds));
+        // T3-1: drop sets filed against a trashed session (mirrors malfunctions).
+        setSkillSets(activeSkillSets(ss, trashedIds));
         const settings = await getSettings<AppSettings>();
         if (alive) { setGoldenId(settings?.goldenGoalId ?? ''); setCoachingRemarks(settings?.coachingRemarks !== false); }
       } catch (e) {
@@ -253,6 +261,8 @@ export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open:
 
       <TrendsCard sessions={sessions} matches={matches} firearms={firearms}
         drills={drills} classifiers={classifiers} malfunctions={malfunctions} open={open} />
+
+      <TimedSkillsCard sets={skillSets} />
 
       <SpeedAccuracyTrendCard matches={matches} coachingRemarks={coachingRemarks}
         onDisableRemarks={() => void disableRemarks()} />
@@ -658,6 +668,167 @@ function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunct
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * T3-1: per-skill trend for timed skill work (draws, reloads, splits,
+ * transitions, par drills) — beside the drill trends, same F4 chart-furniture
+ * conventions (y gridlines with unit-aware ticks, date anchors, a tap-readout
+ * that starts as a hint, a last-value label). Cold sets (first work of the
+ * day, no warmup) are marked by SHAPE — a diamond instead of a dot — never by
+ * color alone, so the distinction survives for a colorblind reader too. One
+ * skill's chart at a time, picked by the chip row below (mirrors the Skills
+ * Check rating-trend picker); hidden entirely until at least one skill has a
+ * scoreable set.
+ */
+function TimedSkillsCard({ sets }: { sets: SkillSet[] }) {
+  const available = skillsWithData(sets);
+  const [skillOverride, setSkillOverride] = useState<TimedSkill | null>(null);
+  // Derived, not stateful: whenever `available` changes (e.g. the async load
+  // finishes) the picked skill re-derives to the first one WITH data, unless
+  // the shooter has already tapped a chip themselves.
+  // L5 (audit): a tapped chip's skill can fall OUT of `available` (its only
+  // set was edited/removed on the Log screen) — without the availability
+  // check below, `skill` would keep pointing at it: no chip would show
+  // pressed (the chip row only renders `available` skills) and the PR row
+  // and trend both dead-end empty, even though other skills still have data.
+  // Falling back to the default selection instead means the card always
+  // shows SOMETHING rather than a chip-less dead end.
+  const skill = (skillOverride && available.includes(skillOverride)) ? skillOverride : available[0] ?? null;
+
+  if (available.length === 0 || skill === null) return null;
+
+  const pr = skillPR(sets, skill);
+  const split = coldVsWarm(sets, skill);
+
+  return (
+    <div className="card">
+      <h2>Timed Skills <InfoTip title="Timed Skills">Your best time per set for draws, reloads, splits, transitions, and par drills, logged from Log Session → Timed skills. Diamonds mark a "cold" set — the day's first work, no warmup — so a slower cold number doesn't look like backsliding.</InfoTip></h2>
+      <div className="chip-row" role="group" aria-label="Pick a timed skill">
+        {TIMED_SKILLS.filter((s) => available.includes(s.key)).map((s) => (
+          <button key={s.key} className={`chip ${skill === s.key ? 'on' : ''}`}
+            aria-pressed={skill === s.key} onClick={() => setSkillOverride(s.key)}>{s.label}</button>
+        ))}
+      </div>
+      {pr && (
+        <div className="row" style={{ borderBottom: 'none' }}>
+          <span className="label">Best {skillLabel(skill)}</span>
+          <span className="value" style={{ color: 'var(--accent-ink)' }}>
+            {formatSec(pr.set.bestSec)}{pr.set.cold ? ' · Cold' : ''}
+          </span>
+        </div>
+      )}
+      {split.coldCount > 0 && split.warmCount > 0 && (
+        <p className="report-note" style={{ marginTop: 0 }}>
+          Cold avg {formatSec(split.coldAvgSec as number)} ({split.coldCount}) vs. warmed-up avg{' '}
+          {formatSec(split.warmAvgSec as number)} ({split.warmCount}).
+        </p>
+      )}
+      <TimedSkillTrend key={skill} sets={sets} skill={skill} pr={pr} />
+    </div>
+  );
+}
+
+function TimedSkillTrend({ sets, skill, pr }: {
+  sets: SkillSet[]; skill: TimedSkill; pr: ReturnType<typeof skillPR>;
+}) {
+  const [selIdx, setSelIdx] = useState<number | null>(null);
+  const chrono = skillTrend(sets, skill); // oldest → newest
+  if (chrono.length < 2) {
+    return <p className="report-note">Log at least two sets to see a trend.</p>;
+  }
+
+  const values = chrono.map((p) => p.bestSec);
+  const min = Math.min(...values), max = Math.max(...values);
+  const range = max - min || 1;
+  const ticks = labeledTicks(min, max, (v) => `${v.toFixed(2)}s`);
+  const padL = Math.max(34, 10 + Math.round(5.6 * Math.max(...ticks.map((t) => t.label.length))));
+  const w = 280, h = 140, padR = 12, padT = 14, padB = 20;
+  const stepX = (w - padL - padR) / (chrono.length - 1);
+  const x = (i: number) => padL + i * stepX;
+  // Lower is always better for a timed skill, so a faster (lower) time plots
+  // lower on screen — an improving trend visibly slopes down.
+  const y = (v: number) => padT + (1 - (v - min) / range) * (h - padT - padB);
+
+  const line = chrono.map((p, i) => `${x(i)},${y(p.bestSec)}`).join(' ');
+  const mode = dateMode(chrono[0].date, chrono[chrono.length - 1].date);
+  const dateIdxs = thinIndices(chrono.length, 4);
+  const lastIdx = chrono.length - 1;
+  const lastV = chrono[lastIdx].bestSec;
+  const lastLabelY = y(lastV) < padT + 14 ? y(lastV) + 14 : y(lastV) - 8;
+
+  const sel = selIdx != null && selIdx < chrono.length ? chrono[selIdx] : null;
+  const readout = sel
+    ? `${formatDayKey(sel.date)} — ${formatSec(sel.bestSec)}${sel.cold ? ' · Cold' : ''}${pr != null && sel.id === pr.set.id ? ' · Best' : ''}`
+    : null;
+
+  return (
+    <>
+      <svg viewBox={`0 0 ${w} ${h}`} width="100%" style={{ display: 'block', marginTop: 4 }}
+        role="img" aria-label={`Trend of your best ${skillLabel(skill).toLowerCase()} time across ${chrono.length} sets from ${formatDayKey(chrono[0].date)} to ${formatDayKey(chrono[lastIdx].date)}, lower is better`}>
+        {ticks.map((t) => (
+          <g key={t.label}>
+            <line x1={padL} y1={y(t.value)} x2={w - padR} y2={y(t.value)} stroke="var(--separator)" strokeWidth={0.5} />
+            <text className="chart-tick" x={padL - 5} y={y(t.value) + 3} textAnchor="end"
+              fill="var(--text-dim)" fontSize="10" fontFamily="inherit">
+              {t.label}
+            </text>
+          </g>
+        ))}
+        {dateIdxs.map((i) => (
+          <text className="chart-date" key={`d-${i}`} x={x(i)} y={h - 6}
+            textAnchor={i === 0 ? 'start' : i === lastIdx ? 'end' : 'middle'}
+            fill="var(--text-dim)" fontSize="10" fontFamily="inherit">
+            {chartDateLabel(chrono[i].date, mode)}
+          </text>
+        ))}
+        <polyline points={line} fill="none" stroke="var(--text-dim)" strokeWidth={1.5}
+          strokeLinejoin="round" strokeLinecap="round" />
+        {/* Cold sets are marked by SHAPE (a diamond), never by color alone — the
+            spec's hard line, so the distinction reads for a colorblind viewer
+            too. The PR keeps its usual amber/larger treatment either way. */}
+        {chrono.map((p, i) => {
+          const isPR = pr != null && p.id === pr.set.id;
+          const r = isPR ? 4 : 2.5;
+          const fill = isPR ? 'var(--accent)' : 'var(--text-dim)';
+          const cx = x(i), cy = y(p.bestSec);
+          if (p.cold) {
+            const d = r * 1.5;
+            return (
+              <rect key={p.id} x={cx - d / 2} y={cy - d / 2} width={d} height={d}
+                fill={fill} transform={`rotate(45 ${cx} ${cy})`} />
+            );
+          }
+          return <circle key={p.id} cx={cx} cy={cy} r={r} fill={fill} />;
+        })}
+        {sel != null && selIdx != null && (
+          <circle className="chart-sel-ring" cx={x(selIdx)} cy={y(sel.bestSec)}
+            r={6.5} fill="none" stroke="var(--accent)" strokeWidth={1.75}
+            style={{ pointerEvents: 'none' }} />
+        )}
+        {chrono.map((p, i) => {
+          const left = i === 0 ? 0 : (x(i - 1) + x(i)) / 2;
+          const right = i === lastIdx ? w : (x(i) + x(i + 1)) / 2;
+          return (
+            <rect className="chart-hit" key={`hit-${p.id}`} x={left} y={0}
+              width={right - left} height={h} fill="transparent" style={{ cursor: 'pointer' }}
+              onClick={() => setSelIdx((prev) => (prev === i ? null : i))}>
+              <title>{`${formatDayKey(p.date)}: ${formatSec(p.bestSec)}${p.cold ? ' (cold)' : ''}`}</title>
+            </rect>
+          );
+        })}
+        {(sel == null || selIdx === lastIdx) && (
+          <text className="chart-last-label" x={x(lastIdx)} y={lastLabelY} textAnchor="end"
+            fill="var(--text)" fontSize="11" fontWeight="600" fontFamily="inherit"
+            stroke="var(--bg-card)" strokeWidth={3.5} strokeLinejoin="round"
+            style={{ pointerEvents: 'none', paintOrder: 'stroke' }}>
+            {formatSec(lastV)}
+          </text>
+        )}
+      </svg>
+      <ChartReadout value={readout} hint="Tap a dot (or diamond) to see its date and number." />
+    </>
   );
 }
 

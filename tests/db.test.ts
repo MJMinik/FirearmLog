@@ -9,6 +9,7 @@ import {
   restoreSnapshot,
   applyAmmoMerge,
   commitClassifiers,
+  rewriteSessionSkillSets,
   clearAllData,
   getAll,
   getMediaForOwner,
@@ -24,7 +25,7 @@ function dataSetWith(over: Record<string, unknown[]>): DataSet {
   const base: Record<string, unknown[]> = {
     firearms: [], sessions: [], drills: [], ammunition: [], purchases: [],
     maintenance: [], malfunctions: [], magazines: [], optics: [], parts: [],
-    goals: [], skills: [], matches: [], classifiers: [], references: [], trash: [], media: [],
+    goals: [], skills: [], skillSets: [], matches: [], classifiers: [], references: [], trash: [], media: [],
   };
   return { ...base, ...over } as unknown as DataSet;
 }
@@ -94,6 +95,39 @@ test('commitClassifiers writes all rows in one transaction (T1-5)', async () => 
   assert.ok(has(rows, 'cl-a') && has(rows, 'cl-b') && has(rows, 'cl-c'));
 });
 
+test('M2: rewriteSessionSkillSets replaces one session\'s sets in one transaction', async () => {
+  await clearAllData();
+  await rewriteSessionSkillSets([], [
+    { id: 'ss-old-1', sessionId: 'se-rw', skill: 'draw', count: 5, bestSec: 1.4 },
+    { id: 'ss-old-2', sessionId: 'se-rw', skill: 'reload', count: 3, bestSec: 2.1 },
+  ]);
+  let rows = await getAll<{ id: string; sessionId: string }>('skillSets');
+  assert.ok(has(rows, 'ss-old-1') && has(rows, 'ss-old-2'));
+
+  // A save() rewrite: delete the old ids, put a fresh set — must land together.
+  await rewriteSessionSkillSets(['ss-old-1', 'ss-old-2'], [
+    { id: 'ss-new-1', sessionId: 'se-rw', skill: 'split', count: 10, bestSec: 0.9 },
+  ]);
+  rows = await getAll<{ id: string; sessionId: string }>('skillSets');
+  assert.ok(!has(rows, 'ss-old-1') && !has(rows, 'ss-old-2'), 'the old rows are gone');
+  assert.ok(has(rows, 'ss-new-1'), 'the new row landed');
+});
+
+test('M2: rewriteSessionSkillSets is atomic — a poisoned new row rolls the WHOLE rewrite back', async () => {
+  await clearAllData();
+  await rewriteSessionSkillSets([], [
+    { id: 'ss-keep-1', sessionId: 'se-rw2', skill: 'draw', count: 5, bestSec: 1.4 },
+  ]);
+  // IndexedDB cannot clone a function, so this put throws mid-transaction and
+  // the whole transaction (including the delete of ss-keep-1) aborts.
+  await assert.rejects(rewriteSessionSkillSets(['ss-keep-1'], [
+    { id: 'ss-poison', sessionId: 'se-rw2', skill: 'reload', oops: () => {} },
+  ]));
+  const rows = await getAll<{ id: string }>('skillSets');
+  assert.ok(has(rows, 'ss-keep-1'), 'the old row survived the failed rewrite (never deleted without a replacement)');
+  assert.ok(!has(rows, 'ss-poison'), 'no partial write from the failed rewrite');
+});
+
 test('validateSnapshotShape rejects a damaged file before any write', () => {
   assert.throws(() => validateSnapshotShape({} as unknown as Snapshot));
   assert.throws(() => validateSnapshotShape(snapshotWith({ firearms: [{ notAnId: true }] } as Record<string, unknown[]>)));
@@ -137,7 +171,7 @@ test('clearAllData erases every store and the settings (hard-gate)', async () =>
 
   await clearAllData();
 
-  for (const store of ['firearms', 'sessions', 'goals', 'media', 'meta', 'matches', 'classifiers', 'trash'] as const) {
+  for (const store of ['firearms', 'sessions', 'goals', 'media', 'meta', 'matches', 'classifiers', 'trash', 'skillSets'] as const) {
     assert.equal((await getAll(store)).length, 0, `${store} is empty after clearAllData`);
   }
   assert.equal(await getSettings(), undefined, 'settings gone after clearAllData');

@@ -10,11 +10,12 @@
 //
 // Lives in the UI layer because reportImages (canvas downscaling) is
 // browser-only; the pure HTML builder stays in src/lib/reports.ts.
-import type { Firearm, MalfunctionEntry, Session } from '../lib/types.ts';
+import type { Firearm, MalfunctionEntry, Session, SkillSet } from '../lib/types.ts';
 import { getAll, getMediaForOwner } from '../lib/db.ts';
 import { formatDayKey } from '../lib/dates.ts';
 import { buildReportHtml, type ReportSection } from '../lib/reports.ts';
 import { reportImageUrls } from './reportImages.ts';
+import { skillLabel } from '../lib/skillSets.ts';
 
 /** Plain labels for a session's kind — single source for report + form. */
 export const SESSION_KIND_LABEL: Record<string, string> = {
@@ -22,6 +23,18 @@ export const SESSION_KIND_LABEL: Record<string, string> = {
   dry_fire: 'Dry fire',
   class: 'Class',
 };
+
+/** M1 (audit): a timed-skill time cell, guarded so a malformed/missing number
+ *  renders as '—' instead of "NaNs" or a thrown TypeError. Exported for the
+ *  unit test — the surrounding report builder needs a DOM (window.open). */
+export function formatFiniteSec(v: number | null | undefined): string {
+  return typeof v === 'number' && Number.isFinite(v) ? `${v.toFixed(2)}s` : '—';
+}
+
+/** M1 (audit): a timed-skill rep-count cell, same guard as formatFiniteSec. */
+export function formatFiniteCount(v: number | null | undefined): string {
+  return typeof v === 'number' && Number.isFinite(v) ? String(v) : '—';
+}
 
 /**
  * Open the printable Session Report for a saved session.
@@ -41,9 +54,10 @@ export async function openSessionReport(
     '<!doctype html><meta charset="utf-8"><body style="font:15px -apple-system,Arial,sans-serif;padding:40px;color:#555">Preparing report…</body>'
   );
   try {
-    const [firearms, allMalf, sessionMedia] = await Promise.all([
+    const [firearms, allMalf, allSkillSets, sessionMedia] = await Promise.all([
       getAll<Firearm>('firearms'),
       getAll<MalfunctionEntry>('malfunctions'),
+      getAll<SkillSet>('skillSets'),
       // S-5: only THIS session's media — not the whole photo/video library.
       getMediaForOwner('session', session.id),
     ]);
@@ -67,6 +81,22 @@ export async function openSessionReport(
         m.resolution || '',
         m.notes || '',
       ]);
+    // T3-1: the day's timed-skill sets, in the order they were logged.
+    // M1 (audit): a stored set is only as trustworthy as whatever wrote it —
+    // count/bestSec/typicalSec are guarded with Number.isFinite so one
+    // malformed record (e.g. an L2-preserved malformed row) renders '—' for
+    // that cell instead of throwing and blanking the WHOLE report.
+    const skillRows = allSkillSets
+      .filter((s) => s.sessionId === session.id)
+      .map((s) => [
+        skillLabel(s.skill),
+        firearms.find((f) => f.id === s.firearmId)?.name ?? '—',
+        formatFiniteCount(s.count),
+        formatFiniteSec(s.bestSec),
+        formatFiniteSec(s.typicalSec),
+        s.cold ? 'Cold' : '',
+        s.notes || '',
+      ]);
     const photos = await reportImageUrls(sessionMedia, 'session', session.id);
     const sections: ReportSection[] = [
       { heading: 'Session', rows: [
@@ -78,6 +108,7 @@ export async function openSessionReport(
       ] },
       { heading: 'Guns', rows: gunRows },
       ...(drillRows.length ? [{ heading: 'Drills', table: { headers: ['Drill', 'Distance', 'Time', 'Score'], rows: drillRows } }] : []),
+      ...(skillRows.length ? [{ heading: 'Timed Skills', table: { headers: ['Skill', 'Gun', 'Reps', 'Best', 'Typical', 'Cold', 'Notes'], rows: skillRows } }] : []),
       ...(malfRows.length ? [{ heading: 'Malfunctions', table: { headers: ['Type', 'Gun', 'Round', 'Cleared', 'Notes'], rows: malfRows } }] : []),
       ...(session.notes ? [{ heading: 'Notes', rows: [{ label: '', value: session.notes }] }] : []),
       ...(photos.length ? [{ heading: 'Photos', images: photos }] : []),
