@@ -176,6 +176,13 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     essentials: false, night: false, tactical: false
   });
   const [checklistOpen, setChecklistOpen] = useState(false);
+  // Change 1: Guns & Rounds collapsible. Starts open when no gun chosen yet
+  // (required-field guard), auto-collapses once the first gun is selected.
+  // Existing sessions load collapsed (summary shows selection; one tap opens).
+  const [gunsOpen, setGunsOpen] = useState(true);
+  // Change 4b: Wrap-Up Reveal defaultOpen driver — flips true when a rangeFee
+  // error fires so the hidden field becomes visible (mirrors gunsOpen pattern).
+  const [wrapUpOpen, setWrapUpOpen] = useState(false);
   const [picking, setPicking] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   // Inline quick-add a drill from inside the Pick Drills sheet: the lite form
@@ -308,6 +315,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           }
         }
         setMagPick(mp); setMagOverride(mo);
+        // Change 1: existing session loads Guns & Rounds collapsed — summary
+        // shows the selection; one tap opens it (mirrors the Magazines choice).
+        setGunsOpen(false);
         setDrills(s.drills.map(toRow));
         setAmmoRows((s.ammoUsage ?? []).map((u) => ({ ammoId: u.ammoId, rounds: String(u.rounds) })));
         // Editing/converting an existing session: never auto-overwrite its saved
@@ -327,8 +337,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           fundamentals: s.selfRating?.fundamentals !== undefined ? String(s.selfRating.fundamentals) : '',
           satisfaction: s.selfRating?.satisfaction !== undefined ? String(s.selfRating.satisfaction) : ''
         });
-        setRangeFee(s.rangeFee === null ? '' : String(s.rangeFee));
+        const loadedFee = s.rangeFee === null ? '' : String(s.rangeFee);
+        setRangeFee(loadedFee);
         setNotes(s.notes);
+        // Change 4b: open Wrap-Up when the existing session already has content.
+        if (loadedFee !== '' || s.notes.trim() !== '') setWrapUpOpen(true);
         setChecklist(normalizeChecklist(s.checklist));
         const mySets = allSkillSets.filter((ss) => ss.sessionId === id);
         setOldSkillSetIds(mySets.map((ss) => ss.id));
@@ -503,6 +516,10 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       else delete next[fid];
       return next;
     });
+    // Change 1: auto-collapse Guns & Rounds once the FIRST gun is added
+    // (fires once — transitioning from zero guns to one). The user can
+    // always reopen it; collapsing just tidies the form after the pick.
+    if (on && Object.keys(rounds).length === 0) setGunsOpen(false);
     if (!on) {
       // Removing a gun drops its rounds (above), so its mag picks and custom
       // counts go with them — re-adding the gun starts clean, same as rounds.
@@ -793,6 +810,12 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       if (sp.field === 'mags' && sp.gunId) {
         setMagOpen((p) => ({ ...p, [sp.gunId!]: true }));
       }
+      // Change 1: force Guns & Rounds open when validation targets it so the
+      // inputs the error message refers to aren't hidden.
+      if (sp.field === 'guns' || sp.field === 'mags') setGunsOpen(true);
+      // Change 4b: force Wrap-Up open when rangeFee error fires so the field
+      // isn't hidden inside the collapsed Reveal.
+      if (sp.field === 'rangeFee') setWrapUpOpen(true);
       const scrollTarget =
         sp.field === 'date' ? dateFieldRef.current :
         sp.field === 'rangeFee' ? rangeFeeFieldRef.current :
@@ -1023,187 +1046,141 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       </div>
 
       <div className="card" ref={gunsCardRef}>
-        <h2>Guns &amp; Rounds <span className="field-required-marker">(required)</span></h2>
+        {/* Change 1: collapsible header mirrors the Gear Checklist pattern. */}
+        <button className="checklist-disclosure" aria-expanded={gunsOpen}
+          onClick={() => setGunsOpen((v) => !v)}>
+          <span className="checklist-disclosure-title">Guns &amp; Rounds <span className="field-required-marker">(required)</span></span>
+          <span className="checklist-disclosure-toggle">{gunsOpen ? 'Hide' : 'Show'} <Icon name={gunsOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
+        </button>
+        {/* Always-visible summary line: shows selected guns + rounds (and mag
+            count when applicable) whether the body is open or closed. */}
+        {selectedGuns.length > 0 ? (
+          <p className="report-note">
+            {selectedGuns.map((f) => {
+              const r = rounds[f.id];
+              const rStr = r && r.trim() !== '' ? `${r} rds` : '— rds';
+              const mCount = (magPick[f.id] ?? []).length;
+              return `${f.name} · ${rStr}${mCount > 0 ? ` · ${mCount} mag${mCount === 1 ? '' : 's'}` : ''}`;
+            }).join(' | ')}
+          </p>
+        ) : (
+          !gunsOpen && (
+            <p className="report-note">{Object.keys(rounds).length === 0 ? 'No gun selected yet.' : `${Object.keys(rounds).length} gun(s) selected`}</p>
+          )
+        )}
         <FieldProblem id="session-guns-err" problem={problem} field="guns" />
         <FieldProblem id="session-mags-err" problem={problem} field="mags" />
-        {firearms.length === 0 && <p className="report-note">No guns yet — add one from the Guns screen.</p>}
-        {/* Audit #10: active guns, plus any already on this session (so a since-retired gun still shows on its own record). */}
-        {pickableGuns(firearms, Object.keys(rounds)).map((f) => {
-          const on = rounds[f.id] !== undefined;
-          // Per-session magazine tracking: a quiet per-gun disclosure, shown
-          // only for live-fire guns that have linked mags — hidden the same
-          // way ammo and drills are, and never a nag (spec decision 3).
-          const gunMags = on && kind !== 'dry_fire' ? magsForGun(f.id) : [];
-          const picked = magPick[f.id] ?? [];
-          // Ghosts: mags this session saved that have since been deleted or
-          // unlinked from the gun. They must stay VISIBLE — an invisible pick
-          // would still re-save and still soak up a share of the split — so
-          // they render as removable rows instead of vanishing.
-          const ghostIds = on && kind !== 'dry_fire'
-            ? picked.filter((id) => !gunMags.some((m) => m.id === id)) : [];
-          const open = !!magOpen[f.id];
-          return (
-            <Fragment key={f.id}>
-              <div className="row">
-                <button className={`gun-toggle ${on ? 'on' : ''}`} aria-pressed={on}
-                  onClick={() => { syncGun(f.id, rounds[f.id] === undefined); setTouched(true); }}>
-                  {f.name}
-                </button>
-                {on && (
-                  <input className="rounds-input" type="number" inputMode="numeric" min="0"
-                    placeholder={planned ? 'planned rounds' : kind === 'dry_fire' ? 'reps' : 'rounds'}
-                    aria-label={`Rounds for ${f.name}`}
-                    value={rounds[f.id]}
-                    onChange={(e) => { setRounds((prev) => ({ ...prev, [f.id]: e.target.value })); if (problem?.field === 'guns') setProblem(null); }} />
-                )}
-              </div>
-              {(gunMags.length > 0 || ghostIds.length > 0) && (
-                <div className="session-mags">
-                  <button className="checklist-disclosure" aria-expanded={open}
-                    onClick={() => toggleMagSection(f.id)}>
-                    <span className="checklist-disclosure-title">
-                      Magazines{picked.length > 0 && !open
-                        ? ` — ${picked.map((id) => magazines.find((m) => m.id === id)?.label ?? '—').join(', ')}`
-                        : ''}
-                    </span>
-                    <span className="checklist-disclosure-toggle">{open ? 'Hide' : 'Show'} <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
-                  </button>
-                  {open && (
-                    <>
-                      {gunMags.map((m) => {
-                        const magOn = picked.includes(m.id);
-                        return (
-                          <div className="row" key={m.id}>
-                            <button className={`gun-toggle ${magOn ? 'on' : ''}`} aria-pressed={magOn}
-                              onClick={() => toggleMag(f.id, m.id)}>
-                              {m.label}{m.active ? '' : ' (retired)'}
-                            </button>
-                            {magOn && (
-                              <input className="rounds-input" type="number" inputMode="numeric" min="0"
-                                aria-label={`Rounds through ${m.label} with ${f.name}`}
-                                value={magCount(f.id, m.id)}
-                                onChange={(e) => editMagCount(f.id, m.id, e.target.value)} />
-                            )}
-                          </div>
-                        );
-                      })}
-                      {ghostIds.map((id) => {
-                        const m = magazines.find((x) => x.id === id);
-                        const label = m ? `${m.label} (no longer linked)` : 'Deleted magazine';
-                        return (
-                          <div className="row" key={id}>
-                            <button className="gun-toggle on" aria-pressed={true}
-                              onClick={() => toggleMag(f.id, id)}>
-                              {label}
-                            </button>
-                            <input className="rounds-input" type="number" inputMode="numeric" min="0"
-                              aria-label={`Rounds through ${m?.label ?? 'a deleted magazine'} with ${f.name}`}
-                              value={magCount(f.id, id)}
-                              onChange={(e) => editMagCount(f.id, id, e.target.value)} />
-                          </div>
-                        );
-                      })}
-                      {picked.length > 0 && (magOverride[f.id] ? (
+        {gunsOpen && (
+          <>
+            {firearms.length === 0 && <p className="report-note">No guns yet — add one from the Guns screen.</p>}
+            {/* Audit #10: active guns, plus any already on this session (so a since-retired gun still shows on its own record). */}
+            {pickableGuns(firearms, Object.keys(rounds)).map((f) => {
+              const on = rounds[f.id] !== undefined;
+              // Per-session magazine tracking: a quiet per-gun disclosure, shown
+              // only for live-fire guns that have linked mags — hidden the same
+              // way ammo and drills are, and never a nag (spec decision 3).
+              const gunMags = on && kind !== 'dry_fire' ? magsForGun(f.id) : [];
+              const picked = magPick[f.id] ?? [];
+              // Ghosts: mags this session saved that have since been deleted or
+              // unlinked from the gun. They must stay VISIBLE — an invisible pick
+              // would still re-save and still soak up a share of the split — so
+              // they render as removable rows instead of vanishing.
+              const ghostIds = on && kind !== 'dry_fire'
+                ? picked.filter((id) => !gunMags.some((m) => m.id === id)) : [];
+              const open = !!magOpen[f.id];
+              return (
+                <Fragment key={f.id}>
+                  <div className="row">
+                    <button className={`gun-toggle ${on ? 'on' : ''}`} aria-pressed={on}
+                      onClick={() => { syncGun(f.id, rounds[f.id] === undefined); setTouched(true); }}>
+                      {f.name}
+                    </button>
+                    {on && (
+                      <input className="rounds-input" type="number" inputMode="numeric" min="0"
+                        placeholder={planned ? 'planned rounds' : kind === 'dry_fire' ? 'reps' : 'rounds'}
+                        aria-label={`Rounds for ${f.name}`}
+                        value={rounds[f.id]}
+                        onChange={(e) => { setRounds((prev) => ({ ...prev, [f.id]: e.target.value })); if (problem?.field === 'guns') setProblem(null); }} />
+                    )}
+                  </div>
+                  {(gunMags.length > 0 || ghostIds.length > 0) && (
+                    <div className="session-mags">
+                      <button className="checklist-disclosure" aria-expanded={open}
+                        onClick={() => toggleMagSection(f.id)}>
+                        <span className="checklist-disclosure-title">
+                          Magazines{picked.length > 0 && !open
+                            ? ` — ${picked.map((id) => magazines.find((m) => m.id === id)?.label ?? '—').join(', ')}`
+                            : ''}
+                        </span>
+                        <span className="checklist-disclosure-toggle">{open ? 'Hide' : 'Show'} <Icon name={open ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
+                      </button>
+                      {open && (
                         <>
-                          {(() => {
-                            const ov = magOverride[f.id] ?? {};
-                            const sum = picked.reduce((t, id) => t + (Number(ov[id]) || 0), 0);
-                            const gunTotal = Number(rounds[f.id]) || 0;
-                            if (sum !== gunTotal) return (
-                              <p className="report-note warn">
-                                These mag rounds total {sum.toLocaleString()}, but {f.name} logged{' '}
-                                {gunTotal.toLocaleString()} — match them to save.
-                              </p>
+                          {gunMags.map((m) => {
+                            const magOn = picked.includes(m.id);
+                            return (
+                              <div className="row" key={m.id}>
+                                <button className={`gun-toggle ${magOn ? 'on' : ''}`} aria-pressed={magOn}
+                                  onClick={() => toggleMag(f.id, m.id)}>
+                                  {m.label}{m.active ? '' : ' (retired)'}
+                                </button>
+                                {magOn && (
+                                  <input className="rounds-input" type="number" inputMode="numeric" min="0"
+                                    aria-label={`Rounds through ${m.label} with ${f.name}`}
+                                    value={magCount(f.id, m.id)}
+                                    onChange={(e) => editMagCount(f.id, m.id, e.target.value)} />
+                                )}
+                              </div>
                             );
-                            return <p className="report-note">Custom split — each mag&rsquo;s lifetime count uses these numbers.</p>;
-                          })()}
-                          <button className="button secondary" onClick={() => resetMagSplit(f.id)}>Reset to even split</button>
+                          })}
+                          {ghostIds.map((id) => {
+                            const m = magazines.find((x) => x.id === id);
+                            const label = m ? `${m.label} (no longer linked)` : 'Deleted magazine';
+                            return (
+                              <div className="row" key={id}>
+                                <button className="gun-toggle on" aria-pressed={true}
+                                  onClick={() => toggleMag(f.id, id)}>
+                                  {label}
+                                </button>
+                                <input className="rounds-input" type="number" inputMode="numeric" min="0"
+                                  aria-label={`Rounds through ${m?.label ?? 'a deleted magazine'} with ${f.name}`}
+                                  value={magCount(f.id, id)}
+                                  onChange={(e) => editMagCount(f.id, id, e.target.value)} />
+                              </div>
+                            );
+                          })}
+                          {picked.length > 0 && (magOverride[f.id] ? (
+                            <>
+                              {(() => {
+                                const ov = magOverride[f.id] ?? {};
+                                const sum = picked.reduce((t, id) => t + (Number(ov[id]) || 0), 0);
+                                const gunTotal = Number(rounds[f.id]) || 0;
+                                if (sum !== gunTotal) return (
+                                  <p className="report-note warn">
+                                    These mag rounds total {sum.toLocaleString()}, but {f.name} logged{' '}
+                                    {gunTotal.toLocaleString()} — match them to save.
+                                  </p>
+                                );
+                                return <p className="report-note">Custom split — each mag&rsquo;s lifetime count uses these numbers.</p>;
+                              })()}
+                              <button className="button secondary" onClick={() => resetMagSplit(f.id)}>Reset to even split</button>
+                            </>
+                          ) : (
+                            <p className="report-note">Rounds split evenly across the mags you pick — tap a number to adjust.</p>
+                          ))}
                         </>
-                      ) : (
-                        <p className="report-note">Rounds split evenly across the mags you pick — tap a number to adjust.</p>
-                      ))}
-                    </>
-                  )}
-                </div>
-              )}
-            </Fragment>
-          );
-        })}
-      </div>
-
-      <div className="card">
-        <button className="checklist-disclosure" aria-expanded={checklistOpen}
-          onClick={() => setChecklistOpen((v) => !v)}>
-          <span className="checklist-disclosure-title">Gear Checklist</span>
-          <span className="checklist-disclosure-toggle">{checklistOpen ? 'Hide' : 'Show'} <Icon name={checklistOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
-        </button>
-        {checklistProgressInfo.toTake > 0 && (
-          <>
-            <div className="dc-bar-wrap">
-              <div className="dc-bar-fill" style={{ width: `${checklistProgressInfo.pct}%` }} />
-            </div>
-            <p className="report-note">
-              {checklistProgressInfo.packed === checklistProgressInfo.toTake
-                ? <><span aria-hidden="true">✓</span> All packed ({checklistProgressInfo.packed}/{checklistProgressInfo.toTake})</>
-                : `${checklistProgressInfo.packed} / ${checklistProgressInfo.toTake} packed`}
-            </p>
-          </>
-        )}
-
-        {checklistOpen && (
-          <>
-            <p className="report-note">Check items you plan to bring, then mark each as packed when ready.</p>
-
-            {firearms.length > 0 && (
-              <div className="checklist-section">
-                <h3 className="checklist-section-title">Firearms</h3>
-                {pickableGuns(firearms, Object.keys(rounds)).map((f) => {
-                  const itemId = `f_${f.id}`;
-                  const state = itemState(checklist, itemId);
-                  return (
-                    <div className="checklist-item" key={f.id}>
-                      <label className="checklist-take">
-                        <input type="checkbox" checked={!!state.take}
-                          onChange={(e) => syncGun(f.id, e.target.checked)} />
-                        {f.name}
-                      </label>
-                      {state.take && (
-                        <label className="checklist-packed">
-                          <input type="checkbox" checked={!!state.packed}
-                            onChange={(e) => setChecklist((cl) => setItemPacked(cl, itemId, e.target.checked))} />
-                          Packed
-                        </label>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            )}
-
-            {checklistSection('essentials', 'Range Essentials')}
-
-            <div className="row">
-              <button className={`gun-toggle ${checklist.nightMode ? 'on' : ''}`} aria-pressed={checklist.nightMode}
-                onClick={() => { setChecklist((cl) => setChecklistMode(cl, 'night', !cl.nightMode, customItems)); setTouched(true); }}>
-                Include night-session gear in this checklist
-              </button>
-            </div>
-            {checklist.nightMode && checklistSection('night', 'Night Session')}
-
-            <div className="row">
-              <button className={`gun-toggle ${checklist.tacticalMode ? 'on' : ''}`} aria-pressed={checklist.tacticalMode}
-                onClick={() => { setChecklist((cl) => setChecklistMode(cl, 'tactical', !cl.tacticalMode, customItems)); setTouched(true); }}>
-                Include class / force-on-force gear in this checklist
-              </button>
-            </div>
-            {checklist.tacticalMode && checklistSection('tactical', 'Class / force-on-force gear')}
-
-            {checklistProgressInfo.toTake > 0 && (
-              <button className="button secondary" onClick={printChecklist}>Print Checklist</button>
-            )}
+                  )}
+                </Fragment>
+              );
+            })}
           </>
         )}
       </div>
+
+      {/* Change 2: Ammo Used moved up — immediately after Guns & Rounds, since
+          the auto-sync and mismatch warning tie them together. */}
 
       {/* First-run discoverability (Michael's fresh-eyes find, session 55):
           with an empty ammo library this card used to vanish entirely, so a
@@ -1312,14 +1289,17 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         removedMedia={removedMedia} setRemovedMedia={(fn) => { setTouched(true); setRemovedMedia(fn); }}
         newFiles={newFiles} setNewFiles={(fn) => { setTouched(true); setNewFiles(fn); }} />
 
+      {/* Change 4a: Timed Skills gets a real section heading so it reads as a
+          section like the others. The Reveal stays collapsed by default. */}
       <div className="card">
+        <h2>Timed Skills</h2>
         {/* T3-1: progressive disclosure — timed skill work (draws, reloads,
             splits, transitions, par drills) is capture-after-the-fact ("10
             draws, best 1.42, generally recorded when I get home"), so it
             stays collapsed and out of a newcomer's default view (charter §7 /
             DESIGN_DIRECTION §7). Opens itself once a set exists on an
             existing session, same rule the ratings Reveal below uses. */}
-        <Reveal label="+ Timed skills" defaultOpen={editing && skillSets.length > 0}>
+        <Reveal label="Add a timed-skills set" defaultOpen={editing && skillSets.length > 0}>
           <p className="report-note" style={{ marginTop: 0 }}>
             One entry per set — how many, your best time, and whether it was your first work of
             the day with no warmup (cold).
@@ -1348,97 +1328,104 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               </button>
             );
           })}
+          {/* Change 3: when the user taps "+ Add Set" with no gun selected,
+              also open Guns & Rounds so the required section is visible. */}
           <button className="button secondary" onClick={() => {
-            if (!selectedGuns.length) return;
+            if (!selectedGuns.length) { setGunsOpen(true); return; }
             setSkillSheetIdx(-1);
           }} disabled={!selectedGuns.length}>
             + Add Set
           </button>
+          {/* Change 3: plain, specific copy that names the section and explains why. */}
           {!selectedGuns.length && (
-            <p className="report-note">Pick a gun above first.</p>
+            <p className="report-note"><Icon name="info" size={18} style={{ verticalAlign: 'middle', marginRight: 4 }} />Choose a gun in Guns &amp; Rounds first — a timed-skills set attaches to one gun.</p>
           )}
         </Reveal>
       </div>
 
+      {/* Change 4b: Malfunctions — collapsed by default on a new session with no
+          content; opens automatically when the session already has malfunctions. */}
       <div className="card">
-        <h2>Malfunctions</h2>
-        {malfs.map((m, i) => (
-          <div className="drill-edit" key={i}>
-            <div className="drill-edit-head">
-              <strong>{m.type || 'New malfunction'}</strong>
-              <button className="icon-btn" aria-label="Remove malfunction"
-                onClick={() => { setTouched(true); setMalfs((prev) => prev.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
+        <Reveal label="+ Add Malfunction" defaultOpen={editing && malfs.length > 0}>
+          <h2>Malfunctions</h2>
+          {malfs.map((m, i) => (
+            <div className="drill-edit" key={i}>
+              <div className="drill-edit-head">
+                <strong>{m.type || 'New malfunction'}</strong>
+                <button className="icon-btn" aria-label="Remove malfunction"
+                  onClick={() => { setTouched(true); setMalfs((prev) => prev.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
+              </div>
+              <label className="field">What happened
+                <select value={m.otherType ? 'Other' : m.type}
+                  onChange={(e) => { const v = e.target.value; updateMalf(i, { otherType: v === 'Other', type: v === 'Other' ? '' : v }); }}>
+                  <option value="">Pick one…</option>
+                  {mergedMalfTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+                  <option value="Other">Other…</option>
+                </select>
+              </label>
+              {m.otherType && (
+                <label className="field">Describe it
+                  <input value={m.type} placeholder="e.g. Brass over bolt" name="malfunction-desc" {...noAutofillProps}
+                    onChange={(e) => updateMalf(i, { type: e.target.value })} />
+                </label>
+              )}
+              <label className="field">Which gun
+                <select value={m.firearmId}
+                  onChange={(e) => updateMalf(i, { firearmId: e.target.value })}>
+                  {(selectedGuns.length ? selectedGuns : firearms).map((f) =>
+                    <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+              </label>
+              <label className="field">How you cleared it
+                <select value={m.otherRes ? 'Other' : m.resolution}
+                  onChange={(e) => { const v = e.target.value; updateMalf(i, { otherRes: v === 'Other', resolution: v === 'Other' ? '' : v }); }}>
+                  <option value="">Pick one…</option>
+                  {mergedClearMethods.map((c) => <option key={c} value={c}>{c}</option>)}
+                  <option value="Other">Other…</option>
+                </select>
+              </label>
+              {m.otherRes && (
+                <label className="field">How did you clear it?
+                  <input value={m.resolution} placeholder="e.g. Stripped the mag and racked" name="malfunction-clear" {...noAutofillProps}
+                    onChange={(e) => updateMalf(i, { resolution: e.target.value })} />
+                </label>
+              )}
+              {ammoLib.length > 0 && (
+                <label className="field">Ammo <span className="field-optional">(optional)</span>
+                  <select value={m.ammoId}
+                    onChange={(e) => updateMalf(i, { ammoId: e.target.value })}>
+                    <option value="">— Not sure —</option>
+                    {ammoLib.map((a) => <option key={a.id} value={a.id}>{ammoLabel(a)}</option>)}
+                  </select>
+                </label>
+              )}
+              {magazines.length > 0 && (
+                <label className="field">Magazine <span className="field-optional">(optional)</span>
+                  <select value={m.magazineId}
+                    onChange={(e) => updateMalf(i, { magazineId: e.target.value })}>
+                    <option value="">— Not sure —</option>
+                    {magazinesForFirearm(magazines, m.firearmId).map((mag) =>
+                      <option key={mag.id} value={mag.id}>{mag.label}{mag.active === false ? ' (retired)' : ''}</option>)}
+                  </select>
+                </label>
+              )}
+              <label className="field">Round number <span className="field-optional">(optional)</span>
+                <input type="number" inputMode="numeric" min="0" value={m.roundCount} placeholder="e.g. 47"
+                  autoComplete="off"
+                  onChange={(e) => updateMalf(i, { roundCount: e.target.value })} />
+              </label>
+              <label className="field">Notes
+                <input value={m.notes}
+                  onChange={(e) => updateMalf(i, { notes: e.target.value })} />
+              </label>
             </div>
-            <label className="field">What happened
-              <select value={m.otherType ? 'Other' : m.type}
-                onChange={(e) => { const v = e.target.value; updateMalf(i, { otherType: v === 'Other', type: v === 'Other' ? '' : v }); }}>
-                <option value="">Pick one…</option>
-                {mergedMalfTypes.map((t) => <option key={t} value={t}>{t}</option>)}
-                <option value="Other">Other…</option>
-              </select>
-            </label>
-            {m.otherType && (
-              <label className="field">Describe it
-                <input value={m.type} placeholder="e.g. Brass over bolt" name="malfunction-desc" {...noAutofillProps}
-                  onChange={(e) => updateMalf(i, { type: e.target.value })} />
-              </label>
-            )}
-            <label className="field">Which gun
-              <select value={m.firearmId}
-                onChange={(e) => updateMalf(i, { firearmId: e.target.value })}>
-                {(selectedGuns.length ? selectedGuns : firearms).map((f) =>
-                  <option key={f.id} value={f.id}>{f.name}</option>)}
-              </select>
-            </label>
-            <label className="field">How you cleared it
-              <select value={m.otherRes ? 'Other' : m.resolution}
-                onChange={(e) => { const v = e.target.value; updateMalf(i, { otherRes: v === 'Other', resolution: v === 'Other' ? '' : v }); }}>
-                <option value="">Pick one…</option>
-                {mergedClearMethods.map((c) => <option key={c} value={c}>{c}</option>)}
-                <option value="Other">Other…</option>
-              </select>
-            </label>
-            {m.otherRes && (
-              <label className="field">How did you clear it?
-                <input value={m.resolution} placeholder="e.g. Stripped the mag and racked" name="malfunction-clear" {...noAutofillProps}
-                  onChange={(e) => updateMalf(i, { resolution: e.target.value })} />
-              </label>
-            )}
-            {ammoLib.length > 0 && (
-              <label className="field">Ammo <span className="field-optional">(optional)</span>
-                <select value={m.ammoId}
-                  onChange={(e) => updateMalf(i, { ammoId: e.target.value })}>
-                  <option value="">— Not sure —</option>
-                  {ammoLib.map((a) => <option key={a.id} value={a.id}>{ammoLabel(a)}</option>)}
-                </select>
-              </label>
-            )}
-            {magazines.length > 0 && (
-              <label className="field">Magazine <span className="field-optional">(optional)</span>
-                <select value={m.magazineId}
-                  onChange={(e) => updateMalf(i, { magazineId: e.target.value })}>
-                  <option value="">— Not sure —</option>
-                  {magazinesForFirearm(magazines, m.firearmId).map((mag) =>
-                    <option key={mag.id} value={mag.id}>{mag.label}{mag.active === false ? ' (retired)' : ''}</option>)}
-                </select>
-              </label>
-            )}
-            <label className="field">Round number <span className="field-optional">(optional)</span>
-              <input type="number" inputMode="numeric" min="0" value={m.roundCount} placeholder="e.g. 47"
-                autoComplete="off"
-                onChange={(e) => updateMalf(i, { roundCount: e.target.value })} />
-            </label>
-            <label className="field">Notes
-              <input value={m.notes}
-                onChange={(e) => updateMalf(i, { notes: e.target.value })} />
-            </label>
-          </div>
-        ))}
-        <button className="button secondary" onClick={() => { setTouched(true); setMalfs((prev) => [
-          ...prev,
-          { firearmId: (selectedGuns[0] ?? firearms[0])?.id ?? '', type: '', resolution: '', notes: '',
-            ammoId: '', magazineId: '', roundCount: '' }
-        ]); }}>+ Add Malfunction</button>
+          ))}
+          <button className="button secondary" onClick={() => { setTouched(true); setMalfs((prev) => [
+            ...prev,
+            { firearmId: (selectedGuns[0] ?? firearms[0])?.id ?? '', type: '', resolution: '', notes: '',
+              ammoId: '', magazineId: '', roundCount: '' }
+          ]); }}>+ Add Malfunction</button>
+        </Reveal>
       </div>
 
       <div className="card">
@@ -1462,22 +1449,102 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       </>
       )}
 
+      {/* Change 2: Gear Checklist moved down — it's a pre-range planning tool
+          and belongs near the end of a post-range logging form. */}
       <div className="card">
-        <h2>Wrap-Up</h2>
-        <label className={`field${problem?.field === 'rangeFee' ? ' invalid' : ''}`}>Range fee ($)
-          <input
-            ref={rangeFeeFieldRef}
-            id="session-rangefee-input"
-            type="number" inputMode="decimal" min="0"
-            value={rangeFee}
-            onChange={(e) => { setRangeFee(e.target.value); if (problem?.field === 'rangeFee') setProblem(null); }}
-            aria-invalid={problem?.field === 'rangeFee' || undefined}
-            aria-describedby={problem?.field === 'rangeFee' ? 'session-rangefee-err' : undefined} />
-          <FieldProblem id="session-rangefee-err" problem={problem} field="rangeFee" />
-        </label>
-        <label className="field">Notes
-          <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} />
-        </label>
+        <button className="checklist-disclosure" aria-expanded={checklistOpen}
+          onClick={() => setChecklistOpen((v) => !v)}>
+          <span className="checklist-disclosure-title">Gear Checklist</span>
+          <span className="checklist-disclosure-toggle">{checklistOpen ? 'Hide' : 'Show'} <Icon name={checklistOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
+        </button>
+        {checklistProgressInfo.toTake > 0 && (
+          <>
+            <div className="dc-bar-wrap">
+              <div className="dc-bar-fill" style={{ width: `${checklistProgressInfo.pct}%` }} />
+            </div>
+            <p className="report-note">
+              {checklistProgressInfo.packed === checklistProgressInfo.toTake
+                ? <><span aria-hidden="true">✓</span> All packed ({checklistProgressInfo.packed}/{checklistProgressInfo.toTake})</>
+                : `${checklistProgressInfo.packed} / ${checklistProgressInfo.toTake} packed`}
+            </p>
+          </>
+        )}
+
+        {checklistOpen && (
+          <>
+            <p className="report-note">Check items you plan to bring, then mark each as packed when ready.</p>
+
+            {firearms.length > 0 && (
+              <div className="checklist-section">
+                <h3 className="checklist-section-title">Firearms</h3>
+                {pickableGuns(firearms, Object.keys(rounds)).map((f) => {
+                  const itemId = `f_${f.id}`;
+                  const state = itemState(checklist, itemId);
+                  return (
+                    <div className="checklist-item" key={f.id}>
+                      <label className="checklist-take">
+                        <input type="checkbox" checked={!!state.take}
+                          onChange={(e) => syncGun(f.id, e.target.checked)} />
+                        {f.name}
+                      </label>
+                      {state.take && (
+                        <label className="checklist-packed">
+                          <input type="checkbox" checked={!!state.packed}
+                            onChange={(e) => setChecklist((cl) => setItemPacked(cl, itemId, e.target.checked))} />
+                          Packed
+                        </label>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {checklistSection('essentials', 'Range Essentials')}
+
+            <div className="row">
+              <button className={`gun-toggle ${checklist.nightMode ? 'on' : ''}`} aria-pressed={checklist.nightMode}
+                onClick={() => { setChecklist((cl) => setChecklistMode(cl, 'night', !cl.nightMode, customItems)); setTouched(true); }}>
+                Include night-session gear in this checklist
+              </button>
+            </div>
+            {checklist.nightMode && checklistSection('night', 'Night Session')}
+
+            <div className="row">
+              <button className={`gun-toggle ${checklist.tacticalMode ? 'on' : ''}`} aria-pressed={checklist.tacticalMode}
+                onClick={() => { setChecklist((cl) => setChecklistMode(cl, 'tactical', !cl.tacticalMode, customItems)); setTouched(true); }}>
+                Include class / force-on-force gear in this checklist
+              </button>
+            </div>
+            {checklist.tacticalMode && checklistSection('tactical', 'Class / force-on-force gear')}
+
+            {checklistProgressInfo.toTake > 0 && (
+              <button className="button secondary" onClick={printChecklist}>Print Checklist</button>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Change 4b: Wrap-Up — collapsed by default on a new session with no
+          content; opens automatically when the session already has a fee or notes,
+          or when a rangeFee validation error fires while it's collapsed. */}
+      <div className="card">
+        <Reveal label="Wrap-Up" defaultOpen={wrapUpOpen}>
+          <label className={`field${problem?.field === 'rangeFee' ? ' invalid' : ''}`}>Range fee ($)
+            <input
+              ref={rangeFeeFieldRef}
+              id="session-rangefee-input"
+              type="number" inputMode="decimal" min="0"
+              value={rangeFee}
+              onChange={(e) => { setRangeFee(e.target.value); if (problem?.field === 'rangeFee') setProblem(null); }}
+              aria-invalid={problem?.field === 'rangeFee' || undefined}
+              aria-describedby={problem?.field === 'rangeFee' ? 'session-rangefee-err' : undefined} />
+            <FieldProblem id="session-rangefee-err" problem={problem} field="rangeFee" />
+          </label>
+          <label className="field">Notes
+            <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} />
+          </label>
+        </Reveal>
       </div>
 
       <button className="button" disabled={saving} onClick={() => void save()}>

@@ -704,7 +704,7 @@ function TimedSkillsCard({ sets }: { sets: SkillSet[] }) {
 
   return (
     <div className="card">
-      <h2>Timed Skills <InfoTip title="Timed Skills">Your best time per set for draws, reloads, splits, transitions, and par drills, logged from Log Session → Timed skills. Diamonds mark a "cold" set — the day's first work, no warmup — so a slower cold number doesn't look like backsliding.</InfoTip></h2>
+      <h2>Timed Skills <InfoTip title="Timed Skills">Your best time per set for draws, reloads, splits, transitions, and par drills, logged from Log Session → Timed Skills. Diamonds mark a "cold" set — the day's first work, no warmup — so a slower cold number doesn't look like backsliding.</InfoTip></h2>
       <div className="chip-row" role="group" aria-label="Pick a timed skill">
         {TIMED_SKILLS.filter((s) => available.includes(s.key)).map((s) => (
           <button key={s.key} className={`chip ${skill === s.key ? 'on' : ''}`}
