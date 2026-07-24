@@ -180,6 +180,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   // (required-field guard), auto-collapses once the first gun is selected.
   // Existing sessions load collapsed (summary shows selection; one tap opens).
   const [gunsOpen, setGunsOpen] = useState(true);
+  // Drills collapsible. New sessions start open (adding drills is the point).
+  // Existing sessions with drills load collapsed (summary shows count; one tap opens).
+  const [drillsOpen, setDrillsOpen] = useState(true);
   // Change 4b: Wrap-Up Reveal defaultOpen driver — flips true when a rangeFee
   // error fires so the hidden field becomes visible (mirrors gunsOpen pattern).
   const [wrapUpOpen, setWrapUpOpen] = useState(false);
@@ -319,6 +322,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         // shows the selection; one tap opens it (mirrors the Magazines choice).
         setGunsOpen(false);
         setDrills(s.drills.map(toRow));
+        // Drills collapse on load when the session already has drills —
+        // summary shows the count; one tap opens (mirrors gunsOpen pattern).
+        if (s.drills.length > 0) setDrillsOpen(false);
         setAmmoRows((s.ammoUsage ?? []).map((u) => ({ ammoId: u.ammoId, rounds: String(u.rounds) })));
         // Editing/converting an existing session: never auto-overwrite its saved
         // ammo — treat the section as already user-managed.
@@ -1236,45 +1242,63 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       )}
 
       <div className="card" ref={drillsCardRef}>
+        {/* Drills collapsible — mirrors Guns & Rounds pattern. Starts open on
+            a new session (adding drills is the point); loads collapsed for
+            existing sessions that already have drills (summary shows count). */}
+        <button className="checklist-disclosure" aria-expanded={drillsOpen}
+          onClick={() => setDrillsOpen((v) => !v)}>
+          <span className="checklist-disclosure-title">Drills <InfoTip title="Drills">Pick from your drill library below, or add a new drill right here — it saves to your library and lands on this session. Manage every drill (edit, delete, full details) under More &rarr; Drills.</InfoTip></span>
+          <span className="checklist-disclosure-toggle">{drillsOpen ? 'Hide' : 'Show'} <Icon name={drillsOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
+        </button>
+        {/* Always-visible summary line — visible whether the body is open or
+            closed. Shows count when drills exist, otherwise a plain "none yet." */}
+        <p className="report-note">
+          {drills.length > 0
+            ? `${drills.length} drill${drills.length === 1 ? '' : 's'} logged`
+            : 'No drills yet.'}
+        </p>
         <FieldProblem id="session-drills-err" problem={problem} field="drills" />
-        <h2>Drills <InfoTip title="Drills">Pick from your drill library below, or add a new drill right here — it saves to your library and lands on this session. Manage every drill (edit, delete, full details) under More &rarr; Drills.</InfoTip></h2>
-        {drills.map((d, i) => (
-          <div className="drill-edit" key={i}>
-            <div className="drill-edit-head">
-              <strong>{d.name}</strong>
-              <button className="icon-btn" aria-label={`Remove ${d.name}`}
-                onClick={() => { setTouched(true); setDrills((prev) => prev.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
-            </div>
-            <div className="drill-edit-fields">
-              <label className="field small">Distance
-                <input value={d.distance} placeholder="7 yd"
-                  onChange={(e) => setDrills((p) => p.map((x, n) => n === i ? { ...x, distance: e.target.value } : x))} />
-              </label>
-              <label className="field small">Time (s)
-                <input type="number" inputMode="decimal" value={d.time}
-                  onChange={(e) => { setDrills((p) => p.map((x, n) => n === i ? { ...x, time: e.target.value } : x)); if (problem?.field === 'drills') setProblem(null); }} />
-              </label>
-              <label className="field small">Score
-                <input type="number" inputMode="decimal" value={d.score}
-                  onChange={(e) => { setDrills((p) => p.map((x, n) => n === i ? { ...x, score: e.target.value } : x)); if (problem?.field === 'drills') setProblem(null); }} />
-              </label>
-              <label className="field small">Out of
-                <input type="number" inputMode="decimal" value={d.maxScore}
-                  onChange={(e) => { setDrills((p) => p.map((x, n) => n === i ? { ...x, maxScore: e.target.value } : x)); if (problem?.field === 'drills') setProblem(null); }} />
-              </label>
-            </div>
-            <label className="field">Drill notes
-              <input value={d.notes}
-                onChange={(e) => setDrills((p) => p.map((x, n) => n === i ? { ...x, notes: e.target.value } : x))} />
-            </label>
-          </div>
-        ))}
-        <button className="button secondary" onClick={() => { setPicked(new Set()); setPicking(true); }}>+ Add Drill</button>
+        {drillsOpen && (
+          <>
+            {drills.map((d, i) => (
+              <div className="drill-edit" key={i}>
+                <div className="drill-edit-head">
+                  <strong>{d.name}</strong>
+                  <button className="icon-btn" aria-label={`Remove ${d.name}`}
+                    onClick={() => { setTouched(true); setDrills((prev) => prev.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
+                </div>
+                <div className="drill-edit-fields">
+                  <label className="field small">Distance
+                    <input value={d.distance} placeholder="7 yd"
+                      onChange={(e) => setDrills((p) => p.map((x, n) => n === i ? { ...x, distance: e.target.value } : x))} />
+                  </label>
+                  <label className="field small">Time (s)
+                    <input type="number" inputMode="decimal" value={d.time}
+                      onChange={(e) => { setDrills((p) => p.map((x, n) => n === i ? { ...x, time: e.target.value } : x)); if (problem?.field === 'drills') setProblem(null); }} />
+                  </label>
+                  <label className="field small">Score
+                    <input type="number" inputMode="decimal" value={d.score}
+                      onChange={(e) => { setDrills((p) => p.map((x, n) => n === i ? { ...x, score: e.target.value } : x)); if (problem?.field === 'drills') setProblem(null); }} />
+                  </label>
+                  <label className="field small">Out of
+                    <input type="number" inputMode="decimal" value={d.maxScore}
+                      onChange={(e) => { setDrills((p) => p.map((x, n) => n === i ? { ...x, maxScore: e.target.value } : x)); if (problem?.field === 'drills') setProblem(null); }} />
+                  </label>
+                </div>
+                <label className="field">Drill notes
+                  <input value={d.notes}
+                    onChange={(e) => setDrills((p) => p.map((x, n) => n === i ? { ...x, notes: e.target.value } : x))} />
+                </label>
+              </div>
+            ))}
+            <button className="button secondary" onClick={() => { setPicked(new Set()); setPicking(true); }}>+ Add Drill</button>
 
-        {drills.length > 0 && (
-          <button className="button secondary" style={{ marginTop: 12 }} onClick={printDrills}>
-            Print Drills
-          </button>
+            {drills.length > 0 && (
+              <button className="button secondary" style={{ marginTop: 12 }} onClick={printDrills}>
+                Print Drills
+              </button>
+            )}
+          </>
         )}
       </div>
 
