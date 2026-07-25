@@ -99,6 +99,12 @@ test.describe('Timed skills — Log Session', () => {
     await main.getByRole('button', { name: '+ Add Set' }).click();
     await expect(page.getByRole('dialog', { name: 'Add Set' })).toHaveCount(0);
     await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    // Michael's tap-test finding (session 80): the jump must explain itself AT
+    // the destination — the guns card's error line says why you were brought
+    // here, and picking a gun clears it.
+    await expect(page.locator('#session-guns-err')).toContainText('a timed-skills set attaches to one gun');
+    await main.getByRole('button', { name: 'Shadow Systems DR920' }).click();
+    await expect(page.locator('#session-guns-err')).toHaveCount(0);
   });
 
   test('a saved set appears on the Session Report', async ({ page }) => {

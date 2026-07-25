@@ -1473,6 +1473,12 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           <button className="button secondary" onClick={() => {
             if (!selectedGuns.length) {
               setGunsOpen(true);
+              // Michael's tap-test finding (session 80): the jump to Guns &
+              // Rounds landed with NO explanation at the destination — the
+              // note under + Add Set is off-screen by the time you arrive.
+              // Say why IN the guns card, via the existing error line; picking
+              // a gun clears it (the standing guns-problem reset on toggle).
+              setProblem({ field: 'guns', message: 'Pick a gun first — a timed-skills set attaches to one gun.' });
               gunsCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
               // Cold-audit fix (session 78): move focus to the now-open Guns &
               // Rounds disclosure too — scrollIntoView alone is a silent no-op
