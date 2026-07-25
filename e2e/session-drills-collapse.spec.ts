@@ -130,4 +130,24 @@ test.describe('Drills collapsible', () => {
     const drillsCard = page.getByTestId('session-drills-card');
     await expect(drillsCard.locator('.report-note').first()).toContainText('2 drills logged');
   });
+
+  // Cold-audit regression pin (session 78, High): the Drills InfoTip sits in
+  // a sibling row next to the disclosure button (M-2), not inside it — tapping
+  // help must never collapse the section, and the tip's own layout must not
+  // squeeze the disclosure button down to nothing at narrow widths.
+  test('opening the Drills help tip does not collapse the section', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Log');
+    await page.getByRole('button', { name: '+ Log Session' }).click();
+
+    const drillsCard = page.getByTestId('session-drills-card');
+    const disclosure = page.getByTestId('session-drills-disclosure');
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+
+    await drillsCard.locator('.infotip-btn').click();
+    await expect(drillsCard.locator('.infotip-bubble')).toBeVisible();
+    // The section must still be open — tapping help is not the same tap as
+    // toggling the disclosure.
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+  });
 });

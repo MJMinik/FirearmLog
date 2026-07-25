@@ -43,9 +43,11 @@ async function startSessionWithGun(page: import('@playwright/test').Page, rounds
  * what the sticky preselect already checked when the disclosure opened (it
  * may have pre-checked some or all of `all`).
  *
- * Not `exact: true` — a pressed toggle button's accessible name includes a
- * synthesized checked-state glyph ("✓ DR9-1" / "☐ DR9-1"), so match by
- * contains (same reason the original spec used a substring match here).
+ * Not `exact: true` — the mag toggles render a checkbox glyph via CSS
+ * generated content (`.gun-toggle::before`, app.css: '\u2713'/'\u2610'), and
+ * generated content joins the accessible-name computation, so the button's
+ * accessible name is "\u2713 DR9-1", not "DR9-1". Exact matching therefore
+ * finds zero buttons; substring matching is required, not a convenience.
  */
 async function pickMags(page: import('@playwright/test').Page, all: string[], want: string[]): Promise<void> {
   for (const label of all) {

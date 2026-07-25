@@ -176,9 +176,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     essentials: false, night: false, tactical: false
   });
   const [checklistOpen, setChecklistOpen] = useState(false);
-  // Change 1: Guns & Rounds collapsible. Starts open when no gun chosen yet
-  // (required-field guard), auto-collapses once the first gun is selected.
-  // Existing sessions load collapsed (summary shows selection; one tap opens).
+  // Change 1 / H-1: Guns & Rounds collapsible. A NEW session starts open and
+  // STAYS open through the whole gun pick — picking a gun and typing rounds
+  // is one motion (see syncGun below for why the old auto-collapse was
+  // removed). An EXISTING session loads collapsed on open (summary shows the
+  // saved selection; one tap opens it) — see the load effect above.
   const [gunsOpen, setGunsOpen] = useState(true);
   // Drills collapsible. New sessions start open (adding drills is the point).
   // Existing sessions with drills load collapsed (summary shows count; one tap opens).
@@ -788,7 +790,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     if (fee !== null && (!Number.isFinite(fee) || fee < 0)) {
       // M-3 (audit): a negative fee used to save and SUBTRACT from lifetime
       // Costs — block it here, same field/error path a bad number already used.
-      return { field: 'rangeFee', message: 'Enter the fee as a positive dollar amount, or leave it blank.' };
+      // Cold-audit fix (Low): $0 is a valid fee (a free session) — say so
+      // exactly, rather than "positive" which reads as excluding zero.
+      return { field: 'rangeFee', message: 'Enter the fee as a dollar amount (zero or more), or leave it blank.' };
     }
     return null;
   }
