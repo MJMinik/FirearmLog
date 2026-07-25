@@ -125,11 +125,11 @@ test.describe('Unsaved-changes guard on every exit (F3)', () => {
     await page.getByRole('button', { name: '+ Log Session' }).click();
     await expect(page.getByRole('heading', { name: 'Log Session' })).toBeVisible();
 
-    // M-1: the Malfunctions Reveal is collapsed by default on a fresh
+    // M-1: the "Log a malfunction" Reveal is collapsed by default on a fresh
     // session — open it by its real name before the row-add button is
-    // visible. Scoped to the card: the desktop sidebar has its own
-    // "Malfunctions" nav link with the same accessible name.
-    await page.getByTestId('session-malfs-card').getByRole('button', { name: 'Malfunctions', exact: true }).click();
+    // visible. Scoped to the card since the desktop sidebar has its own
+    // "Malfunctions" nav link nearby.
+    await page.getByTestId('session-malfs-card').getByRole('button', { name: 'Log a malfunction', exact: true }).click();
     // A pure click-only edit — no field typed, no change event bubbles.
     await page.getByRole('button', { name: '+ Add Malfunction' }).click();
     await page.getByRole('main').getByRole('button', { name: 'Cancel' }).click();

@@ -11,10 +11,20 @@ export function Reveal({
   label,
   children,
   defaultOpen = false,
+  forceOpenKey,
 }: {
   label: string;
   children: ReactNode;
   defaultOpen?: boolean;
+  // Cold-audit fix (session 78, High): `defaultOpen` only reopens the
+  // section the first time its VALUE changes to true — a caller whose own
+  // "should be open" flag was already true (e.g. a second failed save,
+  // after the first already flipped it) has nothing left to change, so a
+  // manually-collapsed section stays collapsed and hides its own error.
+  // A caller bumps this integer on every occasion that should force the
+  // section open (even repeated ones), so the effect below always has a
+  // fresh dependency value to fire on.
+  forceOpenKey?: number;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   // L13: when a caller learns (often after an async load) that the section is
@@ -22,6 +32,7 @@ export function Reveal({
   // only ever force it OPEN, never closed, so the user can still collapse it, and
   // callers that never pass defaultOpen (the default false) are unaffected.
   useEffect(() => { if (defaultOpen) setOpen(true); }, [defaultOpen]);
+  useEffect(() => { if (forceOpenKey !== undefined && forceOpenKey > 0) setOpen(true); }, [forceOpenKey]);
   return (
     <div className="reveal">
       <button

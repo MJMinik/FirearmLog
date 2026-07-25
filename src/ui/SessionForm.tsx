@@ -58,6 +58,17 @@ interface MalfRow {
   // App 2: transient (not saved) — true while typing a custom "Other" value.
   otherType?: boolean; otherRes?: boolean;
 }
+
+// Cold-audit fix (session 78): the ONE predicate for "this row is worth
+// keeping" — a row counts (and saves) if the shooter filled in ANYTHING:
+// type, how-cleared, notes, ammo, magazine, or round number. A completely
+// blank row (the state right after tapping "+ Add Malfunction") does not.
+// Shared by the save path and the summary count, so the count on screen can
+// never claim more rows than doPersist() actually writes.
+function malfHasContent(m: MalfRow): boolean {
+  return !!(m.type || m.resolution.trim() || m.notes.trim()
+    || m.ammoId || m.magazineId || m.roundCount.trim());
+}
 interface AmmoRow { ammoId: string; rounds: string; }
 
 // T3-1: one timed-skill SET per row — held as strings in the form, same
@@ -180,7 +191,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   // STAYS open through the whole gun pick — picking a gun and typing rounds
   // is one motion (see syncGun below for why the old auto-collapse was
   // removed). An EXISTING session loads collapsed on open (summary shows the
-  // saved selection; one tap opens it) — see the load effect above.
+  // saved selection; one tap opens it) — see the load effect below.
   const [gunsOpen, setGunsOpen] = useState(true);
   // Drills collapsible. New sessions start open (adding drills is the point).
   // Existing sessions with drills load collapsed (summary shows count; one tap opens).
@@ -188,6 +199,15 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   // Change 4b: Wrap-Up Reveal defaultOpen driver — flips true when a rangeFee
   // error fires so the hidden field becomes visible (mirrors gunsOpen pattern).
   const [wrapUpOpen, setWrapUpOpen] = useState(false);
+  // Cold-audit fix (session 78, High): wrapUpOpen only forces the Reveal open
+  // the FIRST time it flips true — once it's already true, a second failed
+  // save that sets it to true again is a no-op (same value), so a
+  // manually-collapsed Wrap-Up stayed collapsed on every save after the
+  // first, hiding the rangeFee error entirely (it's excluded from the top
+  // banner) with Cancel offering only Discard. This counter bumps on every
+  // failed save that targets rangeFee, giving Reveal's forceOpenKey a fresh
+  // value to react to no matter how many times the section was collapsed.
+  const [wrapUpForceKey, setWrapUpForceKey] = useState(0);
   const [picking, setPicking] = useState(false);
   const [picked, setPicked] = useState<Set<string>>(new Set());
   // Inline quick-add a drill from inside the Pick Drills sheet: the lite form
@@ -529,7 +549,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     // motion, and auto-collapsing mid-pick unmounted the rounds input right
     // under their finger (sessions were saved with 0 rounds, silently). An
     // EXISTING session still loads collapsed — see the load effect above
-    // (setGunsOpen(false), ~line 323), which is correct and unchanged: that
+    // (its own setGunsOpen(false)), which is correct and unchanged: that
     // summary-then-one-tap pattern is fine once the shooter is just reviewing
     // or editing a record, not actively building one.
     if (!on) {
@@ -832,8 +852,10 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       // inputs the error message refers to aren't hidden.
       if (sp.field === 'guns' || sp.field === 'mags') setGunsOpen(true);
       // Change 4b: force Wrap-Up open when rangeFee error fires so the field
-      // isn't hidden inside the collapsed Reveal.
-      if (sp.field === 'rangeFee') setWrapUpOpen(true);
+      // isn't hidden inside the collapsed Reveal. setWrapUpForceKey always
+      // bumps (even when wrapUpOpen was already true) so a Wrap-Up the
+      // shooter re-collapsed after an earlier failed save still reopens.
+      if (sp.field === 'rangeFee') { setWrapUpOpen(true); setWrapUpForceKey((k) => k + 1); }
       const scrollTarget =
         sp.field === 'date' ? dateFieldRef.current :
         sp.field === 'rangeFee' ? rangeFeeFieldRef.current :
@@ -894,13 +916,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       // Malfunctions: rewrite this session's set.
       for (const mid of oldMalfIds) await deleteOne('malfunctions', mid);
       for (const m of malfs) {
-        // Keep a row if the shooter filled in ANYTHING — type, how-cleared, notes,
-        // ammo, magazine, or round number. Only a completely blank row is skipped,
-        // so partly-filled context (e.g. ammo + round but no type) is never silently
-        // dropped (review 1.4). A blank type reads as "Other" downstream.
-        const hasContent = m.type || m.resolution.trim() || m.notes.trim()
-          || m.ammoId || m.magazineId || m.roundCount.trim();
-        if (!hasContent) continue;
+        // Keep a row if the shooter filled in ANYTHING (malfHasContent) — a
+        // completely blank row is skipped, so partly-filled context (e.g.
+        // ammo + round but no type) is never silently dropped (review 1.4).
+        // A blank type reads as "Other" downstream.
+        if (!malfHasContent(m)) continue;
         await putOne('malfunctions', stampNew({
           sessionId: sid, date, firearmId: m.firearmId,
           type: m.type, resolution: m.resolution.trim(), notes: m.notes.trim(),
@@ -1264,7 +1284,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             <span className="checklist-disclosure-title">Drills</span>
             <span className="checklist-disclosure-toggle">{drillsOpen ? 'Hide' : 'Show'} <Icon name={drillsOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
           </button>
-          <InfoTip title="Drills">Pick from your drill library below, or add a new drill right here — it saves to your library and lands on this session. Manage every drill (edit, delete, full details) under More &rarr; Drills.</InfoTip>
+          <InfoTip title="Drills">Pick from your drill library, or add a new drill right here — it saves to your library and lands on this session. Manage every drill (edit, delete, full details) under More &rarr; Drills.</InfoTip>
         </div>
         {/* Always-visible summary line — visible whether the body is open or
             closed. Shows count when drills exist, otherwise a plain "none yet." */}
@@ -1374,6 +1394,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             if (!selectedGuns.length) {
               setGunsOpen(true);
               gunsCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              // Cold-audit fix (session 78): move focus to the now-open Guns &
+              // Rounds disclosure too — scrollIntoView alone is a silent no-op
+              // for keyboard/VoiceOver users, who need the focus move itself
+              // to get an announcement of where they landed and why.
+              (gunsCardRef.current?.querySelector('.checklist-disclosure') as HTMLElement | null)?.focus();
               return;
             }
             setSkillSheetIdx(-1);
@@ -1392,9 +1417,16 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       <div className="card" data-testid="session-malfs-card">
         <h2>Malfunctions</h2>
         <p className="report-note">
-          {malfs.length > 0 ? `${malfs.length} malfunction${malfs.length === 1 ? '' : 's'} logged` : 'None logged.'}
+          {(() => {
+            // Cold-audit fix (session 78): count only rows doPersist() will
+            // actually write (malfHasContent) — a freshly-added blank row
+            // used to inflate this to "1 malfunction logged" while save()
+            // stored zero.
+            const n = malfs.filter(malfHasContent).length;
+            return n > 0 ? `${n} malfunction${n === 1 ? '' : 's'} logged` : 'No malfunctions yet.';
+          })()}
         </p>
-        <Reveal label="Malfunctions" defaultOpen={editing && malfs.length > 0}>
+        <Reveal label="Log a malfunction" defaultOpen={editing && malfs.length > 0}>
           {malfs.map((m, i) => (
             <div className="drill-edit" key={i}>
               <div className="drill-edit-head">
@@ -1576,7 +1608,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           content; opens automatically when the session already has a fee or notes,
           or when a rangeFee validation error fires while it's collapsed. */}
       <div className="card">
-        <Reveal label="Wrap-Up" defaultOpen={wrapUpOpen}>
+        <Reveal label="Wrap-Up" defaultOpen={wrapUpOpen} forceOpenKey={wrapUpForceKey}>
           <label className={`field${problem?.field === 'rangeFee' ? ' invalid' : ''}`}>Range fee ($)
             <input
               ref={rangeFeeFieldRef}

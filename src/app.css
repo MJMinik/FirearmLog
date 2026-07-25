@@ -529,8 +529,13 @@ select.category-pick {
 /* M-2 (audit): the Drills disclosure wraps its button + InfoTip in a flex row
    so the info button sits OUTSIDE the toggle <button> (was button-in-button —
    invalid HTML, and tapping help collapsed the section). */
-.disclosure-row { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.disclosure-row .checklist-disclosure { flex: 1; }
+/* Cold-audit fix (session 78, second pass): measured 5px vertical
+   misalignment on the info icon and a 2px tap-target overlap with the
+   toggle button — align-items/gap tightened and margin-bottom moved here
+   (off the nested .checklist-disclosure, which still needs its own
+   margin-bottom of 0 so it doesn't double up inside this row). */
+.disclosure-row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.disclosure-row .checklist-disclosure { flex: 1; margin-bottom: 0; }
 /* Cold-audit fix (session 78, High): without wrap + these two rules, opening
    the tip at narrow widths (390px) squeezed the toggle button down to ~98px
    and rendered the bubble beside it instead of full-width below. .infotip is

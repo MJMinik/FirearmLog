@@ -141,7 +141,7 @@ test.describe('Timed skills — Log Session', () => {
     await sheet.getByRole('button', { name: 'Remove set' }).click();
     await expect(sheet).toHaveCount(0);
     await expect(main.locator('.row-tap').filter({ hasText: 'Draw' })).toHaveCount(0);
-    await expect(main.getByText('Pick a gun above first.')).toHaveCount(0);
+    await expect(main.getByText('Choose a gun in Guns & Rounds first', { exact: false })).toHaveCount(0);
   });
 });
 

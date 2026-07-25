@@ -92,8 +92,10 @@ test.describe('Guns & Rounds collapsible', () => {
     const gunsCard = page.getByTestId('session-guns-card');
     const disclosure = page.getByTestId('session-guns-disclosure');
     await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
-    // The summary line reports at least one real gun name — not a placeholder.
-    await expect(gunsCard.locator('.report-note').first()).toContainText('rds');
+    // The summary line reports at least one real gun name with an actual
+    // rounds figure — not just the literal substring "rds" (which would also
+    // match a placeholder like "· — rds").
+    await expect(gunsCard.locator('.report-note').first()).toHaveText(/\S.* · \d+ rds/);
   });
 
   test('removing the only gun blocks Save and keeps the section visible with the error', async ({ page }) => {
