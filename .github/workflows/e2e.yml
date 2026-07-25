@@ -48,3 +48,14 @@ jobs:
           name: playwright-report-${{ matrix.shard }}
           path: playwright-report/
           retention-days: 7
+
+  # Branch protection needs one check name that summarizes the whole matrix
+  # (a matrix job reports as N separate checks, "e2e (1)".."e2e (4)", which
+  # is brittle if the shard count ever changes) — this aggregates them.
+  e2e-required:
+    name: e2e (all shards)
+    needs: e2e
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: '[ "${{ needs.e2e.result }}" = "success" ]'

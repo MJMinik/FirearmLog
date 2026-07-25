@@ -375,8 +375,15 @@ test('demo story: a malfunction\'s magazine is always one that was actually in t
   const sessById = new Map((stores.sessions as unknown as Sess2[]).map((s) => [s.id, s]));
   const malfunctions = stores.malfunctions as unknown as Malf[];
 
-  const withMagAndSession = malfunctions.filter((mf) => mf.magazineId && mf.sessionId);
-  assert.ok(withMagAndSession.length > 0, 'the demo must have at least one malfunction tagged with a magazine');
+  const taggedWithMag = malfunctions.filter((mf) => mf.magazineId);
+  const withMagAndSession = taggedWithMag.filter((mf) => mf.sessionId);
+  // Every tagged malfunction must actually carry a sessionId — a malfunction
+  // with a magazineId but no sessionId would silently dodge the check below,
+  // and the story requires the count to hold (was 5 at write time; the
+  // floor guards against tags quietly vanishing on a future regen).
+  assert.equal(withMagAndSession.length, taggedWithMag.length,
+    `every magazine-tagged malfunction must carry a sessionId too (${taggedWithMag.length - withMagAndSession.length} tagged malfunction(s) have no sessionId and would dodge the consistency check)`);
+  assert.ok(withMagAndSession.length >= 5, `the demo must have at least 5 malfunctions tagged with a magazine (got ${withMagAndSession.length})`);
 
   for (const mf of withMagAndSession) {
     const sess = sessById.get(mf.sessionId!);
@@ -386,4 +393,18 @@ test('demo story: a malfunction\'s magazine is always one that was actually in t
     assert.ok(magIds.includes(mf.magazineId!),
       `${mf.id}: magazineId ${mf.magazineId} must be among session ${mf.sessionId}'s magIds for ${mf.firearmId} (got [${magIds.join(', ')}])`);
   }
+});
+
+test('demo story: the newest malfunction knows its magazine — the site walkthrough opens it (H-5)', () => {
+  // make-demo.ts's malfunction-tagging block promises: "The site walkthrough
+  // opens the NEWEST malfunction — it must be one that knows." Nothing
+  // previously guarded that promise; if a future regen's RNG stream (or the
+  // H-5 fix's session-pool fallback) ever left it unset, the walkthrough
+  // would silently show the "—" no-magazine state instead of the demo.
+  type Malf = { id: string; date: string; magazineId?: string | null };
+  const malfunctions = stores.malfunctions as unknown as Malf[];
+  assert.ok(malfunctions.length > 0, 'the demo must have at least one malfunction');
+  const newestMf = [...malfunctions].sort((a, b) => a.date.localeCompare(b.date)).pop()!;
+  assert.ok(newestMf.magazineId,
+    `the newest malfunction (${newestMf.id}, ${newestMf.date}) must have a truthy magazineId — the site walkthrough opens it`);
 });
