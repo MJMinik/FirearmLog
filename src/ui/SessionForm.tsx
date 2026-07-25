@@ -84,6 +84,24 @@ function blankSkillSetRow(firearmId: string, dryFire: boolean): SkillSetRow {
   return { skill: 'draw', firearmId, dryFire, count: '', bestSec: '', typicalSec: '', parSec: '', cold: false, repTimes: '', notes: '' };
 }
 
+// Cold-audit fix (High): a PLANNED session's stored rounds:0 is a database
+// COERCION of a blank box (planned rounds are optional — saveProblem() lets
+// a plan save with nothing typed, and the record stores 0), not a typed
+// zero. Converting a plan straight to logged used to carry that 0 into
+// `rounds` as the string "0" — which is NOT blank, so the App 1a check right
+// above never fired, and Save could silently persist a live session with 0
+// rounds and no warning (the exact silent-0 path 1a exists to close).
+// On convert there is no way to tell a coerced 0 from a shooter who really
+// did type 0 while planning (both are stored identically) — so this treats
+// EVERY 0 as coerced and re-seeds it blank, forcing the 1a check to fire and
+// make the shooter confirm. The cost is one extra "0" keystroke for the rare
+// case of a plan that genuinely called for zero rounds on a gun (e.g. a
+// support gun carried but not planned to be fired); the benefit is closing
+// the silent-0 path, which is the more dangerous failure.
+function seedConvertRounds(r: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(r).map(([fid, v]) => [fid, v === '0' ? '' : v]));
+}
+
 const toSkillSetRow = (s: SkillSet): SkillSetRow => ({
   skill: s.skill, firearmId: s.firearmId, dryFire: s.dryFire,
   count: String(s.count), bestSec: String(s.bestSec),
@@ -332,7 +350,10 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         setInstructor(s.instructor ?? '');
         const r: Record<string, string> = {};
         for (const g of s.guns) r[g.firearmId] = String(g.rounds);
-        setRounds(r);
+        // Cold-audit fix (High): loading straight into convert mode (the
+        // `convert` prop — a history entry from the old convert flow) must
+        // re-seed any coerced 0 as blank too. See seedConvertRounds above.
+        setRounds(convert ? seedConvertRounds(r) : r);
         // Seed saved mag attributions, but the sections load COLLAPSED — the
         // disclosure's summary row lists the saved mags, and opening is one
         // tap (owner decision, session 75, July 23 2026; supersedes the
@@ -778,10 +799,13 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     if (!planned) {
       const blankGun = selectedGuns.find((f) => (rounds[f.id] ?? '').trim() === '');
       if (blankGun) {
-        return {
-          field: 'guns', gunId: blankGun.id,
-          message: `Enter rounds for ${blankGun.name} — type 0 if you didn't fire it, or remove it from this session.`
-        };
+        // Cold-audit fix (Medium): a dry-fire session labels the box "reps",
+        // not "rounds" — the error must speak the same word the field does,
+        // and "fire" is wrong for reps that were never live rounds.
+        const message = kind === 'dry_fire'
+          ? `Enter reps for ${blankGun.name} — type 0 if you skipped it, or remove it from this session.`
+          : `Enter rounds for ${blankGun.name} — type 0 if you didn't fire it, or remove it from this session.`;
+        return { field: 'guns', gunId: blankGun.id, message };
       }
     }
     if (guns.some((g) => !Number.isFinite(g.rounds) || g.rounds < 0 || !Number.isInteger(g.rounds))) {
@@ -1073,7 +1097,14 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
 
       {editing && original?.planned && !converting && (
         <button className="button"
-          onClick={() => { setConvertingNow(true); setPlanned(false); setTouched(true); }}>
+          onClick={() => {
+            setConvertingNow(true); setPlanned(false); setTouched(true);
+            // Cold-audit fix (High): the in-place convert button flips
+            // planned→false on an ALREADY-LOADED form, so the rounds map
+            // must be re-seeded here too (see seedConvertRounds above) —
+            // the load-time seed above only covers the `convert` PROP path.
+            setRounds((prev) => seedConvertRounds(prev));
+          }}>
           <span aria-hidden="true">✓</span> Convert to logged session</button>
       )}
       {editing && original && (
@@ -1124,7 +1155,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             is styled to add nothing visually. */}
         <h2 className="disclosure-h2">
           <button className="checklist-disclosure" data-testid="session-guns-disclosure" aria-expanded={gunsOpen}
-            aria-controls="session-guns-body" onClick={() => setGunsOpen((v) => !v)}>
+            aria-controls={gunsOpen ? 'session-guns-body' : undefined} onClick={() => setGunsOpen((v) => !v)}>
             <span className="checklist-disclosure-title">Guns &amp; Rounds <span className="field-required-marker">(required)</span></span>
             <span className="checklist-disclosure-toggle">{gunsOpen ? 'Hide' : 'Show'} <Icon name={gunsOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
           </button>
@@ -1179,6 +1210,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                         placeholder={planned ? 'planned rounds' : kind === 'dry_fire' ? 'reps' : 'rounds'}
                         aria-label={`Rounds for ${f.name}`}
                         aria-invalid={(problem?.field === 'guns' && problem.gunId === f.id) || undefined}
+                        aria-describedby={(problem?.field === 'guns' && problem.gunId === f.id) ? 'session-guns-err' : undefined}
                         value={rounds[f.id]}
                         onChange={(e) => { setRounds((prev) => ({ ...prev, [f.id]: e.target.value })); if (problem?.field === 'guns') setProblem(null); }} />
                     )}
@@ -1325,7 +1357,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               sibling in the row (M-2: it must not nest inside the button). */}
           <h2 className="disclosure-h2">
             <button className="checklist-disclosure" data-testid="session-drills-disclosure" aria-expanded={drillsOpen}
-              aria-controls="session-drills-body" onClick={() => setDrillsOpen((v) => !v)}>
+              aria-controls={drillsOpen ? 'session-drills-body' : undefined} onClick={() => setDrillsOpen((v) => !v)}>
               <span className="checklist-disclosure-title">Drills</span>
               <span className="checklist-disclosure-toggle">{drillsOpen ? 'Hide' : 'Show'} <Icon name={drillsOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
             </button>
@@ -1582,7 +1614,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         {/* App 2a: same real-<h2> accordion wrap as Guns & Rounds and Drills. */}
         <h2 className="disclosure-h2">
           <button className="checklist-disclosure" aria-expanded={checklistOpen}
-            aria-controls="session-checklist-body" onClick={() => setChecklistOpen((v) => !v)}>
+            aria-controls={checklistOpen ? 'session-checklist-body' : undefined} onClick={() => setChecklistOpen((v) => !v)}>
             <span className="checklist-disclosure-title">Gear Checklist</span>
             <span className="checklist-disclosure-toggle">{checklistOpen ? 'Hide' : 'Show'} <Icon name={checklistOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
           </button>

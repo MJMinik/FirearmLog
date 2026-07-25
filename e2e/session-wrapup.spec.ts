@@ -68,4 +68,32 @@ test.describe('Wrap-Up: Notes always visible; Range fee reveal re-opens on every
     await expect(page.getByLabel(/Range fee/)).toHaveValue('20');
     await expect(page.getByLabel('Notes')).toHaveValue('Great session, tight groups.');
   });
+
+  // Cold-audit fix (Low): App 5a changed the Range fee reveal's defaultOpen
+  // rule to key on the fee ALONE (Notes no longer factors in, since Notes is
+  // always visible now). The negative case — a saved session with notes but
+  // NO fee — must load with the Range fee reveal CLOSED; the old rule (fee
+  // OR notes) would have opened it just because a note existed.
+  test('a saved session with notes but no fee loads with the Range fee reveal closed', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Log');
+    await page.getByRole('button', { name: '+ Log Session' }).click();
+    await page.getByRole('button', { name: GUN }).click();
+    await page.getByLabel(`Rounds for ${GUN}`).fill('50');
+
+    // Fill Notes only — leave the range fee untouched (blank).
+    const notesField = page.getByLabel('Notes');
+    await notesField.fill('No range fee this time, just notes.');
+    await page.locator('.navbar-action').click();
+    await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
+
+    // Reopen: Notes shows the saved text with no taps, but the Range fee
+    // reveal is collapsed — a note alone must not force it open.
+    await page.getByRole('main').locator('.row-tap').first().click();
+    await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
+    await expect(page.getByLabel('Notes')).toHaveValue('No range fee this time, just notes.');
+    const feeToggle = page.getByRole('button', { name: 'Range fee' });
+    await expect(feeToggle).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByLabel(/Range fee/)).toHaveCount(0);
+  });
 });
