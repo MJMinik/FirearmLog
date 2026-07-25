@@ -131,7 +131,7 @@ test.describe('Chart furniture (F4)', () => {
     await expect(readout).toHaveText(/live · .* match · .* dry reps/);
 
     await card.getByRole('button', { name: 'Filters' }).click();
-    await card.locator('select[aria-label="Months"]').selectOption('6');
+    await card.locator('select[aria-label="Time span"]').selectOption('6');
 
     // Both the readout AND the selection ring let go of the vanished month.
     await expect(readout).toHaveText(/Tap a bar/);

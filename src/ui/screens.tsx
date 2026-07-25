@@ -137,7 +137,10 @@ export function RoundsByMonthChart({ buckets }: { buckets: MonthBucket[] }) {
     ? `${selBucket.label} — ${selBucket.liveRounds.toLocaleString()} live · ${selBucket.matchRounds.toLocaleString()} match · ${selBucket.dryReps.toLocaleString()} dry reps`
     : null;
   const max = Math.max(...buckets.map(b => b.total), 1);
-  const barW = Math.floor(280 / buckets.length);
+  // H-4: at ≥281 buckets (e.g. a 600-month "All time" span) this used to
+  // floor to 0px — a silently empty chart with no error and no bars. A bar is
+  // always at least 1px wide, even if the months crowd together.
+  const barW = Math.max(1, Math.floor(280 / buckets.length));
   const gap = 4;
   const w = buckets.length * (barW + gap) - gap;
   const h = 140;

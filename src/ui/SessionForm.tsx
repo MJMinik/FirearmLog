@@ -8,7 +8,7 @@ import type {
 } from '../lib/types.ts';
 import { splitRounds } from '../lib/mags.ts';
 import { deleteOne, getAll, getOne, getSettings, putOne, putSettings, rewriteSessionSkillSets } from '../lib/db.ts';
-import { todayKey } from '../lib/dates.ts';
+import { dayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { drillsForContext } from '../lib/drillFilter.ts';
@@ -1062,6 +1062,8 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             ref={dateFieldRef}
             id="session-date-input"
             type="date"
+            min="2000-01-01"
+            max={dayKey(new Date(new Date().setFullYear(new Date().getFullYear() + 1)))}
             value={date}
             onChange={(e) => { setDate(e.target.value); if (problem?.field === 'date') setProblem(null); }}
             aria-invalid={problem?.field === 'date' || undefined}
