@@ -1,6 +1,13 @@
 # FirearmLog — end-to-end (Playwright) tests.
 # Runs on every push and pull request. Drives the real app in a headless
 # browser to prove the UI is wired up, complementing the unit tests in deploy.yml.
+#
+# Sharded 4 ways (finding H-6): the full suite (506+ tests, both projects) on
+# one runner had grown to/over the 25-minute ceiling. Each shard now runs a
+# quarter of the suite (both desktop and mobile projects, since Playwright's
+# --shard splits across ALL selected projects) with its own 15-minute budget.
+# workers stays 1 in CI (unchanged in playwright.config.ts) so each shard's
+# run is still deterministic — only the number of parallel runners changed.
 name: E2E
 
 on:
@@ -12,27 +19,43 @@ on:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2, 3, 4]
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
 
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
 
       - name: Run E2E tests
-        run: npm run e2e
+        run: npm run e2e -- --shard=${{ matrix.shard }}/4
 
       - name: Upload report on failure
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
+          name: playwright-report-${{ matrix.shard }}
           path: playwright-report/
           retention-days: 7
+
+  # Branch protection needs one check name that summarizes the whole matrix
+  # (a matrix job reports as N separate checks, "e2e (1)".."e2e (4)", which
+  # is brittle if the shard count ever changes) — this aggregates them.
+  e2e-required:
+    name: e2e (all shards)
+    needs: e2e
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - run: '[ "${{ needs.e2e.result }}" = "success" ]'

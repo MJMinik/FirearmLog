@@ -837,24 +837,35 @@ for (const se of stores.sessions as { type: string; planned: boolean; guns: { fi
 // Dot Torture scores, CO classifier percents, and all goals — any marketing-
 // site screenshot showing THOSE numbers needs re-capture; flagged on the
 // launch checklist. Structure, ids, matches, and everything else still match.)
+// (FIXED July 25 2026, finding H-5: this used to draw from the gun's FULL
+// magazine pool, independent of the per-session `magIds` the post-pass above
+// assigns — so a malfunction could name a magazine that was never in the gun
+// during THAT session. It must draw only from the malfunction's own session's
+// `gun.magIds` for the matching firearm; if that session has no magIds for
+// the gun, the malfunction's magazineId stays unset rather than inventing one.)
 const rMag = rng(20260709);
-const magsByGun = new Map<string, string[]>();
-for (const mg of stores.magazines as { id: string; firearmIds: string[] }[]) {
-  for (const fid of mg.firearmIds) {
-    magsByGun.set(fid, [...(magsByGun.get(fid) ?? []), mg.id]);
+const sessionGunMagIds = new Map<string, string[]>(); // key: `${sessionId}|${firearmId}`
+for (const se of stores.sessions as { id: string; guns: { firearmId: string; magIds?: string[] }[] }[]) {
+  for (const gun of se.guns) {
+    if (gun.magIds && gun.magIds.length > 0) {
+      sessionGunMagIds.set(`${se.id}|${gun.firearmId}`, gun.magIds);
+    }
   }
 }
-const malfs = stores.malfunctions as { firearmId: string; resolution: string; date: string; magazineId: string | null }[];
+const malfs = stores.malfunctions as { sessionId: string | null; firearmId: string; resolution: string; date: string; magazineId: string | null }[];
 for (const mf of malfs) {
-  const mags = magsByGun.get(mf.firearmId);
-  if (!mags || mags.length === 0) continue;
+  const pool = mf.sessionId ? sessionGunMagIds.get(`${mf.sessionId}|${mf.firearmId}`) : undefined;
+  if (!pool || pool.length === 0) continue; // this session doesn't say which mags rode along — leave unset
   const knewTheMag = mf.resolution === 'Swapped magazine' || rMag() < 0.5;
-  if (knewTheMag) mf.magazineId = mags[Math.floor(rMag() * mags.length)];
+  if (knewTheMag) mf.magazineId = pool[Math.floor(rMag() * pool.length)];
 }
-// The site walkthrough opens the NEWEST malfunction — it must be one that knows.
+// The site walkthrough opens the NEWEST malfunction — it must be one that knows,
+// but only from ITS OWN session's magazine pool (never a magazine the session
+// never had).
 const newestMf = [...malfs].sort((a, b) => a.date.localeCompare(b.date)).pop();
 if (newestMf && !newestMf.magazineId) {
-  newestMf.magazineId = (magsByGun.get(newestMf.firearmId) ?? [])[0] ?? null;
+  const pool = newestMf.sessionId ? sessionGunMagIds.get(`${newestMf.sessionId}|${newestMf.firearmId}`) : undefined;
+  if (pool && pool.length > 0) newestMf.magazineId = pool[0];
 }
 
 // ===================== META (owner settings) =====================

@@ -361,3 +361,50 @@ test('demo story: the marketing-site invariant records are untouched by the IDPA
   const avgPct = Math.round((percents.reduce((s, p) => s + p, 0) / percents.length) * 10) / 10;
   assert.equal(avgPct, 87.2, 'adding IDPA matches (no matchPercent) must not move the season average — it is USPSA-only');
 });
+
+test('demo story: a malfunction\'s magazine is always one that was actually in the gun that session (H-5)', () => {
+  // The malfunction-tagging block draws a magazineId to demonstrate the
+  // app's malfunction<->magazine linkage (see the block's own comment in
+  // make-demo.ts). Every tagged malfunction must name a magazine that
+  // session's matching gun actually carried (session.guns[].magIds) — never
+  // one from the gun's wider lifetime pool that wasn't there that day.
+  type SessGun = { firearmId: string; magIds?: string[] };
+  type Sess2 = { id: string; guns: SessGun[] };
+  type Malf = { id: string; sessionId: string | null; firearmId: string; magazineId?: string | null };
+
+  const sessById = new Map((stores.sessions as unknown as Sess2[]).map((s) => [s.id, s]));
+  const malfunctions = stores.malfunctions as unknown as Malf[];
+
+  const taggedWithMag = malfunctions.filter((mf) => mf.magazineId);
+  const withMagAndSession = taggedWithMag.filter((mf) => mf.sessionId);
+  // Every tagged malfunction must actually carry a sessionId — a malfunction
+  // with a magazineId but no sessionId would silently dodge the check below,
+  // and the story requires the count to hold (was 5 at write time; the
+  // floor guards against tags quietly vanishing on a future regen).
+  assert.equal(withMagAndSession.length, taggedWithMag.length,
+    `every magazine-tagged malfunction must carry a sessionId too (${taggedWithMag.length - withMagAndSession.length} tagged malfunction(s) have no sessionId and would dodge the consistency check)`);
+  assert.ok(withMagAndSession.length >= 5, `the demo must have at least 5 malfunctions tagged with a magazine (got ${withMagAndSession.length})`);
+
+  for (const mf of withMagAndSession) {
+    const sess = sessById.get(mf.sessionId!);
+    assert.ok(sess, `${mf.id}: sessionId ${mf.sessionId} must resolve to a real session`);
+    const gun = sess!.guns.find((g) => g.firearmId === mf.firearmId);
+    const magIds = gun?.magIds ?? [];
+    assert.ok(magIds.includes(mf.magazineId!),
+      `${mf.id}: magazineId ${mf.magazineId} must be among session ${mf.sessionId}'s magIds for ${mf.firearmId} (got [${magIds.join(', ')}])`);
+  }
+});
+
+test('demo story: the newest malfunction knows its magazine — the site walkthrough opens it (H-5)', () => {
+  // make-demo.ts's malfunction-tagging block promises: "The site walkthrough
+  // opens the NEWEST malfunction — it must be one that knows." Nothing
+  // previously guarded that promise; if a future regen's RNG stream (or the
+  // H-5 fix's session-pool fallback) ever left it unset, the walkthrough
+  // would silently show the "—" no-magazine state instead of the demo.
+  type Malf = { id: string; date: string; magazineId?: string | null };
+  const malfunctions = stores.malfunctions as unknown as Malf[];
+  assert.ok(malfunctions.length > 0, 'the demo must have at least one malfunction');
+  const newestMf = [...malfunctions].sort((a, b) => a.date.localeCompare(b.date)).pop()!;
+  assert.ok(newestMf.magazineId,
+    `the newest malfunction (${newestMf.id}, ${newestMf.date}) must have a truthy magazineId — the site walkthrough opens it`);
+});
