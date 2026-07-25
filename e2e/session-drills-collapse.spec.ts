@@ -11,9 +11,23 @@ import { seedDemo, gotoTab } from './helpers';
 //    with the summary line showing the drill count.
 // 5. The always-visible summary line shows "N drill / drills logged" when
 //    drills exist, "No drills yet." when none.
+//
+// Drill-add steps use the inline quick-add flow (same pattern as
+// quick-add-drill.spec.ts) with a unique-per-test name — the picker's exact
+// contents depend on the demo library, but "+ New drill" is always present.
 
 const GUN = 'Shadow Systems DR920';
-const DRILL_NAME = 'Bill Drill';
+
+/** Open Pick Drills and quick-add a brand-new drill by name. */
+async function quickAddDrill(page: import('@playwright/test').Page, name: string): Promise<void> {
+  await page.getByRole('button', { name: '+ Add Drill' }).click();
+  const sheet = page.getByRole('dialog', { name: 'Pick Drills' });
+  await expect(sheet).toBeVisible();
+  await sheet.getByRole('button', { name: '+ New drill' }).click();
+  await sheet.getByLabel('Drill to add').fill(name);
+  await sheet.getByRole('button', { name: 'Save & Add to Session' }).click();
+  await expect(sheet).toBeHidden();
+}
 
 test.describe('Drills collapsible', () => {
   test('fresh log: Drills section starts open', async ({ page }) => {
@@ -23,8 +37,8 @@ test.describe('Drills collapsible', () => {
     await expect(page.getByRole('heading', { name: 'Log Session' })).toBeVisible();
 
     // The Drills disclosure header is present and expanded.
-    const drillsCard = page.locator('.card').filter({ hasText: 'Drills' }).first();
-    const disclosure = drillsCard.locator('.checklist-disclosure').first();
+    const drillsCard = page.getByTestId('session-drills-card');
+    const disclosure = page.getByTestId('session-drills-disclosure');
     await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
 
     // "+ Add Drill" button is visible (body is open).
@@ -36,8 +50,8 @@ test.describe('Drills collapsible', () => {
     await gotoTab(page, 'Log');
     await page.getByRole('button', { name: '+ Log Session' }).click();
 
-    const drillsCard = page.locator('.card').filter({ hasText: 'Drills' }).first();
-    const disclosure = drillsCard.locator('.checklist-disclosure').first();
+    const drillsCard = page.getByTestId('session-drills-card');
+    const disclosure = page.getByTestId('session-drills-disclosure');
 
     // Collapse by tapping the header.
     await disclosure.click();
@@ -55,8 +69,8 @@ test.describe('Drills collapsible', () => {
     await gotoTab(page, 'Log');
     await page.getByRole('button', { name: '+ Log Session' }).click();
 
-    const drillsCard = page.locator('.card').filter({ hasText: 'Drills' }).first();
-    const disclosure = drillsCard.locator('.checklist-disclosure').first();
+    const drillsCard = page.getByTestId('session-drills-card');
+    const disclosure = page.getByTestId('session-drills-disclosure');
 
     // Collapse then reopen.
     await disclosure.click();
@@ -75,22 +89,11 @@ test.describe('Drills collapsible', () => {
 
     // Pick a gun (required to save).
     await page.getByRole('button', { name: GUN }).click();
+    await page.getByLabel(`Rounds for ${GUN}`).fill('50');
 
-    // Add a drill via the picker.
-    await page.getByRole('button', { name: '+ Add Drill' }).click();
-    const sheet = page.locator('.sheet');
-    await expect(sheet).toBeVisible();
-    // Pick the drill if it exists in the library; otherwise use quick-add.
-    const drillBtn = sheet.getByRole('button', { name: DRILL_NAME }).first();
-    if (await drillBtn.isVisible()) {
-      await drillBtn.click();
-      await sheet.getByRole('button', { name: 'Add Selected' }).click();
-    } else {
-      // Quick-add by name.
-      await sheet.getByRole('button', { name: '+ New Drill' }).click();
-      await sheet.getByPlaceholder('Drill name').fill(DRILL_NAME);
-      await sheet.getByRole('button', { name: 'Save & Add' }).click();
-    }
+    // Add one drill via the inline quick-add flow.
+    const drillName = `Collapse Test Drill ${Date.now()}`;
+    await quickAddDrill(page, drillName);
 
     // Save the session.
     await page.locator('.navbar-action').click();
@@ -101,8 +104,8 @@ test.describe('Drills collapsible', () => {
     await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
 
     // Drills section loads collapsed.
-    const drillsCard = page.locator('.card').filter({ hasText: 'Drills' }).first();
-    const disclosure = drillsCard.locator('.checklist-disclosure').first();
+    const drillsCard = page.getByTestId('session-drills-card');
+    const disclosure = page.getByTestId('session-drills-disclosure');
     await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
 
     // Summary line shows "1 drill logged".
@@ -116,28 +119,35 @@ test.describe('Drills collapsible', () => {
 
     // Pick a gun (required to save).
     await page.getByRole('button', { name: GUN }).click();
+    await page.getByLabel(`Rounds for ${GUN}`).fill('50');
 
-    // Add two drills via quick-add.
-    const addDrill = async (name: string) => {
-      await page.getByRole('button', { name: '+ Add Drill' }).click();
-      const sheet = page.locator('.sheet');
-      await expect(sheet).toBeVisible();
-      const drillBtn = sheet.getByRole('button', { name }).first();
-      if (await drillBtn.isVisible()) {
-        await drillBtn.click();
-        await sheet.getByRole('button', { name: 'Add Selected' }).click();
-      } else {
-        await sheet.getByRole('button', { name: '+ New Drill' }).click();
-        await sheet.getByPlaceholder('Drill name').fill(name);
-        await sheet.getByRole('button', { name: 'Save & Add' }).click();
-      }
-    };
-
-    await addDrill('Bill Drill');
-    await addDrill('Mozambique');
+    // Add two brand-new drills via quick-add.
+    const stamp = Date.now();
+    await quickAddDrill(page, `Plural Test Drill A ${stamp}`);
+    await quickAddDrill(page, `Plural Test Drill B ${stamp}`);
 
     // Summary line shows "2 drills logged" (section still open, so check report-note).
-    const drillsCard = page.locator('.card').filter({ hasText: 'Drills' }).first();
+    const drillsCard = page.getByTestId('session-drills-card');
     await expect(drillsCard.locator('.report-note').first()).toContainText('2 drills logged');
+  });
+
+  // Cold-audit regression pin (session 78, High): the Drills InfoTip sits in
+  // a sibling row next to the disclosure button (M-2), not inside it — tapping
+  // help must never collapse the section, and the tip's own layout must not
+  // squeeze the disclosure button down to nothing at narrow widths.
+  test('opening the Drills help tip does not collapse the section', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Log');
+    await page.getByRole('button', { name: '+ Log Session' }).click();
+
+    const drillsCard = page.getByTestId('session-drills-card');
+    const disclosure = page.getByTestId('session-drills-disclosure');
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+
+    await drillsCard.locator('.infotip-btn').click();
+    await expect(drillsCard.locator('.infotip-bubble')).toBeVisible();
+    // The section must still be open — tapping help is not the same tap as
+    // toggling the disclosure.
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
   });
 });

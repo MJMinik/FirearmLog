@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { seedDemo, gotoTab, gotoSection } from './helpers';
+import { seedDemo, gotoTab, gotoSection, openGunsSection } from './helpers';
 
 // Per-session magazine tracking (spec July 22 2026). The session form grows a
 // quiet per-gun "Magazines" disclosure — hidden the same way ammo and drills
@@ -10,10 +10,16 @@ import { seedDemo, gotoTab, gotoSection } from './helpers';
 // written to the Magazine record itself.
 //
 // The demo dataset gives "Shadow Systems DR920" four linked mags DR9-1..DR9-4,
-// all in service. Demo sessions carry no mag data (the feature is newer than
-// they are), which also proves historical records stay untouched.
+// all in service. Its most recent live session now carries mag attribution
+// for all four (session 78's audit: an earlier commit added magazine
+// attribution to the demo dataset's live sessions) — so the sticky preselect
+// (a brand-new session's Magazines section preselects the gun's last-used
+// mags the moment it's opened) fires with all four checked on first open,
+// not a blank slate. Tests reconcile to the exact picks they want via
+// `pickMags` below rather than assuming an empty starting selection.
 
 const GUN = 'Shadow Systems DR920';
+const ALL_MAGS = ['DR9-1', 'DR9-2', 'DR9-3', 'DR9-4'];
 
 /** The DR9-1 lifetime shown on the Magazines screen, as a number. */
 async function dr91Lifetime(page: import('@playwright/test').Page): Promise<number> {
@@ -31,6 +37,26 @@ async function startSessionWithGun(page: import('@playwright/test').Page, rounds
   await page.getByLabel(`Rounds for ${GUN}`).fill(rounds);
 }
 
+/**
+ * After a gun's Magazines disclosure is open, force exactly `want` to end up
+ * selected — clicking whichever buttons are mismatched. Robust regardless of
+ * what the sticky preselect already checked when the disclosure opened (it
+ * may have pre-checked some or all of `all`).
+ *
+ * Not `exact: true` — the mag toggles render a checkbox glyph via CSS
+ * generated content (`.gun-toggle::before`, app.css: '\u2713'/'\u2610'), and
+ * generated content joins the accessible-name computation, so the button's
+ * accessible name is "\u2713 DR9-1", not "DR9-1". Exact matching therefore
+ * finds zero buttons; substring matching is required, not a convenience.
+ */
+async function pickMags(page: import('@playwright/test').Page, all: string[], want: string[]): Promise<void> {
+  for (const label of all) {
+    const btn = page.getByRole('button', { name: label });
+    const pressed = (await btn.getAttribute('aria-pressed')) === 'true';
+    if (pressed !== want.includes(label)) await btn.click();
+  }
+}
+
 test.describe('Per-session magazine tracking', () => {
   test('even split: pick two mags, save, and the Magazines screen shows the derived lifetime', async ({ page }) => {
     await seedDemo(page);
@@ -42,10 +68,7 @@ test.describe('Per-session magazine tracking', () => {
     const magSection = page.locator('.session-mags');
     await expect(magSection).toBeVisible();
     await magSection.locator('.checklist-disclosure').click();
-    // The toggle's accessible name includes its checkbox glyph ("☐ DR9-1"),
-    // so match by contains, not exact.
-    await page.getByRole('button', { name: 'DR9-1' }).click();
-    await page.getByRole('button', { name: 'DR9-2' }).click();
+    await pickMags(page, ALL_MAGS, ['DR9-1', 'DR9-2']);
 
     // With no numbers touched, the split is even — 50/50 — and says so.
     await expect(page.getByLabel(`Rounds through DR9-1 with ${GUN}`)).toHaveValue('50');
@@ -73,8 +96,7 @@ test.describe('Per-session magazine tracking', () => {
 
     await startSessionWithGun(page, '100');
     await page.locator('.session-mags .checklist-disclosure').click();
-    await page.getByRole('button', { name: 'DR9-1' }).click();
-    await page.getByRole('button', { name: 'DR9-2' }).click();
+    await pickMags(page, ALL_MAGS, ['DR9-1', 'DR9-2']);
 
     // Typing 80 into DR9-1 makes the split custom: 80 + 50 = 130 ≠ 100, and
     // the live note says so before any save attempt.
@@ -102,6 +124,9 @@ test.describe('Per-session magazine tracking', () => {
     await gotoTab(page, 'Log');
     await page.getByRole('main').locator('.row-tap').first().click();
     await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
+    // Editing an existing session loads Guns & Rounds collapsed — open it
+    // first so the per-gun Magazines disclosure it contains is even in the DOM.
+    await openGunsSection(page);
     await page.locator('.session-mags .checklist-disclosure').click();
     await expect(page.getByLabel(`Rounds through DR9-1 with ${GUN}`)).toHaveValue('80');
     await expect(page.getByLabel(`Rounds through DR9-2 with ${GUN}`)).toHaveValue('20');
@@ -126,21 +151,23 @@ test.describe('Per-session magazine tracking', () => {
     await seedDemo(page);
     await startSessionWithGun(page, '100');
     await page.locator('.session-mags .checklist-disclosure').click();
-    await page.getByRole('button', { name: 'DR9-1' }).click();
-    await page.getByRole('button', { name: 'DR9-2' }).click();
+    await pickMags(page, ALL_MAGS, ['DR9-1', 'DR9-2']);
     await page.getByLabel(`Rounds through DR9-1 with ${GUN}`).fill('80');
     await page.getByLabel(`Rounds through DR9-2 with ${GUN}`).fill('20');
     await page.locator('.navbar-action').click();
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
 
-    // Reopen the saved session: the Magazines section loads collapsed.
+    // Reopen the saved session: the Magazines section loads collapsed. Guns &
+    // Rounds itself also loads collapsed (unrelated, pre-existing behavior) —
+    // open it so the Magazines sub-disclosure is in the DOM to check at all.
     await page.getByRole('main').locator('.row-tap').first().click();
     await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
+    await openGunsSection(page);
     const disclosure = page.locator('.session-mags .checklist-disclosure');
     await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
 
     // Change the gun's rounds so the saved 80 + 20 split no longer sums, and
-    // save WITHOUT ever opening the section.
+    // save WITHOUT ever opening the Magazines section.
     await page.getByLabel(`Rounds for ${GUN}`).fill('120');
     await page.locator('.navbar-action').click();
 
@@ -168,16 +195,18 @@ test.describe('Per-session magazine tracking', () => {
     // mags, switch to dry fire, save...
     await page.getByRole('button', { name: 'Live practice' }).click();
     await page.locator('.session-mags .checklist-disclosure').click();
-    await page.getByRole('button', { name: 'DR9-1' }).click();
-    await page.getByRole('button', { name: 'DR9-2' }).click();
+    await pickMags(page, ALL_MAGS, ['DR9-1', 'DR9-2']);
     await page.getByRole('button', { name: 'Dry fire' }).click();
     await page.locator('.navbar-action').click();
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
 
     // ...then reopen it: flipping back to live fire shows a clean section —
-    // nothing was stored, so nothing is picked.
+    // nothing was stored, so nothing is picked. Guns & Rounds itself also
+    // loads collapsed on an existing session — open it first so the
+    // Magazines sub-disclosure is in the DOM.
     await page.getByRole('main').locator('.row-tap').first().click();
     await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
+    await openGunsSection(page);
     await page.getByRole('button', { name: 'Live practice' }).click();
     await page.locator('.session-mags .checklist-disclosure').click();
     await expect(page.getByRole('button', { name: 'DR9-1' })).toHaveAttribute('aria-pressed', 'false');
@@ -192,16 +221,17 @@ test.describe('Per-session magazine tracking', () => {
     await seedDemo(page);
     await startSessionWithGun(page, '80');
     await page.locator('.session-mags .checklist-disclosure').click();
-    await page.getByRole('button', { name: 'DR9-1' }).click();
-    await page.getByRole('button', { name: 'DR9-3' }).click();
+    await pickMags(page, ALL_MAGS, ['DR9-1', 'DR9-3']);
     await page.locator('.navbar-action').click();
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
 
     // Reopen the just-saved session: the disclosure loads COLLAPSED, its
     // summary row lists the saved picks, and no checkboxes render until Show
-    // is tapped.
+    // is tapped. Guns & Rounds itself also loads collapsed — open it first so
+    // the Magazines sub-disclosure is in the DOM.
     await page.getByRole('main').locator('.row-tap').first().click();
     await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
+    await openGunsSection(page);
     const disclosure = page.locator('.session-mags .checklist-disclosure');
     await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
     await expect(disclosure).toContainText('Magazines — DR9-1, DR9-3');
@@ -229,6 +259,9 @@ test.describe('Per-session magazine tracking', () => {
 
     await page.getByRole('main').locator('.row-tap').first().click();
     await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
+    // Guns & Rounds itself also loads collapsed — open it first so the
+    // Magazines sub-disclosure is in the DOM to check at all.
+    await openGunsSection(page);
     const disclosure = page.locator('.session-mags .checklist-disclosure');
     await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
     await expect(disclosure).not.toContainText('—');
@@ -253,8 +286,7 @@ test.describe('Per-session magazine tracking', () => {
     await seedDemo(page);
     await startSessionWithGun(page, '40');
     await page.locator('.session-mags .checklist-disclosure').click();
-    await page.getByRole('button', { name: 'DR9-2' }).click();
-    await page.getByRole('button', { name: 'DR9-4' }).click();
+    await pickMags(page, ALL_MAGS, ['DR9-2', 'DR9-4']);
     await page.locator('.navbar-action').click();
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
 

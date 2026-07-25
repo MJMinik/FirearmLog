@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { seedDemo, gotoTab, isDesktop, reopenGunsIfCollapsed } from './helpers';
+import { seedDemo, gotoTab, isDesktop } from './helpers';
 
 // The Progress training grid.
 //
@@ -26,9 +26,8 @@ function todayKey(): string {
 async function logSessionToday(page: Page): Promise<void> {
   await gotoTab(page, 'Log');
   await page.getByRole('button', { name: '+ Log Session' }).click();
-  const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
+  const gunsCard = page.getByTestId('session-guns-card');
   await gunsCard.locator('button.gun-toggle').first().click();
-  await reopenGunsIfCollapsed(gunsCard);
   await gunsCard.getByRole('spinbutton').first().fill('50');
   await page.locator('.navbar-action').click();
   await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();

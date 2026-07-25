@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { seedDemo, gotoTab, reopenGunsIfCollapsed } from './helpers';
+import { seedDemo, gotoTab, openGunsSection } from './helpers';
 
 // Removing the redundant "Planned session" toggle (the footgun): a session's
 // planned/logged state is set only by the entry point (+ Plan Session vs
@@ -21,9 +21,8 @@ test.describe('Planned session has no stray convert toggle', () => {
     await expect(page.getByRole('button', { name: /Planned session/ })).toHaveCount(0);
 
     await page.getByLabel('Where').fill('Footgun Range');
-    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
+    const gunsCard = page.getByTestId('session-guns-card');
     await gunsCard.locator('button.gun-toggle').first().click();
-    await reopenGunsIfCollapsed(gunsCard);
     await gunsCard.getByRole('spinbutton').first().fill('50');
     await page.locator('.navbar-action').click(); // Save
 
@@ -39,7 +38,10 @@ test.describe('Planned session has no stray convert toggle', () => {
     await expect(page.getByRole('button', { name: /Planned session/ })).toHaveCount(0);
 
     // Make an innocuous edit (change the rounds) and save — the exact scenario
-    // that used to risk a stray toggle tap silently converting it.
+    // that used to risk a stray toggle tap silently converting it. Editing an
+    // existing session loads Guns & Rounds collapsed — open it first
+    // (verified failure, session 78).
+    await openGunsSection(page);
     await gunsCard.getByRole('spinbutton').first().fill('60');
     await page.locator('.navbar-action').click();
 

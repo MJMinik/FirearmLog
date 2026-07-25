@@ -1,30 +1,29 @@
 import { test, expect, type Page } from '@playwright/test';
-import { seedDemo, gotoTab, isDesktop, reopenGunsIfCollapsed } from './helpers';
+import { seedDemo, gotoTab, isDesktop } from './helpers';
 
-// T3-1: timed-skill sets — a "+ Timed skills" progressive-disclosure reveal
-// inside Log Session, an add-set sheet, the day's sets on the Session Report,
-// and a per-skill trend card on Progress (cold sets marked by shape).
+// T3-1: timed-skill sets — an "Add a timed-skills set" progressive-disclosure
+// reveal inside Log Session, an add-set sheet, the day's sets on the Session
+// Report, and a per-skill trend card on Progress (cold sets marked by shape).
 
 /** Start a new session with the first demo gun and 50 rounds, landing on the
  *  Log Session form with "Guns & Rounds" filled in. */
 async function startSessionWithGun(page: Page, rounds = '50'): Promise<void> {
   await gotoTab(page, 'Log');
   await page.getByRole('button', { name: '+ Log Session' }).click();
-  const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
+  const gunsCard = page.getByTestId('session-guns-card');
   await gunsCard.locator('button.gun-toggle').first().click();
-  await reopenGunsIfCollapsed(gunsCard);
   await gunsCard.getByRole('spinbutton').first().fill(rounds);
 }
 
 /**
- * Open "+ Timed skills", tap "+ Add Set", fill in one Draw set, and save it.
+ * Open "Add a timed-skills set", tap "+ Add Set", fill in one Draw set, and save it.
  * The sheet is scoped by its dialog role/name ("Add Set") — its own submit
  * button shares the substring "Add Set" with the trigger button, so scoping
  * to the dialog (rather than a name match) keeps the two unambiguous.
  */
 async function addDrawSet(page: Page, opts: { best: string; count?: string; cold?: boolean }): Promise<void> {
   const main = page.getByRole('main');
-  await main.getByRole('button', { name: '+ Timed skills' }).click();
+  await main.getByRole('button', { name: 'Add a timed-skills set' }).click();
   await main.getByRole('button', { name: '+ Add Set' }).click();
 
   const sheet = page.getByRole('dialog', { name: 'Add Set' });
@@ -49,7 +48,7 @@ test.describe('Timed skills — Log Session', () => {
     const main = page.getByRole('main');
     // Collapsed by default — no set fields visible until the reveal is tapped.
     await expect(main.getByRole('button', { name: '+ Add Set' })).toHaveCount(0);
-    await main.getByRole('button', { name: '+ Timed skills' }).click();
+    await main.getByRole('button', { name: 'Add a timed-skills set' }).click();
     await main.getByRole('button', { name: '+ Add Set' }).click();
 
     const sheet = page.getByRole('dialog', { name: 'Add Set' });
@@ -79,14 +78,27 @@ test.describe('Timed skills — Log Session', () => {
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
   });
 
-  test('a set with no gun picked yet cannot be started — "+ Add Set" is disabled', async ({ page }) => {
+  // L2 (audit): "+ Add Set" is no longer disabled with no gun picked — a
+  // disabled attribute made the button's own guard branch unreachable. Now it
+  // is always tappable: with no gun, tapping it opens Guns & Rounds instead of
+  // the Add Set sheet.
+  test('a set with no gun picked yet: "+ Add Set" opens Guns & Rounds instead of the sheet', async ({ page }) => {
     await seedDemo(page);
     await gotoTab(page, 'Log');
     await page.getByRole('button', { name: '+ Log Session' }).click();
     const main = page.getByRole('main');
-    await main.getByRole('button', { name: '+ Timed skills' }).click();
-    await expect(main.getByText('Pick a gun above first.')).toBeVisible();
-    await expect(main.getByRole('button', { name: '+ Add Set' })).toBeDisabled();
+    await main.getByRole('button', { name: 'Add a timed-skills set' }).click();
+    await expect(main.getByText('Choose a gun in Guns & Rounds first', { exact: false })).toBeVisible();
+    await expect(main.getByRole('button', { name: '+ Add Set' })).toBeEnabled();
+
+    // Collapse Guns & Rounds first so the guard's "open it" effect is visible.
+    const disclosure = page.getByTestId('session-guns-disclosure');
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+
+    await main.getByRole('button', { name: '+ Add Set' }).click();
+    await expect(page.getByRole('dialog', { name: 'Add Set' })).toHaveCount(0);
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
   });
 
   test('a saved set appears on the Session Report', async ({ page }) => {
@@ -129,7 +141,7 @@ test.describe('Timed skills — Log Session', () => {
     await sheet.getByRole('button', { name: 'Remove set' }).click();
     await expect(sheet).toHaveCount(0);
     await expect(main.locator('.row-tap').filter({ hasText: 'Draw' })).toHaveCount(0);
-    await expect(main.getByText('Pick a gun above first.')).toHaveCount(0);
+    await expect(main.getByText('Choose a gun in Guns & Rounds first', { exact: false })).toHaveCount(0);
   });
 });
 

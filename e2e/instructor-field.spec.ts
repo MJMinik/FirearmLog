@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { seedDemo, gotoTab, reopenGunsIfCollapsed } from './helpers';
+import { seedDemo, gotoTab } from './helpers';
 
 // Instructor on a Class session is a single "creatable" field (same component as
 // "Where"): you type a name or tap a past one, and whatever's in the box is the
@@ -15,9 +15,8 @@ test.describe('Class session instructor field', () => {
     await page.getByRole('button', { name: '+ Log Session' }).click();
     await page.getByRole('button', { name: 'Class', exact: true }).click();
     await page.getByRole('textbox', { name: 'Instructor' }).fill('Test Coach');
-    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
+    const gunsCard = page.getByTestId('session-guns-card');
     await gunsCard.locator('button.gun-toggle').first().click();
-    await reopenGunsIfCollapsed(gunsCard);
     await gunsCard.getByRole('spinbutton').first().fill('50');
     await page.locator('.navbar-action').click();
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();

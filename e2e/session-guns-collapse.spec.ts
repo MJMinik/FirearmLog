@@ -1,74 +1,47 @@
 import { test, expect } from '@playwright/test';
 import { seedDemo, gotoTab } from './helpers';
 
-// Change 1 (July 2026): Guns & Rounds is now a collapsible section that
-// mirrors the Gear Checklist pattern. Key behaviors:
+// H-1 (session 78 audit): Guns & Rounds no longer auto-collapses the moment
+// the first gun is picked on a NEW session — collapsing mid-pick used to
+// unmount the rounds input right under the shooter's finger, so sessions
+// could be saved with 0 rounds silently. A NEW session's section now stays
+// open through the whole pick; an EXISTING (saved) session still loads
+// collapsed on open — that behavior is unrelated and unchanged. Key behaviors:
 //
-// 1. On a fresh log the section is OPEN (required-field guard — a first-timer
-//    can never face a hidden required field).
-// 2. After selecting the first gun the section auto-collapses and the
-//    summary line shows the gun name + rounds.
-// 3. Tapping the header reopens it.
-// 4. Editing an existing session loads it collapsed with the summary visible.
-// 5. A validation error on the Guns section forces it open.
+// 1. NEW session: picking a gun leaves the section OPEN — the regression pin.
+// 2. NEW session: fill rounds, save, reopen from the list → loads COLLAPSED
+//    with a truthful "<gun> · N rds" summary.
+// 3. Manual toggle works both ways (Hide/Show), values intact either way.
+// 4. An existing (demo) session opens collapsed with a truthful summary.
+// 5. Removing the only gun blocks Save with the field error, and the section
+//    stays open / is forced open so the shooter can see what to fix.
 
 const GUN = 'Shadow Systems DR920';
 
 test.describe('Guns & Rounds collapsible', () => {
-  test('fresh log: section starts open (required-field guard)', async ({ page }) => {
+  test('picking a gun on a NEW session leaves the section open (H-1 regression pin)', async ({ page }) => {
     await seedDemo(page);
     await gotoTab(page, 'Log');
     await page.getByRole('button', { name: '+ Log Session' }).click();
     await expect(page.getByRole('heading', { name: 'Log Session' })).toBeVisible();
 
-    // The Guns & Rounds disclosure header is present and expanded.
-    const header = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
-    const disclosure = header.locator('.checklist-disclosure').first();
+    const disclosure = page.getByTestId('session-guns-disclosure');
     await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
 
-    // Gun toggles are visible (body is open).
-    await expect(page.getByRole('button', { name: GUN })).toBeVisible();
-  });
-
-  test('after selecting a gun the section collapses and the summary line shows the gun', async ({ page }) => {
-    await seedDemo(page);
-    await gotoTab(page, 'Log');
-    await page.getByRole('button', { name: '+ Log Session' }).click();
-
-    // Pick the gun and fill rounds.
+    // Pick the gun — the section must NOT collapse, and the rounds input for
+    // it must stay visible so it can be filled in the same motion.
     await page.getByRole('button', { name: GUN }).click();
-    await page.getByLabel(`Rounds for ${GUN}`).fill('100');
-
-    // Section auto-collapsed after the first gun was picked.
-    const header = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
-    const disclosure = header.locator('.checklist-disclosure').first();
-    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
-
-    // Summary line shows the gun name and round count.
-    await expect(header.locator('.report-note').first()).toContainText(GUN);
-    await expect(header.locator('.report-note').first()).toContainText('100 rds');
-  });
-
-  test('tapping the header reopens the section', async ({ page }) => {
-    await seedDemo(page);
-    await gotoTab(page, 'Log');
-    await page.getByRole('button', { name: '+ Log Session' }).click();
-
-    // Pick a gun so the section collapses.
-    await page.getByRole('button', { name: GUN }).click();
-    const header = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
-    const disclosure = header.locator('.checklist-disclosure').first();
-    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
-
-    // Tap the header to reopen.
-    await disclosure.click();
     await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    const roundsInput = page.getByLabel(`Rounds for ${GUN}`);
+    await expect(roundsInput).toBeVisible();
+    await roundsInput.fill('100');
 
-    // Gun toggles are visible again.
-    await expect(page.getByRole('button', { name: GUN })).toBeVisible();
+    // Still open after typing — nothing re-collapses the section mid-entry.
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    await expect(roundsInput).toHaveValue('100');
   });
 
-  test('editing a saved session loads Guns & Rounds collapsed with summary visible', async ({ page }) => {
+  test('save, then reopen from the list: the section loads collapsed with a truthful summary', async ({ page }) => {
     await seedDemo(page);
     await gotoTab(page, 'Log');
     await page.getByRole('button', { name: '+ Log Session' }).click();
@@ -77,36 +50,76 @@ test.describe('Guns & Rounds collapsible', () => {
     await page.locator('.navbar-action').click();
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
 
-    // Reopen the saved session.
+    // Reopen the saved session — Guns & Rounds loads collapsed (unrelated,
+    // unchanged behavior for an EXISTING session).
+    await page.getByRole('main').locator('.row-tap').first().click();
+    await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
+    const gunsCard = page.getByTestId('session-guns-card');
+    const disclosure = page.getByTestId('session-guns-disclosure');
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    await expect(gunsCard.locator('.report-note').first()).toContainText(`${GUN} · 75 rds`);
+  });
+
+  test('manual toggle works both ways, and values survive Hide/Show', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Log');
+    await page.getByRole('button', { name: '+ Log Session' }).click();
+    await page.getByRole('button', { name: GUN }).click();
+    await page.getByLabel(`Rounds for ${GUN}`).fill('42');
+
+    const gunsCard = page.getByTestId('session-guns-card');
+    const disclosure = page.getByTestId('session-guns-disclosure');
+
+    // Hide: the body (and its rounds input) disappears, but the summary line
+    // — still showing the real values — stays visible.
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    await expect(page.getByLabel(`Rounds for ${GUN}`)).toHaveCount(0);
+    await expect(gunsCard.locator('.report-note').first()).toContainText(`${GUN} · 42 rds`);
+
+    // Show: the body reappears with the value intact.
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByLabel(`Rounds for ${GUN}`)).toHaveValue('42');
+  });
+
+  test('an existing demo session opens collapsed with a truthful summary', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Log');
     await page.getByRole('main').locator('.row-tap').first().click();
     await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
 
-    // Section loads collapsed.
-    const header = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
-    const disclosure = header.locator('.checklist-disclosure').first();
+    const gunsCard = page.getByTestId('session-guns-card');
+    const disclosure = page.getByTestId('session-guns-disclosure');
     await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
-
-    // Summary line shows the saved gun and round count.
-    await expect(header.locator('.report-note').first()).toContainText(GUN);
-    await expect(header.locator('.report-note').first()).toContainText('75 rds');
+    // The summary line reports at least one real gun name with an actual
+    // rounds figure — not just the literal substring "rds" (which would also
+    // match a placeholder like "· — rds").
+    await expect(gunsCard.locator('.report-note').first()).toHaveText(/\S.* · \d+ rds/);
   });
 
-  test('saving without a gun shows the validation error and forces the section open', async ({ page }) => {
+  test('removing the only gun blocks Save and keeps the section visible with the error', async ({ page }) => {
     await seedDemo(page);
     await gotoTab(page, 'Log');
     await page.getByRole('button', { name: '+ Log Session' }).click();
 
-    // Collapse the section by tapping the header (it starts open).
-    const header = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
-    const disclosure = header.locator('.checklist-disclosure').first();
-    await disclosure.click();
-    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    const gunsCard = page.getByTestId('session-guns-card');
+    const disclosure = page.getByTestId('session-guns-disclosure');
+    await page.getByRole('button', { name: GUN }).click();
+    await page.getByLabel(`Rounds for ${GUN}`).fill('30');
 
-    // Try to save with no gun selected.
-    await page.locator('.navbar-action').click();
-
-    // The section must be forced open so the error and gun toggles are visible.
+    // Toggle the same gun off again — back to zero guns, section still open.
+    await page.getByRole('button', { name: GUN }).click();
     await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
-    await expect(page.locator('#session-guns-err')).toBeVisible();
+
+    // Collapsing now (manually) with no gun picked shows the honest empty summary.
+    await disclosure.click();
+    await expect(gunsCard.locator('.report-note').first()).toContainText('No gun selected yet.');
+
+    // Attempting to save with no gun is blocked, and the section is forced
+    // back open so the error and the gun toggles are visible.
+    await page.locator('.navbar-action').click();
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('#session-guns-err')).toContainText('Pick at least one gun.');
   });
 });
