@@ -526,6 +526,20 @@ select.category-pick {
   background: none; border: none; padding: 0; margin-bottom: 10px;
   min-height: 44px; cursor: pointer; text-align: left;
 }
+/* App 2a: the WAI-ARIA accordion pattern wraps each of the three section
+   toggle buttons (Guns & Rounds, Drills, Gear Checklist) in a real <h2> so
+   VoiceOver's heading navigation finds them — the heading sits OUTSIDE the
+   button. This rule must add NOTHING visually: the button already carries
+   the look (flex row, width 100%, its own margin-bottom), so the h2 is
+   reset to a transparent wrapper. The type+class selector (matching
+   `.card h2`'s own specificity) plus source order — this rule is declared
+   after `.card h2` above — wins the tie, so the generic .card h2 styling
+   (footnote size, uppercase, dim color) never leaks onto these headings. */
+h2.disclosure-h2 { margin: 0; font-size: inherit; font-weight: inherit; }
+/* Inside the Drills row (see .disclosure-row below), the h2 — not the button
+   — is the direct flex child, so it (not the button) needs flex: 1 to match
+   the pre-2a layout where the button itself was the flex item. */
+.disclosure-row .disclosure-h2 { flex: 1; }
 /* M-2 (audit): the Drills disclosure wraps its button + InfoTip in a flex row
    so the info button sits OUTSIDE the toggle <button> (was button-in-button —
    invalid HTML, and tapping help collapsed the section). */

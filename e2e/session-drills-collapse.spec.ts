@@ -9,8 +9,9 @@ import { seedDemo, gotoTab } from './helpers';
 // 3. After the header collapses, tapping again reopens it.
 // 4. Editing an existing session that has drills loads the section collapsed
 //    with the summary line showing the drill count.
-// 5. The always-visible summary line shows "N drill / drills logged" when
-//    drills exist, "No drills yet." when none.
+// 5. The always-visible summary line shows "N drill(s) added" when
+//    drills exist, "No drills yet." when none. (App 3a: "added", not
+//    "logged" — a pre-claim on rows that aren't saved yet.)
 //
 // Drill-add steps use the inline quick-add flow (same pattern as
 // quick-add-drill.spec.ts) with a unique-per-test name — the picker's exact
@@ -108,8 +109,8 @@ test.describe('Drills collapsible', () => {
     const disclosure = page.getByTestId('session-drills-disclosure');
     await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
 
-    // Summary line shows "1 drill logged".
-    await expect(drillsCard.locator('.report-note').first()).toContainText('1 drill logged');
+    // Summary line shows "1 drill added".
+    await expect(drillsCard.locator('.report-note').first()).toContainText('1 drill added');
   });
 
   test('summary line shows correct plural when multiple drills are logged', async ({ page }) => {
@@ -126,9 +127,9 @@ test.describe('Drills collapsible', () => {
     await quickAddDrill(page, `Plural Test Drill A ${stamp}`);
     await quickAddDrill(page, `Plural Test Drill B ${stamp}`);
 
-    // Summary line shows "2 drills logged" (section still open, so check report-note).
+    // Summary line shows "2 drills added" (section still open, so check report-note).
     const drillsCard = page.getByTestId('session-drills-card');
-    await expect(drillsCard.locator('.report-note').first()).toContainText('2 drills logged');
+    await expect(drillsCard.locator('.report-note').first()).toContainText('2 drills added');
   });
 
   // Cold-audit regression pin (session 78, High): the Drills InfoTip sits in
