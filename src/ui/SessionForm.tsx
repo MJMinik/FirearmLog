@@ -84,6 +84,24 @@ function blankSkillSetRow(firearmId: string, dryFire: boolean): SkillSetRow {
   return { skill: 'draw', firearmId, dryFire, count: '', bestSec: '', typicalSec: '', parSec: '', cold: false, repTimes: '', notes: '' };
 }
 
+// Cold-audit fix (High): a PLANNED session's stored rounds:0 is a database
+// COERCION of a blank box (planned rounds are optional — saveProblem() lets
+// a plan save with nothing typed, and the record stores 0), not a typed
+// zero. Converting a plan straight to logged used to carry that 0 into
+// `rounds` as the string "0" — which is NOT blank, so the App 1a check right
+// above never fired, and Save could silently persist a live session with 0
+// rounds and no warning (the exact silent-0 path 1a exists to close).
+// On convert there is no way to tell a coerced 0 from a shooter who really
+// did type 0 while planning (both are stored identically) — so this treats
+// EVERY 0 as coerced and re-seeds it blank, forcing the 1a check to fire and
+// make the shooter confirm. The cost is one extra "0" keystroke for the rare
+// case of a plan that genuinely called for zero rounds on a gun (e.g. a
+// support gun carried but not planned to be fired); the benefit is closing
+// the silent-0 path, which is the more dangerous failure.
+function seedConvertRounds(r: Record<string, string>): Record<string, string> {
+  return Object.fromEntries(Object.entries(r).map(([fid, v]) => [fid, v === '0' ? '' : v]));
+}
+
 const toSkillSetRow = (s: SkillSet): SkillSetRow => ({
   skill: s.skill, firearmId: s.firearmId, dryFire: s.dryFire,
   count: String(s.count), bestSec: String(s.bestSec),
@@ -196,14 +214,16 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   // Drills collapsible. New sessions start open (adding drills is the point).
   // Existing sessions with drills load collapsed (summary shows count; one tap opens).
   const [drillsOpen, setDrillsOpen] = useState(true);
-  // Change 4b: Wrap-Up Reveal defaultOpen driver — flips true when a rangeFee
-  // error fires so the hidden field becomes visible (mirrors gunsOpen pattern).
+  // App 5a: this drives the "Range fee" Reveal specifically (Notes is always
+  // visible now, outside any Reveal) — flips true when a loaded session
+  // already has a fee, or when a rangeFee error fires so the hidden field
+  // becomes visible (mirrors gunsOpen pattern).
   const [wrapUpOpen, setWrapUpOpen] = useState(false);
   // Cold-audit fix (session 78, High): wrapUpOpen only forces the Reveal open
   // the FIRST time it flips true — once it's already true, a second failed
   // save that sets it to true again is a no-op (same value), so a
-  // manually-collapsed Wrap-Up stayed collapsed on every save after the
-  // first, hiding the rangeFee error entirely (it's excluded from the top
+  // manually-collapsed Range fee Reveal stayed collapsed on every save after
+  // the first, hiding the rangeFee error entirely (it's excluded from the top
   // banner) with Cancel offering only Discard. This counter bumps on every
   // failed save that targets rangeFee, giving Reveal's forceOpenKey a fresh
   // value to react to no matter how many times the section was collapsed.
@@ -226,6 +246,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const drillsCardRef = useRef<HTMLDivElement>(null);
   const ammoCardRef = useRef<HTMLDivElement>(null);
   const rangeFeeFieldRef = useRef<HTMLInputElement>(null);
+  // App 1a: per-gun rounds inputs, keyed by firearmId, so a blank-rounds
+  // validation problem can focus/scroll the ONE offending input instead of
+  // just the card (mirrors dateFieldRef/rangeFeeFieldRef's single-target
+  // pattern, but this field repeats per gun so it needs a map).
+  const roundsInputRefs = useRef<Record<string, HTMLInputElement | null>>({});
   // M4: this form is large and full of arrays (drills, ammo, malfunctions,
   // checklist), so instead of a field signature we watch for any user edit via a
   // bubbled change event. Programmatic loads don't fire input events, so `touched`
@@ -325,7 +350,10 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         setInstructor(s.instructor ?? '');
         const r: Record<string, string> = {};
         for (const g of s.guns) r[g.firearmId] = String(g.rounds);
-        setRounds(r);
+        // Cold-audit fix (High): loading straight into convert mode (the
+        // `convert` prop — a history entry from the old convert flow) must
+        // re-seed any coerced 0 as blank too. See seedConvertRounds above.
+        setRounds(convert ? seedConvertRounds(r) : r);
         // Seed saved mag attributions, but the sections load COLLAPSED — the
         // disclosure's summary row lists the saved mags, and opening is one
         // tap (owner decision, session 75, July 23 2026; supersedes the
@@ -368,8 +396,10 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         const loadedFee = s.rangeFee === null ? '' : String(s.rangeFee);
         setRangeFee(loadedFee);
         setNotes(s.notes);
-        // Change 4b: open Wrap-Up when the existing session already has content.
-        if (loadedFee !== '' || s.notes.trim() !== '') setWrapUpOpen(true);
+        // App 5a: open the Range fee reveal only when the existing session
+        // already has a fee — Notes is always visible now, so it no longer
+        // factors into this decision.
+        if (loadedFee !== '') setWrapUpOpen(true);
         setChecklist(normalizeChecklist(s.checklist));
         const mySets = allSkillSets.filter((ss) => ss.sessionId === id);
         setOldSkillSetIds(mySets.map((ss) => ss.id));
@@ -761,6 +791,23 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     }));
     if (!date) return { field: 'date', message: 'Pick a date.' };
     if (Object.keys(rounds).length === 0) return { field: 'guns', message: 'Pick at least one gun.' };
+    // App 1a: a blank rounds box used to save silently as 0 rounds with no
+    // ammo deducted and no warning. A NON-PLANNED session now blocks on a
+    // blank box (planned rounds stay optional — a plan is intent, not a
+    // count). A typed "0" is explicitly valid — the copy says so, so the
+    // shooter always knows the escape hatch (type 0, or remove the gun).
+    if (!planned) {
+      const blankGun = selectedGuns.find((f) => (rounds[f.id] ?? '').trim() === '');
+      if (blankGun) {
+        // Cold-audit fix (Medium): a dry-fire session labels the box "reps",
+        // not "rounds" — the error must speak the same word the field does,
+        // and "fire" is wrong for reps that were never live rounds.
+        const message = kind === 'dry_fire'
+          ? `Enter reps for ${blankGun.name} — type 0 if you skipped it, or remove it from this session.`
+          : `Enter rounds for ${blankGun.name} — type 0 if you didn't fire it, or remove it from this session.`;
+        return { field: 'guns', gunId: blankGun.id, message };
+      }
+    }
     if (guns.some((g) => !Number.isFinite(g.rounds) || g.rounds < 0 || !Number.isInteger(g.rounds))) {
       // Whole numbers only — rounds don't come in halves, and a decimal total
       // would make a custom mag split impossible to sum (whole mag counts can
@@ -851,10 +898,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       // Change 1: force Guns & Rounds open when validation targets it so the
       // inputs the error message refers to aren't hidden.
       if (sp.field === 'guns' || sp.field === 'mags') setGunsOpen(true);
-      // Change 4b: force Wrap-Up open when rangeFee error fires so the field
-      // isn't hidden inside the collapsed Reveal. setWrapUpForceKey always
-      // bumps (even when wrapUpOpen was already true) so a Wrap-Up the
-      // shooter re-collapsed after an earlier failed save still reopens.
+      // App 5a: force the Range fee Reveal open when a rangeFee error fires
+      // so the field isn't hidden inside the collapsed Reveal. setWrapUpForceKey
+      // always bumps (even when wrapUpOpen was already true) so a Range fee
+      // reveal the shooter re-collapsed after an earlier failed save still
+      // reopens.
       if (sp.field === 'rangeFee') { setWrapUpOpen(true); setWrapUpForceKey((k) => k + 1); }
       const scrollTarget =
         sp.field === 'date' ? dateFieldRef.current :
@@ -863,9 +911,18 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         sp.field === 'ammo' ? ammoCardRef.current :
         gunsCardRef.current;
       setTimeout(() => {
-        scrollTarget?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // App 1a: a blank-rounds problem carries the offending gun's id —
+        // once Guns & Rounds has just been forced open (above), target that
+        // specific rounds input instead of just the card. Read the ref only
+        // here, inside the timeout, so it reflects the DOM AFTER the
+        // just-forced-open section has actually rendered (a synchronous read
+        // right after setGunsOpen(true) could still see the pre-render null
+        // for a session that loaded collapsed).
+        const roundsTarget = sp.field === 'guns' && sp.gunId ? roundsInputRefs.current[sp.gunId] : null;
+        (roundsTarget ?? scrollTarget)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         if (sp.field === 'date') dateFieldRef.current?.focus();
         else if (sp.field === 'rangeFee') rangeFeeFieldRef.current?.focus();
+        else if (roundsTarget) roundsTarget.focus();
       }, 0);
       return null;
     }
@@ -1040,7 +1097,14 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
 
       {editing && original?.planned && !converting && (
         <button className="button"
-          onClick={() => { setConvertingNow(true); setPlanned(false); setTouched(true); }}>
+          onClick={() => {
+            setConvertingNow(true); setPlanned(false); setTouched(true);
+            // Cold-audit fix (High): the in-place convert button flips
+            // planned→false on an ALREADY-LOADED form, so the rounds map
+            // must be re-seeded here too (see seedConvertRounds above) —
+            // the load-time seed above only covers the `convert` PROP path.
+            setRounds((prev) => seedConvertRounds(prev));
+          }}>
           <span aria-hidden="true">✓</span> Convert to logged session</button>
       )}
       {editing && original && (
@@ -1086,12 +1150,18 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       </div>
 
       <div className="card" ref={gunsCardRef} data-testid="session-guns-card">
-        {/* Change 1: collapsible header mirrors the Gear Checklist pattern. */}
-        <button className="checklist-disclosure" data-testid="session-guns-disclosure" aria-expanded={gunsOpen}
-          onClick={() => setGunsOpen((v) => !v)}>
-          <span className="checklist-disclosure-title">Guns &amp; Rounds <span className="field-required-marker">(required)</span></span>
-          <span className="checklist-disclosure-toggle">{gunsOpen ? 'Hide' : 'Show'} <Icon name={gunsOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
-        </button>
+        {/* Change 1: collapsible header mirrors the Gear Checklist pattern.
+            App 2a: a real <h2> wraps the toggle button (heading OUTSIDE,
+            button inside — the standard WAI-ARIA accordion pattern) so
+            VoiceOver's heading navigation finds this section; .disclosure-h2
+            is styled to add nothing visually. */}
+        <h2 className="disclosure-h2">
+          <button className="checklist-disclosure" data-testid="session-guns-disclosure" aria-expanded={gunsOpen}
+            aria-controls={gunsOpen ? 'session-guns-body' : undefined} onClick={() => setGunsOpen((v) => !v)}>
+            <span className="checklist-disclosure-title">Guns &amp; Rounds <span className="field-required-marker">(required)</span></span>
+            <span className="checklist-disclosure-toggle">{gunsOpen ? 'Hide' : 'Show'} <Icon name={gunsOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
+          </button>
+        </h2>
         {/* Always-visible summary line: shows selected guns + rounds (and mag
             count when applicable) whether the body is open or closed. */}
         {selectedGuns.length > 0 ? (
@@ -1112,7 +1182,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         <FieldProblem id="session-guns-err" problem={problem} field="guns" />
         <FieldProblem id="session-mags-err" problem={problem} field="mags" />
         {gunsOpen && (
-          <>
+          <div id="session-guns-body">
             {firearms.length === 0 && <p className="report-note">No guns yet — add one from the Guns screen.</p>}
             {/* Audit #10: active guns, plus any already on this session (so a since-retired gun still shows on its own record). */}
             {pickableGuns(firearms, Object.keys(rounds)).map((f) => {
@@ -1138,8 +1208,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                     </button>
                     {on && (
                       <input className="rounds-input" type="number" inputMode="numeric" min="0"
+                        ref={(el) => { roundsInputRefs.current[f.id] = el; }}
                         placeholder={planned ? 'planned rounds' : kind === 'dry_fire' ? 'reps' : 'rounds'}
                         aria-label={`Rounds for ${f.name}`}
+                        aria-invalid={(problem?.field === 'guns' && problem.gunId === f.id) || undefined}
+                        aria-describedby={(problem?.field === 'guns' && problem.gunId === f.id) ? 'session-guns-err' : undefined}
                         value={rounds[f.id]}
                         onChange={(e) => { setRounds((prev) => ({ ...prev, [f.id]: e.target.value })); if (problem?.field === 'guns') setProblem(null); }} />
                     )}
@@ -1216,7 +1289,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                 </Fragment>
               );
             })}
-          </>
+          </div>
         )}
       </div>
 
@@ -1281,23 +1354,28 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             a new session (adding drills is the point); loads collapsed for
             existing sessions that already have drills (summary shows count). */}
         <div className="disclosure-row">
-          <button className="checklist-disclosure" data-testid="session-drills-disclosure" aria-expanded={drillsOpen}
-            onClick={() => setDrillsOpen((v) => !v)}>
-            <span className="checklist-disclosure-title">Drills</span>
-            <span className="checklist-disclosure-toggle">{drillsOpen ? 'Hide' : 'Show'} <Icon name={drillsOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
-          </button>
+          {/* App 2a: real <h2> outside the toggle button, same accordion
+              pattern as Guns & Rounds — the InfoTip stays a heading-free
+              sibling in the row (M-2: it must not nest inside the button). */}
+          <h2 className="disclosure-h2">
+            <button className="checklist-disclosure" data-testid="session-drills-disclosure" aria-expanded={drillsOpen}
+              aria-controls={drillsOpen ? 'session-drills-body' : undefined} onClick={() => setDrillsOpen((v) => !v)}>
+              <span className="checklist-disclosure-title">Drills</span>
+              <span className="checklist-disclosure-toggle">{drillsOpen ? 'Hide' : 'Show'} <Icon name={drillsOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
+            </button>
+          </h2>
           <InfoTip title="Drills">Pick from your drill library, or add a new drill right here — it saves to your library and lands on this session. Manage every drill (edit, delete, full details) under More &rarr; Drills.</InfoTip>
         </div>
         {/* Always-visible summary line — visible whether the body is open or
             closed. Shows count when drills exist, otherwise a plain "none yet." */}
         <p className="report-note">
           {drills.length > 0
-            ? `${drills.length} drill${drills.length === 1 ? '' : 's'} ${planned ? 'planned' : 'logged'}`
+            ? `${drills.length} drill${drills.length === 1 ? '' : 's'} ${planned ? 'planned' : 'added'}`
             : 'No drills yet.'}
         </p>
         <FieldProblem id="session-drills-err" problem={problem} field="drills" />
         {drillsOpen && (
-          <>
+          <div id="session-drills-body">
             {drills.map((d, i) => (
               <div className="drill-edit" key={i}>
                 <div className="drill-edit-head">
@@ -1336,7 +1414,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                 Print Drills
               </button>
             )}
-          </>
+          </div>
         )}
       </div>
 
@@ -1422,10 +1500,12 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           {(() => {
             // Cold-audit fix (session 78): count only rows doPersist() will
             // actually write (malfHasContent) — a freshly-added blank row
-            // used to inflate this to "1 malfunction logged" while save()
+            // used to inflate this to "1 malfunction added" while save()
             // stored zero.
+            // App 3a: "added", not "logged" — the old verb pre-claimed an
+            // unsaved row as already on the record.
             const n = malfs.filter(malfHasContent).length;
-            return n > 0 ? `${n} malfunction${n === 1 ? '' : 's'} logged` : 'No malfunctions yet.';
+            return n > 0 ? `${n} malfunction${n === 1 ? '' : 's'} added` : 'No malfunctions yet.';
           })()}
         </p>
         <Reveal label="Log a malfunction" defaultOpen={editing && malfs.length > 0}>
@@ -1533,11 +1613,14 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       {/* Change 2: Gear Checklist moved down — it's a pre-range planning tool
           and belongs near the end of a post-range logging form. */}
       <div className="card">
-        <button className="checklist-disclosure" aria-expanded={checklistOpen}
-          onClick={() => setChecklistOpen((v) => !v)}>
-          <span className="checklist-disclosure-title">Gear Checklist</span>
-          <span className="checklist-disclosure-toggle">{checklistOpen ? 'Hide' : 'Show'} <Icon name={checklistOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
-        </button>
+        {/* App 2a: same real-<h2> accordion wrap as Guns & Rounds and Drills. */}
+        <h2 className="disclosure-h2">
+          <button className="checklist-disclosure" aria-expanded={checklistOpen}
+            aria-controls={checklistOpen ? 'session-checklist-body' : undefined} onClick={() => setChecklistOpen((v) => !v)}>
+            <span className="checklist-disclosure-title">Gear Checklist</span>
+            <span className="checklist-disclosure-toggle">{checklistOpen ? 'Hide' : 'Show'} <Icon name={checklistOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
+          </button>
+        </h2>
         {checklistProgressInfo.toTake > 0 && (
           <>
             <div className="dc-bar-wrap">
@@ -1552,7 +1635,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         )}
 
         {checklistOpen && (
-          <>
+          <div id="session-checklist-body">
             <p className="report-note">Check items you plan to bring, then mark each as packed when ready.</p>
 
             {firearms.length > 0 && (
@@ -1602,15 +1685,25 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             {checklistProgressInfo.toTake > 0 && (
               <button className="button secondary" onClick={printChecklist}>Print Checklist</button>
             )}
-          </>
+          </div>
         )}
       </div>
 
-      {/* Change 4b: Wrap-Up — collapsed by default on a new session with no
-          content; opens automatically when the session already has a fee or notes,
-          or when a rangeFee validation error fires while it's collapsed. */}
+      {/* App 5a: Wrap-Up re-layout (owner decision) — a real <h2> heading
+          (consistent with 2a's outline), Notes ALWAYS visible (no extra tap
+          to record a note), and only the range fee tucked behind a Reveal
+          labeled "Range fee". The Reveal keeps its exact prior behaviors:
+          defaultOpen when a loaded session already has a fee (notes no
+          longer factor in — Notes is visible regardless), and forceOpenKey
+          bumps on every failed save targeting rangeFee so a manually
+          re-collapsed fee field still reopens with its error (session 78
+          cold-audit fix — see wrapUpForceKey above). */}
       <div className="card">
-        <Reveal label="Wrap-Up" defaultOpen={wrapUpOpen} forceOpenKey={wrapUpForceKey}>
+        <h2>Wrap-Up</h2>
+        <label className="field">Notes
+          <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </label>
+        <Reveal label="Range fee" defaultOpen={wrapUpOpen} forceOpenKey={wrapUpForceKey}>
           <label className={`field${problem?.field === 'rangeFee' ? ' invalid' : ''}`}>Range fee ($)
             <input
               ref={rangeFeeFieldRef}
@@ -1621,9 +1714,6 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               aria-invalid={problem?.field === 'rangeFee' || undefined}
               aria-describedby={problem?.field === 'rangeFee' ? 'session-rangefee-err' : undefined} />
             <FieldProblem id="session-rangefee-err" problem={problem} field="rangeFee" />
-          </label>
-          <label className="field">Notes
-            <textarea rows={4} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </label>
         </Reveal>
       </div>
