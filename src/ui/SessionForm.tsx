@@ -522,10 +522,14 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       else delete next[fid];
       return next;
     });
-    // Change 1: auto-collapse Guns & Rounds once the FIRST gun is added
-    // (fires once — transitioning from zero guns to one). The user can
-    // always reopen it; collapsing just tidies the form after the pick.
-    if (on && Object.keys(rounds).length === 0) setGunsOpen(false);
+    // H-1 (session 78 audit): a NEW session's Guns & Rounds stays OPEN while
+    // the shooter works in it — picking a gun and typing rounds is one
+    // motion, and auto-collapsing mid-pick unmounted the rounds input right
+    // under their finger (sessions were saved with 0 rounds, silently). An
+    // EXISTING session still loads collapsed — see the load effect above
+    // (setGunsOpen(false), ~line 323), which is correct and unchanged: that
+    // summary-then-one-tap pattern is fine once the shooter is just reviewing
+    // or editing a record, not actively building one.
     if (!on) {
       // Removing a gun drops its rounds (above), so its mag picks and custom
       // counts go with them — re-adding the gun starts clean, same as rounds.
@@ -781,7 +785,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       return { field: 'ammo', message: 'Ammo rounds need to be plain numbers.' };
     }
     const fee = rangeFee.trim() === '' ? null : Number(rangeFee);
-    if (fee !== null && !Number.isFinite(fee)) return { field: 'rangeFee', message: 'Range fee needs to be a number.' };
+    if (fee !== null && (!Number.isFinite(fee) || fee < 0)) {
+      // M-3 (audit): a negative fee used to save and SUBTRACT from lifetime
+      // Costs — block it here, same field/error path a bad number already used.
+      return { field: 'rangeFee', message: 'Enter the fee as a positive dollar amount, or leave it blank.' };
+    }
     return null;
   }
 
@@ -1051,9 +1059,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         )}
       </div>
 
-      <div className="card" ref={gunsCardRef}>
+      <div className="card" ref={gunsCardRef} data-testid="session-guns-card">
         {/* Change 1: collapsible header mirrors the Gear Checklist pattern. */}
-        <button className="checklist-disclosure" aria-expanded={gunsOpen}
+        <button className="checklist-disclosure" data-testid="session-guns-disclosure" aria-expanded={gunsOpen}
           onClick={() => setGunsOpen((v) => !v)}>
           <span className="checklist-disclosure-title">Guns &amp; Rounds <span className="field-required-marker">(required)</span></span>
           <span className="checklist-disclosure-toggle">{gunsOpen ? 'Hide' : 'Show'} <Icon name={gunsOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
@@ -1070,9 +1078,10 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             }).join(' | ')}
           </p>
         ) : (
-          !gunsOpen && (
-            <p className="report-note">{Object.keys(rounds).length === 0 ? 'No gun selected yet.' : `${Object.keys(rounds).length} gun(s) selected`}</p>
-          )
+          !gunsOpen && (() => {
+            const n = Object.keys(rounds).length;
+            return <p className="report-note">{n === 0 ? 'No gun selected yet.' : `${n} gun${n === 1 ? '' : 's'} selected`}</p>;
+          })()
         )}
         <FieldProblem id="session-guns-err" problem={problem} field="guns" />
         <FieldProblem id="session-mags-err" problem={problem} field="mags" />
@@ -1241,20 +1250,23 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         </div>
       )}
 
-      <div className="card" ref={drillsCardRef}>
+      <div className="card" ref={drillsCardRef} data-testid="session-drills-card">
         {/* Drills collapsible — mirrors Guns & Rounds pattern. Starts open on
             a new session (adding drills is the point); loads collapsed for
             existing sessions that already have drills (summary shows count). */}
-        <button className="checklist-disclosure" aria-expanded={drillsOpen}
-          onClick={() => setDrillsOpen((v) => !v)}>
-          <span className="checklist-disclosure-title">Drills <InfoTip title="Drills">Pick from your drill library below, or add a new drill right here — it saves to your library and lands on this session. Manage every drill (edit, delete, full details) under More &rarr; Drills.</InfoTip></span>
-          <span className="checklist-disclosure-toggle">{drillsOpen ? 'Hide' : 'Show'} <Icon name={drillsOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
-        </button>
+        <div className="disclosure-row">
+          <button className="checklist-disclosure" data-testid="session-drills-disclosure" aria-expanded={drillsOpen}
+            onClick={() => setDrillsOpen((v) => !v)}>
+            <span className="checklist-disclosure-title">Drills</span>
+            <span className="checklist-disclosure-toggle">{drillsOpen ? 'Hide' : 'Show'} <Icon name={drillsOpen ? 'chevronDown' : 'chevronRight'} size={14} style={{ verticalAlign: 'middle' }} /></span>
+          </button>
+          <InfoTip title="Drills">Pick from your drill library below, or add a new drill right here — it saves to your library and lands on this session. Manage every drill (edit, delete, full details) under More &rarr; Drills.</InfoTip>
+        </div>
         {/* Always-visible summary line — visible whether the body is open or
             closed. Shows count when drills exist, otherwise a plain "none yet." */}
         <p className="report-note">
           {drills.length > 0
-            ? `${drills.length} drill${drills.length === 1 ? '' : 's'} logged`
+            ? `${drills.length} drill${drills.length === 1 ? '' : 's'} ${planned ? 'planned' : 'logged'}`
             : 'No drills yet.'}
         </p>
         <FieldProblem id="session-drills-err" problem={problem} field="drills" />
@@ -1355,9 +1367,13 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           {/* Change 3: when the user taps "+ Add Set" with no gun selected,
               also open Guns & Rounds so the required section is visible. */}
           <button className="button secondary" onClick={() => {
-            if (!selectedGuns.length) { setGunsOpen(true); return; }
+            if (!selectedGuns.length) {
+              setGunsOpen(true);
+              gunsCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              return;
+            }
             setSkillSheetIdx(-1);
-          }} disabled={!selectedGuns.length}>
+          }}>
             + Add Set
           </button>
           {/* Change 3: plain, specific copy that names the section and explains why. */}
@@ -1369,9 +1385,12 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
 
       {/* Change 4b: Malfunctions — collapsed by default on a new session with no
           content; opens automatically when the session already has malfunctions. */}
-      <div className="card">
-        <Reveal label="+ Add Malfunction" defaultOpen={editing && malfs.length > 0}>
-          <h2>Malfunctions</h2>
+      <div className="card" data-testid="session-malfs-card">
+        <h2>Malfunctions</h2>
+        <p className="report-note">
+          {malfs.length > 0 ? `${malfs.length} malfunction${malfs.length === 1 ? '' : 's'} logged` : 'None logged.'}
+        </p>
+        <Reveal label="Malfunctions" defaultOpen={editing && malfs.length > 0}>
           {malfs.map((m, i) => (
             <div className="drill-edit" key={i}>
               <div className="drill-edit-head">

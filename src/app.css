@@ -526,6 +526,11 @@ select.category-pick {
   background: none; border: none; padding: 0; margin-bottom: 10px;
   min-height: 44px; cursor: pointer; text-align: left;
 }
+/* M-2 (audit): the Drills disclosure wraps its button + InfoTip in a flex row
+   so the info button sits OUTSIDE the toggle <button> (was button-in-button —
+   invalid HTML, and tapping help collapsed the section). */
+.disclosure-row { display: flex; align-items: center; gap: 4px; }
+.disclosure-row .checklist-disclosure { flex: 1; }
 .checklist-disclosure-title {
   font-size: var(--fs-footnote); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim);
 }
