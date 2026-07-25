@@ -15,9 +15,11 @@ import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { goalCategories, goalStats, pinGolden, sortGoals } from '../lib/goals.ts';
 import { SKILL_AREAS, assessmentAverage, assessmentsByDate, latestAssessment, resolveSkillEvidence, skillRatingSeries } from '../lib/skills.ts';
 import {
-  allClassifications, formatDrillScore, personalRecords, roundsByMonth, type RoundsFilter
+  allClassifications, formatDrillScore, isLiveSession, personalRecords, roundsByMonth, type RoundsFilter
 } from '../lib/dashboard.ts';
-import { bucketTotals, malfunctionsInRange, monthsSinceFirst, ratePerThousand, sessionRatioCounts, spanStartDate } from '../lib/trends.ts';
+import {
+  bucketTotals, malfunctionsInRange, monthsSinceFirst, ratePerThousand, sessionRatioCounts, spanEndExclusive, spanStartDate
+} from '../lib/trends.ts';
 import {
   TIMED_SKILLS, activeSkillSets, coldVsWarm, formatSec, skillLabel, skillPR, skillTrend, skillsWithData
 } from '../lib/skillSets.ts';
@@ -582,20 +584,38 @@ function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunct
   open: (v: View) => void;
 }) {
   const [span, setSpan] = useState<number | 'all'>(12);
-  const months = span === 'all' ? monthsSinceFirst(sessions, matches) : span;
+  // H-3: read the clock ONCE for this render — every span/window helper below
+  // threads the same `now` through, so they can't disagree with each other
+  // (the three-independent-clock-reads defect: a render straddling midnight
+  // used to be able to compute the chart's last bucket against one instant
+  // and the malfunction window against another).
+  const now = new Date();
+  const months = span === 'all' ? monthsSinceFirst(sessions, matches, now) : span;
   const spanLabel = span === 'all' ? 'all time' : `last ${months} mo`;
   const [filter, setFilter] = useState<RoundsFilter>({});
 
-  const buckets = roundsByMonth(sessions, matches, months, new Date(), filter, firearms);
+  const buckets = roundsByMonth(sessions, matches, months, now, filter, firearms);
   const totals = bucketTotals(buckets);
-  const since = spanStartDate(months);
-  const malfCount = malfunctionsInRange(malfunctions, since, filter, firearms);
+  const since = spanStartDate(months, now);
+  const until = spanEndExclusive(now);
+  // H-3: the malfunction rate's denominator (totals.liveAndMatch) counts only
+  // live/match rounds, so its numerator must exclude dry-fire stoppages. Build
+  // the live-session set by mirroring roundsByMonth's OWN live/dry
+  // classification and window exactly (`!planned && !dry-fire`, same
+  // [since, until) edges as the buckets) — the numerator and denominator agree
+  // by construction, not by coincidence.
+  const liveSessionIds = new Set(
+    sessions
+      .filter((s) => s.date && s.date >= since && s.date < until && isLiveSession(s))
+      .map((s) => s.id)
+  );
+  const malfCount = malfunctionsInRange(malfunctions, since, until, filter, firearms, liveSessionIds);
   const malfRate = ratePerThousand(malfCount, totals.liveAndMatch);
   // Tester-2 Change-1 (July 16 2026): the dry/live ratio compares SESSION counts
   // (dry-fire sessions per live session) — firm units on both sides — not
   // reps-per-round. Counted through the shared Home-tile definition so the two
   // surfaces agree; scoped to this card's span and gun/category filter.
-  const { liveSessions, drySessions } = sessionRatioCounts(sessions, since, filter, firearms);
+  const { liveSessions, drySessions } = sessionRatioCounts(sessions, since, until, filter, firearms);
   const divisions = allClassifications(classifiers);
   const prs = personalRecords(sessions, drills).filter((p) => p.best).slice(0, 8);
   const anyRounds = totals.live + totals.match + totals.dry > 0;
@@ -617,7 +637,7 @@ function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunct
             <option value="">All guns</option>
             {firearms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
-          <select aria-label="Months" value={span} onChange={(e) => setSpan(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
+          <select aria-label="Time span" value={span} onChange={(e) => setSpan(e.target.value === 'all' ? 'all' : Number(e.target.value))}>
             <option value={6}>6 mo</option>
             <option value={12}>12 mo</option>
             <option value={24}>24 mo</option>
