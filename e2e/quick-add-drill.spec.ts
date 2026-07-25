@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { seedDemo, gotoTab, reopenGunsIfCollapsed } from './helpers';
+import { seedDemo, gotoTab } from './helpers';
 
 // Inline "quick-add a drill" from the session-logging flow.
 //
@@ -17,13 +17,12 @@ test.describe('Quick-add a drill inline (Pick Drills)', () => {
     await page.getByRole('button', { name: '+ Log Session' }).click();
 
     // Pick a gun so the session has a context (categories + live fire).
-    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
+    const gunsCard = page.getByTestId('session-guns-card');
     await gunsCard.locator('button.gun-toggle').first().click();
-    await reopenGunsIfCollapsed(gunsCard);
     await gunsCard.getByRole('spinbutton').first().fill('50');
 
     // Open the Pick Drills sheet from the Drills card.
-    const drillsCard = page.locator('.card').filter({ hasText: 'Drills' }).first();
+    const drillsCard = page.getByTestId('session-drills-card');
     await drillsCard.getByRole('button', { name: '+ Add Drill' }).click();
 
     const sheet = page.getByRole('dialog', { name: 'Pick Drills' });
@@ -54,12 +53,11 @@ test.describe('Quick-add a drill inline (Pick Drills)', () => {
 
     await page.getByRole('button', { name: '+ Log Session' }).click();
 
-    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
+    const gunsCard = page.getByTestId('session-guns-card');
     await gunsCard.locator('button.gun-toggle').first().click();
-    await reopenGunsIfCollapsed(gunsCard);
     await gunsCard.getByRole('spinbutton').first().fill('25');
 
-    const drillsCard = page.locator('.card').filter({ hasText: 'Drills' }).first();
+    const drillsCard = page.getByTestId('session-drills-card');
     await drillsCard.getByRole('button', { name: '+ Add Drill' }).click();
 
     const sheet = page.getByRole('dialog', { name: 'Pick Drills' });

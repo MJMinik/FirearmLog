@@ -1,8 +1,16 @@
 import { test, expect } from '@playwright/test';
-import { seedDemo, gotoTab, reopenGunsIfCollapsed } from './helpers';
+import { seedDemo, gotoTab } from './helpers';
 
 // App 2 — a custom "Other" malfunction type can be typed in, and is remembered
 // so it shows up in the dropdown next time. Driven in a real browser.
+//
+// M-1 (session 78 audit): the Malfunctions card now has a real, always-visible
+// "Malfunctions" heading; its Reveal toggle carries that same name (previously
+// it was itself labeled "+ Add Malfunction", which doubled as both the section
+// toggle and the row-add button — confusing, and it meant the section's own
+// name never showed). On a fresh session the Reveal starts collapsed, so every
+// flow here opens it by tapping "Malfunctions" first, then "+ Add Malfunction"
+// to add a row — now the ONLY control with that name.
 
 test.describe('Custom malfunction types (App 2)', () => {
   test('a typed-in "Other" type is saved and reappears in the dropdown', async ({ page }) => {
@@ -11,11 +19,11 @@ test.describe('Custom malfunction types (App 2)', () => {
 
     // First session: log a malfunction with a custom type.
     await page.getByRole('button', { name: '+ Log Session' }).click();
-    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
+    const gunsCard = page.getByTestId('session-guns-card');
     await gunsCard.locator('button.gun-toggle').first().click();
-    await reopenGunsIfCollapsed(gunsCard);
     await gunsCard.getByRole('spinbutton').first().fill('50');
 
+    await page.getByTestId('session-malfs-card').getByRole('button', { name: 'Malfunctions', exact: true }).click();
     await page.getByRole('button', { name: '+ Add Malfunction' }).click();
     const whatHappened = page.locator('label', { hasText: 'What happened' }).locator('select');
     await whatHappened.selectOption('Other');                       // reveals the text field
@@ -25,6 +33,7 @@ test.describe('Custom malfunction types (App 2)', () => {
     // Second session: the custom type is now an option in the dropdown.
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
     await page.getByRole('button', { name: '+ Log Session' }).click();
+    await page.getByTestId('session-malfs-card').getByRole('button', { name: 'Malfunctions', exact: true }).click();
     await page.getByRole('button', { name: '+ Add Malfunction' }).click();
     const whatHappened2 = page.locator('label', { hasText: 'What happened' }).locator('select');
     await expect(whatHappened2.locator('option', { hasText: 'Brass over bolt' })).toHaveCount(1);
@@ -39,11 +48,11 @@ test.describe('Malfunction details (App 3a)', () => {
     await gotoTab(page, 'Log');
 
     await page.getByRole('button', { name: '+ Log Session' }).click();
-    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
+    const gunsCard = page.getByTestId('session-guns-card');
     await gunsCard.locator('button.gun-toggle').first().click();
-    await reopenGunsIfCollapsed(gunsCard);
     await gunsCard.getByRole('spinbutton').first().fill('50');
 
+    await page.getByTestId('session-malfs-card').getByRole('button', { name: 'Malfunctions', exact: true }).click();
     await page.getByRole('button', { name: '+ Add Malfunction' }).click();
     await page.locator('label', { hasText: 'What happened' }).locator('select').selectOption('Stovepipe');
 
@@ -61,7 +70,8 @@ test.describe('Malfunction details (App 3a)', () => {
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
 
     // Reopen the just-logged session (today's date sorts to the top) — tapping a
-    // Log row opens the editable session form directly.
+    // Log row opens the editable session form directly. The Malfunctions Reveal
+    // opens itself (defaultOpen) because this session already has one.
     await page.getByRole('main').locator('.row-tap').first().click();
     const roundFieldAgain = page.locator('label', { hasText: 'Round number' }).locator('input');
     await expect(roundFieldAgain).toHaveValue('47');

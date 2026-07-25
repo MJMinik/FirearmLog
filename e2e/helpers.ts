@@ -60,14 +60,29 @@ export async function swipeRowLeft(row: Locator): Promise<void> {
 }
 
 /**
- * Guns & Rounds auto-collapses the moment the first gun is toggled on (484edc3),
- * which unmounts the rounds input. Call this AFTER toggling a gun and BEFORE
- * filling its rounds; it reopens the section only if it actually collapsed, so
- * it is safe to call whether or not the auto-collapse fired.
+ * Ensure the Guns & Rounds section is open. Safe to call when already open.
+ *
+ * H-1 (session 78 audit) removed the auto-collapse that used to fire the
+ * moment the first gun was toggled on — a NEW session's Guns & Rounds now
+ * stays open through the pick. An EXISTING session still loads collapsed
+ * (unrelated, unchanged behavior — the load effect always starts it closed),
+ * so editing-a-saved-session flows still need to open it before touching
+ * rounds/mags. Call sites on the new-session path no longer need this at all.
  */
-export async function reopenGunsIfCollapsed(gunsCard: Locator): Promise<void> {
-  const disclosure = gunsCard.locator('.checklist-disclosure').first();
-  if ((await disclosure.getAttribute('aria-expanded')) === 'false') await disclosure.click();
+export async function openGunsSection(page: Page): Promise<void> {
+  const disclosure = page.getByTestId('session-guns-disclosure');
+  await expect(disclosure).toBeVisible();
+  // The load effect that seeds an existing session (and collapses this
+  // section) can still be settling when this runs — React StrictMode
+  // double-invokes it, and a contended IndexedDB can leave it resolving
+  // after our click, re-closing the section a beat later. Retry the
+  // click-then-verify until the open state actually holds, not just a
+  // single instant.
+  await expect(async () => {
+    if ((await disclosure.getAttribute('aria-expanded')) === 'false') await disclosure.click();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(await disclosure.getAttribute('aria-expanded')).toBe('true');
+  }).toPass({ timeout: 10_000 });
 }
 
 /**

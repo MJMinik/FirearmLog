@@ -51,10 +51,10 @@ test.describe('Stock drill library (F4) + Drills empty state (F5)', () => {
     await main.getByRole('button', { name: '3. Log your first session' }).click();
 
     // Pick the gun so the picker has its context (category + live fire).
-    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
+    const gunsCard = page.getByTestId('session-guns-card');
     await gunsCard.locator('button.gun-toggle').first().click();
 
-    const drillsCard = page.locator('.card').filter({ hasText: 'Drills' }).first();
+    const drillsCard = page.getByTestId('session-drills-card');
     await drillsCard.getByRole('button', { name: '+ Add Drill' }).click();
     const sheet = page.getByRole('dialog', { name: 'Pick Drills' });
     await expect(sheet).toBeVisible();

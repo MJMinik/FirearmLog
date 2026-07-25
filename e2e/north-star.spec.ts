@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { seedDemo, gotoTab, gotoSection, reopenGunsIfCollapsed } from './helpers';
+import { seedDemo, gotoTab, gotoSection } from './helpers';
 
 // F10 + F2, end to end. The North Star is ASKED in the Setup Wizard's goal
 // step (presets + write-your-own + skip) — the old boot-time auto-seed is
@@ -148,16 +148,15 @@ test.describe('Guided handoff (F2): Home points at the first session', () => {
 
     // Step 3's row is the action: it opens Log Session directly.
     await main.getByRole('button', { name: '3. Log your first session' }).click();
-    await expect(page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first()).toBeVisible();
+    await expect(page.getByTestId('session-guns-card')).toBeVisible();
     await page.getByRole('button', { name: '‹ Cancel' }).click();
 
     // Log the first session (same minimal flow the sessions spec uses).
     // exact: true — the checklist row's sub mentions "+ Log Session", so a
     // substring match would also hit the row (bit E2E #182, both projects).
     await main.getByRole('button', { name: '+ Log Session', exact: true }).click();
-    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
+    const gunsCard = page.getByTestId('session-guns-card');
     await gunsCard.locator('button.gun-toggle').first().click();
-    await reopenGunsIfCollapsed(gunsCard);
     await gunsCard.getByRole('spinbutton').first().fill('50');
     await page.locator('.navbar-action').click();
 

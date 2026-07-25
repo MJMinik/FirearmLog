@@ -40,7 +40,7 @@ test.describe('Dirty guard fires on button-only edits (F1)', () => {
 
     // Toggle ONE gun on — a pure <button> edit that fires no `change` event, so
     // before F1 the bubbled-onChange guard never saw it and ‹ Cancel left silently.
-    const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
+    const gunsCard = page.getByTestId('session-guns-card');
     await gunsCard.locator('button.gun-toggle').first().click();
 
     // ‹ Cancel must now confirm before discarding that toggle-only edit.
@@ -101,7 +101,11 @@ test.describe('Unsaved-changes guard on every exit (F3)', () => {
     await expect(page.getByRole('heading', { name: 'Log Session' })).toHaveCount(0);
   });
 
-  test('button-only edits arm the guard (+ Add Ammo via Back, + Add Malfunction via Cancel)', async ({ page }) => {
+  // P (audit): these were one test where the "+ Add Malfunction" half only
+  // passed because the earlier "+ Add Ammo" click had already dirtied the
+  // form — it never proved Add Malfunction dirties anything on its own. Split
+  // into two independent tests, each starting from a pristine form.
+  test('a click-only edit (+ Add Ammo) arms the guard, checked via Back', async ({ page }) => {
     await seedDemo(page);
     await gotoTab(page, 'Log');
     await page.getByRole('button', { name: '+ Log Session' }).click();
@@ -111,9 +115,22 @@ test.describe('Unsaved-changes guard on every exit (F3)', () => {
     await page.getByRole('button', { name: '+ Add Ammo' }).click();
     await page.goBack();
     await expect(page.getByRole('heading', { name: 'Discard changes?' })).toBeVisible();
-    await page.getByRole('button', { name: 'Keep editing' }).click();
+    await page.getByRole('button', { name: 'Discard' }).click();
+    await expect(page.getByRole('heading', { name: 'Log Session' })).toHaveCount(0);
+  });
 
-    // A second click-only edit, guarded through the form's own ‹ Cancel.
+  test('a click-only edit (+ Add Malfunction) arms the guard, checked via Cancel', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Log');
+    await page.getByRole('button', { name: '+ Log Session' }).click();
+    await expect(page.getByRole('heading', { name: 'Log Session' })).toBeVisible();
+
+    // M-1: the Malfunctions Reveal is collapsed by default on a fresh
+    // session — open it by its real name before the row-add button is
+    // visible. Scoped to the card: the desktop sidebar has its own
+    // "Malfunctions" nav link with the same accessible name.
+    await page.getByTestId('session-malfs-card').getByRole('button', { name: 'Malfunctions', exact: true }).click();
+    // A pure click-only edit — no field typed, no change event bubbles.
     await page.getByRole('button', { name: '+ Add Malfunction' }).click();
     await page.getByRole('main').getByRole('button', { name: 'Cancel' }).click();
     await expect(page.getByRole('heading', { name: 'Discard changes?' })).toBeVisible();

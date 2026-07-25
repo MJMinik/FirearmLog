@@ -22,12 +22,11 @@ test.describe('Trends — All time span', () => {
     await expect(page.getByText('(all time)', { exact: false }).first()).toBeVisible();
 
     // (2) The Malfunctions row shows a numeric rate — not the "—" empty state.
-    // The label text is: "Malfunctions / 1,000 rds (all time)"
-    const malfRow = page.getByText(/Malfunctions \/ 1,000 rds \(all time\)/);
+    // The label text is: "Malfunctions / 1,000 rds (all time)". getByRole('generic')
+    // matches nothing in Playwright — scope by the row's own class instead.
+    const malfRow = page.locator('.row', { hasText: /Malfunctions \/ 1,000 rds \(all time\)/ });
     await expect(malfRow).toBeVisible();
-    // The sibling value cell must contain a digit (e.g. "0.8 (3)"), not "—".
-    const malfValue = malfRow.locator('..').getByRole('generic').last();
-    await expect(malfValue).not.toHaveText('—');
-    await expect(malfValue).toContainText(/\d/);
+    // The value cell reads like "0.8 (3)", not "—".
+    await expect(malfRow.locator('.value')).toHaveText(/^\d+\.\d+ \(\d+\)$/);
   });
 });

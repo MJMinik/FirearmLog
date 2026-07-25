@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { seedDemo, gotoTab, isDesktop, swipeRowLeft, reopenGunsIfCollapsed } from './helpers';
+import { seedDemo, gotoTab, isDesktop, swipeRowLeft } from './helpers';
 
 // App 7 — swipe-to-delete + Recently Deleted, driven end to end in a real
 // browser. On a phone we perform the actual touch swipe; on desktop we use the
@@ -21,9 +21,8 @@ async function deleteRow(page: Page, row: Locator): Promise<void> {
 /** Make a clearly-identifiable session with a distinctive round count. */
 async function makeSession(page: Page, kind: 'log' | 'plan', rounds: string): Promise<void> {
   await page.getByRole('button', { name: kind === 'plan' ? '+ Plan Session' : '+ Log Session' }).click();
-  const gunsCard = page.locator('.card').filter({ hasText: 'Guns & Rounds' }).first();
+  const gunsCard = page.getByTestId('session-guns-card');
   await gunsCard.locator('button.gun-toggle').first().click();
-  await reopenGunsIfCollapsed(gunsCard);
   await gunsCard.getByRole('spinbutton').first().fill(rounds);
   await page.locator('.navbar-action').click();
   await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
