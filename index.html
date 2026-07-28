@@ -51,6 +51,15 @@
         });
       })();
     </script>
+    <!-- Keep this app OUT of the search index. It renders entirely in JavaScript, so a
+         crawler following one of the 76 links to it from firearmlog.com sees a title and an
+         empty body -- a thin result competing with the marketing site for the brand query.
+         It also lives at a temporary address: app.firearmlog.com is decided and unstarted,
+         and an indexed URL you plan to move has to be unwound afterwards.
+         Added session 93, 28 July 2026, at Michael's direction ("1 yes"), on seat 13's
+         pre-lift finding. REMOVE THIS LINE if the app is ever meant to be found in search --
+         nothing else will remind you. -->
+    <meta name="robots" content="noindex" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="mobile-web-app-capable" content="yes" />
