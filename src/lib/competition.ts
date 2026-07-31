@@ -126,14 +126,73 @@ export const USPSA_CLASSES = [
   { name: 'A', min: 75 },
   { name: 'B', min: 60 },
   { name: 'C', min: 40 },
-  { name: 'D', min: 0 }
+  { name: 'D', min: 2 }
 ] as const;
 
-export function classFor(percent: number): string {
+/** Clears IEEE-754 noise at the unit scale before any comparison. Six scores
+ *  summing to exactly 240.00 divide to 39.99999999999999, which without this
+ *  reads as D when the shooter is a C. */
+export function snapPct(percent: number): number {
+  return Math.round(percent * 1e9) / 1e9;
+}
+
+/** Truncates to a hundredth for DISPLAY, never rounds up. The second snap is
+ *  not redundant: a true 74.99 is held as 74.98999999999999488, so x100 puts
+ *  the noise straight back and a bare Math.floor drops a whole hundredth. */
+export function trunc2(percent: number): number {
+  return Math.floor(Math.round(percent * 100 * 1e6) / 1e6) / 100;
+}
+
+/** USPSA's published bracket table starts at D = 2% and names NOTHING below it.
+ *  Returns null there rather than inventing a letter -- and the null return type
+ *  is the guard: TypeScript forces every display site to handle it, so a new
+ *  screen cannot reintroduce the unsourced class the way the old `min: 0` did.
+ *  Callers render null as an em dash; the progress line still says D starts at 2%. */
+export function classFor(percent: number): string | null {
+  const p = snapPct(percent);
   for (const band of USPSA_CLASSES) {
-    if (percent >= band.min) return band.name;
+    if (p >= band.min) return band.name;
   }
-  return 'D';
+  return null;
+}
+
+/** The ONLY way a classification percentage should reach a screen.
+ *  `average` is already truncated to a hundredth, so two decimals render it
+ *  exactly. Rendering it with toFixed(1) instead rounds 74.99 UP to "75.0" and
+ *  prints a percent at the A line beside the letter B -- the number and the
+ *  class contradicting each other in the same breath. Every display site goes
+ *  through here so a new one cannot bring that back. */
+export function formatClassPct(percent: number | null): string {
+  return percent === null ? '—' : percent.toFixed(2) + '%';
+}
+
+/** Why a division shows no class letter, in one place, because there are TWO
+ *  reasons and they are not interchangeable. Saying "6 of the 4 scores USPSA
+ *  needs" to a shooter who HAS six is both the wrong reason and broken
+ *  arithmetic on its face. Every surface that explains an absent class letter
+ *  calls this, so a new one cannot pick the wrong reason. Returns null when a
+ *  class exists and nothing needs explaining. */
+export type UnclassifiedReason =
+  | { kind: 'too-few'; scoresOnRecord: number; needed: number; text: string }
+  | { kind: 'below-lowest'; band: string; threshold: number; text: string };
+
+export function unclassifiedReason(p: ClassProgress): UnclassifiedReason | null {
+  if (p.currentClass !== null) return null;
+  if (p.scoresOnRecord < MIN_SCORES_FOR_CLASSIFICATION) {
+    return {
+      kind: 'too-few',
+      scoresOnRecord: p.scoresOnRecord,
+      needed: MIN_SCORES_FOR_CLASSIFICATION,
+      text: `unclassified — ${p.scoresOnRecord} of ${MIN_SCORES_FOR_CLASSIFICATION} scores`,
+    };
+  }
+  const lowest = USPSA_CLASSES[USPSA_CLASSES.length - 1];
+  return {
+    kind: 'below-lowest',
+    band: lowest.name,
+    threshold: lowest.min,
+    text: `unclassified — below ${lowest.name}, which starts at ${lowest.min.toFixed(2)}%`,
+  };
 }
 
 export interface ClassifierScore { date: string; percent: number | null; }
@@ -176,15 +235,27 @@ export function classificationProgress(scores: ClassifierScore[]): ClassProgress
   if (used.length === 0) {
     return { average: null, scoresUsed: [], scoresOnRecord: 0, currentClass: null, next: null };
   }
-  const average = Math.round((used.reduce((s, p) => s + p, 0) / used.length) * 100) / 100;
-  const wouldBeClass = classFor(average);
+  // Classify the EXACT average, then truncate for display. Rounding to two
+  // decimals BEFORE classifying promoted a shooter across a class line: a true
+  // 74.9983 average was classified as 75.00 and reported as A while the shooter
+  // was still B, and the error only ever ran UPWARD. The marketing site's
+  // calculator carried the identical defect and was fixed; this is that fix.
+  // Truncating the display means no screen ever shows a percent the shooter has
+  // not actually reached.
+  const exact = snapPct(used.reduce((s, p) => s + p, 0) / used.length);
+  const average = trunc2(exact);
+  const wouldBeClass = classFor(exact);
   const currentClass = valid.length >= MIN_SCORES_FOR_CLASSIFICATION ? wouldBeClass : null;
-  // The next-band target is still derived from the would-be class, so the
-  // progress line ("B starts at 60%") keeps working while unclassified.
+  // The next-band target is derived from the would-be class, so the progress
+  // line ("B starts at 60%") keeps working while unclassified. Below 2% there
+  // is no class letter, but D's 2% threshold is sourced and still worth showing.
   const band = USPSA_CLASSES.findIndex((b) => b.name === wouldBeClass);
-  const next = band > 0
-    ? { name: USPSA_CLASSES[band - 1].name, threshold: USPSA_CLASSES[band - 1].min }
-    : null;
+  const lowest = USPSA_CLASSES[USPSA_CLASSES.length - 1];
+  const next = wouldBeClass === null
+    ? { name: lowest.name, threshold: lowest.min }
+    : band > 0
+      ? { name: USPSA_CLASSES[band - 1].name, threshold: USPSA_CLASSES[band - 1].min }
+      : null;
   return { average, scoresUsed: used, scoresOnRecord: valid.length, currentClass, next };
 }
 

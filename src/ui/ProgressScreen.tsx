@@ -23,7 +23,7 @@ import {
 import {
   TIMED_SKILLS, activeSkillSets, coldVsWarm, formatSec, skillLabel, skillPR, skillTrend, skillsWithData
 } from '../lib/skillSets.ts';
-import { matchAccuracyTrend } from '../lib/competition.ts';
+import { matchAccuracyTrend, formatClassPct } from '../lib/competition.ts';
 import { buildHeatmap, monthLabels, sessionsOnDay } from '../lib/heatmap.ts';
 import { sessionRounds } from '../lib/stats.ts';
 import { chartDateLabel, dateMode, labeledTicks, thinIndices } from '../lib/chartFurniture.ts';
@@ -668,7 +668,7 @@ function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunct
             <div className="row" key={d.division}>
               <span className="label">{d.division}</span>
               <span className="value">
-                {d.average != null ? `${d.average.toFixed(1)}%` : '—'}{d.currentClass ? ` · ${d.currentClass}` : ''}
+                {formatClassPct(d.average)}{d.currentClass ? ` · ${d.currentClass}` : ''}
               </span>
             </div>
           ))}

@@ -8,7 +8,7 @@ import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import {
-  classificationProgress, classificationWindow, DIVISIONS, MIN_SCORES_FOR_CLASSIFICATION,
+  classificationProgress, classificationWindow, DIVISIONS, formatClassPct, unclassifiedReason,
   nextClassifierNeeded,
 } from '../lib/competition.ts';
 import { allClassifications } from '../lib/dashboard.ts';
@@ -75,6 +75,7 @@ export function CompeteScreen({ refreshKey, open }: {
     [classifiers, division]
   );
   const progress = useMemo(() => classificationProgress(divisionClassifiers), [divisionClassifiers]);
+  const reason = useMemo(() => unclassifiedReason(progress), [progress]);
   // T3-5: the collapsed-by-default "which scores count" reveal (the audit's
   // "show which 6-of-8 scores count" item) -- the window list and the solved
   // "what would move you up" number, both derived from data already computed.
@@ -123,10 +124,22 @@ export function CompeteScreen({ refreshKey, open }: {
           <>
             <ClassificationGrid divisions={divClasses} selected={division} onSelect={setDivision} />
             {progress.average !== null && (
-              progress.currentClass === null ? (
+              /* The REASON a class is absent is decided in one place --
+                 competition.ts's unclassifiedReason -- so this screen and the Home
+                 tile and the grid can never disagree about it. This screen writes
+                 its own longer prose from the same discriminator; the short
+                 surfaces use reason.text. */
+              reason?.kind === 'too-few' ? (
                 <p className="report-note" style={{ marginTop: 10 }}>
-                  {division}: unclassified so far — {progress.scoresOnRecord} of the {MIN_SCORES_FOR_CLASSIFICATION} scores USPSA
-                  needs to grant a class. Your best-6 average so far is {progress.average}%.
+                  {division}: unclassified so far — {reason.scoresOnRecord} of the {reason.needed} scores USPSA
+                  needs to grant a class. Your best-6 average so far is {formatClassPct(progress.average)}.
+                </p>
+              ) : reason?.kind === 'below-lowest' ? (
+                <p className="report-note" style={{ marginTop: 10 }}>
+                  {division}: best-6 average {formatClassPct(progress.average)}. USPSA's published class table
+                  starts at {reason.band}, at {reason.threshold.toFixed(2)}%, and names nothing below it — so there
+                  is no class letter to show. You need{' '}
+                  {(reason.threshold - (progress.average ?? 0)).toFixed(2)} more points of average to reach {reason.band}.
                 </p>
               ) : progress.next ? (
                 <p className="report-note" style={{ marginTop: 10 }}>
@@ -135,7 +148,7 @@ export function CompeteScreen({ refreshKey, open }: {
                 </p>
               ) : (
                 <p className="report-note" style={{ marginTop: 10 }}>
-                  {division}: {progress.currentClass} class at {progress.average}% — top of the ladder.
+                  {division}: {progress.currentClass} class at {formatClassPct(progress.average)} — top of the ladder.
                 </p>
               )
             )}

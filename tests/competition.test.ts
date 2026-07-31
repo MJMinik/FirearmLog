@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  analyzeMatch, classFor, classificationProgress, classificationWindow, hitFactor,
+  analyzeMatch, classFor, classificationProgress, classificationWindow, formatClassPct, unclassifiedReason, hitFactor,
   isMinorOnly, MINOR_ONLY_DIVISIONS, nextClassifierNeeded, scoreStageHits,
 } from '../src/lib/competition.ts';
 import type { MatchStage } from '../src/lib/types.ts';
@@ -205,7 +205,11 @@ test('classificationWindow: agrees with classificationProgress on the same avera
   assert.equal(rows.length, 8); // most recent 8 only
   const used = rows.filter((r) => r.counts);
   assert.equal(used.length, progress.scoresUsed.length);
-  const avg = Math.round((used.reduce((s, r) => s + r.percent, 0) / used.length) * 100) / 100;
+  // This line used to read Math.round(...*100)/100 -- the SAME rounding the code
+  // was doing, so the assertion agreed with the defect and could never catch it.
+  // Derive the expected value from the rule instead: truncate, never round up.
+  const exact = used.reduce((s, r) => s + r.percent, 0) / used.length;
+  const avg = Math.floor(Math.round(exact * 100 * 1e6) / 1e6) / 100;
   assert.equal(avg, progress.average);
   // 10 on record -> the oldest row of the 8-window drops with the next score.
   assert.equal(rows[rows.length - 1].dropsNext, true);
@@ -358,4 +362,116 @@ test('analyzeMatch uses the derived hit factor when a stage has a breakdown', ()
   assert.equal(a.strongest?.number, 1);
   assert.equal(a.stages.find((s) => s.number === 1)?.score?.hitFactor, 10);
   assert.equal(a.stages.find((s) => s.number === 2)?.score, null);
+});
+
+// ---- S98: the rounding defect, and the guards that go red without the fix ----
+
+test('progress: an average just under a class line does NOT promote (the s98 defect)', () => {
+  // 449.99 / 6 = 74.99833...%, which is B. The old code rounded to 75.00 first and
+  // reported A -- two classes' worth of trust, and the error only ever ran upward.
+  const scores = [
+    { date: '2026-01-01', percent: 75 }, { date: '2026-01-02', percent: 75 },
+    { date: '2026-01-03', percent: 75 }, { date: '2026-01-04', percent: 75 },
+    { date: '2026-01-05', percent: 75 }, { date: '2026-01-06', percent: 74.99 },
+  ];
+  const p = classificationProgress(scores);
+  assert.equal(p.currentClass, 'B');
+  assert.equal(p.average, 74.99); // truncated for display, never rounded up
+});
+
+test('progress: display truncates rather than rounding up, at the hundredth', () => {
+  // A true 74.99 is held as 74.98999999999999488; a bare Math.floor after x100
+  // drops a whole hundredth and prints 74.98 to a shooter who has 74.99.
+  const scores = [
+    { date: '2026-01-01', percent: 75 }, { date: '2026-01-02', percent: 75 },
+    { date: '2026-01-03', percent: 75 }, { date: '2026-01-04', percent: 75 },
+    { date: '2026-01-05', percent: 75 }, { date: '2026-01-06', percent: 74.94 },
+  ];
+  assert.equal(classificationProgress(scores).average, 74.99);
+});
+
+test('progress: float noise at an exact class boundary does not demote', () => {
+  // These six sum to exactly 240.00 but divide to 39.99999999999999 in IEEE-754.
+  const scores = [
+    { date: '2026-01-01', percent: 0.1 }, { date: '2026-01-02', percent: 0.2 },
+    { date: '2026-01-03', percent: 79.7 }, { date: '2026-01-04', percent: 80 },
+    { date: '2026-01-05', percent: 80 }, { date: '2026-01-06', percent: 0 },
+  ];
+  const p = classificationProgress(scores);
+  assert.equal(p.average, 40);
+  assert.equal(p.currentClass, 'C');
+});
+
+test('classFor: USPSA names nothing below 2%, so neither do we', () => {
+  // USPSA's published bracket table ends at "D | 2 to 40%" and never uses the
+  // word Unclassified. The old table had D at min 0, which invented a class.
+  assert.equal(classFor(2), 'D');
+  assert.equal(classFor(1.99), null);
+  assert.equal(classFor(0), null);
+});
+
+test('progress: below 2% grants no class but still names D as the target', () => {
+  const scores = [
+    { date: '2026-01-01', percent: 1 }, { date: '2026-01-02', percent: 1 },
+    { date: '2026-01-03', percent: 1 }, { date: '2026-01-04', percent: 1 },
+  ];
+  const p = classificationProgress(scores);
+  assert.equal(p.currentClass, null);       // no invented letter
+  assert.deepEqual(p.next, { name: 'D', threshold: 2 }); // the 2% figure IS sourced
+});
+
+test('progress: every class boundary classifies on the exact value, both sides', () => {
+  const at = (v: number) => classificationProgress(
+    [1, 2, 3, 4].map((d) => ({ date: `2026-01-0${d}`, percent: v }))
+  ).currentClass;
+  for (const [below, on, cls] of [
+    [94.99, 95, 'GM'], [84.99, 85, 'M'], [74.99, 75, 'A'],
+    [59.99, 60, 'B'], [39.99, 40, 'C'],
+  ] as [number, number, string][]) {
+    assert.equal(at(on), cls, `${on} should be ${cls}`);
+    assert.notEqual(at(below), cls, `${below} should NOT be ${cls}`);
+  }
+});
+
+test('formatClassPct: never rounds a percent up across a class line', () => {
+  // The defect this guards: toFixed(1) turns 74.99 into "75.0", printing a
+  // percent at the A line beside the letter B. Four screens did this.
+  assert.equal(formatClassPct(74.99), '74.99%');
+  assert.equal(formatClassPct(59.99), '59.99%');
+  // carries its own unit, so a null can never render as the string "—%"
+  assert.equal(formatClassPct(null), '—');
+  // and the pairing that made it a contradiction is now impossible:
+  const scores = [75, 75, 75, 75, 75, 74.99].map((p, i) => ({ date: `2026-01-0${i + 1}`, percent: p }));
+  const prog = classificationProgress(scores);
+  assert.equal(prog.currentClass, 'B');
+  assert.equal(formatClassPct(prog.average), '74.99%'); // not '75.0%'
+  assert.ok(!formatClassPct(prog.average).startsWith('75'));
+});
+
+test('unclassifiedReason: names the RIGHT reason, and "6 of 4" can never render', () => {
+  // Two different reasons for an absent class letter, and they are not
+  // interchangeable. The old copy printed the scores-count reason in both cases,
+  // so a shooter with six scores below 2% was told "6 of the 4 scores USPSA needs".
+  const few = classificationProgress(
+    [1, 2, 3].map((d) => ({ date: `2026-01-0${d}`, percent: 80 }))
+  );
+  assert.equal(few.currentClass, null);
+  assert.equal(unclassifiedReason(few)?.kind, 'too-few');
+  assert.equal(unclassifiedReason(few)?.text, 'unclassified — 3 of 4 scores');
+
+  const belowD = classificationProgress(
+    [1, 2, 3, 4, 5, 6].map((d) => ({ date: `2026-01-0${d}`, percent: 1 }))
+  );
+  assert.equal(belowD.currentClass, null);
+  assert.equal(belowD.scoresOnRecord, 6);
+  assert.equal(unclassifiedReason(belowD)?.kind, 'below-lowest');
+  assert.equal(unclassifiedReason(belowD)?.text, 'unclassified — below D, which starts at 2.00%');
+  // the arithmetic that read as a bug, on EVERY surface that explains an absent class:
+  assert.ok(!unclassifiedReason(belowD)!.text.includes('6 of 4'));
+
+  // and nothing to explain once a class exists
+  const classified = classificationProgress(
+    [1, 2, 3, 4].map((d) => ({ date: `2026-01-0${d}`, percent: 80 }))
+  );
+  assert.equal(unclassifiedReason(classified), null);
 });
