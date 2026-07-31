@@ -3,6 +3,7 @@
 // Extracted because the Compete tab's Matches card and the Log screen's filtered
 // Matches card rendered this identical row verbatim; a single component keeps the
 // two reading as one system (and one place to change the shape).
+import { canonicalDivision } from '../lib/competition.ts';
 import type { Match } from '../lib/types.ts';
 import { formatDayKey } from '../lib/dates.ts';
 
@@ -11,7 +12,7 @@ export function MatchRow({ match, onTap }: { match: Match; onTap: () => void }) 
     <button className="row-tap" onClick={onTap}>
       <span className="label">
         {match.name || match.matchType}
-        <div className="row-sub">{formatDayKey(match.date)} · {match.division}</div>
+        <div className="row-sub">{formatDayKey(match.date)} · {canonicalDivision(match.division)}</div>
       </span>
       <span className="value">
         {match.matchPercent != null

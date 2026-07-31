@@ -10,7 +10,7 @@ import { getAll, getOne, getSettings, putOne } from '../lib/db.ts';
 import { maintenanceAlerts, maintenanceStatus, resolveSchedule } from '../lib/maintenance.ts';
 import type { Alert } from '../lib/maintenance.ts';
 import { lowAmmo } from '../lib/costing.ts';
-import { unclassifiedReason, formatClassPct } from '../lib/competition.ts';
+import { unclassifiedReason, formatClassPct, canonicalDivision } from '../lib/competition.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { buildRefLookup } from '../lib/referenceData.ts';
 import type { ReferenceEntry } from '../lib/referenceData.ts';
@@ -725,7 +725,7 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
                     onClick={() => open({ kind: 'match-detail', id: m.id })}>
                     <span className="label">
                       {m.name || 'Match'}
-                      <div className="row-sub">{formatDayKey(m.date)} · {m.division}</div>
+                      <div className="row-sub">{formatDayKey(m.date)} · {canonicalDivision(m.division)}</div>
                     </span>
                     {m.matchPercent != null && (
                       <span className="value">{m.matchPercent.toFixed(1)}%</span>
@@ -815,7 +815,7 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
   for (const m of shownMatches) {
     if (!m.date) continue;
     const list = calItems.get(m.date) ?? [];
-    list.push({ kind: 'match', id: m.id, label: m.name || 'Match', sub: `${m.matchType ?? 'Match'} · ${m.division ?? ''}` });
+    list.push({ kind: 'match', id: m.id, label: m.name || 'Match', sub: `${m.matchType ?? 'Match'} · ${canonicalDivision(m.division ?? '')}` });
     calItems.set(m.date, list);
   }
 

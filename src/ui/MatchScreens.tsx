@@ -6,7 +6,7 @@ import { deleteOne, getAll, getOne, getSettings, putOne, putSettings } from '../
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
-import { DIVISIONS, IDPA_DIVISIONS, STEEL_DIVISIONS, MATCH_TYPES, POWER_FACTORS, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown,
+import { DIVISIONS, IDPA_DIVISIONS, STEEL_DIVISIONS, MATCH_TYPES, POWER_FACTORS, canonicalDivision, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown,
   scoringTypeFor, scoreSteelStage, steelMatchTotal, steelStringsExpected, STEEL_STAGES,
   scoreIdpaStage, idpaMatchTotal, reconcileTime, matchSpeedAccuracy, matchWhatItCost, coachingRead,
   isMinorOnly } from '../lib/competition.ts';
@@ -255,7 +255,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
             {match.divisionPlace != null && (
               <div className="stat">
                 <div className="num">{match.divisionPlace}{match.divisionOf != null ? ` of ${match.divisionOf}` : ''}</div>
-                <div className="cap">{match.division || 'Division'} finish</div>
+                <div className="cap">{canonicalDivision(match.division) || 'Division'} finish</div>
               </div>
             )}
             {match.matchPercent != null && (
@@ -280,7 +280,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
         <h2>Match</h2>
         <div className="row"><span className="label">Date</span><span className="value">{formatDayKey(match.date)}</span></div>
         <div className="row"><span className="label">Type</span><span className="value">{match.matchType}</span></div>
-        <div className="row"><span className="label">Division</span><span className="value">{match.division}{!isSteel && !isIdpa && match.powerFactor ? ` · ${match.powerFactor}` : ''}</span></div>
+        <div className="row"><span className="label">Division</span><span className="value">{canonicalDivision(match.division)}{!isSteel && !isIdpa && match.powerFactor ? ` · ${match.powerFactor}` : ''}</span></div>
         <div className="row"><span className="label">Gun</span><span className="value">{gunName}</span></div>
         {match.totalRounds != null && <div className="row"><span className="label">Rounds fired</span><span className="value">{match.totalRounds.toLocaleString()}</span></div>}
         {match.matchPercent != null && <div className="row"><span className="label">Match percent</span><span className="value">{match.matchPercent}%</span></div>}
@@ -679,7 +679,13 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
   useEffect(() => {
     const opts = scoringType === 'idpa' ? IDPA_DIVISIONS
       : scoringType === 'steel' ? STEEL_DIVISIONS : DIVISIONS;
-    setDivision((d) => (opts.includes(d) ? d : opts[0]));
+    // Canonicalise BEFORE the membership test. Without this, a saved match in
+    // one of the three renamed rimfire divisions is not found in the list and
+    // gets snapped to opts[0] -- centerfire "Open" -- and written back on save.
+    setDivision((d) => {
+      const c = canonicalDivision(d);
+      return opts.includes(c) ? c : (opts.includes(d) ? d : opts[0]);
+    });
   }, [scoringType]);
 
   // T3-6a guardrail: Production, Carry Optics, Limited Optics, and PCC score Minor

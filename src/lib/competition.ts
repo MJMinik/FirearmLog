@@ -46,11 +46,39 @@ export const STEEL_DIVISIONS = [
   'Open', 'Limited', 'Limited Optics', 'Production', 'Single Stack', 'Carry Optics',
   'Optical Sight Revolver', 'Iron Sight Revolver',
   'PCC Optics', 'PCC Iron',
-  'Rimfire Pistol Open', 'Rimfire Pistol Iron',
-  'Rimfire Rifle Open', 'Rimfire Rifle Iron',
-  'Rimfire Revolver Open', 'Rimfire Revolver Iron',
+  'Rimfire Pistol Optics', 'Rimfire Pistol Iron',
+  'Rimfire Rifle Optics', 'Rimfire Rifle Iron',
+  'Rimfire Revolver Optic', 'Rimfire Revolver Iron',
   'Other'
 ];
+
+/** SCSA has no rimfire "Open" division. Appendix A2, the scsa.org peak-time
+ *  table and SCSA announcement 683 all say Optics, and the word Open appears in
+ *  none of them for rimfire. The app shipped the wrong three names, so records
+ *  already saved carry them.
+ *
+ *  This is an ALIAS rather than a migration, deliberately. Nothing rewrites a
+ *  stored record: an old name is translated on the way OUT. That matters
+ *  because the match form snaps a division it does not recognise to the first
+ *  in the list -- so a bare rename would have turned a saved rimfire match into
+ *  centerfire "Open" the next time it was opened and saved. It also means a
+ *  .flog backup taken before today still restores correctly, and that undoing
+ *  this is deleting a map rather than reversing a write.
+ *
+ *  Note "Rimfire Revolver Optic" is SINGULAR in SCSA's own list while pistol
+ *  and rifle are plural. That inconsistency is theirs; we match it exactly. */
+export const STEEL_DIVISION_ALIASES: Readonly<Record<string, string>> = {
+  'Rimfire Pistol Open': 'Rimfire Pistol Optics',
+  'Rimfire Rifle Open': 'Rimfire Rifle Optics',
+  'Rimfire Revolver Open': 'Rimfire Revolver Optic',
+};
+
+/** Translates a stored division name to the one SCSA actually uses. Anything
+ *  not in the alias map comes back untouched, so this is safe to call on every
+ *  division from any sport. */
+export function canonicalDivision(division: string): string {
+  return STEEL_DIVISION_ALIASES[division] ?? division;
+}
 
 export const POWER_FACTORS = ['Minor', 'Major'];
 
@@ -195,7 +223,83 @@ export function unclassifiedReason(p: ClassProgress): UnclassifiedReason | null 
   };
 }
 
-export interface ClassifierScore { date: string; percent: number | null; }
+export interface ClassifierScore {
+  date: string;
+  percent: number | null;
+  /** The classifier's own code (e.g. "99-11"). Optional because older callers
+   *  and tests pass bare date/percent pairs — but WITHOUT it a re-shoot cannot
+   *  be identified, so collapseReshoots leaves such scores untouched. Every
+   *  real call site passes full Classifier records, which carry it. */
+  code?: string;
+}
+
+/** USPSA collapses repeat attempts at the SAME classifier before it averages
+ *  anything, and it does so two different ways. Both are flags in USPSA's own
+ *  published algorithm (github.com/USPSA-public/Classification, "Score Flags"):
+ *
+ *    S — Same Day Average:    "Multiple attempts at the same classifier on the
+ *                              same day will be averaged into a single score"
+ *    M — Most Recent Override: "For classifiers shot on different days, only the
+ *                              most recent attempt will count"
+ *
+ *  The app counted every attempt as its own score, which is neither rule. A
+ *  shooter who re-shot 99-11 at 60% in January and 90% in February had the 60
+ *  still dragging his average down months later; measured, that reached two
+ *  classes of error. Note the SDA grouping is per classifier PER DIVISION per
+ *  day — callers already filter to one division, so grouping by code+date here
+ *  is the same thing.
+ *
+ *  Scores with no code pass through untouched: without the classifier's
+ *  identity there is no way to know what is a repeat of what, and guessing
+ *  would be worse than doing nothing. */
+export function collapseReshoots<T extends ClassifierScore>(scores: T[]): T[] {
+  const byCode = new Map<string, T[]>();
+  const passthrough: T[] = [];
+  for (const s of scores) {
+    // A blank percent is USPSA's flag N -- "this classifier will not count" --
+    // an EXCLUSION, not an attempt. It must not enter the grouping at all:
+    // letting it in made it the newest attempt, so MRO retired a real earned
+    // score behind it and a Master went back to unclassified the day he logged
+    // a classifier before its percentage was known. The same-day half already
+    // treated a null as carrying no value; this is that rule applied to the
+    // different-day half, where it was missing.
+    if (s.percent === null || !Number.isFinite(s.percent)) { passthrough.push(s); continue; }
+    // Codes are compared case-insensitively and trimmed: a hand-typed "99-11 "
+    // or "99-11" vs "99-11" is the same classifier, and failing to see that
+    // silently restores the every-attempt-counts bug for that stage.
+    const code = (s.code ?? '').trim().toUpperCase();
+    if (!code) { passthrough.push(s); continue; }
+    const list = byCode.get(code);
+    if (list) list.push(s); else byCode.set(code, [s]);
+  }
+
+  const collapsed: T[] = [];
+  for (const attempts of byCode.values()) {
+    // MRO: only the most recent DAY's attempts survive.
+    let latest = attempts[0].date;
+    for (const a of attempts) if (a.date.localeCompare(latest) > 0) latest = a.date;
+    const sameDay = attempts.filter((a) => a.date === latest);
+    if (sameDay.length === 1) { collapsed.push(sameDay[0]); continue; }
+    // SDA: several attempts on that day average into one score. A null percent
+    // carries no value, so it cannot pull the average down -- it is excluded
+    // from the mean rather than treated as a zero.
+    const vals = sameDay.map((a) => a.percent as number);
+    const rep = sameDay[0];
+    collapsed.push({ ...rep, percent: snapPct(vals.reduce((x, y) => x + y, 0) / vals.length) });
+  }
+  return [...collapsed, ...passthrough];
+}
+
+/** The ordering USPSA states for the revolving window: "the scores are sorted by
+ *  the match date in descending order. For matches that have more than one
+ *  classifier stage, the scores are sorted by the course percentage in
+ *  descending order." The percent tiebreak decides which score falls out of the
+ *  eight when a day carries more than one, so it is not cosmetic. */
+function byRecencyThenPercent(a: ClassifierScore, b: ClassifierScore): number {
+  const d = b.date.localeCompare(a.date);
+  if (d !== 0) return d;
+  return (b.percent ?? -Infinity) - (a.percent ?? -Infinity);
+}
 
 /** USPSA grants no classification until this many valid scores are on record
  *  ("Earning A Classification", USPSA Classification System). Below it, the
@@ -223,9 +327,9 @@ export interface ClassProgress {
  *  is granted below MIN_SCORES_FOR_CLASSIFICATION (the sport's own rule) —
  *  surfaces show "unclassified" with the score count instead of a letter. */
 export function classificationProgress(scores: ClassifierScore[]): ClassProgress {
-  const valid = scores
+  const valid = collapseReshoots(scores)
     .filter((s) => s.percent !== null && Number.isFinite(s.percent))
-    .sort((a, b) => b.date.localeCompare(a.date));
+    .sort(byRecencyThenPercent);
   // M-10: apply USPSA's 110% score ceiling to each of the recent scores before
   // the best-6 average, so a single over-ceiling percent (possible when a
   // percentage is derived from a hit factor rather than taken from a USPSA
@@ -283,9 +387,12 @@ export interface ClassifierWindowFields {
 export function classificationWindow<T extends ClassifierScore>(
   scores: T[]
 ): (Omit<T, 'percent'> & ClassifierWindowFields)[] {
-  const valid = scores
+  // Collapse re-shoots FIRST, exactly as classificationProgress does. If this
+  // listed every attempt while the average counted one, the "which scores
+  // count" reveal would contradict the number printed above it.
+  const valid = collapseReshoots(scores)
     .filter((s) => s.percent !== null && Number.isFinite(s.percent))
-    .sort((a, b) => b.date.localeCompare(a.date));
+    .sort(byRecencyThenPercent);
   const recent = valid.slice(0, 8);
   if (recent.length === 0) return [];
   const cappedPercents = recent.map((s) => Math.min(s.percent as number, MAX_CLASSIFIER_PERCENT));
@@ -343,9 +450,9 @@ function roundUpTenth(x: number): number {
  * monotonically non-decreasing in S, so there's exactly one boundary to find.
  */
 export function nextClassifierNeeded(scores: ClassifierScore[]): { percent: number } | 'impossible' | null {
-  const valid = scores
+  const valid = collapseReshoots(scores)
     .filter((s) => s.percent !== null && Number.isFinite(s.percent))
-    .sort((a, b) => b.date.localeCompare(a.date));
+    .sort(byRecencyThenPercent);
   if (valid.length < MIN_SCORES_FOR_CLASSIFICATION) return null; // still unclassified -- no "move up" claim yet
   const progress = classificationProgress(scores);
   if (!progress.next) return null; // top of the ladder -- nothing higher to reach
