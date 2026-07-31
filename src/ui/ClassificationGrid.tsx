@@ -2,7 +2,7 @@
 // shown as class + average% + division. Used on Home (read-only, a glance) and on
 // Compete (selectable — tap a division to see its progress detail below). DRY: one
 // source of truth so the two screens can never drift apart.
-import { MIN_SCORES_FOR_CLASSIFICATION, type ClassProgress } from '../lib/competition.ts';
+import { unclassifiedReason, type ClassProgress, formatClassPct } from '../lib/competition.ts';
 
 export type DivisionClass = ClassProgress & { division: string };
 
@@ -21,7 +21,7 @@ export function ClassificationGrid({ divisions, selected, onSelect }: {
             <div className="num">
               {d.currentClass ?? '—'}
               <span style={{ fontSize: 15, color: 'var(--text-dim)', marginLeft: 6 }}>
-                {d.average?.toFixed(1)}%
+                {formatClassPct(d.average)}
               </span>
             </div>
             <div className="cap">{d.division}</div>
@@ -37,8 +37,8 @@ export function ClassificationGrid({ divisions, selected, onSelect }: {
             key={d.division}
             aria-pressed={selected === d.division}
             aria-label={d.currentClass
-              ? `${d.division}: ${d.currentClass} class, ${d.average?.toFixed(1)} percent`
-              : `${d.division}: unclassified — ${d.scoresOnRecord} of ${MIN_SCORES_FOR_CLASSIFICATION} scores, ${d.average?.toFixed(1)} percent`}
+              ? `${d.division}: ${d.currentClass} class, ${formatClassPct(d.average)}`
+              : `${d.division}: ${unclassifiedReason(d)?.text}, ${formatClassPct(d.average)}`}
             onClick={() => onSelect(d.division)}
           >
             {inner}

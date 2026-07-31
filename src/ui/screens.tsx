@@ -10,7 +10,7 @@ import { getAll, getOne, getSettings, putOne } from '../lib/db.ts';
 import { maintenanceAlerts, maintenanceStatus, resolveSchedule } from '../lib/maintenance.ts';
 import type { Alert } from '../lib/maintenance.ts';
 import { lowAmmo } from '../lib/costing.ts';
-import { MIN_SCORES_FOR_CLASSIFICATION } from '../lib/competition.ts';
+import { unclassifiedReason, formatClassPct } from '../lib/competition.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { buildRefLookup } from '../lib/referenceData.ts';
 import type { ReferenceEntry } from '../lib/referenceData.ts';
@@ -549,13 +549,13 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
                 <div className="num" style={{ color: 'var(--accent-ink)' }}>
                   {stats.classification.currentClass ?? '—'}
                   <span style={{ fontSize: 15, color: 'var(--text-dim)', marginLeft: 6 }}>
-                    {stats.classification.average?.toFixed(1)}%
+                    {formatClassPct(stats.classification.average)}
                   </span>
                 </div>
                 <div className="cap">
                   {stats.classification.currentClass
                     ? `${stats.classification.division} class`
-                    : `${stats.classification.division}: unclassified — ${stats.classification.scoresOnRecord} of ${MIN_SCORES_FOR_CLASSIFICATION} scores`}
+                    : `${stats.classification.division}: ${unclassifiedReason(stats.classification)?.text}`}
                 </div>
               </div>
             ) : (

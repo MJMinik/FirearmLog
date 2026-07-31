@@ -11,6 +11,7 @@ import type {
   MaintenanceEntry, Media, Part, Purchase, Reference, Session
 } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
+import { formatClassPct } from '../lib/competition.ts';
 import { getAll } from '../lib/db.ts';
 import { activeOnly, activeMalfunctions, trashedIdSet } from '../lib/softDelete.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
@@ -136,7 +137,7 @@ export function seasonReport(d: ReportBundle): ReportResult {
         m.matchPercent != null ? m.matchPercent.toFixed(1) + '%' : '—', money(matchFee(m))
       ]) } },
     { heading: 'Classification by Division', rows: allClassifications(d.classifiers).map((c) => ({
-      label: c.division, value: (c.average != null ? c.average.toFixed(1) + '%' : '—') + (c.currentClass ? ` · ${c.currentClass}` : '')
+      label: c.division, value: (c.average != null ? formatClassPct(c.average) : '—') + (c.currentClass ? ` · ${c.currentClass}` : '')
     })) }
   ] };
 }
