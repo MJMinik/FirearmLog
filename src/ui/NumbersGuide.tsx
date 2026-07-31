@@ -92,6 +92,16 @@ export function NumbersGuide({ onBack, section }: { onBack: () => void; section?
           isn&rsquo;t labeled &ldquo;speed&rdquo; or &ldquo;accuracy&rdquo; unless the hit breakdown is
           there to show which it was.
         </Why>
+        {/* Board-approved 31 Jul 2026 (seats 1, 7, 13, 14). ONE sentence, on a
+            reference surface, attributed in the same breath — never free-floating
+            as if the motto were ours, and never on a selling surface. Seat 1's
+            rule: DVC may appear where its job is to explain the shooter's score,
+            and never where its job is to characterise FirearmLog. */}
+        <p className="note-text">
+          Hit factor is USPSA&rsquo;s motto — <em>Diligentia, Vis, Celeritas</em>, which USPSA renders
+          as accuracy, power, speed — as arithmetic: points &divide; time, with power factor setting
+          what your C&rsquo;s and D&rsquo;s are worth.
+        </p>
         {comstock.map((q) => (
           <RuleQuote key={q.section} quote={q.quote} section={q.section} />
         ))}
