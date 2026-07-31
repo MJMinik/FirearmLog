@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  analyzeMatch, classFor, classificationProgress, classificationWindow, formatClassPct, unclassifiedReason, hitFactor,
+  analyzeMatch, classFor, classificationProgress, classificationWindow, collapseReshoots, formatClassPct, unclassifiedReason, hitFactor,
   isMinorOnly, MINOR_ONLY_DIVISIONS, nextClassifierNeeded, scoreStageHits,
 } from '../src/lib/competition.ts';
 import type { MatchStage } from '../src/lib/types.ts';
@@ -474,4 +474,119 @@ test('unclassifiedReason: names the RIGHT reason, and "6 of 4" can never render'
     [1, 2, 3, 4].map((d) => ({ date: `2026-01-0${d}`, percent: 80 }))
   );
   assert.equal(unclassifiedReason(classified), null);
+});
+
+// ---- S98: re-shoots. USPSA flags S (Same Day Average) and M (Most Recent
+// Override), from its own published algorithm. The app counted every attempt. ----
+
+test('re-shoots, SDA: two attempts at one classifier on ONE day average into a single score', () => {
+  // Flag S, verbatim: "Multiple attempts at the same classifier on the same day
+  // will be averaged into a single score."
+  const out = collapseReshoots([
+    { date: '2026-03-01', percent: 60, code: '99-11' },
+    { date: '2026-03-01', percent: 90, code: '99-11' },
+  ]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].percent, 75); // (60 + 90) / 2 -- not two scores, not the better one
+});
+
+test('re-shoots, MRO: a repeat on a DIFFERENT day retires the older attempt', () => {
+  // Flag M, verbatim: "For classifiers shot on different days, only the most
+  // recent attempt will count."
+  const out = collapseReshoots([
+    { date: '2026-01-10', percent: 60, code: '99-11' },
+    { date: '2026-02-10', percent: 90, code: '99-11' },
+  ]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].percent, 90);
+  assert.equal(out[0].date, '2026-02-10');
+});
+
+test('re-shoots: the measured two-class error is gone', () => {
+  // Before the collapse this returned 84.00% (A): five scores of 60/90/90/90/90
+  // averaged straight. USPSA retires the January 60 the moment the February
+  // re-shoot lands, leaving four 90s -- 90.00%, which is Master.
+  const scores = [
+    { date: '2026-01-10', percent: 60, code: '99-11' },
+    { date: '2026-02-10', percent: 90, code: '99-11' },
+    { date: '2026-02-11', percent: 90, code: '03-03' },
+    { date: '2026-02-12', percent: 90, code: '06-04' },
+    { date: '2026-02-13', percent: 90, code: '13-02' },
+  ];
+  const p = classificationProgress(scores);
+  assert.equal(p.scoresOnRecord, 4); // the retired attempt is not "on record" for classification
+  assert.equal(p.average, 90);
+  assert.equal(p.currentClass, 'M');
+});
+
+test('re-shoots: different classifiers never collapse into each other', () => {
+  const out = collapseReshoots([
+    { date: '2026-03-01', percent: 60, code: '99-11' },
+    { date: '2026-03-01', percent: 90, code: '03-03' },
+  ]);
+  assert.equal(out.length, 2);
+  assert.deepEqual(out.map((o) => o.percent).sort((a, b) => a! - b!), [60, 90]);
+});
+
+test('re-shoots: a score with no classifier code passes through untouched', () => {
+  // Without the code there is no way to know what is a repeat of what, and
+  // guessing would be worse than doing nothing. Two same-day scores with no
+  // code stay two scores.
+  const out = collapseReshoots([
+    { date: '2026-03-01', percent: 60 },
+    { date: '2026-03-01', percent: 90 },
+  ]);
+  assert.equal(out.length, 2);
+});
+
+test('re-shoots: the window shows what the average actually used', () => {
+  // If the reveal listed every attempt while the average counted one, the list
+  // would contradict the number printed above it.
+  const scores = [
+    { date: '2026-01-10', percent: 60, code: '99-11' },
+    { date: '2026-02-10', percent: 90, code: '99-11' },
+    { date: '2026-02-11', percent: 80, code: '03-03' },
+  ];
+  const rows = classificationWindow(scores);
+  assert.equal(rows.length, 2);
+  assert.equal(rows.filter((r) => r.percent === 60).length, 0); // the retired attempt is not listed
+  assert.equal(classificationProgress(scores).scoresUsed.length, rows.length);
+});
+
+test('re-shoots: a blank percent never averages against a real one', () => {
+  // A blank is USPSA's flag N, "will not count" -- an exclusion, not an attempt.
+  const out = collapseReshoots([
+    { date: '2026-03-01', percent: 88, code: '99-11' },
+    { date: '2026-03-01', percent: null, code: '99-11' },
+  ]);
+  const real = out.filter((o) => o.percent !== null);
+  assert.equal(real.length, 1);
+  assert.equal(real[0].percent, 88); // averaging a null in as 0 would read 44
+});
+
+test('re-shoots: a LATER blank entry does not retire an earlier real score', () => {
+  // The mirror of the same-day case, and the one that was missed. If the blank
+  // is allowed into the grouping it becomes the most recent attempt, MRO keeps
+  // only it, and the earned 90 vanishes -- a Master reverts to unclassified the
+  // day he logs a classifier before its percentage is known.
+  const scores = [
+    { date: '2026-01-10', percent: 90, code: '99-11' },
+    { date: '2026-02-10', percent: null, code: '99-11' },
+    { date: '2026-02-11', percent: 90, code: '03-03' },
+    { date: '2026-02-12', percent: 90, code: '06-04' },
+    { date: '2026-02-13', percent: 90, code: '13-02' },
+  ];
+  const p = classificationProgress(scores);
+  assert.equal(p.scoresOnRecord, 4);   // not 3
+  assert.equal(p.average, 90);
+  assert.equal(p.currentClass, 'M');   // not null
+});
+
+test('re-shoots: a classifier code is matched case-insensitively and trimmed', () => {
+  const out = collapseReshoots([
+    { date: '2026-03-01', percent: 60, code: '99-11' },
+    { date: '2026-03-01', percent: 90, code: ' 99-11 ' },
+  ]);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].percent, 75);
 });

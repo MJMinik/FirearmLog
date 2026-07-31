@@ -4,6 +4,7 @@
 // the Compete FilterBar reuses — match type, division, gun, and a date range,
 // read-only over the matches already stored. Pure functions only; the UI calls
 // these. Mirrors searchFilter.ts so the two filters are one system.
+import { canonicalDivision } from './competition.ts';
 import type { Match } from './types.ts';
 
 export interface CompeteFilter {
@@ -56,7 +57,9 @@ function inDateRange(date: string, f: CompeteFilter): boolean {
 export function matchMatchesCompeteFilter(m: Match, f: CompeteFilter): boolean {
   if (!inDateRange(m.date, f)) return false;
   if (f.matchType && m.matchType !== f.matchType) return false;
-  if (f.division && m.division !== f.division) return false;
+  // Compare CANONICAL names. A logbook holding both a pre-rename and a
+  // post-rename rimfire match otherwise filters them as two divisions.
+  if (f.division && canonicalDivision(m.division) !== canonicalDivision(f.division)) return false;
   if (f.firearmId && m.firearmId !== f.firearmId) return false;
   return true;
 }
@@ -68,6 +71,8 @@ export function matchMatchesCompeteFilter(m: Match, f: CompeteFilter): boolean {
  */
 export function competeFilterOptions(matches: Match[]): { matchTypes: string[]; divisions: string[] } {
   const matchTypes = [...new Set(matches.map((m) => m.matchType).filter(Boolean))].sort();
-  const divisions = [...new Set(matches.map((m) => m.division).filter(Boolean))].sort();
+  // Canonical, so a retired name never appears as its own dropdown entry
+  // beside the real one, each matching a disjoint half of the same division.
+  const divisions = [...new Set(matches.map((m) => canonicalDivision(m.division)).filter(Boolean))].sort();
   return { matchTypes, divisions };
 }

@@ -415,11 +415,11 @@ function steelStrings(fast: number, count: 4 | 5): { strings: (number | null)[];
   return { strings, misses, stops };
 }
 const steelSpecs = [
-  { d: '2025-04-19', gun: 'fa-victory', div: 'Rimfire Pistol Open', fast: 2.4 },
+  { d: '2025-04-19', gun: 'fa-victory', div: 'Rimfire Pistol Optics', fast: 2.4 },
   { d: '2025-07-12', gun: 'fa-shadow2', div: 'Carry Optics', fast: 3.0 },
-  { d: '2025-10-18', gun: 'fa-victory', div: 'Rimfire Pistol Open', fast: 2.2 },
+  { d: '2025-10-18', gun: 'fa-victory', div: 'Rimfire Pistol Optics', fast: 2.2 },
   { d: '2026-01-24', gun: 'fa-shadow2', div: 'Carry Optics', fast: 2.9 },
-  { d: '2026-05-16', gun: 'fa-victory', div: 'Rimfire Pistol Open', fast: 2.0 },
+  { d: '2026-05-16', gun: 'fa-victory', div: 'Rimfire Pistol Optics', fast: 2.0 },
 ];
 for (const sp of steelSpecs) {
   mtN++;

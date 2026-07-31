@@ -11,7 +11,7 @@ import type {
   MaintenanceEntry, Media, Part, Purchase, Reference, Session
 } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
-import { formatClassPct } from '../lib/competition.ts';
+import { canonicalDivision, formatClassPct } from '../lib/competition.ts';
 import { getAll } from '../lib/db.ts';
 import { activeOnly, activeMalfunctions, trashedIdSet } from '../lib/softDelete.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
@@ -132,7 +132,7 @@ export function seasonReport(d: ReportBundle): ReportResult {
   return { title: 'Competition Season', subtitle: `${year}`, sections: [
     { heading: 'Matches', table: { headers: ['Date', 'Match', 'Type', 'Div', 'Place', '%', 'Fee'],
       rows: yMatches.map((m) => [
-        m.date ? formatDayKey(m.date) : '—', m.name || 'Match', m.matchType || '—', m.division || '—',
+        m.date ? formatDayKey(m.date) : '—', m.name || 'Match', m.matchType || '—', canonicalDivision(m.division) || '—',
         m.overallPlace != null ? String(m.overallPlace) : '—',
         m.matchPercent != null ? m.matchPercent.toFixed(1) + '%' : '—', money(matchFee(m))
       ]) } },
