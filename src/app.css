@@ -519,6 +519,20 @@ select.category-pick {
   border-left: 2px solid var(--separator);
 }
 .session-mags .checklist-disclosure { margin-bottom: 0; }
+/* "Same mags as last time" — the last-used loadout OFFERED, never applied
+   (owner decision, session 100). Button chrome mirrors .button.secondary so it
+   reads as the same secondary action used everywhere else; the mag labels sit
+   beneath it as a caption, free to wrap on a narrow phone without stretching
+   the control. */
+.mag-suggest-wrap { margin: 8px 0 10px; }
+.mag-suggest {
+  display: inline-flex; align-items: center; min-height: var(--touch-min);
+  padding: 8px 14px; border-radius: 10px; cursor: pointer;
+  background: var(--bg-card); color: var(--accent-ink);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+  font-size: var(--fs-subhead); font-weight: 600;
+}
+.mag-suggest-list { margin: 4px 0 0; font-size: var(--fs-caption); color: var(--text-dim); }
 
 /* ---------- Gear Checklist (Log/Plan Session) ---------- */
 .checklist-disclosure {

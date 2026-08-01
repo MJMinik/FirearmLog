@@ -164,8 +164,9 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   // Per-session magazine tracking (spec July 22 2026). All keyed by firearmId.
   // magPick = mags chosen for that gun; magOverride = per-mag round counts as
   // typed, present ONLY once the shooter edits a number (absent = even split,
-  // derived live); magOpen = the disclosure state; lastMags = the sticky
-  // preselection (that gun's mags from its most recent logged session).
+  // derived live); magOpen = the disclosure state; lastMags = that gun's mags
+  // from its most recent logged session, OFFERED by the "Same mags as last
+  // time" button and never applied on its own (see magSuggestion).
   const [magPick, setMagPick] = useState<Record<string, string[]>>({});
   const [magOverride, setMagOverride] = useState<Record<string, Record<string, string>>>({});
   const [magOpen, setMagOpen] = useState<Record<string, boolean>>({});
@@ -310,9 +311,10 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         }
       }
       setRecentAmmoIds(recentAmmo);
-      // Sticky mag preselection: each gun's mags from its most recent LOGGED
-      // session that attributed any (most-recent first, mirroring the ammo
-      // default). Planned sessions are intent, not history — skip them.
+      // Each gun's mags from its most recent LOGGED session that attributed
+      // any (most-recent first, mirroring the ammo default). Planned sessions
+      // are intent, not history — skip them. This feeds the "Same mags as
+      // last time" offer; it is never applied without the shooter's tap.
       const last: Record<string, string[]> = {};
       for (const s of [...activeOnly(allSessions)].sort((a, b) => b.date.localeCompare(a.date))) {
         if (s.planned) continue;
@@ -447,24 +449,40 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   const magCount = (fid: string, magId: string): string =>
     magOverride[fid]?.[magId] ?? evenSplitFor(fid)[magId] ?? '0';
 
+  // Opening the section changes NOTHING — it is inspection, not an
+  // assertion. It used to silently check this gun's last-used mags, which
+  // wrote an attribution the shooter had never made and contradicted the
+  // July-22 spec's own "untouched section = nothing stored" (owner decision,
+  // session 100, after Michael opened Magazines on a real log and found it
+  // filled in). It also keeps session 75's fix true by construction: merely
+  // opening can no longer dirty the form, so no phantom discard sheet.
   const toggleMagSection = (fid: string) => {
-    const opening = !magOpen[fid];
     setMagOpen((p) => ({ ...p, [fid]: !p[fid] }));
-    // First open with nothing picked: sticky preselect from this gun's most
-    // recent logged mags, so one tap confirms the usual loadout. Only mags
-    // still linked AND in service qualify — a since-retired mag shouldn't be
-    // silently attributed by habit. The preselect is a suggestion for NEW
-    // logs and plan conversions, not a user edit — merely opening a saved
-    // session's Magazines section must not raise the discard sheet (owner
-    // decision, session 75: the 7/9 vs 7/21 inconsistency), and a saved
-    // session's history is never auto-backfilled from habit. In the flows
-    // where the seed still fires, real user edits (or the convert button)
-    // set `touched` before Save matters.
-    if (opening && (!original || converting) && !(magPick[fid]?.length)) {
-      const seed = (lastMags[fid] ?? [])
-        .filter((id) => magazines.some((m) => m.id === id && m.firearmIds.includes(fid) && m.active));
-      if (seed.length) { setMagPick((p) => ({ ...p, [fid]: seed })); }
-    }
+  };
+
+  /**
+   * The mags this gun ran last time, OFFERED as a one-tap suggestion. Empty
+   * (so nothing renders) once anything is picked, and on an already-saved
+   * session — a saved session's history is never backfilled from habit
+   * (owner decision, session 75), though a plan being converted to a log
+   * still counts as new. Only mags still linked AND in service qualify: a
+   * since-retired mag must not be attributed by habit. That filter is
+   * unchanged from the preselect it replaces.
+   */
+  const magSuggestion = (fid: string): string[] => {
+    if (magPick[fid]?.length || (original && !converting)) return [];
+    return (lastMags[fid] ?? [])
+      .filter((id) => magazines.some((m) => m.id === id && m.firearmIds.includes(fid) && m.active));
+  };
+
+  // The tap that records the loadout. It IS a real edit, so it sets `touched`
+  // — cancelling afterwards correctly raises the discard sheet.
+  const applyMagSuggestion = (fid: string) => {
+    const seed = magSuggestion(fid);
+    if (!seed.length) return;
+    setTouched(true);
+    setMagPick((p) => ({ ...p, [fid]: seed }));
+    if (problem?.field === 'mags') setProblem(null);
   };
 
   const toggleMag = (fid: string, magId: string) => {
@@ -1199,6 +1217,8 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               const ghostIds = on && kind !== 'dry_fire'
                 ? picked.filter((id) => !gunMags.some((m) => m.id === id)) : [];
               const open = !!magOpen[f.id];
+              // Offered, never applied — see magSuggestion.
+              const suggested = open && kind !== 'dry_fire' ? magSuggestion(f.id) : [];
               return (
                 <Fragment key={f.id}>
                   <div className="row">
@@ -1230,6 +1250,21 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                       </button>
                       {open && (
                         <>
+                          {suggested.length > 0 && (
+                            <div className="mag-suggest-wrap">
+                              <button className="mag-suggest"
+                                aria-describedby={`mag-suggest-list-${f.id}`}
+                                onClick={() => applyMagSuggestion(f.id)}>
+                                Same mags as last time
+                              </button>
+                              {/* The labels sit OUTSIDE the button on purpose: inside, they
+                                  would join its accessible name and collide with the mag
+                                  toggles' own names. aria-describedby still announces them. */}
+                              <p className="mag-suggest-list" id={`mag-suggest-list-${f.id}`}>
+                                {suggested.map((id) => magazines.find((m) => m.id === id)?.label ?? '—').join(', ')}
+                              </p>
+                            </div>
+                          )}
                           {gunMags.map((m) => {
                             const magOn = picked.includes(m.id);
                             return (
