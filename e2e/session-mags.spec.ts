@@ -12,11 +12,16 @@ import { seedDemo, gotoTab, gotoSection, openGunsSection } from './helpers';
 // The demo dataset gives "Shadow Systems DR920" four linked mags DR9-1..DR9-4,
 // all in service. Its most recent live session now carries mag attribution
 // for all four (session 78's audit: an earlier commit added magazine
-// attribution to the demo dataset's live sessions) — so the sticky preselect
-// (a brand-new session's Magazines section preselects the gun's last-used
-// mags the moment it's opened) fires with all four checked on first open,
-// not a blank slate. Tests reconcile to the exact picks they want via
-// `pickMags` below rather than assuming an empty starting selection.
+// attribution to the demo dataset's live sessions) — so a brand-new session
+// opens with all four OFFERED by the "Same mags as last time" button.
+//
+// Owner decision, session 100: that offer is never applied on its own.
+// Opening the disclosure checks nothing and stores nothing; only the tap on
+// the offer records a loadout. (It used to pre-check them silently, which
+// wrote an attribution the shooter had never made and contradicted this
+// feature's own spec: "untouched section = nothing stored".) Tests still
+// reconcile to the exact picks they want via `pickMags` below rather than
+// assuming any particular starting selection.
 
 const GUN = 'Shadow Systems DR920';
 const ALL_MAGS = ['DR9-1', 'DR9-2', 'DR9-3', 'DR9-4'];
@@ -40,8 +45,8 @@ async function startSessionWithGun(page: import('@playwright/test').Page, rounds
 /**
  * After a gun's Magazines disclosure is open, force exactly `want` to end up
  * selected — clicking whichever buttons are mismatched. Robust regardless of
- * what the sticky preselect already checked when the disclosure opened (it
- * may have pre-checked some or all of `all`).
+ * what is already checked when the disclosure opens (nothing, since session
+ * 100 — but a taken offer or a saved session's own picks may be).
  *
  * Not `exact: true` — the mag toggles render a checkbox glyph via CSS
  * generated content (`.gun-toggle::before`, app.css: '\u2713'/'\u2610'), and
@@ -81,13 +86,21 @@ test.describe('Per-session magazine tracking', () => {
     // Derived lifetime: DR9-1's count grew by exactly its 50-round share.
     expect(await dr91Lifetime(page)).toBe(before + 50);
 
-    // Sticky preselect: the NEXT session with this gun opens its mag section
-    // with the same two mags already picked — one tap confirms the loadout.
+    // The NEXT session with this gun opens its mag section with NOTHING
+    // checked, and the same two mags offered by name — one tap takes them.
     await startSessionWithGun(page, '60');
     await page.locator('.session-mags .checklist-disclosure').click();
+    for (const label of ALL_MAGS) {
+      await expect(page.getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'false');
+    }
+    await expect(page.locator('.mag-suggest')).toHaveText('Same mags as last time');
+    await expect(page.locator('.mag-suggest-list')).toHaveText('DR9-1, DR9-2');
+    await page.locator('.mag-suggest').click();
     await expect(page.getByRole('button', { name: 'DR9-1' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('button', { name: 'DR9-2' })).toHaveAttribute('aria-pressed', 'true');
     await expect(page.getByRole('button', { name: 'DR9-3' })).toHaveAttribute('aria-pressed', 'false');
+    // The offer withdraws once taken — it only ever fills an empty selection.
+    await expect(page.locator('.mag-suggest')).toHaveCount(0);
   });
 
   test('custom split must match the gun total: bad sum blocks the save, fixed sum saves', async ({ page }) => {
@@ -280,22 +293,85 @@ test.describe('Per-session magazine tracking', () => {
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
   });
 
-  // The preserved feature: sticky preselect still fires for a brand-new
-  // session (never for an already-saved one — see the tests above).
-  test('preserved: a NEW session still preselects the gun last-used mags on first open', async ({ page }) => {
+  // The July-22 spec's own contract — "untouched section = nothing stored" —
+  // machine-guarded for the first time (owner decision, session 100). Opening
+  // a disclosure is inspection; it must never put an unmade claim about which
+  // mags were fired into the shooter's log.
+  test('a NEW session: opening Magazines and saving without tapping stores nothing', async ({ page }) => {
     await seedDemo(page);
-    await startSessionWithGun(page, '40');
+    const before = await dr91Lifetime(page);
+
+    await startSessionWithGun(page, '100');
+    // Open it, look at the offer, take nothing.
     await page.locator('.session-mags .checklist-disclosure').click();
-    await pickMags(page, ALL_MAGS, ['DR9-2', 'DR9-4']);
+    await expect(page.locator('.mag-suggest')).toBeVisible();
+    for (const label of ALL_MAGS) {
+      await expect(page.getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'false');
+    }
     await page.locator('.navbar-action').click();
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
 
-    // A brand-new session with the same gun: opening Magazines preselects the
-    // mags from that just-logged session.
-    await startSessionWithGun(page, '30');
+    // Nothing was attributed: the derived lifetime has not moved a round.
+    expect(await dr91Lifetime(page)).toBe(before);
+
+    // And the saved session holds no picks — with no offer to backfill one,
+    // because a saved session's history is never filled in from habit.
+    await gotoTab(page, 'Log');
+    await page.getByRole('main').locator('.row-tap').first().click();
+    await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
+    await openGunsSection(page);
     await page.locator('.session-mags .checklist-disclosure').click();
-    await expect(page.getByRole('button', { name: 'DR9-2' })).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByRole('button', { name: 'DR9-4' })).toHaveAttribute('aria-pressed', 'true');
-    await expect(page.getByRole('button', { name: 'DR9-1' })).toHaveAttribute('aria-pressed', 'false');
+    await expect(page.locator('.mag-suggest')).toHaveCount(0);
+    for (const label of ALL_MAGS) {
+      await expect(page.getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'false');
+    }
+    await page.getByRole('button', { name: '‹ Cancel' }).click();
+    await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
+
+    // Skipping the section once must not destroy the offer: the NEXT new
+    // session still gets it, sourced from the last log that did attribute.
+    await startSessionWithGun(page, '50');
+    await page.locator('.session-mags .checklist-disclosure').click();
+    await expect(page.locator('.mag-suggest')).toBeVisible();
+  });
+
+  // A plan being converted to a log counts as NEW — it is being written for
+  // the first time, so the offer belongs there. (A plain saved session does
+  // not: see the Show-pre-checks-nothing test above.) Found unguarded by the
+  // session-100 cold audit; the behaviour was right and untested.
+  test('converting a plan to a log offers the last-used mags; a plan alone stores none', async ({ page }) => {
+    await seedDemo(page);
+    const before = await dr91Lifetime(page);
+
+    // Plan a session with the gun, never opening Magazines.
+    await gotoTab(page, 'Log');
+    await page.getByRole('button', { name: '+ Plan Session' }).click();
+    await expect(page.getByRole('heading', { name: 'Plan Session' })).toBeVisible();
+    await page.getByLabel('Where').fill('Convert Mags Range');
+    await page.getByRole('button', { name: GUN }).click();
+    await page.getByLabel(`Rounds for ${GUN}`).fill('80');
+    await page.locator('.navbar-action').click();
+    await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
+
+    // Reopen it and convert in place.
+    await page.locator('.row-tap', { hasText: 'Convert Mags Range' }).click();
+    await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
+    await openGunsSection(page);
+    await page.getByRole('button', { name: 'Convert to logged session' }).click();
+    await expect(page.getByRole('heading', { name: 'Log Session (from Plan)' })).toBeVisible();
+
+    // The offer is there, and it is still an offer — nothing is checked yet.
+    await page.locator('.session-mags .checklist-disclosure').click();
+    for (const label of ALL_MAGS) {
+      await expect(page.getByRole('button', { name: label })).toHaveAttribute('aria-pressed', 'false');
+    }
+    await page.locator('.mag-suggest').click();
+    await expect(page.getByRole('button', { name: 'DR9-1' })).toHaveAttribute('aria-pressed', 'true');
+
+    // Saving the now-logged session is what moves the derived lifetime: the
+    // plan itself spent no rounds, so the whole 80 arrives at once, 20 each.
+    await page.locator('.navbar-action').click();
+    await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
+    expect(await dr91Lifetime(page)).toBe(before + 20);
   });
 });
