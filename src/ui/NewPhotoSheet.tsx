@@ -9,6 +9,7 @@ import { useDirtyTracker } from './useDirtyTracker.ts';
 import { noAutofillProps } from './SuggestField.tsx';
 import { PhotoMarkup } from './PhotoMarkup.tsx';
 import { MarkedImage } from './MarkedImage.tsx';
+import { VideoFrame } from './VideoFrame.tsx';
 import type { Mark } from '../lib/types.ts';
 
 /** A picked-but-not-yet-saved file held in a form's draft state. */
@@ -41,7 +42,7 @@ export function NewPhotoSheet({ file, onSave, onClose }: {
   return (
     <Sheet title={label} onClose={onClose} dirty={dirty} onSaveRequest={onSaveRequest}>
       {file.kind === 'video'
-        ? <video className="photo-full" src={file.url} controls playsInline preload="metadata" />
+        ? <VideoFrame className="photo-full" src={file.url} controls muted={false} label={name || label} />
         : <MarkedImage url={file.url} alt={name || `New ${label.toLowerCase()}`} marks={marks} />}
       {file.kind === 'image' && (
         <button className="button secondary" style={{ marginTop: 8 }} onClick={() => setMarking(true)}>

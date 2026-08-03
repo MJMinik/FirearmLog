@@ -14,6 +14,8 @@ import { newId } from '../lib/id.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
 import { Icon } from './Icon.tsx';
 import { MarkThumb } from './MarkThumb.tsx';
+import { VideoFrame } from './VideoFrame.tsx';
+import { mediaLabel } from './media.ts';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { NewPhotoSheet } from './NewPhotoSheet.tsx';
 import type { StagedFile } from './NewPhotoSheet.tsx';
@@ -105,7 +107,7 @@ export function MediaField({
         <div className="photo-grid" style={{ marginBottom: 12 }}>
           {visible.map((m) => (
             <div className="thumb-wrap" key={m.id}>
-              <button className="thumb-tap" onClick={() => setViewing(m)} aria-label={`Open ${m.name}`}>
+              <button className="thumb-tap" onClick={() => setViewing(m)} aria-label={`Open ${mediaLabel(m)}`}>
                 <MarkThumb media={m} />
               </button>
               <button className="thumb-x" aria-label={`Remove ${m.name}`}
@@ -115,10 +117,10 @@ export function MediaField({
           ))}
           {newFiles.map((nf, i) => (
             <div className="thumb-wrap" key={nf.url}>
-              <button className="thumb-tap" onClick={() => setEditingNew(i)} aria-label="Name this new file">
+              <button className="thumb-tap" onClick={() => setEditingNew(i)} aria-label={`Name this new ${nf.kind === 'video' ? 'video' : 'photo'}`}>
                 {nf.kind === 'video'
-                  ? <video src={nf.url} preload="metadata" muted playsInline />
-                  : <img src={nf.url} alt="New file" />}
+                  ? <VideoFrame src={nf.url} showBadge label={nf.name} />
+                  : <img src={nf.url} alt="New photo" />}
               </button>
               <button className="thumb-x" aria-label="Remove new file"
                 onClick={() => setNewFiles((p) => p.filter((_, x) => x !== i))}><Icon name="close" size={16} /></button>

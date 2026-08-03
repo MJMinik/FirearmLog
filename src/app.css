@@ -889,6 +889,32 @@ h2.disclosure-h2 { margin: 0; font-size: inherit; font-weight: inherit; }
 .mark-thumb { position: relative; display: block; }
 .photo-grid .mark-thumb img { width: 100%; height: auto; aspect-ratio: auto; object-fit: contain; border-radius: 10px; }
 
+/* ---------- Video previews (VideoFrame) ---------- */
+/* The wrapper only exists to hang the play glyph on a corner; it must not
+   change the tile's own box, so it inherits the grid cell exactly. */
+.video-badge-wrap { position: relative; display: block; line-height: 0; }
+.video-badge {
+  position: absolute; bottom: 6px; right: 6px; width: 24px; height: 24px;
+  border-radius: 50%; background: rgba(0, 0, 0, 0.6); color: #fff;
+  display: flex; align-items: center; justify-content: center; pointer-events: none;
+}
+/* A file we genuinely cannot decode. It SAYS what is wrong rather than leaving
+   a blank. The tile button is inline-block shrink-to-fit, which a <video> or
+   <img> fills by its own intrinsic width but a box of TEXT does not — so the
+   fallback rendered short and narrow and pulled the grid out of line. The
+   :has() rule below stretches the button only when it holds this fallback, so
+   photo and video tiles are untouched; where :has() is unsupported the tile is
+   merely small, never broken. */
+.photo-grid .thumb-tap:has(.video-unavailable) { display: block; width: 100%; }
+.video-unavailable {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+  width: 100%; aspect-ratio: 1; border-radius: 10px; padding: 6px; box-sizing: border-box;
+  background: var(--bg); border: 0.5px solid var(--separator);
+  color: var(--text-dim); text-align: center;
+}
+.video-unavailable-text { font-size: var(--fs-caption); line-height: 1.2; }
+.video-unavailable.photo-full, .video-unavailable.lightbox-media { aspect-ratio: 16 / 9; }
+
 .thumb-x {
   position: absolute; top: 4px; right: 4px; width: 28px; height: 28px;
   border-radius: 50%; border: none; background: rgba(0, 0, 0, 0.65); color: #fff;

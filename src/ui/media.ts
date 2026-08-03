@@ -12,3 +12,16 @@ export function mediaUrl(m: Media): string {
   }
   return url;
 }
+
+/**
+ * The accessible name for a media thumbnail. A video tile and a photo tile
+ * used to be announced identically — the play badge fixes that for sighted
+ * users, so the name has to carry the same fact for everyone else. It is only
+ * appended when the shooter's own caption does not already say it, because
+ * stage videos are routinely called things like "Stage 4 video" and
+ * "Stage 4 video (video)" is worse than saying nothing.
+ */
+export function mediaLabel(m: Media): string {
+  if (m.kind !== 'video') return m.name;
+  return /video/i.test(m.name) ? m.name : `${m.name} (video)`;
+}

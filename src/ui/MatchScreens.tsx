@@ -12,6 +12,7 @@ import { DIVISIONS, IDPA_DIVISIONS, STEEL_DIVISIONS, MATCH_TYPES, POWER_FACTORS,
   isMinorOnly } from '../lib/competition.ts';
 import type { SpeedAccuracy, WhatItCost } from '../lib/competition.ts';
 import { MarkThumb } from './MarkThumb.tsx';
+import { mediaLabel } from './media.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { Reveal } from './Reveal.tsx';
 import { Stepper } from './Stepper.tsx';
@@ -463,7 +464,8 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
           <div className="photo-grid">
             {videos.map((m) => (
               <div className="thumb-wrap" key={m.id}>
-                <button className="thumb-tap" onClick={() => setViewing(m)} aria-label={m.name}>
+                <button className="thumb-tap" onClick={() => setViewing(m)}
+                  aria-label={mediaLabel(m)}>
                   <MarkThumb media={m} />
                 </button>
                 <span className="thumb-caption">{m.name}</span>

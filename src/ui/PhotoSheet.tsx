@@ -11,6 +11,7 @@ import { useDirtyTracker } from './useDirtyTracker.ts';
 import { Icon } from './Icon.tsx';
 import { PhotoMarkup } from './PhotoMarkup.tsx';
 import { MarkedImage } from './MarkedImage.tsx';
+import { VideoFrame } from './VideoFrame.tsx';
 
 export function PhotoSheet({ media, onClose, onChanged, allowDelete = true }: {
   media: Media;
@@ -63,7 +64,7 @@ export function PhotoSheet({ media, onClose, onChanged, allowDelete = true }: {
         // the actual look-at-it view).
         <button type="button" className="photo-fullscreen-btn" aria-label="Open video full screen"
           onClick={() => setLightbox(true)}>
-          <video className="photo-full" src={url} playsInline preload="metadata" muted />
+          <VideoFrame className="photo-full" src={url} label={media.name} />
         </button>
       ) : (
         <button type="button" className="photo-fullscreen-btn" aria-label="Open photo full screen"
@@ -181,7 +182,7 @@ function PhotoLightbox({ url, kind, alt, marks, onClose }: {
           // AUDIT FIX #5: no autoPlay — iOS Safari blocks unmuted autoplay
           // anyway, and HIG treats media playback as user-initiated. The
           // controls are present; the shooter taps play.
-          <video className="lightbox-media" src={url} controls playsInline preload="metadata" />
+          <VideoFrame className="lightbox-media" src={url} controls muted={false} label={alt} />
         ) : (
           // MarkedImage keeps its markup-canvas wrapper; the .lightbox-image-wrap
           // class swaps in the fullscreen sizing (max-height: 100dvh).

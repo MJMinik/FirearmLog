@@ -4,11 +4,12 @@
 // photos and videos render as the usual square cover thumbnail.
 import type { Media } from '../lib/types.ts';
 import { mediaUrl } from './media.ts';
+import { VideoFrame } from './VideoFrame.tsx';
 
 export function MarkThumb({ media }: { media: Media }) {
   const marks = media.marks ?? [];
   if (media.kind === 'video') {
-    return <video src={mediaUrl(media)} preload="metadata" muted playsInline />;
+    return <VideoFrame src={mediaUrl(media)} showBadge label={media.name} />;
   }
   if (marks.length === 0) {
     return <img src={mediaUrl(media)} alt={media.name} loading="lazy" />;

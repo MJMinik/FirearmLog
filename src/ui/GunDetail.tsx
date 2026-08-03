@@ -13,6 +13,7 @@ import { isBatteryDue } from '../lib/optics.ts';
 import { buildRefLookup, referencesForCategory, toEntry } from '../lib/referenceData.ts';
 import { formatDayKey } from '../lib/dates.ts';
 import { MarkThumb } from './MarkThumb.tsx';
+import { mediaLabel } from './media.ts';
 import { PhotoSheet } from './PhotoSheet.tsx';
 import { Sheet } from './Sheet.tsx';
 import { GunRemoveSheet } from './GunRemoveSheet.tsx';
@@ -256,7 +257,8 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
             <div className="photo-grid" style={{ marginBottom: 12 }}>
               {photos.map((m) => (
                 <div className="thumb-wrap" key={m.id}>
-                  <button className="thumb-tap" onClick={() => setViewing(m)} aria-label={m.name}>
+                  <button className="thumb-tap" onClick={() => setViewing(m)}
+                    aria-label={mediaLabel(m)}>
                     <MarkThumb media={m} />
                   </button>
                   <span className="thumb-caption">{m.name}</span>
