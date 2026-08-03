@@ -58,12 +58,10 @@ export function escapeCsvField(value: unknown, delimiter = ','): string {
 /**
  * CSV INJECTION GUARD.
  *
- * Excel, Numbers and Google Sheets treat a cell beginning `=`, `+`, `-` or `@`
- * as a formula. A note a user typed as `=cmd|' /c calc'!A1` — or, far more
- * likely on this app's data, a perfectly innocent note beginning with a minus
- * sign — is then executed or mangled when the file is opened. That is somebody
- * else's spreadsheet running our file's content, which is not a risk this app
- * gets to hand to a user by accident.
+ * Excel, Numbers and Google Sheets can treat a cell beginning `=`, `+`, `-` or
+ * `@` as a formula. A note a user typed as `=cmd|' /c calc'!A1` would then be
+ * executed when the file is opened, which is not a risk this app gets to hand
+ * to anyone by accident.
  *
  * The fix is the OWASP-recommended one: prefix the field with a single quote,
  * which every major spreadsheet reads as "this cell is text". The visible value
@@ -71,24 +69,31 @@ export function escapeCsvField(value: unknown, delimiter = ','): string {
  *
  * Note this runs on a per-FIELD basis before quoting, so it survives escaping.
  *
- * ONE REFINEMENT, because the blunt version costs the user something real. The
- * usual advice neutralises every field starting `=`, `+`, `-` or `@`, which
- * turns every negative number in the log into TEXT in the spreadsheet —
- * unsortable, unsummable, right-alignment gone. So `+` and `-` are exempted
- * when the whole field is a well-formed number: Excel reads `-5` as the number
- * minus five, not as a formula, so there is nothing to defend against. It does
- * evaluate `-1+1`, and it chokes on `-2 seconds on the draw` — neither of which
- * is a number, so both are still neutralised. `=` and `@` are never exempt.
+ * NARROWED 3 AUGUST 2026, ON MEASURED EVIDENCE, and this is the honest version
+ * of a rule that is usually copied without testing. The standard advice guards
+ * `=`, `+`, `-` and `@`. Michael tested the output: he wrote a session note
+ * reading `-2 test`, exported it, and opened the file in Numbers, where the
+ * cell displayed **`'-2 test`** — apostrophe and all. The OWASP prefix is
+ * invisible when a value is TYPED into a spreadsheet; on CSV IMPORT it is data,
+ * so it shows. That cost is permanent and it lands on exactly the notes a
+ * shooter writes: "-2 seconds on the draw", "+1 second par".
+ *
+ * So the guard now covers `=` and `@` only — the two characters that actually
+ * begin a formula or a function reference, and neither of which starts any
+ * legitimate note about shooting. `+` and `-` are left alone.
+ *
+ * What that trade accepts, stated rather than buried: a note like `-1+1` may be
+ * evaluated by Excel into `0`. That is a real loss and it is judged the smaller
+ * one, because nobody writes `-1+1` in a range note and many people write
+ * "-2 seconds". The threat model matters too — this file is the user's own
+ * notes, exported by that user and opened by them, not attacker-supplied data
+ * arriving in someone else's spreadsheet, which is the scenario the blanket
+ * rule was written for.
  */
 export function neutralizeFormula(s: string): string {
   if (s === '') return s;
   const first = s[0];
   if (first === '=' || first === '@' || first === '\t' || first === '\r') {
-    return `'${s}`;
-  }
-  if (first === '+' || first === '-') {
-    // A plain signed number is safe and must stay numeric in the spreadsheet.
-    if (/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(s)) return s;
     return `'${s}`;
   }
   return s;

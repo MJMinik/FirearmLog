@@ -56,8 +56,8 @@ test('an object is serialised as JSON rather than [object Object]', () => {
 // CSV injection — the guard that matters most in this file
 // ---------------------------------------------------------------------------
 
-test('a cell that a spreadsheet would run as a formula is neutralised', () => {
-  for (const dangerous of ['=1+1', '+1x', '-1a', '@SUM(A1)', '=cmd|\' /c calc\'!A1']) {
+test('a cell that a spreadsheet would EXECUTE is neutralised', () => {
+  for (const dangerous of ['=1+1', '@SUM(A1)', '=cmd|\' /c calc\'!A1', '=HYPERLINK("http://x")']) {
     const out = neutralizeFormula(dangerous);
     assert.equal(out[0], "'", `expected a leading quote on ${dangerous}`);
     assert.ok(out.endsWith(dangerous));
@@ -70,28 +70,31 @@ test('the guard runs through escapeCsvField, not only when called directly', () 
   assert.equal(escapeCsvField('=1,2'), '"\'=1,2"');
 });
 
-test('a note that merely begins with a minus is neutralised too', () => {
-  // Not hostile — just a shooter writing "-2 seconds on the draw". Excel would
-  // otherwise read it as a formula and mangle or reject the cell.
-  assert.equal(escapeCsvField('-2 seconds on the draw'), "'-2 seconds on the draw");
+test('a note beginning with a minus is left ALONE — measured, not assumed', () => {
+  // Michael wrote a real session note reading "-2 test", exported it and opened
+  // the file in Numbers: the cell displayed '-2 test, apostrophe visible. The
+  // OWASP single-quote prefix is invisible when a value is TYPED into a
+  // spreadsheet and is plain data on CSV IMPORT, so it shows. "-2 seconds on
+  // the draw" is a note a shooter actually writes; "=cmd|..." is not. The guard
+  // now covers only what genuinely executes.
+  assert.equal(escapeCsvField('-2 test'), '-2 test');
+  assert.equal(escapeCsvField('-2 seconds on the draw'), '-2 seconds on the draw');
+  assert.equal(escapeCsvField('+1 second par'), '+1 second par');
 });
 
-test('a NEGATIVE NUMBER stays a number — the guard exempts well-formed numbers', () => {
-  // The blunt version of this guard neutralises every field starting + or -,
-  // which turns every negative number in the log into TEXT in the spreadsheet:
-  // unsortable, unsummable. Excel reads -5 as the number minus five, not as a
-  // formula, so there is nothing to defend against.
+test('a negative number stays a number', () => {
   assert.equal(escapeCsvField(-5), '-5');
   assert.equal(escapeCsvField(-0.25), '-0.25');
   assert.equal(escapeCsvField('+12'), '+12');
   assert.equal(escapeCsvField('-1e3'), '-1e3');
 });
 
-test('a signed value that is NOT purely a number is still neutralised', () => {
-  // Excel evaluates this one, so the exemption must not reach it.
-  assert.equal(escapeCsvField('-1+1'), "'-1+1");
-  assert.equal(escapeCsvField('-2 seconds'), "'-2 seconds");
-  assert.equal(escapeCsvField('--5'), "'--5");
+test('the cost this trade accepts is recorded rather than buried', () => {
+  // A note reading "-1+1" is left alone and Excel may evaluate it to 0. That is
+  // a genuine loss, judged smaller than an apostrophe on every "-2 seconds"
+  // note, because nobody writes "-1+1" in a range note. Asserted so the trade
+  // is a decision on the record and not an oversight somebody re-discovers.
+  assert.equal(escapeCsvField('-1+1'), '-1+1');
 });
 
 test('an ordinary number is untouched', () => {
