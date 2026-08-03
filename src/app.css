@@ -785,6 +785,22 @@ h2.disclosure-h2 { margin: 0; font-size: inherit; font-weight: inherit; }
 .row-tap:last-child { border-bottom: none; }
 .row-tap .label { flex: 1; }
 .row-tap .value { color: var(--text-dim); text-align: right; flex-shrink: 0; }
+/* An unavailable menu row (e.g. an export with nothing logged yet). It keeps
+   `aria-disabled` rather than the native attribute so it stays focusable and a
+   screen reader announces it (decision 19) — which means the VISUAL state has
+   to be carried here, or a sighted user sees an ordinary row that ignores taps.
+   Found by a cold audit: the row read as fully enabled at every width in both
+   colour schemes, with only its trailing text to distinguish it. */
+.row-tap[aria-disabled='true'] { cursor: default; }
+/* The ICON dims and the text does not. Compositing `opacity` over the label
+   took it to 3.35:1 and its description to 1.88:1, and on a first-run log EVERY
+   row here is unavailable — so that dimmed the only explanation of what each
+   table holds, for the one user least able to guess. WCAG's inactive-control
+   exemption technically covers it, and it is the wrong thing to lean on when
+   decision 19 deliberately keeps the row focusable so it can still be read.
+   The trailing "None yet" carries the state instead, which is the iOS pattern
+   anyway. */
+.row-tap[aria-disabled='true'] .row-ico { opacity: 0.4; }
 /* Leading icon on a menu row (More screen): quiet monochrome, matches the
    desktop sidebar glyphs. Fixed box so labels line up in a neat column. */
 .row-ico {
