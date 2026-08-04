@@ -1,7 +1,9 @@
 // The data layer (spec §3.2). Nothing else in the app touches IndexedDB.
 // This module is the seam where a cloud sync service could plug in later.
 
-import type { DataSet, Media } from './types.ts';
+import type {
+  CsvImportCounts, CsvImportHistoryEntry, CsvImportRowCounts, DataSet, Firearm, Media, Session,
+} from './types.ts';
 import type { Snapshot } from './flog.ts';
 import { newestStamp } from './flog.ts';
 
@@ -651,4 +653,277 @@ export async function clearAllData(): Promise<void> {
     });
     await txDone(tx);
   });
+}
+
+// ---------------------------------------------------------------------------
+// CSV import: commit one batch, and remove one (CSV design doc 3.6)
+// ---------------------------------------------------------------------------
+//
+// BOTH FUNCTIONS BELOW ARE ADDITIVE. No existing function's behaviour changes,
+// no object store is added and SCHEMA_VERSION is untouched: the import history
+// lives in the `meta` store under one key. A new store without a version bump
+// is silent cross-device erasure, and nothing here needs one.
+//
+// NOTE ON PUNCTUATION: no string added below uses an em dash. Every one of them
+// can reach a shooter's screen.
+
+/** Where the import history sits in the `meta` store. */
+const CSV_IMPORT_HISTORY_KEY = 'csvImportHistory';
+
+/**
+ * How many imports stay removable. Each entry is a few hundred bytes, so this
+ * is generous; it exists only so the row cannot grow without limit on a device
+ * that imports for years.
+ */
+const MAX_IMPORT_HISTORY = 50;
+
+/** The tag every record of an import carries, or null for anything else. */
+function importBatchTag(record: unknown): string | null {
+  const legacy = (record as { legacy?: unknown } | null)?.legacy;
+  if (!legacy || typeof legacy !== 'object') return null;
+  const tag = (legacy as Record<string, unknown>).importBatch;
+  return typeof tag === 'string' && tag !== '' ? tag : null;
+}
+
+function historyFromRow(row: unknown): CsvImportHistoryEntry[] {
+  const value = (row as { value?: unknown } | undefined)?.value;
+  if (!Array.isArray(value)) return [];
+  // A damaged row must never cost the shooter their undo of the OTHER imports,
+  // and must never throw inside a transaction: keep what is shaped right.
+  return value.filter(
+    (e): e is CsvImportHistoryEntry =>
+      !!e && typeof e === 'object' && typeof (e as CsvImportHistoryEntry).batchId === 'string',
+  );
+}
+
+/**
+ * Every import this device still knows how to remove, newest first.
+ *
+ * This exists because a history that is written but never read makes undo
+ * unreachable the moment the report is dismissed, which is exactly the state an
+ * earlier build shipped in.
+ */
+export async function getImportHistory(): Promise<CsvImportHistoryEntry[]> {
+  const row = await getOne<{ key: string; value: unknown }>('meta', CSV_IMPORT_HISTORY_KEY);
+  return historyFromRow(row);
+}
+
+export interface CommitImportBatchInput {
+  /** Tags every record written here, and is what undo asks for later. */
+  batchId: string;
+  filename: string;
+  sessions: Session[];
+  firearms: Firearm[];
+  counts: CsvImportRowCounts;
+  now: number;
+}
+
+/**
+ * Write one approved import: every planned session, every gun it creates, and
+ * the history entry that makes it removable, in ONE transaction over
+ * ['sessions', 'firearms', 'meta'].
+ *
+ * Atomic by construction, the commitDataSet / seedGoalWithSettings shape: the
+ * history row is read, merged and written inside the same transaction as the
+ * records, and any throw while queueing aborts the lot. A crash mid-commit
+ * leaves the log exactly as it was, with no history entry pointing at records
+ * that are not there.
+ *
+ * ADDITIVE ONLY: it puts records with fresh ids. It never edits, deletes or
+ * clears anything that existed before, which is why a bad file cannot corrupt
+ * a logbook even if every row in it is garbage.
+ */
+export async function commitImportBatch(input: CommitImportBatchInput): Promise<CsvImportHistoryEntry> {
+  return withIoGuard('this import', () => commitImportBatchInner(input));
+}
+
+async function commitImportBatchInner(input: CommitImportBatchInput): Promise<CsvImportHistoryEntry> {
+  const { batchId, filename, sessions, firearms, counts, now } = input;
+  const db = await openDb();
+  const entry: CsvImportHistoryEntry = {
+    batchId,
+    filename,
+    importedAt: now,
+    // The record counts are what actually went in, taken from the arrays rather
+    // than from the plan's own figures, so the history cannot overstate.
+    counts: { ...counts, sessions: sessions.length, firearms: firearms.length } as CsvImportCounts,
+  };
+
+  const tx = db.transaction(['sessions', 'firearms', 'meta'], 'readwrite');
+  const meta = tx.objectStore('meta');
+  await new Promise<void>((resolve, reject) => {
+    const req = meta.get(CSV_IMPORT_HISTORY_KEY);
+    req.onsuccess = () => {
+      try {
+        // Guns first: a session written here points at one of them.
+        for (const f of firearms) tx.objectStore('firearms').put(f);
+        for (const s of sessions) tx.objectStore('sessions').put(s);
+        const history = historyFromRow(req.result).filter((e) => e.batchId !== batchId);
+        meta.put({
+          key: CSV_IMPORT_HISTORY_KEY,
+          value: [entry, ...history].slice(0, MAX_IMPORT_HISTORY),
+        });
+        resolve();
+      } catch (e) {
+        try { tx.abort(); } catch { /* already aborting */ }
+        reject(e); // e.g. an unstorable value: abort + reject, never a partial import
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+  await txDone(tx);
+  return entry;
+}
+
+/** A gun the undo did NOT remove, and the plain words for why. */
+export interface KeptFirearm {
+  id: string;
+  name: string;
+  /** What still points at it, named the way a shooter would name it. */
+  referencedBy: string[];
+}
+
+export interface UndoImportResult {
+  sessionsRemoved: number;
+  firearmsRemoved: number;
+  firearmsKept: KeptFirearm[];
+}
+
+/**
+ * EVERY PLACE A FIREARM ID LIVES.
+ *
+ * Derived field by field from types.ts and confirmed against it: Session.guns[]
+ * .firearmId (types.ts:52), MaintenanceEntry.firearmId (166),
+ * MalfunctionEntry.firearmId (176), Magazine.firearmIds (191, AN ARRAY),
+ * Optic.firearmId (206), Part.firearmId (220), SkillSet.firearmId (265),
+ * Match.firearmId (322) and Reminder.firearmId (414). Nine, and the list is
+ * the reason this is a table rather than nine hand-written passes: a scan that
+ * covers only `sessions` deletes a gun that a match still names, and NOTHING
+ * CRASHES, because every screen falls back to a dash. The match's gun silently
+ * becomes "-". That is the quietest damage this whole feature can do.
+ *
+ * Deliberately NOT here, each checked rather than assumed:
+ *  - Purchase, Goal, Classifier, Reference, TrashItem: no firearm field at all.
+ *  - SessionChecklist's `f_${id}` keys: only ever read by walking the LIVE
+ *    firearms, so a stale key resolves to nothing and cannot orphan.
+ *  - Media (ownerType 'firearm' + ownerId): a photo is owned BY the gun rather
+ *    than a record that degrades when the gun goes, and the app's own permanent
+ *    delete leaves a gun's media behind too (GunRemoveSheet.deleteForever). A
+ *    CSV import creates no media, so only a photo added after the import is
+ *    affected, and treating one as a reason to keep a gun would differ from
+ *    what the rest of the app does with the same photo.
+ */
+const FIREARM_REF_SOURCES: {
+  store: StoreName;
+  label: string;
+  firearmIds: (record: Record<string, unknown>) => string[];
+}[] = [
+  {
+    store: 'sessions',
+    label: 'sessions',
+    firearmIds: (r) => {
+      const guns = Array.isArray(r.guns) ? r.guns : [];
+      return guns.map((g) => String((g as { firearmId?: unknown })?.firearmId ?? ''));
+    },
+  },
+  { store: 'maintenance', label: 'maintenance entries', firearmIds: (r) => [String(r.firearmId ?? '')] },
+  { store: 'malfunctions', label: 'malfunctions', firearmIds: (r) => [String(r.firearmId ?? '')] },
+  {
+    store: 'magazines',
+    label: 'magazines',
+    // An ARRAY, and the one most likely to be missed by a scan written from
+    // memory: one magazine can belong to several guns.
+    firearmIds: (r) => (Array.isArray(r.firearmIds) ? r.firearmIds.map((v) => String(v ?? '')) : []),
+  },
+  { store: 'optics', label: 'optics', firearmIds: (r) => [String(r.firearmId ?? '')] },
+  { store: 'parts', label: 'parts', firearmIds: (r) => [String(r.firearmId ?? '')] },
+  { store: 'skillSets', label: 'timed skills', firearmIds: (r) => [String(r.firearmId ?? '')] },
+  { store: 'matches', label: 'matches', firearmIds: (r) => [String(r.firearmId ?? '')] },
+  { store: 'reminders', label: 'reminders', firearmIds: (r) => [String(r.firearmId ?? '')] },
+];
+
+/**
+ * Remove one import: every session it added, and every gun it created that
+ * nothing else in the log points at any more.
+ *
+ * A gun that IS still pointed at is kept and named in the result, so the screen
+ * can say which and why. Deleting it instead would leave a match, a magazine or
+ * a maintenance entry naming a gun that is gone, and none of those screens
+ * would complain: they would just show a dash.
+ *
+ * The reference scan reads the other seven stores BEFORE the write transaction
+ * opens, because the write is ONE transaction over ['sessions', 'firearms',
+ * 'meta'] and a transaction cannot span stores it did not name. withIoGuard
+ * keeps another import, restore or erase out of the way meanwhile; an ordinary
+ * save in the same tab between the scan and the write is a window this
+ * deliberately accepts, and it can only ever mean a gun is removed that was
+ * pointed at a fraction of a second earlier.
+ */
+export async function undoImportBatch(batchId: string): Promise<UndoImportResult> {
+  return withIoGuard('removing this import', () => undoImportBatchInner(batchId));
+}
+
+async function undoImportBatchInner(batchId: string): Promise<UndoImportResult> {
+  const db = await openDb();
+
+  const sessions = await getAll<Session>('sessions');
+  const firearms = await getAll<Firearm>('firearms');
+  const sessionIds = sessions.filter((s) => importBatchTag(s) === batchId).map((s) => s.id);
+  const batchFirearms = firearms.filter((f) => importBatchTag(f) === batchId);
+
+  const removedSessions = new Set(sessionIds);
+  const candidateIds = new Set(batchFirearms.map((f) => f.id));
+  const referencedBy = new Map<string, string[]>();
+
+  if (candidateIds.size > 0) {
+    // Driven by the ONE list above, never by nine hand-written passes, so a
+    // store cannot be left out by an edit somewhere else.
+    for (const source of FIREARM_REF_SOURCES) {
+      const rows = await getAll<Record<string, unknown>>(source.store);
+      for (const row of rows) {
+        // A session this undo is about to delete cannot be a reason to keep the
+        // gun it was importing. Everything else counts, including a session in
+        // the Trash, which the shooter can still restore.
+        if (source.store === 'sessions' && removedSessions.has(String(row.id))) continue;
+        for (const id of source.firearmIds(row)) {
+          if (!candidateIds.has(id)) continue;
+          const seen = referencedBy.get(id) ?? [];
+          if (!seen.includes(source.label)) seen.push(source.label);
+          referencedBy.set(id, seen);
+        }
+      }
+    }
+  }
+
+  const firearmsKept: KeptFirearm[] = batchFirearms
+    .filter((f) => referencedBy.has(f.id))
+    .map((f) => ({ id: f.id, name: f.name, referencedBy: referencedBy.get(f.id) ?? [] }));
+  const firearmIdsToRemove = batchFirearms.filter((f) => !referencedBy.has(f.id)).map((f) => f.id);
+
+  const tx = db.transaction(['sessions', 'firearms', 'meta'], 'readwrite');
+  const meta = tx.objectStore('meta');
+  await new Promise<void>((resolve, reject) => {
+    const req = meta.get(CSV_IMPORT_HISTORY_KEY);
+    req.onsuccess = () => {
+      try {
+        for (const id of sessionIds) tx.objectStore('sessions').delete(id);
+        for (const id of firearmIdsToRemove) tx.objectStore('firearms').delete(id);
+        const history = historyFromRow(req.result).filter((e) => e.batchId !== batchId);
+        if (history.length > 0) meta.put({ key: CSV_IMPORT_HISTORY_KEY, value: history });
+        else meta.delete(CSV_IMPORT_HISTORY_KEY);
+        resolve();
+      } catch (e) {
+        try { tx.abort(); } catch { /* already aborting */ }
+        reject(e); // abort + reject, never a half-removed import
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+  await txDone(tx);
+
+  return {
+    sessionsRemoved: sessionIds.length,
+    firearmsRemoved: firearmIdsToRemove.length,
+    firearmsKept,
+  };
 }

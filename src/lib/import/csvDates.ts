@@ -216,8 +216,15 @@ export function analyseDateColumn(values: readonly string[]): DateColumnAnalysis
   for (const raw of values) {
     const per = orderCandidates(String(raw ?? ''));
     if (per === null) continue;
-    sawOrderEvidence = true;
+    // A value NO reading can parse is one row's problem, not the file's, so it
+    // is not evidence either. Counting it as evidence made a column of nothing
+    // but unreadable numeric dates ("13/13/2026") come back ambiguous with all
+    // three readings alive, which the reason below then explained as two-digit
+    // years: advice to save the file again with four-digit years, shown about a
+    // file that already has them. (Found while building the screen, session
+    // 103; it is the same shape as the two-digit-year remedy LOW.)
     if (per.length === 0) continue;
+    sawOrderEvidence = true;
     const next = candidates.filter((c) => per.includes(c));
     if (next.length === 0) {
       // Proof of one order earlier, proof of another here. Recorded and carried

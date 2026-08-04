@@ -1086,6 +1086,11 @@ export function MoreScreen({ refreshKey, open }: {
           <span className="label">Export as CSV</span>
           <span className="value">›</span>
         </button>
+        <button className="row-tap" onClick={() => open({ kind: 'import-csv' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="reports" size={20} /></span>
+          <span className="label">Import from CSV</span>
+          <span className="value">›</span>
+        </button>
         {/* Rung-1 transparency surface — hidden while telemetry ships dark
             (no provider wired, nothing can be sent), so users never meet a
             control for a pipe that doesn't exist. The activation step makes

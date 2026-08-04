@@ -210,3 +210,24 @@ test('each reason gets its own words', () => {
   assert.equal(dateFormatLabel('mdy'), 'Month first');
   assert.equal(dateFormatLabel('ymd'), 'Year first');
 });
+
+// Appended session 103, while building the import screen. A column whose every
+// value is numeric but readable by nothing ("13/13/2026") used to come back
+// ambiguous with all three readings alive, and the reason inference read that
+// surviving year-first reading as proof of two-digit years. The shooter was
+// then shown a question about a column nothing could read, explained by a
+// sentence that was false about their file, ending in advice to save it again
+// with four-digit years it already had. Same shape as the two-digit-year remedy
+// finding: a line naming an action that cannot help.
+test('a column nothing can read is every row\'s problem, not a question about the file', () => {
+  const result = analyseDateColumn(['13/13/2026', '14/15/2026']);
+  assert.equal(result.ambiguous, false, 'there is nothing here to ask about');
+  assert.equal(convertDateValue('13/13/2026', 'ymd'), null, 'each row reports itself instead');
+  assert.equal(convertDateValue('14/15/2026', 'ymd'), null);
+});
+
+test('one unreadable value still leaves a genuinely ambiguous column asking', () => {
+  const result = analyseDateColumn(['13/13/2026', '03/04/2026']);
+  assert.equal(result.ambiguous, true, 'the readable value is what decides');
+  if (result.ambiguous) assert.deepEqual(result.options, ['dmy', 'mdy']);
+});

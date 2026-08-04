@@ -28,7 +28,12 @@ for (const path of walk('src')) {
   // (1) unused-import guard
   for (const m of src.matchAll(/import (?:type )?\{([^}]+)\} from/g)) {
     for (const raw of m[1].split(',')) {
-      const name = raw.trim().replace(/^type /, '');
+      const declared = raw.trim().replace(/^type /, '');
+      if (!declared) continue;
+      // `import { x as y }` binds the LOCAL name y, and y is the name that has
+      // to appear again in the file. Searching for the whole "x as y" text
+      // finds only the import line itself, so a legal alias read as unused.
+      const name = declared.includes(' as ') ? declared.split(/\s+as\s+/).pop().trim() : declared;
       if (!name) continue;
       const count = (src.match(new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'g')) ?? []).length;
       if (count < 2) {

@@ -33,6 +33,7 @@ import { SetupWizard } from './ui/SetupWizard.tsx';
 import { SampleLogBanner } from './ui/SampleLogBanner.tsx';
 import { SyncScreen, FreeSpaceScreen, YourDataScreen } from './ui/AppDataScreens.tsx';
 import { ExportCsvScreen } from './ui/ExportCsvScreen.tsx';
+import { ImportCsvScreen } from './ui/ImportCsvScreen.tsx';
 import { SettingsScreen } from './ui/SettingsScreen.tsx';
 import { ManageListsScreen, ListDetailScreen } from './ui/ManageListsScreen.tsx';
 import { countAll, getSettings, probeDb } from './lib/db.ts';
@@ -485,6 +486,10 @@ export function App() {
     content = <FreeSpaceScreen onBack={back} />;
   } else if (view?.kind === 'export-csv') {
     content = <ExportCsvScreen onBack={back} />;
+  } else if (view?.kind === 'import-csv') {
+    // Mirrors the export screen's wiring. `refresh` after an import or an undo
+    // so the tabs underneath show the new totals rather than the old ones.
+    content = <ImportCsvScreen onBack={() => { refresh(); back(); }} open={push} />;
   } else if (view?.kind === 'your-data') {
     content = <YourDataScreen onBack={back} onChanged={refresh} />;
   } else if (tab === 'home') {

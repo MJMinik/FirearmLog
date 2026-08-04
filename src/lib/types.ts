@@ -418,6 +418,40 @@ export interface Reminder extends BaseRecord, Imported {
   enabled: boolean;
 }
 
+/**
+ * What one CSV import did, kept so "Remove this import" stays reachable after
+ * the report is dismissed (CSV design doc 3.6).
+ *
+ * These live in the EXISTING `meta` store under one key, exactly where saved
+ * mapping templates were designed to go (3.7): no new object store and no
+ * schema-version bump, so a device running an older build still opens this
+ * database and loses nothing. They ride the .flog sync like any other meta row.
+ */
+export interface CsvImportRowCounts {
+  rowsTotal: number;
+  rowsPlanned: number;
+  /** ROWS, not problems: a row with three faults counts once. */
+  rowsFailed: number;
+  rowsSkipped: number;
+  duplicatesInFile: number;
+  duplicatesInLog: number;
+}
+
+export interface CsvImportCounts extends CsvImportRowCounts {
+  /** Sessions actually written. */
+  sessions: number;
+  /** Guns actually created by this import. */
+  firearms: number;
+}
+
+export interface CsvImportHistoryEntry {
+  /** The tag every record of this import carries at `legacy.importBatch`. */
+  batchId: string;
+  filename: string;
+  importedAt: number; // ms epoch
+  counts: CsvImportCounts;
+}
+
 /** Old-app trash items, carried over so nothing is lost (Q7). */
 export interface TrashItem extends BaseRecord {
   recordType: string;

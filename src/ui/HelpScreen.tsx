@@ -56,7 +56,7 @@ const QUICK_TOUR: TourStep[] = [
   {
     title: 'Your gear and data',
     view: { kind: 'guns' },
-    body: 'Everything else is grouped into four sets: Your Gear (guns, optics, magazines, ammo, parts, care guides), Training (drills, how the numbers work), Records (maintenance, reminders, malfunctions, costs, reports), and App & Data (Tour & Setup, Settings, Sync & Backup, Free Up Space, Export as CSV). On a phone they\'re under the More tab; on a computer they\'re down the sidebar.',
+    body: 'Everything else is grouped into four sets: Your Gear (guns, optics, magazines, ammo, parts, care guides), Training (drills, how the numbers work), Records (maintenance, reminders, malfunctions, costs, reports), and App & Data (Tour & Setup, Settings, Sync & Backup, Free Up Space, Export as CSV, Import from CSV). On a phone they\'re under the More tab; on a computer they\'re down the sidebar.',
   },
   {
     title: 'Your data stays yours',
@@ -166,7 +166,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Sync — phone & desktop',
-      body: `Sync (under ${at('Sync & Backup')}) moves a single file between your devices through iCloud Drive or the Files app. Save to the file from the device you just used, then load it on the other one. The app tells you plainly when one copy is newer. ${at('Free Up Space')} makes smaller copies of older full-size photos when they're taking up room. ${at('Export as CSV')} saves your sessions, drill results, timed skills, guns, ammunition, costs and more as files you can open in Numbers, Excel or Google Sheets, or hand to another program. Each one saves separately, and the screen lists what it can do. A CSV holds numbers and words, so it is not a backup: Save to File is.`,
+      body: `Sync (under ${at('Sync & Backup')}) moves a single file between your devices through iCloud Drive or the Files app. Save to the file from the device you just used, then load it on the other one. The app tells you plainly when one copy is newer. ${at('Free Up Space')} makes smaller copies of older full-size photos when they're taking up room. ${at('Export as CSV')} saves your sessions, drill results, timed skills, guns, ammunition, costs and more as files you can open in Numbers, Excel or Google Sheets, or hand to another program. Each one saves separately, and the screen lists what it can do. A CSV holds numbers and words, so it is not a backup: Save to File is. ${at('Import from CSV')} goes the other way: pick a spreadsheet or another app's export, say which of your columns holds the date, the gun and the round count, see exactly what would be added, and take the whole import back out afterwards if it is not what you wanted.`,
     },
     {
       title: 'Setup & sample data',
