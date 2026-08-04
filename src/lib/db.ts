@@ -1181,11 +1181,11 @@ async function doomedRecordsFor(sessionIds: readonly string[]): Promise<DoomedRe
   ];
   // A store name cannot contain a null byte, so no pair of (store, id) can
   // collide with another.
-  const keys = new Set(records.map((r) => `${r.store} ${r.id}`));
+  const keys = new Set(records.map((r) => `${r.store}\u0000${r.id}`));
   return {
     records,
     attachedCount: attached.length,
-    holds: (store, id) => keys.has(`${store} ${id}`),
+    holds: (store, id) => keys.has(`${store}\u0000${id}`),
   };
 }
 
