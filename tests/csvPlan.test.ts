@@ -632,7 +632,28 @@ test('the ammunition line says what comes off and what is left', () => {
   const lines = ammoEffectLines(result.sessions, [can]);
   assert.match(lines[0], /150 rounds come off/);
   assert.match(lines[0], /leaving 850/);
-  assert.equal(lines[1], 'Removing this import puts those rounds back.');
+  assert.equal(lines[1], 'Removing this import puts back what it took.');
+});
+
+// MEASURED FALSE, both sentences of it: a can of 100 that an import of 150
+// empties was described as losing 150 and, in the next line, as getting 150
+// back. It loses 100, and 100 is what comes back. The words move with the
+// arithmetic because both now come from deductUsageFromStock.
+test('a can with less in it than the rows ask for is described by what actually comes off', () => {
+  const can = { ...ammo('am1', 'Range Brand'), quantity: 100 };
+  const result = plan(
+    'Date,Gun,Rounds,Ammo\n2026-03-04,Apollo,150,Range Brand\n',
+    { ...SESSION_MAP, Ammo: 'ammo' },
+    { firearms: [gun('f1', 'Apollo')], sessions: [], ammunition: [can] },
+  );
+  const lines = ammoEffectLines(result.sessions, [can]);
+  assert.match(lines[0], /100 rounds come off/);
+  assert.match(lines[0], /leaving 0/);
+  assert.doesNotMatch(lines[0], /150/, 'the asking figure is not what comes off');
+  // The shortfall is said out loud rather than left as a number that does not add up.
+  assert.match(lines[1], /name 150 rounds for that can/);
+  assert.match(lines[1], /50 more than it holds/);
+  assert.equal(lines[2], 'Removing this import puts back what it took.');
 });
 
 test('a planned session moves no stock, and the line does not claim it does', () => {

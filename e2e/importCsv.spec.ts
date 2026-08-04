@@ -63,19 +63,34 @@ async function seedRecords(page: Page, store: string, records: object[]): Promis
   }, { store, records });
 }
 
-/** The ids of every session this import wrote. */
-async function importedSessionIds(page: Page): Promise<string[]> {
+/**
+ * Every session this import wrote, with the gun it was written against.
+ *
+ * THE GUN COMES BACK TOO, and that is the point. A record seeded against a made-
+ * up gun id like `fa-x` is a record no flow in this app can produce: the import
+ * creates the gun, the session names it, and SessionForm fills a new
+ * malfunction's or timed-skill set's gun in from the session it is being added
+ * to. Seeding `fa-x` therefore left the imported gun with nothing pointing at
+ * it, which is the ONE arrangement under which undo behaved correctly, and the
+ * spec went green over a defect for exactly that reason. A fixture that cannot
+ * reproduce reality is not a fixture.
+ */
+async function importedSessions(page: Page): Promise<{ id: string; firearmId: string }[]> {
   return page.evaluate(async () => {
     const db = await new Promise<IDBDatabase>((resolve, reject) => {
       const req = indexedDB.open('firearmlog');
       req.onsuccess = () => resolve(req.result);
       req.onerror = () => reject(req.error);
     });
-    const rows = await new Promise<{ id: string; legacy?: { importBatch?: string } }[]>((resolve) => {
+    const rows = await new Promise<
+      { id: string; guns?: { firearmId: string }[]; legacy?: { importBatch?: string } }[]
+    >((resolve) => {
       const r = db.transaction('sessions', 'readonly').objectStore('sessions').getAll();
       r.onsuccess = () => resolve(r.result);
     });
-    return rows.filter((s) => !!s.legacy?.importBatch).map((s) => s.id);
+    return rows
+      .filter((s) => !!s.legacy?.importBatch)
+      .map((s) => ({ id: s.id, firearmId: s.guns?.[0]?.firearmId ?? '' }));
   });
 }
 
@@ -404,35 +419,52 @@ test('a guess is shown as a guess, and stops being one when you overrule it', as
   await expect(page.getByTestId('import-csv-guessed-4')).toHaveCount(0);
 });
 
-test('an import takes rounds off the can, and removing it puts exactly those back', async ({ page }) => {
-  await page.goto('/');
-  await seedRecords(page, 'ammunition', [{
-    id: 'am-e2e', createdAt: 1, updatedAt: 1, brand: 'Test Brand', caliber: '9mm',
-    grain: '124', bulletType: 'FMJ', quantity: 1000, costPerRound: 0.2, notes: '',
-  }]);
-  await page.reload();
-  await openImport(page);
+// The fixture names 250 rounds, and this seeded a can of 1000 against it. 1000
+// is comfortably more than 250, so the run never reached the floor a can stops
+// at: the commit took what it was asked for, the undo gave back what it was
+// asked for, and the two agreed because of the numbers in the fixture rather
+// than because of the code. The second case starts with LESS in the can than
+// the rows name, which is the ordinary shape of importing a back-log against
+// today's on-hand count, and is where the two directions came apart.
+for (const c of [
+  { name: 'more in the can than the rows name', start: 1000, comesOff: 250, left: 750 },
+  { name: 'less in the can than the rows name', start: 100, comesOff: 100, left: 0 },
+]) {
+  test(`an import takes rounds off the can and removing it puts exactly those back, with ${c.name}`, async ({ page }) => {
+    await page.goto('/');
+    await seedRecords(page, 'ammunition', [{
+      id: 'am-e2e', createdAt: 1, updatedAt: 1, brand: 'Test Brand', caliber: '9mm',
+      grain: '124', bulletType: 'FMJ', quantity: c.start, costPerRound: 0.2, notes: '',
+    }]);
+    await page.reload();
+    await openImport(page);
 
-  await page.getByTestId('import-csv-file').setInputFiles(FIXTURE('ammo-log.csv'));
-  await page.getByTestId('import-csv-continue-map').click();
-  await page.getByTestId('import-csv-gun-0').selectOption('create');
-  await page.getByTestId('import-csv-continue-guns').click();
+    await page.getByTestId('import-csv-file').setInputFiles(FIXTURE('ammo-log.csv'));
+    await page.getByTestId('import-csv-continue-map').click();
+    await page.getByTestId('import-csv-gun-0').selectOption('create');
+    await page.getByTestId('import-csv-continue-guns').click();
 
-  // Said before it happens, not discovered on the Ammo screen afterwards.
-  await expect(page.getByTestId('import-csv-ammo').first()).toContainText('250 rounds come off');
-  await expect(page.getByTestId('import-csv-ammo').first()).toContainText('leaving 750');
+    // Said before it happens, not discovered on the Ammo screen afterwards, and
+    // said about what actually comes off rather than what the rows asked for.
+    await expect(page.getByTestId('import-csv-ammo').first()).toContainText(`${c.comesOff} rounds come off`);
+    await expect(page.getByTestId('import-csv-ammo').first()).toContainText(`leaving ${c.left}`);
+    if (c.comesOff < 250) {
+      await expect(page.getByTestId('import-csv-ammo').nth(1)).toContainText('name 250 rounds for that can');
+    }
 
-  await page.getByTestId('import-csv-commit').click();
-  await expect(page.getByTestId('import-csv-report')).toBeVisible();
-  expect(await ammoQuantity(page, 'am-e2e')).toBe(750);
+    await page.getByTestId('import-csv-commit').click();
+    await expect(page.getByTestId('import-csv-report')).toBeVisible();
+    expect(await ammoQuantity(page, 'am-e2e')).toBe(c.left);
 
-  await page.getByTestId('import-csv-report-undo').click();
-  await page.getByRole('button', { name: 'Remove it' }).click();
-  await expect(page.getByTestId('import-csv-undo-result')).toBeVisible();
-  // Measured before this was symmetric: the commit never deducted and the
-  // delete refunded, so 1000 became 1150 and stock existed that never had.
-  expect(await ammoQuantity(page, 'am-e2e')).toBe(1000);
-});
+    await page.getByTestId('import-csv-report-undo').click();
+    await page.getByRole('button', { name: 'Remove it' }).click();
+    await expect(page.getByTestId('import-csv-undo-result')).toBeVisible();
+    // Measured twice, two different ways. First: the commit never deducted and
+    // the delete refunded, so 1000 became 1150. Then: the commit could only take
+    // the 100 that were there while the undo handed back 250, so 100 became 250.
+    expect(await ammoQuantity(page, 'am-e2e')).toBe(c.start);
+  });
+}
 
 test('undo takes what you filed against an imported session with it', async ({ page }) => {
   await page.goto('/');
@@ -442,15 +474,19 @@ test('undo takes what you filed against an imported session with it', async ({ p
 
   // A timed-skill set, a malfunction and a target photo on an imported session:
   // all three are reachable from the session form the moment the import lands.
-  const [sessionId] = await importedSessionIds(page);
+  // The gun on the first two is THE IMPORT'S OWN GUN, read off the session,
+  // because that is what the app puts there: SessionForm defaults a new
+  // malfunction's and a new timed-skill set's gun to the session's gun.
+  const [{ id: sessionId, firearmId }] = await importedSessions(page);
   expect(sessionId).toBeTruthy();
+  expect(firearmId).toBeTruthy();
   await seedRecords(page, 'skillSets', [{
     id: 'ss-e2e', createdAt: 1, updatedAt: 1, sessionId, date: '2026-03-02', skill: 'draw',
-    firearmId: 'fa-x', dryFire: false, count: 10, bestSec: 1.42, cold: true, notes: '',
+    firearmId, dryFire: false, count: 10, bestSec: 1.42, cold: true, notes: '',
   }]);
   await seedRecords(page, 'malfunctions', [{
     id: 'mf-e2e', createdAt: 1, updatedAt: 1, sessionId, date: '2026-03-02',
-    firearmId: 'fa-x', type: 'Failure to feed', resolution: '', notes: '',
+    firearmId, type: 'Failure to feed', resolution: '', notes: '',
   }]);
   await seedRecords(page, 'media', [{
     id: 'md-e2e', createdAt: 1, updatedAt: 1, ownerType: 'session', ownerId: sessionId,
@@ -464,8 +500,11 @@ test('undo takes what you filed against an imported session with it', async ({ p
   // Named, not silently done: they were the shooter's own additions.
   await expect(page.getByTestId('import-csv-undo-result')).toContainText('Also removed 3 things filed against those sessions');
 
-  // EVERY store back where it started. The three that hold a session reference
-  // are in this comparison because the list is read off the database, so a
-  // draw time left pointing at a session that no longer exists shows up here.
+  // EVERY store back where it started, FIREARMS INCLUDED. The three stores that
+  // hold a session reference are in this comparison because the list is read off
+  // the database, so a draw time left pointing at a session that no longer
+  // exists shows up here. With the malfunction and the timed-skill set naming
+  // the import's own gun, so does the gun: the only things that pointed at it
+  // were removed by this same undo, so nothing may be left holding it.
   expect(await storeCounts(page)).toEqual(before);
 });

@@ -26,7 +26,7 @@
 // dash. Every string here can reach a shooter's screen.
 
 import type { Ammunition, DrillResult, Firearm, Session, SessionGun } from '../types.ts';
-import { usageThatMovedStock } from '../costing.ts';
+import { deductUsageFromStock, usageThatMovedStock } from '../costing.ts';
 import { ammoLabel } from '../csvTables.ts';
 import { guessCategory } from './pistolTracker.ts';
 import { cellAt } from './csvParse.ts';
@@ -164,28 +164,36 @@ export function skippedSummaryLines(plan: ImportPlan): string[] {
  *
  * An imported session that names ammunition takes those rounds off the can, the
  * way a session typed in by hand does, and removing the import puts them back.
- * The rounds are read through the same usageThatMovedStock the commit and the
- * undo use, so this cannot describe one thing and do another.
+ * The figures come from deductUsageFromStock, which is the call the commit
+ * itself uses, so this cannot describe one thing and do another.
+ *
+ * A can cannot go below zero, so when the rows name more rounds than the can
+ * holds, fewer come off than the rows asked for. This used to print the asking
+ * figure and then promise that removing the import would put THAT back, which
+ * was two false sentences at once: a can of 100 emptied by an import of 150 was
+ * described as losing 150 and coming back to 150.
  */
 export function ammoEffectLines(
   sessions: readonly Session[],
   ammunition: readonly Ammunition[],
 ): string[] {
-  const perCan = new Map<string, number>();
-  for (const u of usageThatMovedStock(sessions)) {
-    perCan.set(u.ammoId, (perCan.get(u.ammoId) ?? 0) + (u.rounds || 0));
-  }
-  if (perCan.size === 0) {
+  const { realised } = deductUsageFromStock([...ammunition], usageThatMovedStock(sessions));
+  if (realised.length === 0) {
     return ['Your ammunition counts do not change: no row here names ammunition in your log.'];
   }
   const lines: string[] = [];
-  for (const [ammoId, rounds] of perCan) {
-    const can = ammunition.find((a) => a.id === ammoId);
+  for (const row of realised) {
+    const can = ammunition.find((a) => a.id === row.ammoId);
     if (!can) continue;
-    const left = Math.max(0, (can.quantity || 0) - rounds);
-    lines.push(`${ammoLabel(can)}: ${plural(rounds, 'round comes', 'rounds come')} off, leaving ${left}.`);
+    const left = (can.quantity || 0) - row.taken;
+    lines.push(`${ammoLabel(can)}: ${plural(row.taken, 'round comes', 'rounds come')} off, leaving ${left}.`);
+    if (row.requested > row.taken) {
+      lines.push(
+        `These rows name ${row.requested} rounds for that can, which is ${row.requested - row.taken} more than it holds. A can does not go below zero, so only what is there comes off.`,
+      );
+    }
   }
-  lines.push('Removing this import puts those rounds back.');
+  lines.push('Removing this import puts back what it took.');
   return lines;
 }
 

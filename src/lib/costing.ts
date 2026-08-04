@@ -4,6 +4,12 @@
 // so nothing can ever double-count. The old app's F2 bug (multi-gun sessions
 // double-counting per-gun spend) is pinned down by a unit test.
 
+// The one shape here that is STORED rather than computed: the record a
+// deduction leaves behind lives in the import history, so its definition sits
+// with the rest of the data model. Type-only, so nothing here gains a runtime
+// dependency.
+import type { RealisedDeduction } from './types.ts';
+
 // ---- Narrow shapes (structural typing keeps tests dependency-free and
 // ---- avoids the Match[]-vs-MatchLike CI failures we hit in M5).
 
@@ -366,6 +372,90 @@ export function inventoryAfterUsageChange(
     const a = ammo.find((x) => x.id === ammoId);
     if (!a) continue;
     out.set(ammoId, Math.max(0, (a.quantity || 0) - d));
+  }
+  return out;
+}
+
+/**
+ * What one deduction did: the new on-hand figures to store, and the record of
+ * what each can actually gave up.
+ */
+export interface StockDeduction {
+  /** New on-hand for every can that moved. Only those; unmoved cans are absent. */
+  quantities: Map<string, number>;
+  /** Per can, what was asked for and what came off. The undo plays THIS back. */
+  realised: RealisedDeduction[];
+}
+
+/**
+ * Take a set of rounds off the cans, and say what that actually did.
+ *
+ * WHY THIS RETURNS A RECORD RATHER THAN QUANTITIES ALONE. `Math.max(0, ...)`
+ * makes the deduction NOT INVERTIBLE: a can of 100 that an import of 150 empties
+ * loses 100, and nothing in the new quantity says whether 100 or 150 was asked
+ * for. Two directions computed from the same request therefore disagree by
+ * whatever the clamp swallowed, and the difference lands in the shooter's
+ * on-hand count as rounds that were never fired and never bought. Sharing ONE
+ * function between the two directions does not fix that, because the function is
+ * not injective: the shared call was already in place when a can of 100 came
+ * back as 150.
+ *
+ * So the deduction writes down what it did, and restoreDeductedStock replays
+ * that number. The restore no longer computes anything that could differ.
+ */
+export function deductUsageFromStock(
+  ammo: AmmoLike[],
+  usage: readonly UsageLike[],
+): StockDeduction {
+  const requested = new Map<string, number>();
+  for (const u of usage) requested.set(u.ammoId, (requested.get(u.ammoId) ?? 0) + (u.rounds || 0));
+  const quantities = new Map<string, number>();
+  const realised: RealisedDeduction[] = [];
+  for (const [ammoId, want] of requested) {
+    if (want === 0) continue;
+    const a = ammo.find((x) => x.id === ammoId);
+    if (!a) continue;
+    const held = a.quantity || 0;
+    // The same arithmetic inventoryAfterUsageChange does, with the part it threw
+    // away kept: `taken` is read back OFF the clamped result, so it is by
+    // construction the amount the can really lost.
+    const left = Math.max(0, held - want);
+    quantities.set(ammoId, left);
+    realised.push({ ammoId, requested: want, taken: held - left });
+  }
+  return { quantities, realised };
+}
+
+/**
+ * Put back exactly what a deduction took, and no more.
+ *
+ * `realised` can only come from deductUsageFromStock: this function has no way
+ * to work out a quantity for itself, which is the point. What it is handed is
+ * what it returns.
+ *
+ * `stillDeducted` is the part of that batch's usage that is STILL off the cans
+ * at this moment (usageThatMovedStock, read now). Rounds whose session has since
+ * gone to the Trash were handed back when it was trashed
+ * (src/ui/sessionDelete.ts softDeleteSession), so they are already home, and
+ * this subtracts them rather than sending them a second time.
+ */
+export function restoreDeductedStock(
+  ammo: AmmoLike[],
+  realised: readonly RealisedDeduction[],
+  stillDeducted: readonly UsageLike[],
+): Map<string, number> {
+  const owed = new Map<string, number>();
+  for (const u of stillDeducted) owed.set(u.ammoId, (owed.get(u.ammoId) ?? 0) + (u.rounds || 0));
+  const out = new Map<string, number>();
+  for (const row of realised) {
+    // Of the rounds this can was asked for, the ones no longer off it went back
+    // by some other route, and the Trash hands back the full asking figure.
+    const returnedElsewhere = Math.max(0, row.requested - (owed.get(row.ammoId) ?? 0));
+    const back = Math.max(0, row.taken - returnedElsewhere);
+    if (back === 0) continue;
+    const a = ammo.find((x) => x.id === row.ammoId);
+    if (!a) continue;
+    out.set(row.ammoId, (a.quantity || 0) + back);
   }
   return out;
 }

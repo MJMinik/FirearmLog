@@ -20,7 +20,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   batchesMissingFromHistory, clearAllData, commitImportBatch, getAll, getImportHistory, putOne,
-  undoImportBatch,
+  REF_SCAN_STORES, undoImportBatch,
 } from '../src/lib/db.ts';
 import type { StoreName } from '../src/lib/db.ts';
 import type { CsvImportRowCounts, Firearm, Session } from '../src/lib/types.ts';
@@ -229,6 +229,97 @@ test('the import\'s OWN sessions are not a reason to keep its gun', async () => 
   assert.ok(!has(await getAll('firearms'), 'fa-b-self'));
 });
 
+// ---------------------------------------------------------------------------
+// ...AND NEITHER IS ANYTHING ELSE THIS UNDO IS ABOUT TO DELETE
+// ---------------------------------------------------------------------------
+//
+// The second instance of that class, measured. The scan excluded the SESSIONS
+// being deleted and nothing else, while the malfunctions, timed-skill sets and
+// photos filed against those sessions were worked out a dozen lines further
+// down and deleted moments later. So a single malfunction on an imported
+// session kept the imported gun alive, the shooter was told "Kept: you have
+// used it in malfunctions since the import", and that malfunction was deleted
+// by the same operation: the sentence was false before it finished rendering,
+// the gun the import created outlived the import with nothing pointing at it,
+// and it kept the batch tag, so a re-import matched it by name and no later
+// undo could remove it either.
+//
+// NOT AN EDGE CASE. SessionForm defaults a new malfunction's gun to the
+// session's own gun, and re-points malfunctions and timed-skill sets at it when
+// the session's gun changes, so logging one malfunction on an imported session
+// is all it takes.
+const ATTACHED_REFERENCE_CASES: {
+  store: StoreName;
+  record: (sessionId: string, firearmId: string) => object;
+}[] = [
+  {
+    store: 'malfunctions',
+    record: (sid, fid) => ({
+      id: 'mf-attached', createdAt: 1, updatedAt: 1, sessionId: sid, date: '2026-01-02',
+      firearmId: fid, type: 'Failure to feed', resolution: '', notes: '',
+    }),
+  },
+  {
+    store: 'skillSets',
+    record: (sid, fid) => ({
+      id: 'ss-attached', createdAt: 1, updatedAt: 1, sessionId: sid, date: '2026-01-02',
+      skill: 'draw', firearmId: fid, dryFire: false, count: 10, bestSec: 1.4,
+      cold: true, notes: '',
+    }),
+  },
+];
+
+// THE CLASS, NOT THE TWO INSTANCES. A store that both belongs to a session and
+// names a gun is a store whose rows this undo deletes AND consults, which is the
+// exact shape of the defect. The list is read off the two tables in db.ts, so
+// adding such a store next month makes THIS test red until it has a case above,
+// rather than leaving a gap nothing reports.
+test('every store that both belongs to a session and names a gun has a case here', () => {
+  const both = REF_SCAN_STORES.session.filter((s) => REF_SCAN_STORES.firearm.includes(s));
+  assert.deepEqual(
+    ATTACHED_REFERENCE_CASES.map((c) => c.store).sort(),
+    [...both].sort(),
+    'a store the undo both deletes and reads has to be covered below',
+  );
+});
+
+for (const attachedCase of ATTACHED_REFERENCE_CASES) {
+  test(`a ${attachedCase.store} row on the import's own session is not a reason to keep its gun`, async () => {
+    await clearAllData();
+    const batchId = `b-att-${attachedCase.store}`;
+    await importOne(batchId);
+    await putOne(attachedCase.store, attachedCase.record(`se-${batchId}`, `fa-${batchId}`));
+
+    const result = await undoImportBatch(batchId);
+    assert.equal(result.attachedRemoved, 1, 'the row goes with the session it belongs to');
+    assert.deepEqual(
+      result.firearmsKept, [],
+      'so it cannot also be given as the reason the gun was kept',
+    );
+    assert.equal(result.firearmsRemoved, 1);
+    assert.ok(
+      !has(await getAll('firearms'), `fa-${batchId}`),
+      'the gun the import created does not outlive the import',
+    );
+    assert.equal((await getAll<{ id: string }>(attachedCase.store)).length, 0);
+  });
+}
+
+test('a row on SOMEONE ELSE\'S session still keeps the gun, so the exclusion is not a blanket one', async () => {
+  await clearAllData();
+  await importOne('b-att-other');
+  // A malfunction on a hand-entered session, naming the imported gun. Nothing
+  // is deleting this one, so it is a real reason to keep the gun.
+  await putOne('sessions', session('se-mine', 'fa-hand', null));
+  await putOne('malfunctions', ATTACHED_REFERENCE_CASES[0].record('se-mine', 'fa-b-att-other'));
+
+  const result = await undoImportBatch('b-att-other');
+  assert.equal(result.attachedRemoved, 0, 'it belongs to a session that is staying');
+  assert.equal(result.firearmsRemoved, 0);
+  assert.deepEqual(result.firearmsKept.map((f) => f.referencedBy), [['malfunctions']]);
+  assert.ok(has(await getAll('firearms'), 'fa-b-att-other'));
+});
+
 test('a session in the Trash still counts as a reason to keep the gun', async () => {
   await clearAllData();
   await importOne('b-trash');
@@ -406,6 +497,72 @@ test('removing that import puts exactly those rounds back, and no more', async (
   // 1000 became 1150 and 150 rounds existed that never had.
   assert.equal(await quantityOf('am-1'), 1000, 'undo has to land back where the import found it');
 });
+
+test('a can holding less than the import uses empties, and comes back to what it held', async () => {
+  await clearAllData();
+  await putOne('ammunition', can('am-1', 100));
+  await commitImportBatch({
+    batchId: 'b-clamp', filename: 'log.csv',
+    sessions: [sessionUsing('se-cl', 'b-clamp', 'am-1', 150)],
+    firearms: [gun('fa-b-clamp', 'b-clamp')],
+    counts: COUNTS, now: 1,
+  });
+  assert.equal(await quantityOf('am-1'), 0, 'a can cannot go below zero');
+  await undoImportBatch('b-clamp');
+  // Measured at 150 before this: the commit could only take the 100 that were
+  // there, and the undo handed back the 150 the rows asked for, so 50 rounds
+  // appeared that were never bought and never fired.
+  assert.equal(await quantityOf('am-1'), 100, 'undo hands back what the commit took, not what it asked for');
+});
+
+test('a year of history against a small can does not multiply it', async () => {
+  await clearAllData();
+  await putOne('ammunition', can('am-1', 100));
+  // The ordinary shape of this feature, not an extreme one: importing a long
+  // back-log against today's on-hand count reaches the floor almost every time.
+  const sessions = Array.from({ length: 10 }, (_, i) => sessionUsing(`se-y${i}`, 'b-year', 'am-1', 150));
+  await commitImportBatch({
+    batchId: 'b-year', filename: 'log.csv', sessions,
+    firearms: [gun('fa-b-year', 'b-year')], counts: COUNTS, now: 1,
+  });
+  assert.equal(await quantityOf('am-1'), 0);
+  await undoImportBatch('b-year');
+  assert.equal(await quantityOf('am-1'), 100, '1500 rounds were asked for and 100 were there');
+});
+
+// THE CLASS, NOT THE TWO INSTANCES. Both defects in this area have been a
+// commit and an undo that disagreed by some amount, and both were shipped with
+// a test that could not reach the disagreement: the first because the two
+// directions shared a function, the second because the fixture used a can far
+// larger than the import. A round trip over a grid that straddles the floor
+// cannot be passed by an asymmetric pair, whichever direction a future change
+// breaks.
+const ROUND_TRIP_ROUNDS = [0, 1, 99, 100, 101, 150, 1500];
+for (const start of [0, 1, 50, 100, 999, 1000]) {
+  test(`a can of ${start} is back at ${start} after any import is committed and removed`, async () => {
+    for (const rounds of ROUND_TRIP_ROUNDS) {
+      await clearAllData();
+      await putOne('ammunition', can('am-1', start));
+      const batchId = `b-rt-${start}-${rounds}`;
+      await commitImportBatch({
+        batchId, filename: 'log.csv',
+        sessions: [sessionUsing(`se-rt-${rounds}`, batchId, 'am-1', rounds)],
+        firearms: [gun(`fa-${batchId}`, batchId)],
+        counts: COUNTS, now: 1,
+      });
+      const afterCommit = await quantityOf('am-1');
+      assert.equal(
+        afterCommit, Math.max(0, start - rounds),
+        `a can of ${start} used for ${rounds} rounds has to read ${Math.max(0, start - rounds)}`,
+      );
+      await undoImportBatch(batchId);
+      assert.equal(
+        await quantityOf('am-1'), start,
+        `removing an import of ${rounds} rounds has to leave the can of ${start} at ${start}`,
+      );
+    }
+  });
+}
 
 test('a PLANNED imported session moves no stock, in either direction', async () => {
   await clearAllData();

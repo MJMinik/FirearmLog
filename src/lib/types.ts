@@ -444,12 +444,41 @@ export interface CsvImportCounts extends CsvImportRowCounts {
   firearms: number;
 }
 
+/**
+ * What one deduction ACTUALLY did to one can, written down at the moment it
+ * happened.
+ *
+ * `requested` is what the rows named. `taken` is what came off, which is less
+ * whenever the can held less than the rows named, because a can cannot go below
+ * zero. The two are recorded separately because the difference is exactly what
+ * an undo would otherwise invent: a can of 100 that an import of 150 emptied
+ * must come back to 100, never to 150.
+ */
+export interface RealisedDeduction {
+  ammoId: string;
+  /** Rounds the sessions named for this can. */
+  requested: number;
+  /** Rounds that actually came off it. Never more than it held. */
+  taken: number;
+}
+
 export interface CsvImportHistoryEntry {
   /** The tag every record of this import carries at `legacy.importBatch`. */
   batchId: string;
   filename: string;
   importedAt: number; // ms epoch
   counts: CsvImportCounts;
+  /**
+   * What this import took off each can, recorded by the commit so the undo can
+   * hand back THAT rather than recompute a figure of its own.
+   *
+   * Optional because two kinds of entry have none: one written by a build from
+   * before this was recorded, and one rebuilt from the log by
+   * batchesMissingFromHistory after it fell off the capped list. Both fall back
+   * to the older, requested-rounds restore, which is what they have always
+   * done; see undoImportBatch.
+   */
+  ammoDeducted?: RealisedDeduction[];
 }
 
 /** Old-app trash items, carried over so nothing is lost (Q7). */
