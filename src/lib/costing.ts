@@ -427,35 +427,65 @@ export function deductUsageFromStock(
 }
 
 /**
- * Put back exactly what a deduction took, and no more.
+ * Put back what a deduction took, to the can the rounds are off NOW.
  *
- * `realised` can only come from deductUsageFromStock: this function has no way
- * to work out a quantity for itself, which is the point. What it is handed is
- * what it returns.
+ * TWO SEPARATE QUESTIONS, and the ledger answers only one of them.
  *
- * `stillDeducted` is the part of that batch's usage that is STILL off the cans
- * at this moment (usageThatMovedStock, read now). Rounds whose session has since
- * gone to the Trash were handed back when it was trashed
- * (src/ui/sessionDelete.ts softDeleteSession), so they are already home, and
- * this subtracts them rather than sending them a second time.
+ * WHERE the rounds go is read from `stillDeducted`, the batch's usage as it
+ * stands at this moment, and never from the ledger. A can merge repoints every
+ * session onto the kept can and DELETES the one the import named
+ * (src/ui/AmmoScreens.tsx, applyAmmoMerge), and a shooter editing an imported
+ * session's ammunition moves the rounds the same way. Looking the ledger's can
+ * up in the log then finds a can that is gone, or one the rounds are no longer
+ * off, and 150 rounds the shooter owns are never handed back. Both are ordinary
+ * features and both were measured at 350 where 500 was owed.
+ *
+ * HOW MANY go back is what the ledger is for. `requested - taken` is the part of
+ * the ask that no can ever gave up, because a can does not go below zero, and
+ * that part can never come back: it was never anywhere.
+ *
+ * Rounds whose session has since gone to the Trash are not in `stillDeducted` at
+ * all (usageThatMovedStock), because trashing handed them back already
+ * (src/ui/sessionDelete.ts softDeleteSession), so they cannot arrive twice.
  */
 export function restoreDeductedStock(
   ammo: AmmoLike[],
   realised: readonly RealisedDeduction[],
   stillDeducted: readonly UsageLike[],
 ): Map<string, number> {
+  // What the rows asked of a can that no can ever gave up.
+  const shortfall = new Map<string, number>();
+  for (const row of realised) {
+    const missed = Math.max(0, row.requested - row.taken);
+    if (missed > 0) shortfall.set(row.ammoId, (shortfall.get(row.ammoId) ?? 0) + missed);
+  }
+  // Where this batch's rounds are off cans right now, and how many. Insertion
+  // order, so a given batch always settles the same way.
   const owed = new Map<string, number>();
   for (const u of stillDeducted) owed.set(u.ammoId, (owed.get(u.ammoId) ?? 0) + (u.rounds || 0));
+
+  // A SHORTFALL TRAVELS WITH THE ROUNDS IT BELONGS TO. Held against the can the
+  // import named, it is lost the moment that can is merged away, and the full
+  // ask goes back to a can that never gave it up. So a shortfall whose can is no
+  // longer carrying any of this batch's rounds joins a pool, and the pool is
+  // taken off whichever cans are.
+  let pooled = 0;
+  for (const [ammoId, missed] of shortfall) {
+    const rounds = owed.get(ammoId);
+    if (rounds === undefined) { pooled += missed; continue; }
+    owed.set(ammoId, Math.max(0, rounds - missed));
+    if (missed > rounds) pooled += missed - rounds;
+  }
+
   const out = new Map<string, number>();
-  for (const row of realised) {
-    // Of the rounds this can was asked for, the ones no longer off it went back
-    // by some other route, and the Trash hands back the full asking figure.
-    const returnedElsewhere = Math.max(0, row.requested - (owed.get(row.ammoId) ?? 0));
-    const back = Math.max(0, row.taken - returnedElsewhere);
+  for (const [ammoId, rounds] of owed) {
+    const spend = Math.min(pooled, rounds);
+    pooled -= spend;
+    const back = rounds - spend;
     if (back === 0) continue;
-    const a = ammo.find((x) => x.id === row.ammoId);
+    const a = ammo.find((x) => x.id === ammoId);
     if (!a) continue;
-    out.set(row.ammoId, (a.quantity || 0) + back);
+    out.set(ammoId, (a.quantity || 0) + back);
   }
   return out;
 }

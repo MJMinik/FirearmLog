@@ -19,9 +19,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-  batchesMissingFromHistory, clearAllData, commitImportBatch, getAll, getImportHistory, putOne,
-  REF_SCAN_STORES, undoImportBatch,
+  applyAmmoMerge, batchesMissingFromHistory, clearAllData, commitImportBatch, getAll,
+  getImportHistory, putOne, REF_SCAN_STORES, undoImportBatch,
 } from '../src/lib/db.ts';
+import { repointAmmoUsage } from '../src/lib/ammoMerge.ts';
 import type { StoreName } from '../src/lib/db.ts';
 import type { CsvImportRowCounts, Firearm, Session } from '../src/lib/types.ts';
 import { readCsvFile } from '../src/ui/importCsvFile.ts';
@@ -564,6 +565,106 @@ for (const start of [0, 1, 50, 100, 999, 1000]) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// THE ROUNDS DO NOT STAY ON THE CAN THE IMPORT NAMED
+// ---------------------------------------------------------------------------
+//
+// The ledger records which can the import named. It is not a record of where
+// the rounds are, and two ordinary features move them:
+//
+//  - combining cans repoints every session onto the kept can and DELETES the
+//    other one (src/ui/AmmoScreens.tsx, applyAmmoMerge);
+//  - editing an imported session's ammunition repoints that one session, with
+//    SessionForm refunding the old can and deducting the new.
+//
+// Looking the ledger's can up in the log then finds a can that is gone, or one
+// the rounds are no longer off, and the shooter's rounds are never handed back.
+// Measured at 350 where 500 was owed, in both. It invents nothing, which is why
+// it is silent, and it is permanent.
+
+test('combining two cans still hands the rounds back, to the can that is left', async () => {
+  await clearAllData();
+  await putOne('ammunition', can('am-1', 200));
+  await putOne('ammunition', can('am-2', 300));
+  await commitImportBatch({
+    batchId: 'b-merge', filename: 'log.csv',
+    sessions: [sessionUsing('se-mg', 'b-merge', 'am-1', 150)],
+    firearms: [gun('fa-b-merge', 'b-merge')],
+    counts: COUNTS, now: 1,
+  });
+  assert.equal(await quantityOf('am-1'), 50, 'the import took its rounds off the can it named');
+
+  // The real merge, through the real call the Ammo screen makes: the 50 left on
+  // am-1 land on am-2, every session is repointed, and am-1 is deleted.
+  const sessions = await getAll<Session>('sessions');
+  const repointed = repointAmmoUsage(sessions, 'am-1', 'am-2').map((change) => ({
+    ...sessions.find((s) => s.id === change.id)!, ammoUsage: change.ammoUsage,
+  }));
+  await applyAmmoMerge({
+    keptCan: can('am-2', 350), sessions: repointed, purchases: [], deleteCanId: 'am-1',
+  });
+  assert.equal(await quantityOf('am-2'), 350);
+
+  await undoImportBatch('b-merge');
+  // 350 before this: the ledger named am-1, am-1 was gone, and 150 rounds the
+  // shooter owns were never handed back to anything.
+  assert.equal(await quantityOf('am-2'), 500, 'the rounds go back to the can they are off now');
+});
+
+test('a session moved onto another can hands the rounds back to THAT can', async () => {
+  await clearAllData();
+  await putOne('ammunition', can('am-1', 200));
+  await putOne('ammunition', can('am-2', 500));
+  await commitImportBatch({
+    batchId: 'b-repoint', filename: 'log.csv',
+    sessions: [sessionUsing('se-rp', 'b-repoint', 'am-1', 150)],
+    firearms: [gun('fa-b-repoint', 'b-repoint')],
+    counts: COUNTS, now: 1,
+  });
+  assert.equal(await quantityOf('am-1'), 50);
+
+  // The shooter opens the imported session and picks a different can. That is
+  // what SessionForm's save does: the old can is refunded, the new one deducted.
+  const stored = (await getAll<Session>('sessions')).find((s) => s.id === 'se-rp');
+  assert.ok(stored);
+  await putOne('sessions', { ...stored, ammoUsage: [{ ammoId: 'am-2', rounds: 150 }] });
+  await putOne('ammunition', can('am-1', 200));
+  await putOne('ammunition', can('am-2', 350));
+
+  await undoImportBatch('b-repoint');
+  assert.equal(await quantityOf('am-2'), 500, 'measured at 350: the rounds are off am-2 now');
+  assert.equal(await quantityOf('am-1'), 200, 'and the can they left is not credited twice');
+});
+
+test('a moved can is still held to what the commit could actually take', async () => {
+  await clearAllData();
+  // The clamp and the move at once: the can the import named held less than the
+  // rows asked for, so 50 of the ask never came off anything and can never go
+  // back, wherever the rest of the rounds have since been moved to.
+  await putOne('ammunition', can('am-1', 100));
+  await putOne('ammunition', can('am-2', 400));
+  await commitImportBatch({
+    batchId: 'b-mv-clamp', filename: 'log.csv',
+    sessions: [sessionUsing('se-mv', 'b-mv-clamp', 'am-1', 150)],
+    firearms: [gun('fa-b-mv-clamp', 'b-mv-clamp')],
+    counts: COUNTS, now: 1,
+  });
+  assert.equal(await quantityOf('am-1'), 0);
+
+  // Combine am-1 into am-2: nothing left on am-1 to carry over, and the session
+  // is repointed. The usage still reads 150 rounds; only 100 ever came off.
+  const sessions = await getAll<Session>('sessions');
+  const repointed = repointAmmoUsage(sessions, 'am-1', 'am-2').map((change) => ({
+    ...sessions.find((s) => s.id === change.id)!, ammoUsage: change.ammoUsage,
+  }));
+  await applyAmmoMerge({
+    keptCan: can('am-2', 400), sessions: repointed, purchases: [], deleteCanId: 'am-1',
+  });
+
+  await undoImportBatch('b-mv-clamp');
+  assert.equal(await quantityOf('am-2'), 500, 'the 100 that came off go back, not the 150 asked for');
+});
+
 test('a PLANNED imported session moves no stock, in either direction', async () => {
   await clearAllData();
   await putOne('ammunition', can('am-1', 500));
@@ -616,11 +717,12 @@ test('undoing an import that is already gone changes nothing and does not throw'
   await importOne('b-once');
   await undoImportBatch('b-once');
   const result = await undoImportBatch('b-once');
-  // attachedRemoved is new: the undo now also takes the timed-skill sets,
-  // malfunctions and photos filed against the sessions it removes, and says how
-  // many went. A second undo still has nothing to do.
+  // attachedRemoved counts the timed-skill sets, malfunctions and photos that
+  // went with the sessions; ammoLeftAlone says whether a can was deliberately
+  // not touched. A second undo has nothing to do and nothing to explain.
   assert.deepEqual(result, {
     sessionsRemoved: 0, firearmsRemoved: 0, firearmsKept: [], attachedRemoved: 0,
+    ammoLeftAlone: false,
   });
 });
 
@@ -630,7 +732,19 @@ test('undoing an import that is already gone changes nothing and does not throw'
 
 test('the 51st import does not make the 1st un-removable', async () => {
   await clearAllData();
-  for (let i = 1; i <= 51; i++) await importOne(`b-old-${i}`, `file-${i}.csv`);
+  // THE CAN HOLDS LESS THAN THE FIRST IMPORT ASKS FOR. Seeded at 1000 against
+  // 150 rounds, this test could not reach the defect at all: the clamp is the
+  // only reason a rebuilt entry's missing ledger matters, and a roomy can never
+  // clamps. 100 against 150 is the shape where it bites.
+  await putOne('ammunition', can('am-1', 100));
+  await commitImportBatch({
+    batchId: 'b-old-1', filename: 'file-1.csv',
+    sessions: [sessionUsing('se-b-old-1', 'b-old-1', 'am-1', 150)],
+    firearms: [gun('fa-b-old-1', 'b-old-1')],
+    counts: COUNTS, now: 1,
+  });
+  assert.equal(await quantityOf('am-1'), 0, 'the can gave up the 100 it had, not the 150 asked for');
+  for (let i = 2; i <= 51; i++) await importOne(`b-old-${i}`, `file-${i}.csv`);
 
   const history = await getImportHistory();
   assert.ok(
@@ -648,10 +762,37 @@ test('the 51st import does not make the 1st un-removable', async () => {
   assert.equal(lost.counts.sessions, 1);
   assert.equal(lost.counts.firearms, 1);
   assert.equal(lost.filename, '', 'what was not kept is not invented');
+  // The whole of the problem in one line: a rebuilt entry cannot carry a record
+  // of what came off the cans, because nothing about the log holds one.
+  assert.equal(lost.ammoDeducted, undefined);
 
-  await undoImportBatch('b-old-1');
+  await putOne('meta', { key: 'csvImportHistory', value: [lost, ...history] });
+  const result = await undoImportBatch('b-old-1');
   assert.ok(!has(await getAll('sessions'), 'se-b-old-1'), 'and removing it works');
   assert.ok(has(await getAll('sessions'), 'se-b-old-51'), 'the newer imports are untouched');
+
+  // Measured at 150 before this: the fallback put the whole ASK back on a can
+  // that had only ever given up 100, which is defect B a second time and 50
+  // rounds out of nowhere. An entry with no record of what it took now changes
+  // no count at all.
+  assert.equal(await quantityOf('am-1'), 0, 'nothing may be invented from an entry that recorded nothing');
+  assert.equal(result.ammoLeftAlone, true, 'and the screen is told, so it can say so');
+});
+
+test('an entry with no record of what it took says so only when a can was involved', async () => {
+  await clearAllData();
+  // The ordinary rebuilt entry: no ammunition anywhere in the import. There is
+  // nothing to leave alone, so there is nothing to explain.
+  await importOne('b-noammo');
+  const history = await getImportHistory();
+  const rebuilt = batchesMissingFromHistory(
+    await getAll<Session>('sessions'), await getAll<Firearm>('firearms'), [],
+  );
+  assert.equal(rebuilt[0].ammoDeducted, undefined);
+  await putOne('meta', { key: 'csvImportHistory', value: rebuilt });
+  const result = await undoImportBatch('b-noammo');
+  assert.equal(result.ammoLeftAlone, false);
+  assert.equal(history.length, 1, 'the entry really had been replaced by the rebuilt one');
 });
 
 test('an import still in the history is not offered twice', async () => {

@@ -105,6 +105,12 @@ function undoSummary(result: UndoImportResult): string {
   for (const kept of result.firearmsKept) {
     text += ` Kept "${kept.name}": you have used it in ${joinWords(kept.referencedBy)} since the import.`;
   }
+  if (result.ammoLeftAlone) {
+    // A count the shooter expects to move and does not has to be said, with the
+    // reason and with the one place it can be put right. Putting the rows' own
+    // figure back instead would add rounds this import may never have taken.
+    text += ' Your ammunition counts were left as they are: this import did not record how many rounds came off each can, so any figure put back would be a guess. You can set a count yourself on the Ammo screen.';
+  }
   return text;
 }
 

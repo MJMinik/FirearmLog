@@ -9,7 +9,7 @@ import type {
 import type { Snapshot } from './flog.ts';
 import { newestStamp } from './flog.ts';
 import {
-  deductUsageFromStock, inventoryAfterUsageChange, restoreDeductedStock, usageThatMovedStock,
+  deductUsageFromStock, restoreDeductedStock, usageThatMovedStock,
 } from './costing.ts';
 import { stampUpdate } from './stamps.ts';
 
@@ -904,6 +904,14 @@ export interface UndoImportResult {
    * photos and videos) that went with it. Counted, not silently done.
    */
   attachedRemoved: number;
+  /**
+   * True when this import had rounds off a can and the ammunition counts were
+   * NOT changed, because the import carries no record of what it took.
+   *
+   * Reported rather than assumed, because the screen has to say it: a count the
+   * shooter expects to move and does not is worse unexplained than explained.
+   */
+  ammoLeftAlone: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -1265,11 +1273,17 @@ async function undoImportBatchInner(batchId: string): Promise<UndoImportResult> 
   const candidateIds = new Set(batchFirearms.map((f) => f.id));
   const referencedBy = await firearmsStillReferenced(candidateIds, doomed);
 
-  // The rounds of this batch that are STILL off the cans. A session already in
-  // the Trash was refunded when it was trashed, and usageThatMovedStock knows
-  // it; restoreDeductedStock subtracts what has already gone home.
+  // The rounds of this batch that are STILL off the cans, and which cans they
+  // are off NOW rather than which the import named. A session already in the
+  // Trash was refunded when it was trashed, and usageThatMovedStock knows it.
   const cans = await getAll<Ammunition>('ammunition');
   const stillDeducted = usageThatMovedStock(batchSessions);
+  // Is there anything for the restore to do at all? Only then can declining to
+  // do it be worth saying, and only then is it worth saying.
+  const wouldMoveAmmo = stillDeducted.some(
+    (u) => (u.rounds || 0) > 0 && cans.some((c) => c.id === u.ammoId),
+  );
+  let ammoLeftAlone = false;
   const now = Date.now();
 
   const firearmsKept: KeptFirearm[] = batchFirearms
@@ -1299,12 +1313,25 @@ async function undoImportBatchInner(batchId: string): Promise<UndoImportResult> 
         // (deductUsageFromStock), played back here, so the two directions are no
         // longer two calculations that have to agree.
         const ledger = stored.find((e) => e.batchId === batchId)?.ammoDeducted;
+        // AN ENTRY WITH NO LEDGER RESTORES NOTHING, and the screen says so.
+        //
+        // Two entries have none: one written by a build from before this was
+        // recorded, and one rebuilt from the log by batchesMissingFromHistory
+        // after it fell off the capped list. Falling back to the rows' own
+        // figures put the WHOLE ask back, which is defect B again: a can of 100
+        // that an import of 150 emptied came back as 150, and 50 rounds were
+        // invented. Nothing about a rebuilt entry says how much of the ask a can
+        // could give, so the full ask is the one figure it cannot justify, and
+        // there is no other figure to derive: the clamp only ever leaves a can
+        // at zero, and a can at zero today may have been bought up since.
+        //
+        // So it changes no count at all. That is the only answer here that
+        // cannot invent a round, it is correctable on the Ammo screen, and it is
+        // said out loud rather than left for the shooter to find.
+        ammoLeftAlone = !ledger && wouldMoveAmmo;
         const newQuantities = ledger
-          // An entry from before this was recorded, or one rebuilt from the log
-          // after it fell off the capped list, has no ledger. Those fall back to
-          // the older restore, which is exactly what they have always done.
           ? restoreDeductedStock(cans, ledger, stillDeducted)
-          : inventoryAfterUsageChange(cans, stillDeducted, []);
+          : new Map<string, number>();
 
         // ONE list: the records excluded from the scan above are the records
         // deleted here, because they are the same array.
@@ -1332,5 +1359,6 @@ async function undoImportBatchInner(batchId: string): Promise<UndoImportResult> 
     firearmsRemoved: firearmIdsToRemove.length,
     firearmsKept,
     attachedRemoved: doomed.attachedCount,
+    ammoLeftAlone,
   };
 }
