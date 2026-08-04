@@ -5,6 +5,13 @@
 //     EventSource) may appear ONLY in the telemetry chokepoint (the one auditable
 //     send point). The single allow-listed exception is SetupWizard's same-origin
 //     demo-dataset fetch. Anything else fails the build (R-C).
+//  3. Day-keys are LOCAL (lib/dates.ts, old bug F8). A YYYY-MM-DD cut out of
+//     toISOString is the UTC day, which is TOMORROW for anyone west of
+//     Greenwich from late afternoon on: the CSV import's past-imports list
+//     showed Aug 5 for an import made at 20:30 on Aug 4 in California, and the
+//     Home header had the same line. Use dayKey/todayKey. This is here rather
+//     than in a review checklist because a convention nobody can forget is the
+//     only kind that holds.
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -18,6 +25,7 @@ function walk(dir, out = []) {
 }
 
 const NET_RE = /\b(fetch|sendBeacon|XMLHttpRequest|WebSocket|EventSource)\b/;
+const UTC_DAY_KEY_RE = /toISOString\(\)\s*\.\s*(slice|substring|substr)\(\s*0\s*,\s*10\s*\)/;
 const NET_ALLOWED_FILE = 'src/lib/telemetry.ts';
 
 let bad = 0;
@@ -42,6 +50,14 @@ for (const path of walk('src')) {
       }
     }
   }
+
+  // (3) local-day-key invariant
+  src.split('\n').forEach((line, i) => {
+    if (UTC_DAY_KEY_RE.test(line)) {
+      console.error(`UTC DAY-KEY (use dayKey/todayKey from lib/dates.ts): ${rel}:${i + 1}`);
+      bad++;
+    }
+  });
 
   // (2) network-call invariant
   if (rel !== NET_ALLOWED_FILE) {

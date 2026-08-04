@@ -491,7 +491,9 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
         <>
           {stats.trainingSince && (
             <p className="report-note" style={{ marginTop: -8, marginBottom: 12 }}>
-              {formatDayKey(new Date().toISOString().slice(0, 10))} · Training since {stats.trainingSince}
+              {/* The shooter's own day. Read through toISOString, this showed
+                  tomorrow's date west of Greenwich from late afternoon on. */}
+              {formatDayKey(todayKey())} · Training since {stats.trainingSince}
             </p>
           )}
           <div style={{ display: 'flex', gap: 8 }}>

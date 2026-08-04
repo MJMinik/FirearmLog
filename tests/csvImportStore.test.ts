@@ -19,11 +19,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
-  clearAllData, commitImportBatch, getAll, getImportHistory, putOne, undoImportBatch,
+  batchesMissingFromHistory, clearAllData, commitImportBatch, getAll, getImportHistory, putOne,
+  undoImportBatch,
 } from '../src/lib/db.ts';
 import type { StoreName } from '../src/lib/db.ts';
 import type { CsvImportRowCounts, Firearm, Session } from '../src/lib/types.ts';
 import { readCsvFile } from '../src/ui/importCsvFile.ts';
+import { purgeSession } from '../src/ui/sessionDelete.ts';
 import { MAX_IMPORT_FILE_BYTES } from '../src/lib/inputLimits.ts';
 
 const COUNTS: CsvImportRowCounts = {
@@ -238,12 +240,282 @@ test('a session in the Trash still counts as a reason to keep the gun', async ()
   assert.deepEqual(result.firearmsKept.map((f) => f.id), ['fa-b-trash']);
 });
 
+// ---------------------------------------------------------------------------
+// The other half of the same class: records that point at a SESSION this undo
+// is deleting. The firearm scan above was widened once and left this half open.
+//
+// A timed-skill set, a malfunction or a photo filed against an imported session
+// is reachable from the session form the moment the import lands. If undo takes
+// the session and leaves them, they point at an id that no longer exists: no
+// screen can reach them, no screen can delete them, and activeSkillSets (which
+// filters sets whose session is TRASHED, not sets whose session is GONE) keeps
+// counting those draw times in every trend, PR and cold-versus-warm reading for
+// good. The app's own permanent delete already does this correctly, in
+// src/ui/sessionDelete.ts purgeSession.
+const SESSION_CASCADE_CASES: {
+  store: StoreName;
+  record: (sessionId: string) => object;
+  /** The same record shape, filed against a session this undo is NOT removing. */
+  otherRecord: (sessionId: string) => object;
+}[] = [
+  {
+    store: 'skillSets',
+    record: (sid) => ({
+      id: 'ss-orphan', createdAt: 1, updatedAt: 1, sessionId: sid, date: '2026-01-02',
+      skill: 'draw', firearmId: 'fa-x', dryFire: false, count: 10, bestSec: 1.4,
+      cold: true, notes: '',
+    }),
+    otherRecord: (sid) => ({
+      id: 'ss-keep', createdAt: 1, updatedAt: 1, sessionId: sid, date: '2026-01-02',
+      skill: 'draw', firearmId: 'fa-x', dryFire: false, count: 10, bestSec: 1.9,
+      cold: false, notes: '',
+    }),
+  },
+  {
+    store: 'malfunctions',
+    record: (sid) => ({
+      id: 'mf-orphan', createdAt: 1, updatedAt: 1, sessionId: sid, date: '2026-01-02',
+      firearmId: 'fa-x', type: 'Failure to feed', resolution: '', notes: '',
+    }),
+    otherRecord: (sid) => ({
+      id: 'mf-keep', createdAt: 1, updatedAt: 1, sessionId: sid, date: '2026-01-02',
+      firearmId: 'fa-x', type: 'Failure to eject', resolution: '', notes: '',
+    }),
+  },
+  {
+    store: 'media',
+    record: (sid) => ({
+      id: 'md-orphan', createdAt: 1, updatedAt: 1, ownerType: 'session', ownerId: sid,
+      kind: 'image', name: 'target.jpg', annotations: [], mime: 'image/jpeg',
+      data: new ArrayBuffer(8),
+    }),
+    otherRecord: (sid) => ({
+      id: 'md-keep', createdAt: 1, updatedAt: 1, ownerType: 'session', ownerId: sid,
+      kind: 'image', name: 'other.jpg', annotations: [], mime: 'image/jpeg',
+      data: new ArrayBuffer(8),
+    }),
+  },
+];
+
+for (const cascade of SESSION_CASCADE_CASES) {
+  test(`undo takes the ${cascade.store} filed against a session it removes`, async () => {
+    await clearAllData();
+    const batchId = `b-orphan-${cascade.store}`;
+    await importOne(batchId);
+    // A hand-entered session that is nothing to do with this import.
+    await putOne('sessions', session('se-mine', 'fa-hand', null));
+    await putOne(cascade.store, cascade.record(`se-${batchId}`));
+    await putOne(cascade.store, cascade.otherRecord('se-mine'));
+
+    await undoImportBatch(batchId);
+
+    const rows = await getAll<{ id: string }>(cascade.store);
+    assert.ok(
+      !rows.some((r) => r.id.endsWith('-orphan')),
+      `a ${cascade.store} row pointing at a deleted session is an orphan nothing can reach`,
+    );
+    assert.ok(
+      rows.some((r) => r.id.endsWith('-keep')),
+      `and a ${cascade.store} row on the shooter's own session must survive`,
+    );
+  });
+}
+
+test('undo says how many session-owned rows went with the sessions', async () => {
+  await clearAllData();
+  await importOne('b-count-orphans');
+  await putOne('skillSets', SESSION_CASCADE_CASES[0].record('se-b-count-orphans'));
+  await putOne('malfunctions', SESSION_CASCADE_CASES[1].record('se-b-count-orphans'));
+  const result = await undoImportBatch('b-count-orphans');
+  assert.equal(result.sessionsRemoved, 1);
+  assert.equal(result.attachedRemoved, 2, 'the count is reported, not silently done');
+});
+
+test('the app\'s own permanent delete asks the SAME question the undo asks', async () => {
+  // Not a new behaviour: purgeSession always did this correctly. It is here
+  // because the two now share one derived answer instead of two hand-written
+  // lists, and this is what proves the shared one still does the job.
+  await clearAllData();
+  await putOne('sessions', session('se-purge', 'fa-hand', null));
+  await putOne('sessions', session('se-other', 'fa-hand', null));
+  for (const cascade of SESSION_CASCADE_CASES) {
+    await putOne(cascade.store, cascade.record('se-purge'));
+    await putOne(cascade.store, cascade.otherRecord('se-other'));
+  }
+
+  await purgeSession('se-purge');
+
+  for (const cascade of SESSION_CASCADE_CASES) {
+    const rows = await getAll<{ id: string }>(cascade.store);
+    assert.ok(!rows.some((r) => r.id.endsWith('-orphan')), `${cascade.store} filed against the purged session goes`);
+    assert.ok(rows.some((r) => r.id.endsWith('-keep')), `${cascade.store} on another session stays`);
+  }
+  assert.ok(!has(await getAll('sessions'), 'se-purge'));
+  assert.ok(has(await getAll('sessions'), 'se-other'));
+});
+
+// ---------------------------------------------------------------------------
+// Ammunition: what the commit takes off the cans, the undo puts back
+// ---------------------------------------------------------------------------
+
+function can(id: string, quantity: number) {
+  return {
+    id, createdAt: 1, updatedAt: 1, brand: 'Range Brand', caliber: '9mm', grain: '124',
+    bulletType: 'FMJ', quantity, costPerRound: 0.24, notes: '',
+  };
+}
+
+const quantityOf = async (id: string): Promise<number> => {
+  const rows = await getAll<{ id: string; quantity: number }>('ammunition');
+  return rows.find((a) => a.id === id)?.quantity ?? -1;
+};
+
+function sessionUsing(id: string, batchId: string, ammoId: string, rounds: number, planned = false): Session {
+  return {
+    ...session(id, `fa-${batchId}`, batchId),
+    guns: [{ firearmId: `fa-${batchId}`, rounds }],
+    ammoUsage: [{ ammoId, rounds }],
+    planned,
+  };
+}
+
+test('an imported session takes its rounds off the can, the way hand entry does', async () => {
+  await clearAllData();
+  await putOne('ammunition', can('am-1', 1000));
+  await commitImportBatch({
+    batchId: 'b-ammo', filename: 'log.csv',
+    sessions: [sessionUsing('se-a1', 'b-ammo', 'am-1', 150)],
+    firearms: [gun('fa-b-ammo', 'b-ammo')],
+    counts: COUNTS, now: 1,
+  });
+  assert.equal(await quantityOf('am-1'), 850, 'on-hand has to fall by what the import recorded');
+});
+
+test('removing that import puts exactly those rounds back, and no more', async () => {
+  await clearAllData();
+  await putOne('ammunition', can('am-1', 1000));
+  await commitImportBatch({
+    batchId: 'b-ammo2', filename: 'log.csv',
+    sessions: [sessionUsing('se-a2', 'b-ammo2', 'am-1', 150)],
+    firearms: [gun('fa-b-ammo2', 'b-ammo2')],
+    counts: COUNTS, now: 1,
+  });
+  assert.equal(await quantityOf('am-1'), 850, 'the rounds have to come off before they can go back');
+  await undoImportBatch('b-ammo2');
+  // The measured defect: the commit never deducted, and the delete refunded, so
+  // 1000 became 1150 and 150 rounds existed that never had.
+  assert.equal(await quantityOf('am-1'), 1000, 'undo has to land back where the import found it');
+});
+
+test('a PLANNED imported session moves no stock, in either direction', async () => {
+  await clearAllData();
+  await putOne('ammunition', can('am-1', 500));
+  await commitImportBatch({
+    batchId: 'b-planned', filename: 'log.csv',
+    sessions: [sessionUsing('se-p1', 'b-planned', 'am-1', 100, true)],
+    firearms: [gun('fa-b-planned', 'b-planned')],
+    counts: COUNTS, now: 1,
+  });
+  assert.equal(await quantityOf('am-1'), 500, 'a session you have not shot yet spends nothing');
+  await undoImportBatch('b-planned');
+  assert.equal(await quantityOf('am-1'), 500, 'and removing it hands nothing back');
+});
+
+test('a session already in the Trash is not refunded twice by undo', async () => {
+  await clearAllData();
+  await putOne('ammunition', can('am-1', 1000));
+  await commitImportBatch({
+    batchId: 'b-trashed-ammo', filename: 'log.csv',
+    sessions: [sessionUsing('se-t1', 'b-trashed-ammo', 'am-1', 200)],
+    firearms: [gun('fa-b-trashed-ammo', 'b-trashed-ammo')],
+    counts: COUNTS, now: 1,
+  });
+  assert.equal(await quantityOf('am-1'), 800);
+  // Trashing a session hands its rounds back (src/ui/sessionDelete.ts), so the
+  // stock is already whole. Undo must not hand them back a second time.
+  const stored = (await getAll<Session>('sessions')).find((s) => s.id === 'se-t1');
+  assert.ok(stored);
+  await putOne('sessions', { ...stored, deletedAt: Date.now() });
+  await putOne('ammunition', can('am-1', 1000));
+
+  await undoImportBatch('b-trashed-ammo');
+  assert.equal(await quantityOf('am-1'), 1000, 'no rounds may appear that were never fired');
+});
+
+test('an unstorable record rolls the ammunition deduction back with everything else', async () => {
+  await clearAllData();
+  await putOne('ammunition', can('am-1', 1000));
+  const poisoned = { ...sessionUsing('se-bad', 'b-roll', 'am-1', 150), oops: () => {} } as unknown as Session;
+  await assert.rejects(commitImportBatch({
+    batchId: 'b-roll', filename: 'bad.csv',
+    sessions: [poisoned], firearms: [gun('fa-b-roll', 'b-roll')],
+    counts: COUNTS, now: 1,
+  }));
+  assert.equal(await quantityOf('am-1'), 1000, 'an import that never landed cannot have spent anything');
+});
+
 test('undoing an import that is already gone changes nothing and does not throw', async () => {
   await clearAllData();
   await importOne('b-once');
   await undoImportBatch('b-once');
   const result = await undoImportBatch('b-once');
-  assert.deepEqual(result, { sessionsRemoved: 0, firearmsRemoved: 0, firearmsKept: [] });
+  // attachedRemoved is new: the undo now also takes the timed-skill sets,
+  // malfunctions and photos filed against the sessions it removes, and says how
+  // many went. A second undo still has nothing to do.
+  assert.deepEqual(result, {
+    sessionsRemoved: 0, firearmsRemoved: 0, firearmsKept: [], attachedRemoved: 0,
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The history is capped, so the ability to undo must not be capped with it
+// ---------------------------------------------------------------------------
+
+test('the 51st import does not make the 1st un-removable', async () => {
+  await clearAllData();
+  for (let i = 1; i <= 51; i++) await importOne(`b-old-${i}`, `file-${i}.csv`);
+
+  const history = await getImportHistory();
+  assert.ok(
+    !history.some((e) => e.batchId === 'b-old-1'),
+    'the cap is real: the oldest entry is pushed out of the stored list',
+  );
+
+  // Its records are still tagged, and undo works off the tag, so the ONLY thing
+  // that was lost was the way to reach it. Rebuild it from the log itself.
+  const sessions = await getAll<Session>('sessions');
+  const firearms = await getAll<Firearm>('firearms');
+  const recovered = batchesMissingFromHistory(sessions, firearms, history);
+  const lost = recovered.find((e) => e.batchId === 'b-old-1');
+  assert.ok(lost, 'an import that fell off the list is still offered');
+  assert.equal(lost.counts.sessions, 1);
+  assert.equal(lost.counts.firearms, 1);
+  assert.equal(lost.filename, '', 'what was not kept is not invented');
+
+  await undoImportBatch('b-old-1');
+  assert.ok(!has(await getAll('sessions'), 'se-b-old-1'), 'and removing it works');
+  assert.ok(has(await getAll('sessions'), 'se-b-old-51'), 'the newer imports are untouched');
+});
+
+test('an import still in the history is not offered twice', async () => {
+  await clearAllData();
+  await importOne('b-listed');
+  const history = await getImportHistory();
+  const sessions = await getAll<Session>('sessions');
+  const firearms = await getAll<Firearm>('firearms');
+  assert.deepEqual(batchesMissingFromHistory(sessions, firearms, history), []);
+});
+
+test('hand-entered records carry no batch tag, so nothing is invented from them', async () => {
+  await clearAllData();
+  await putOne('sessions', session('se-hand-only', 'fa-hand', null));
+  await putOne('firearms', gun('fa-hand', null));
+  assert.deepEqual(
+    batchesMissingFromHistory(
+      await getAll<Session>('sessions'), await getAll<Firearm>('firearms'), [],
+    ),
+    [],
+  );
 });
 
 // ---------------------------------------------------------------------------

@@ -24,7 +24,10 @@ export {
 } from './csvDates.ts';
 export type { DateFormat, DateColumnAnalysis, DateAmbiguityReason } from './csvDates.ts';
 
-export { planImport, collectUnmatchedGunNames, sourceRowBag } from './csvPlan.ts';
+export {
+  planImport, collectUnmatchedGunNames, sourceRowBag,
+  skippedSummaryLines, ammoEffectLines,
+} from './csvPlan.ts';
 export type {
   ImportMapping, ImportPlan, GunResolution, ExistingLog, PlanOptions,
   RowProblem, RowNote, SkippedRow, SkipReason,

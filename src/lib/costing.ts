@@ -370,6 +370,38 @@ export function inventoryAfterUsageChange(
   return out;
 }
 
+/** The little of a session that the stock question actually depends on. */
+export interface StockSessionLike {
+  planned?: boolean;
+  deletedAt?: number | null;
+  ammoUsage?: UsageLike[];
+}
+
+/**
+ * The ammo usage that IS currently off the cans for a set of sessions.
+ *
+ * Two rules, held here once rather than at each call site:
+ *  - a PLANNED session has not been shot, so it has never moved stock (the same
+ *    rule SessionForm applies when it saves);
+ *  - a session in the Trash has already had its rounds handed back
+ *    (src/ui/sessionDelete.ts softDeleteSession), so its usage is no longer off
+ *    the can and handing it back again would invent rounds.
+ *
+ * WHY ONE FUNCTION: the CSV import's commit deducts exactly this, and its undo
+ * restores exactly this, from the same call in the opposite direction. A rule
+ * added here applies to both halves at once, so the two cannot drift apart into
+ * inventing or destroying stock between them.
+ */
+export function usageThatMovedStock(sessions: readonly StockSessionLike[]): UsageLike[] {
+  const out: UsageLike[] = [];
+  for (const s of sessions) {
+    if (s.planned) continue;
+    if (s.deletedAt) continue;
+    for (const u of s.ammoUsage ?? []) out.push(u);
+  }
+  return out;
+}
+
 /** Cans running low — 50 rounds or fewer left, but not deliberately empty. */
 export function lowAmmo<T extends AmmoLike>(ammo: T[]): T[] {
   return ammo.filter((a) => (a.quantity || 0) > 0 && (a.quantity || 0) <= 50);

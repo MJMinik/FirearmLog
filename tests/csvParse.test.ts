@@ -32,6 +32,56 @@ test('a line break inside a quoted field stays in ONE row', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Quote marks that are not quoting anything: inch marks, which this app is full
+// of. A quote opens a quoted value ONLY at the start of a value (RFC 4180, and
+// what Python's csv module and Papa Parse both do). Anywhere else it is the
+// character the shooter typed.
+//
+// Measured before this was true: one 8" in a Notes column swallowed the rest of
+// the file until the next quote mark, so a three-row 450-round file came in as
+// two sessions and 350 rounds with nothing reported. Counts, problems and row
+// totals all agreed with the truncated file, which is the worst way to be wrong.
+// ---------------------------------------------------------------------------
+
+test('an inch mark mid-value does NOT swallow the rest of the file', () => {
+  const text = [
+    'Date,Gun,Rounds,Notes',
+    '2026-03-02,Apollo 9,150,Shot 8" plates',
+    '2026-03-09,Apollo 9,200,Bill drill',
+    '2026-03-16,Apollo 9,100,Slow fire',
+    '',
+  ].join('\n');
+  const parsed = parseCsv(text);
+  assert.equal(parsed.rows.length, 3, 'every row survives a stray inch mark');
+  assert.equal(parsed.rows[0][3], 'Shot 8" plates', 'the inch mark stays in the value');
+  assert.deepEqual(parsed.rows.map((r) => r[2]), ['150', '200', '100']);
+  assert.deepEqual(parsed.problems, [], 'nothing is wrong with this file');
+});
+
+test('a quote mid-value keeps the delimiters after it working', () => {
+  const parsed = parseCsv('Date,Notes,Rounds\n2026-03-02,5" barrel,150\n');
+  assert.deepEqual(parsed.rows, [['2026-03-02', '5" barrel', '150']]);
+});
+
+test('a quote still opens a quoted value at the START of one', () => {
+  const parsed = parseCsv('Date,Notes\n2026-03-02,"Windy, cold"\n');
+  assert.deepEqual(parsed.rows, [['2026-03-02', 'Windy, cold']]);
+});
+
+test('inch marks do not confuse which separator the file uses', () => {
+  const text = 'Date;Notes;Rounds\n2026-03-02;25" plates, then 8" plates;150\n';
+  assert.equal(detectDelimiter(text), ';');
+  assert.equal(parseCsv(text).rows[0][2], '150');
+});
+
+test('a quoted value that never closes is REPORTED, not finished quietly', () => {
+  const parsed = parseCsv('Date,Notes\n2026-03-02,"this quote never closes\n2026-03-09,dry\n');
+  const problem = parsed.problems.find((p) => /quote/i.test(p.message));
+  assert.ok(problem, 'an unterminated quoted value has to be reported');
+  assert.equal(problem.line, 2, 'and it says which line the quote opened on');
+});
+
+// ---------------------------------------------------------------------------
 // Separators, byte-order marker, line endings
 // ---------------------------------------------------------------------------
 

@@ -33,7 +33,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  getAll, getImportHistory,
+  batchesMissingFromHistory, getAll, getImportHistory,
   commitImportBatch as commitImportBatchRaw,
   undoImportBatch as undoImportBatchRaw,
 } from '../lib/db.ts';
@@ -45,14 +45,14 @@ import {
   parseCsv, cellAt, columnName,
   SESSION_FIELDS, guessMapping, missingRequiredFields,
   analyseDateColumn, convertDateValue, dateFormatLabel, dateAmbiguityMessage,
-  planImport, collectUnmatchedGunNames,
+  planImport, collectUnmatchedGunNames, skippedSummaryLines, ammoEffectLines,
 } from '../lib/import/csvEngine.ts';
 import type {
-  DateFormat, GunResolution, ImportPlan, ParsedCsv,
+  ColumnGuess, DateFormat, GunResolution, ImportPlan, ParsedCsv,
 } from '../lib/import/csvEngine.ts';
 import { readCsvFile } from './importCsvFile.ts';
 import { newId } from '../lib/id.ts';
-import { formatDayKey } from '../lib/dates.ts';
+import { dayKey, formatDayKey } from '../lib/dates.ts';
 import { FormProblem } from './FormProblem.tsx';
 import { ConfirmSheet } from './Sheet.tsx';
 import type { View } from './nav.ts';
@@ -97,6 +97,11 @@ function undoSummary(result: UndoImportResult): string {
     bits.push(`and ${plural(result.firearmsRemoved, 'gun', 'guns')} this import added`);
   }
   let text = `${bits.join(' ')}.`;
+  if (result.attachedRemoved > 0) {
+    // Named rather than done quietly: these are the shooter's own additions to
+    // an imported session, and they went with it.
+    text += ` Also removed ${plural(result.attachedRemoved, 'thing', 'things')} filed against those sessions: timed skills, malfunctions and photos.`;
+  }
   for (const kept of result.firearmsKept) {
     text += ` Kept "${kept.name}": you have used it in ${joinWords(kept.referencedBy)} since the import.`;
   }
@@ -120,6 +125,12 @@ export function ImportCsvScreen({ onBack, open }: {
   const [delimiter, setDelimiter] = useState<string | null>(null); // null = as detected
   const [parsed, setParsed] = useState<ParsedCsv | null>(null);
   const [assignments, setAssignments] = useState<(string | null)[]>([]);
+  // Kept so the screen can say WHICH choices it made for the shooter. The
+  // engine returns `guessed` per column and the screen used to throw it away,
+  // which made a guess look exactly like a decision (design doc 3.2).
+  const [guesses, setGuesses] = useState<ColumnGuess[]>([]);
+  // Long lists open on request rather than ending at twelve with no way on.
+  const [showAll, setShowAll] = useState<Record<string, boolean>>({});
   const [chosenDateFormat, setChosenDateFormat] = useState<DateFormat | null>(null);
 
   const [gunNames, setGunNames] = useState<string[]>([]);
@@ -215,8 +226,11 @@ export function ImportCsvScreen({ onBack, open }: {
   }
 
   function applyParsed(next: ParsedCsv): void {
+    const guessed = guessMapping(next.headers, SESSION_FIELDS);
     setParsed(next);
-    setAssignments(guessMapping(next.headers, SESSION_FIELDS).map((g) => g.fieldKey));
+    setGuesses(guessed);
+    setAssignments(guessed.map((g) => g.fieldKey));
+    setShowAll({});
   }
 
   async function pickFile(file: File): Promise<void> {
@@ -252,6 +266,8 @@ export function ImportCsvScreen({ onBack, open }: {
     setFileText('');
     setFilename('');
     setAssignments([]);
+    setGuesses([]);
+    setShowAll({});
     setGunNames([]);
     setGunChoices({});
     setPlan(null);
@@ -385,6 +401,8 @@ export function ImportCsvScreen({ onBack, open }: {
     }
     parts.push(`this import added, along with any changes you have made to them since.`);
     let text = parts.join(' ');
+    text += ' Timed-skill sets, malfunctions and photos you filed against those sessions go with them,'
+      + ' and any rounds the import took off your ammunition go back on.';
     text += ' Everything you logged separately stays.';
     if (entry.counts.firearms > 0) {
       text += ' A gun you have used elsewhere in your log since the import is kept, and the next screen names it.';
@@ -395,6 +413,50 @@ export function ImportCsvScreen({ onBack, open }: {
   // ---- rendering ----------------------------------------------------------
 
   const headerCount = parsed?.headers.length ?? 0;
+
+  /**
+   * Every import this device can still remove: the ones the history kept, plus
+   * any whose entry fell off the end of that capped list but whose records are
+   * still tagged in the log. Without the second half, the 51st import quietly
+   * made the 1st permanent.
+   */
+  const removableImports = useMemo(
+    () => [...log.history, ...batchesMissingFromHistory(log.sessions, log.firearms, log.history)],
+    [log.history, log.sessions, log.firearms],
+  );
+
+  /** Trouble with the FILE rather than with one row, e.g. a quote never closed. */
+  const fileProblems = useMemo(
+    () => (parsed?.problems ?? []).filter((p) => p.row === null),
+    [parsed],
+  );
+
+  /**
+   * A list that stops at twelve with no way on is a list that hides things. Each
+   * one opens in place, and says how many are behind the button.
+   */
+  function LongList({ id, title, lines }: { id: string; title: string; lines: string[] }) {
+    if (lines.length === 0) return null;
+    const open = showAll[id] === true;
+    const shown = open ? lines : lines.slice(0, LIST_LIMIT);
+    return (
+      <div className="card">
+        <h2>{title}</h2>
+        {shown.map((line, i) => (
+          <p className="report-note" key={`${id}-${i}`} data-testid={`import-csv-${id}-line`}>{line}</p>
+        ))}
+        {lines.length > LIST_LIMIT && (
+          <button
+            className="button secondary"
+            data-testid={`import-csv-${id}-more`}
+            onClick={() => setShowAll((prev) => ({ ...prev, [id]: !open }))}
+          >
+            {open ? 'Show fewer' : `Show all ${lines.length}`}
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="screen">
@@ -452,19 +514,24 @@ export function ImportCsvScreen({ onBack, open }: {
 
           {/* Written AND read: without this list, an import stops being
               removable the moment its report is dismissed. */}
-          {log.history.length > 0 && (
+          {removableImports.length > 0 && (
             <div className="card">
               <h2>Past imports</h2>
               <p className="report-note">
-                Each one can be taken back out. The sessions it added go, and so
-                do the guns it added that nothing else in your log uses.
+                Each one can be taken back out. The sessions it added go, along
+                with anything filed against them, and so do the guns it added
+                that nothing else in your log uses. Rounds it took off your
+                ammunition go back on.
               </p>
-              {log.history.map((entry) => (
+              {removableImports.map((entry) => (
                 <div key={entry.batchId} className="row-tap" style={{ cursor: 'default' }} data-testid="import-csv-past-row">
                   <span className="label">
-                    {entry.filename || 'CSV import'}
+                    {entry.filename || 'An earlier import'}
                     <div className="row-sub">
-                      {formatDayKey(new Date(entry.importedAt).toISOString().slice(0, 10))}
+                      {/* The shooter's own day, not the day in London. A local
+                          date read through toISOString showed tomorrow for
+                          anything imported after late afternoon out west. */}
+                      {formatDayKey(dayKey(new Date(entry.importedAt)))}
                       {`: ${plural(entry.counts.sessions, 'session', 'sessions')}`}
                       {entry.counts.firearms > 0 ? `, ${plural(entry.counts.firearms, 'gun', 'guns')}` : ''}
                     </div>
@@ -522,6 +589,14 @@ export function ImportCsvScreen({ onBack, open }: {
                 If it is, tick the box above so it comes in as a session.
               </p>
             )}
+            {/* Trouble with the file itself, e.g. a quote mark that opens a
+                value and never closes it. Saying nothing here is how rows go
+                missing with every count still agreeing with what was read. */}
+            {fileProblems.map((p, i) => (
+              <p className="report-note warn" key={`file-problem-${i}`} data-testid="import-csv-file-problem">
+                {p.message}
+              </p>
+            ))}
           </div>
 
           {missing.length > 0 && (
@@ -556,8 +631,17 @@ export function ImportCsvScreen({ onBack, open }: {
           )}
 
           <div className="card">
+            <p className="report-note" data-testid="import-csv-guess-note">
+              Where a line below says it was matched by the column name, that is
+              this screen&apos;s reading of your header, not something you chose.
+              Check those first.
+            </p>
             {parsed.headers.map((header, column) => {
               const samples = parsed.rows.slice(0, SAMPLE_LIMIT).map((row) => cellAt(row, column));
+              // A guess stays a guess only until the shooter picks something
+              // else for that column: after that it is their decision.
+              const guess = guesses[column];
+              const stillAGuess = guess?.guessed === true && assignments[column] === guess.fieldKey;
               return (
                 <label className="field" key={`${header}-${column}`} style={{ wordBreak: 'break-word' }}>
                   {header || columnName(column)}
@@ -573,6 +657,11 @@ export function ImportCsvScreen({ onBack, open }: {
                       </option>
                     ))}
                   </select>
+                  {stillAGuess && (
+                    <div className="row-sub warn" data-testid={`import-csv-guessed-${column}`}>
+                      Matched by the column name. Change it if that is not what this column holds.
+                    </div>
+                  )}
                   <div className="row-sub" style={{ marginTop: 4, wordBreak: 'break-word' }}>
                     {samples.map(shortValue).join(', ')}
                   </div>
@@ -684,13 +773,12 @@ export function ImportCsvScreen({ onBack, open }: {
               This will add {plural(plan.sessions.length, 'session', 'sessions')}
               {plan.firearms.length > 0 ? ` and ${plural(plan.firearms.length, 'new gun', 'new guns')}` : ''}.
             </p>
-            {plan.rowsSkipped > 0 && (
-              <p className="report-note" data-testid="import-csv-skipped">
-                {plural(plan.rowsSkipped, 'row', 'rows')} skipped, including{' '}
-                {plan.duplicatesInLog} that look like sessions already in your log
-                and {plan.duplicatesInFile} that repeat an earlier row in the file.
-              </p>
-            )}
+            {/* Counted off the skipped list itself, so the rows it names are
+                the rows that were actually skipped and the parts add up to the
+                total. Every one of them is listed further down by line. */}
+            {skippedSummaryLines(plan).map((line, i) => (
+              <p className="report-note" key={`skip-line-${i}`} data-testid="import-csv-skipped">{line}</p>
+            ))}
             {/* ROWS, not problems: a row with three faults is one row to look at. */}
             {plan.rowsFailed > 0 && (
               <p className="report-note" data-testid="import-csv-failed">
@@ -698,6 +786,10 @@ export function ImportCsvScreen({ onBack, open }: {
                 are listed below and nothing from them is added.
               </p>
             )}
+            {/* This switch governs BOTH kinds of duplicate, so it has to name
+                both. Labelled as the log-duplicate switch alone, it silently
+                dropped the second of two identical strings a shooter really
+                did fire on one day, and named a different case as the cure. */}
             <label className="checklist-take">
               <input
                 type="checkbox"
@@ -705,8 +797,17 @@ export function ImportCsvScreen({ onBack, open }: {
                 data-testid="import-csv-include-duplicates"
                 onChange={(e) => { setIncludeDuplicates(e.target.checked); buildPlan(gunChoices, e.target.checked); }}
               />
-              Add the rows that look like sessions already in my log
+              Add rows that repeat a session in my log, or an earlier row in this file
             </label>
+          </div>
+
+          {/* What happens to the cans, said before it happens rather than found
+              in the ammunition screen afterwards. */}
+          <div className="card">
+            <h2>Your ammunition</h2>
+            {ammoEffectLines(plan.sessions, log.ammunition).map((line, i) => (
+              <p className="report-note" key={`ammo-line-${i}`} data-testid="import-csv-ammo">{line}</p>
+            ))}
           </div>
 
           {plan.sessions.length > 0 && (
@@ -732,27 +833,34 @@ export function ImportCsvScreen({ onBack, open }: {
             </div>
           )}
 
-          {plan.problems.length > 0 && (
-            <div className="card">
-              <h2>Rows that could not be read</h2>
-              {plan.problems.slice(0, LIST_LIMIT).map((p, i) => (
-                <p className="report-note" key={`${p.line}-${i}`}>Line {p.line}: {p.message}</p>
-              ))}
-              {plan.problems.length > LIST_LIMIT && (
-                <p className="report-note">and {plan.problems.length - LIST_LIMIT} more.</p>
-              )}
-            </div>
-          )}
+          <LongList
+            id="problems"
+            title="Rows that could not be read"
+            lines={plan.problems.map((p) => `Line ${p.line}: ${p.message}`)}
+          />
 
-          {plan.notes.length > 0 && (
+          {/* Counted AND listed. A skipped row that only ever appears as a
+              number is a row the shooter cannot check. */}
+          <LongList
+            id="skipped"
+            title="Rows that were skipped"
+            lines={plan.skipped.map((s) => s.message)}
+          />
+
+          <LongList
+            id="notes"
+            title="Values we had to read loosely"
+            lines={plan.notes.map((n) => `Line ${n.line}: ${n.message}`)}
+          />
+
+          {fileProblems.length > 0 && (
             <div className="card">
-              <h2>Values we had to read loosely</h2>
-              {plan.notes.slice(0, LIST_LIMIT).map((n, i) => (
-                <p className="report-note" key={`${n.line}-${i}`}>Line {n.line}: {n.message}</p>
+              <h2>Something in the file itself</h2>
+              {fileProblems.map((p, i) => (
+                <p className="report-note warn" key={`preview-file-problem-${i}`} data-testid="import-csv-file-problem">
+                  {p.message}
+                </p>
               ))}
-              {plan.notes.length > LIST_LIMIT && (
-                <p className="report-note">and {plan.notes.length - LIST_LIMIT} more.</p>
-              )}
             </div>
           )}
 
@@ -791,7 +899,8 @@ export function ImportCsvScreen({ onBack, open }: {
             </p>
             <p className="report-note">
               These sessions now count in your round totals, your costs and
-              anything due for maintenance.
+              anything due for maintenance. Rounds any of them named have come
+              off your ammunition, the way a session you type in does.
             </p>
           </div>
           <div className="card">

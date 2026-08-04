@@ -26,6 +26,8 @@
 // dash. Every string here can reach a shooter's screen.
 
 import type { Ammunition, DrillResult, Firearm, Session, SessionGun } from '../types.ts';
+import { usageThatMovedStock } from '../costing.ts';
+import { ammoLabel } from '../csvTables.ts';
 import { guessCategory } from './pistolTracker.ts';
 import { cellAt } from './csvParse.ts';
 import type { ParsedCsv } from './csvParse.ts';
@@ -97,6 +99,94 @@ export interface ImportPlan {
   rowsSkipped: number;
   duplicatesInFile: number;
   duplicatesInLog: number;
+}
+
+// ---------------------------------------------------------------------------
+// Saying what the plan does, in words that add up
+// ---------------------------------------------------------------------------
+//
+// These live here, next to the counting, because the sentence and the numbers
+// have to come from the same place. The screen used to write its own: it said
+// "1 rows skipped, including 1 that look like sessions already in your log and
+// 1 that repeat an earlier row in the file" for a plan that skipped one row and
+// named two, because it read the duplicates COUNTERS (which count what was
+// found) where it meant the SKIPPED LIST (which holds what was acted on). Every
+// number below is counted off plan.skipped, so the parts cannot outrun the
+// total.
+
+const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
+
+/** "a, b and c", the way a person lists things. */
+function joinParts(parts: string[]): string {
+  if (parts.length <= 1) return parts[0] ?? '';
+  return `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
+function countSkipped(plan: ImportPlan, reason: SkipReason): number {
+  return plan.skipped.filter((s) => s.reason === reason).length;
+}
+
+/**
+ * What happened to the rows that are not being added, and what is happening to
+ * the duplicates the shooter asked for anyway. One line each, in plain words.
+ */
+export function skippedSummaryLines(plan: ImportPlan): string[] {
+  const lines: string[] = [];
+  const inLog = countSkipped(plan, 'duplicateInLog');
+  const inFile = countSkipped(plan, 'duplicateInFile');
+  const unknownGun = countSkipped(plan, 'unknownGun');
+
+  if (plan.rowsSkipped > 0) {
+    const parts: string[] = [];
+    if (inLog > 0) parts.push(`${inLog} that ${inLog === 1 ? 'looks' : 'look'} like a session already in your log`);
+    if (inFile > 0) parts.push(`${inFile} that ${inFile === 1 ? 'repeats' : 'repeat'} an earlier row in this file`);
+    if (unknownGun > 0) parts.push(`${unknownGun} using a gun name you chose to skip`);
+    lines.push(parts.length === 0
+      ? `${plural(plan.rowsSkipped, 'row', 'rows')} skipped.`
+      : `${plural(plan.rowsSkipped, 'row', 'rows')} skipped: ${joinParts(parts)}.`);
+  }
+
+  // Counted but NOT skipped means the shooter turned the switch on. Saying so
+  // is the difference between a count they can check and a count they cannot.
+  const addedFromLog = plan.duplicatesInLog - inLog;
+  const addedFromFile = plan.duplicatesInFile - inFile;
+  const added: string[] = [];
+  if (addedFromLog > 0) added.push(`${addedFromLog} that ${addedFromLog === 1 ? 'looks' : 'look'} like a session already in your log`);
+  if (addedFromFile > 0) added.push(`${addedFromFile} that ${addedFromFile === 1 ? 'repeats' : 'repeat'} an earlier row in this file`);
+  if (added.length > 0) {
+    lines.push(`Being added because you asked for them: ${joinParts(added)}.`);
+  }
+  return lines;
+}
+
+/**
+ * What this import does to the ammunition counts, said before it happens.
+ *
+ * An imported session that names ammunition takes those rounds off the can, the
+ * way a session typed in by hand does, and removing the import puts them back.
+ * The rounds are read through the same usageThatMovedStock the commit and the
+ * undo use, so this cannot describe one thing and do another.
+ */
+export function ammoEffectLines(
+  sessions: readonly Session[],
+  ammunition: readonly Ammunition[],
+): string[] {
+  const perCan = new Map<string, number>();
+  for (const u of usageThatMovedStock(sessions)) {
+    perCan.set(u.ammoId, (perCan.get(u.ammoId) ?? 0) + (u.rounds || 0));
+  }
+  if (perCan.size === 0) {
+    return ['Your ammunition counts do not change: no row here names ammunition in your log.'];
+  }
+  const lines: string[] = [];
+  for (const [ammoId, rounds] of perCan) {
+    const can = ammunition.find((a) => a.id === ammoId);
+    if (!can) continue;
+    const left = Math.max(0, (can.quantity || 0) - rounds);
+    lines.push(`${ammoLabel(can)}: ${plural(rounds, 'round comes', 'rounds come')} off, leaving ${left}.`);
+  }
+  lines.push('Removing this import puts those rounds back.');
+  return lines;
 }
 
 // Audit CR-4, as applied by pistolTracker.ts:83 to 90: these key names never get

@@ -9,7 +9,9 @@ import assert from 'node:assert/strict';
 import { parseCsv } from '../src/lib/import/csvParse.ts';
 import { csvTable, buildLookup } from '../src/lib/csvTables.ts';
 import type { CsvStores } from '../src/lib/csvTables.ts';
-import { planImport, collectUnmatchedGunNames, sourceRowBag } from '../src/lib/import/csvPlan.ts';
+import {
+  planImport, collectUnmatchedGunNames, sourceRowBag, skippedSummaryLines, ammoEffectLines,
+} from '../src/lib/import/csvPlan.ts';
 import type { ImportMapping, GunResolution, ExistingLog } from '../src/lib/import/csvPlan.ts';
 import type { Ammunition, Firearm, Session } from '../src/lib/types.ts';
 
@@ -547,4 +549,111 @@ test('every planned record is stamped with the time it was planned', () => {
   assert.equal(result.sessions[0].createdAt, NOW);
   assert.equal(result.sessions[0].updatedAt, NOW);
   assert.equal(result.firearms[0].createdAt, NOW);
+});
+
+// ---------------------------------------------------------------------------
+// Saying what the plan does, in numbers that add up
+//
+// The screen used to write this sentence itself, off the duplicate COUNTERS
+// rather than the skipped LIST, and produced "1 rows skipped, including 1 that
+// look like sessions already in your log and 1 that repeat an earlier row in
+// the file" for a plan that skipped one row: 1 + 1 > 1, and neither named row
+// was the one skipped. These come off the skipped list, so they cannot.
+// ---------------------------------------------------------------------------
+
+test('the skipped sentence names only rows that were actually skipped', () => {
+  const result = plan(
+    'Date,Gun,Rounds\n2026-03-04,Apollo,150\n2026-03-04,Apollo,150\n2026-03-05,Ghost,50\n',
+    SESSION_MAP,
+    { firearms: [gun('f1', 'Apollo')], sessions: [] },
+    { Ghost: { action: 'skip' } },
+  );
+  const lines = skippedSummaryLines(result);
+  assert.equal(result.rowsSkipped, 2);
+  assert.equal(lines.length, 1);
+  assert.equal(
+    lines[0],
+    '2 rows skipped: 1 that repeats an earlier row in this file and 1 using a gun name you chose to skip.',
+  );
+  // The arithmetic, checked rather than read: the numbers the sentence names
+  // add up to the number it opens with.
+  const named = [...lines[0].matchAll(/(\d+) that|(\d+) using/g)]
+    .map((m) => Number(m[1] ?? m[2]))
+    .reduce((a, b) => a + b, 0);
+  assert.equal(named, result.rowsSkipped);
+});
+
+test('a duplicate the shooter asked for is not counted as skipped', () => {
+  const result = plan(
+    'Date,Gun,Rounds\n2026-03-04,Apollo,150\n2026-03-04,Apollo,150\n',
+    SESSION_MAP,
+    { firearms: [gun('f1', 'Apollo')], sessions: [] },
+    {},
+    { includeDuplicates: true },
+  );
+  assert.equal(result.rowsSkipped, 0);
+  assert.deepEqual(skippedSummaryLines(result), [
+    'Being added because you asked for them: 1 that repeats an earlier row in this file.',
+  ]);
+});
+
+test('a log duplicate skipped by default is named as one', () => {
+  const existing = session({ id: 'old', date: '2026-03-04', guns: [{ firearmId: 'f1', rounds: 150 }] });
+  const result = plan(
+    'Date,Gun,Rounds\n2026-03-04,Apollo,150\n',
+    SESSION_MAP,
+    { firearms: [gun('f1', 'Apollo')], sessions: [existing] },
+  );
+  assert.deepEqual(skippedSummaryLines(result), [
+    '1 row skipped: 1 that looks like a session already in your log.',
+  ]);
+});
+
+test('a plan that skips nothing says nothing', () => {
+  const result = plan(
+    'Date,Gun,Rounds\n2026-03-04,Apollo,150\n',
+    SESSION_MAP,
+    { firearms: [gun('f1', 'Apollo')], sessions: [] },
+  );
+  assert.deepEqual(skippedSummaryLines(result), []);
+});
+
+// ---------------------------------------------------------------------------
+// What the import does to the cans, said before it happens
+// ---------------------------------------------------------------------------
+
+test('the ammunition line says what comes off and what is left', () => {
+  const can = { ...ammo('am1', 'Range Brand'), quantity: 1000 };
+  const result = plan(
+    'Date,Gun,Rounds,Ammo\n2026-03-04,Apollo,150,Range Brand\n',
+    { ...SESSION_MAP, Ammo: 'ammo' },
+    { firearms: [gun('f1', 'Apollo')], sessions: [], ammunition: [can] },
+  );
+  const lines = ammoEffectLines(result.sessions, [can]);
+  assert.match(lines[0], /150 rounds come off/);
+  assert.match(lines[0], /leaving 850/);
+  assert.equal(lines[1], 'Removing this import puts those rounds back.');
+});
+
+test('a planned session moves no stock, and the line does not claim it does', () => {
+  const can = { ...ammo('am1', 'Range Brand'), quantity: 1000 };
+  const result = plan(
+    'Date,Gun,Rounds,Ammo,Planned\n2026-03-04,Apollo,150,Range Brand,yes\n',
+    { ...SESSION_MAP, Ammo: 'ammo', Planned: 'planned' },
+    { firearms: [gun('f1', 'Apollo')], sessions: [], ammunition: [can] },
+  );
+  assert.deepEqual(ammoEffectLines(result.sessions, [can]), [
+    'Your ammunition counts do not change: no row here names ammunition in your log.',
+  ]);
+});
+
+test('rows naming no ammunition say so rather than saying nothing', () => {
+  const result = plan(
+    'Date,Gun,Rounds\n2026-03-04,Apollo,150\n',
+    SESSION_MAP,
+    { firearms: [gun('f1', 'Apollo')], sessions: [] },
+  );
+  assert.deepEqual(ammoEffectLines(result.sessions, []), [
+    'Your ammunition counts do not change: no row here names ammunition in your log.',
+  ]);
 });

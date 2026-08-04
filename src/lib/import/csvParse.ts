@@ -54,21 +54,46 @@ interface RawRecord {
   line: number;
 }
 
+interface TokenizedCsv {
+  records: RawRecord[];
+  /**
+   * The 1-based line a quoted value opened on and never closed, or null when
+   * every quote in the file is accounted for. A file that ends inside a quoted
+   * value has almost certainly lost rows to a stray quote mark, and finishing
+   * silently is how that stays invisible.
+   */
+  unterminatedQuoteLine: number | null;
+}
+
 /**
- * Walk the whole text once. Quoted fields keep their separators and their line
- * breaks; a doubled quote inside a quoted field is one literal quote.
+ * Walk the whole text once. Quoted values keep their separators and their line
+ * breaks; a doubled quote inside a quoted value is one literal quote.
+ *
+ * A QUOTE MARK OPENS A QUOTED VALUE ONLY AT THE START OF A VALUE. Anywhere else
+ * it is the character the shooter typed, which is RFC 4180 and what Python's
+ * csv module and Papa Parse both do. This app is about shooting, so 8" plates,
+ * a 5" barrel and 25 yd are ordinary content: an earlier build honoured a quote
+ * mark wherever it appeared, so one inch mark in a Notes column swallowed every
+ * separator and line break after it until the next quote mark. A three-row file
+ * came in as two sessions with no problem reported and no count out of place,
+ * because the rows it ate were gone before anything counted them.
  */
-function tokenize(text: string, delimiter: string, maxRecords = Number.POSITIVE_INFINITY): RawRecord[] {
+function tokenize(text: string, delimiter: string, maxRecords = Number.POSITIVE_INFINITY): TokenizedCsv {
   const records: RawRecord[] = [];
   let cells: string[] = [];
   let cur = '';
   let inQuotes = false;
+  // True once this value has taken a character (or an opening quote), which is
+  // what makes a later quote mark literal rather than an opener.
+  let valueStarted = false;
+  let quoteOpenedOn = 0;
   let line = 1;
   let recordLine = 1;
 
   const pushCell = () => {
     cells.push(cur.trim());
     cur = '';
+    valueStarted = false;
   };
   const pushRecord = () => {
     pushCell();
@@ -93,8 +118,10 @@ function tokenize(text: string, delimiter: string, maxRecords = Number.POSITIVE_
       }
       continue;
     }
-    if (ch === '"') {
+    if (ch === '"' && !valueStarted) {
       inQuotes = true;
+      valueStarted = true;
+      quoteOpenedOn = line;
       continue;
     }
     if (ch === delimiter) {
@@ -104,13 +131,16 @@ function tokenize(text: string, delimiter: string, maxRecords = Number.POSITIVE_
     if (ch === '\n') {
       line++;
       pushRecord();
-      if (records.length >= maxRecords) return records;
+      if (records.length >= maxRecords) {
+        return { records, unterminatedQuoteLine: null };
+      }
       continue;
     }
     cur += ch;
+    valueStarted = true;
   }
   if (cur !== '' || cells.length > 0) pushRecord();
-  return records;
+  return { records, unterminatedQuoteLine: inQuotes ? quoteOpenedOn : null };
 }
 
 const isBlankRecord = (r: RawRecord): boolean => r.cells.every((c) => c === '');
@@ -140,7 +170,7 @@ export function detectDelimiter(text: string): string {
   let best = ',';
   let bestScore = 0;
   for (const candidate of DELIMITER_CANDIDATES) {
-    const records = tokenize(text, candidate, 10).filter((r) => !isBlankRecord(r));
+    const records = tokenize(text, candidate, 10).records.filter((r) => !isBlankRecord(r));
     if (records.length === 0) continue;
     const counts = records.map((r) => r.cells.length);
     const width = modal(counts);
@@ -212,14 +242,30 @@ export function parseCsv(text: string, options: ParseCsvOptions = {}): ParsedCsv
     .replace(/\r\n?/g, '\n');
 
   const delimiter = options.delimiter ?? detectDelimiter(normalized);
-  const records = tokenize(normalized, delimiter).filter((r) => !isBlankRecord(r));
+  const tokenized = tokenize(normalized, delimiter);
+  const records = tokenized.records.filter((r) => !isBlankRecord(r));
   const problems: CsvParseProblem[] = [];
+
+  // Said out loud rather than finished quietly: a file that ends inside a quoted
+  // value has read everything after that quote mark as part of one value, so
+  // rows are missing and no count can show it.
+  if (tokenized.unterminatedQuoteLine !== null) {
+    problems.push({
+      row: null,
+      line: tokenized.unterminatedQuoteLine,
+      message:
+        `A quote mark on line ${tokenized.unterminatedQuoteLine} opens a value that never closes, so everything after it was read as one value. `
+        + 'Check that line for a stray quote mark.',
+    });
+  }
 
   if (records.length === 0) {
     return {
       headers: [], rows: [], rowLines: [], delimiter,
       headerLooksLikeData: false, headersDisambiguated: false,
-      problems: [{ row: null, line: 1, message: 'There are no rows in this file to read.' }],
+      // The stray-quote problem comes FIRST when there is one: it is the reason
+      // there is nothing to read, and the screen shows problems[0].
+      problems: [...problems, { row: null, line: 1, message: 'There are no rows in this file to read.' }],
     };
   }
 
