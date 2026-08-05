@@ -113,10 +113,19 @@ function parseWith(text: string, delim: string): PsMatch {
 
   // Locate the results header row; anything above it that looks like "key,value"
   // is treated as match metadata (name / date / stage count).
+  // A results table has COLUMNS. If the heading row does not split into at
+  // least two of them under this separator, this separator is the wrong one
+  // and there is nothing more to discuss — which is the structural answer to a
+  // whole family of near-misses. Without it, a heading like "Pos,Shooter,Score"
+  // read as a single cell let the NAME column claim that one cell, so every
+  // raw line in the file became a named shooter, and a trailing line of page
+  // text gave the wrong separator one more "name" than the right one had. The
+  // reader was then offered "1,Robin Alder,100.00" as a person to be.
   let headerIdx = -1;
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].trim() === '') continue;
-    if (isHeaderRow(splitCsvLine(lines[i], delim))) { headerIdx = i; break; }
+    const cells = splitCsvLine(lines[i], delim);
+    if (cells.length >= 2 && isHeaderRow(cells)) { headerIdx = i; break; }
   }
   if (headerIdx === -1) {
     throw new Error("I couldn't find a results table in that. It needs a row of column headings like Place, Name, Div — copy the whole Combined results page from PractiScore and paste it again.");
@@ -217,9 +226,12 @@ function parseWith(text: string, delim: string): PsMatch {
 
   // "No." is the member-number heading on a PractiScore results table and a
   // plain row counter on plenty of other tables, so under that ONE ambiguous
-  // heading a value is only believed if it is shaped like a member number:
-  // a letter prefix and digits (A185321, TY112817, L5268, FY100686, a133555).
-  // A row counter never matches, and neither does a stray line of page text.
+  // heading a value is only believed if it is shaped like a member number: a
+  // letter prefix, an optional separator, then digits. That covers the USPSA
+  // forms seen in real captures (A185321, TY112817, L5268, FY100686, a133555),
+  // low-numbered life and benefactor numbers (A12, L52), and the hyphenated
+  // and spaced regional forms (USA-12345, A 12345). A row counter never
+  // matches, and neither does a stray line of page text.
   //
   // Two earlier attempts at this were worse. Trusting the heading wrote
   // "Imported from PractiScore (USPSA# 1)" into a saved record, inventing a
@@ -231,8 +243,8 @@ function parseWith(text: string, delim: string): PsMatch {
   // an ambiguous heading a blank beats a plausible wrong number, which is the
   // same call as leaving the date empty rather than guessing today.
   const ambiguousMemberHeading =
-    col.memberNumber >= 0 && /^no\.?$/i.test(headers[col.memberNumber] ?? '');
-  const MEMBER_NUMBER_SHAPE = /^[A-Za-z]{1,3}\d{3,}$/;
+    col.memberNumber >= 0 && /^no\.?$/i.test(headers[col.memberNumber]);
+  const MEMBER_NUMBER_SHAPE = /^[A-Za-z]{1,4}[-\s]?\d{2,}$/;
 
   const cell = (row: string[], idx: number): string | undefined => (idx >= 0 ? row[idx] : undefined);
   const memberNumberFrom = (v: string | undefined): string => {
