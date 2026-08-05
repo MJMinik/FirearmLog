@@ -489,7 +489,27 @@ export interface TrashItem extends BaseRecord {
 }
 
 export interface AppSettings {
+  /** DORMANT. Nothing in src/ reads or writes this — a grep returns only this
+   *  line. It survives because the migration importer passes the old file's
+   *  whole settings object through, so on a migrated install it may already
+   *  hold a value. `shooterNames` below is the field for names the shooter has
+   *  actually given THIS app, and it is deliberately separate for two reasons:
+   *  the requirement is a LIST (a household can put two shooters in one match)
+   *  and this is a single string; and a value that arrived with a migration is
+   *  not something the shooter typed here, so showing it back as one they did
+   *  would be putting words in their mouth. *(The first version of this comment
+   *  claimed rule 46 as the reason — a cold audit was right that it does not
+   *  apply: the value would be the user's own name, not a mention of the older
+   *  project. The decision stands; the stated reason was wrong.)* */
   ownerName: string;
+  /** The names the shooter says are theirs, used ONLY to lift their own row
+   *  to the top of an imported results field so they do not have to scroll a
+   *  seventy-eight-shooter list to find themselves. A LIST because a household
+   *  can put two shooters in one match — Michael, 5 Aug 2026: "it has to be a
+   *  selection because sometimes husband and wife or father and child may both
+   *  attend a match". Nothing is ever selected on the shooter's behalf.
+   *  Undefined or empty means the import behaves exactly as it always has. */
+  shooterNames?: string[];
   theme: string;
   checklistCustomItems: ChecklistCustomItems;
   /** When the user last saved a backup file (Save to File). Drives the Home
