@@ -100,7 +100,7 @@ test.describe('PractiScore import', () => {
     ['1', 'Lima, Breno', 'A101033', 'G', 'O', 'Maj', '', '830.6178', '100.0000%'].join('\t'),
     ['3', 'Nunez, Jeff', 'A172032', 'M', 'LO', 'Min', '', '705.7027', '84.9612%'].join('\t'),
     ['5', 'Birrey, Clyde', '', '', 'CO', 'Min', '', '685.4327', '82.5208%'].join('\t'),
-    ['68', 'Minik, Michael', 'A185321', 'U', 'O', 'Min', '', '181.5609', '21.8585%'].join('\t'),
+    ['68', 'Minik, Michael', 'A100068', 'U', 'O', 'Min', '', '181.5609', '21.8585%'].join('\t'), // member number is a placeholder: this repo is public (see tests/fixtures/practiscore-guncraft-2026-08-02.ts)
     'Search links', 'Scores', 'Matches',
   ].join('\n');
 

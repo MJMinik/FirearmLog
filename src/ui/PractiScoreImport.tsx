@@ -12,6 +12,7 @@ import { stampNew } from '../lib/stamps.ts';
 import { newId } from '../lib/id.ts';
 import { todayKey } from '../lib/dates.ts';
 import { MATCH_TYPES, DIVISIONS, POWER_FACTORS } from '../lib/competition.ts';
+import { fieldOptions } from '../lib/selectOptions.ts';
 import {
   parsePractiScore, countInDivision, SAMPLE_PRACTISCORE_CSV, type PsMatch
 } from '../lib/practiscore.ts';
@@ -99,7 +100,9 @@ export function PractiScoreImport({ onCancel, onSaved }: {
         totalRounds: null,
         matchPercent: me.matchPercent,
         divisionPlace: divisionEdited ? null : me.divisionPlace,
-        divisionOf: divisionEdited ? null : (countInDivision(parsed.competitors, me.division) || null),
+        // A blank division is not a division: counting everyone whose Div cell
+        // was empty produced "N in your division" on a match that recorded none.
+        divisionOf: divisionEdited || me.division === '' ? null : (countInDivision(parsed.competitors, me.division) || null),
         overallPlace: me.overallPlace,
         overallOf: parsed.competitors.length,
         stages: me.stages.map((s) => ({ number: s.number, points: null, time: null, percent: s.percent, notes: '' })),
@@ -243,13 +246,12 @@ export function PractiScoreImport({ onCancel, onSaved }: {
             </label>
             <label className="field">Division
               <select value={division} onChange={(e) => setDivision(e.target.value)}>
-                {/* Whatever the results said is kept as an option even when it
-                    is not one of ours, so choosing the list never silently
-                    overwrites what PractiScore recorded. */}
-                {!DIVISIONS.includes(division) && division !== '' && (
-                  <option value={division}>{division} (as scored)</option>
-                )}
-                {DIVISIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                {/* Whatever the results said stays in this list PERMANENTLY, so
+                    choosing from ours never overwrites it and never strands the
+                    shooter away from it. See fieldOptions above for why. */}
+                {fieldOptions(DIVISIONS, me.division, division).map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
               </select>
               {division !== me.division && (
                 <span className="report-note">
@@ -260,10 +262,9 @@ export function PractiScoreImport({ onCancel, onSaved }: {
             </label>
             <label className="field">Power factor
               <select value={powerFactor} onChange={(e) => setPowerFactor(e.target.value)}>
-                {!POWER_FACTORS.includes(powerFactor) && powerFactor !== '' && (
-                  <option value={powerFactor}>{powerFactor} (as scored)</option>
-                )}
-                {POWER_FACTORS.map((pf) => <option key={pf} value={pf}>{pf}</option>)}
+                {fieldOptions(POWER_FACTORS, me.powerFactor, powerFactor).map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
               </select>
             </label>
             <label className="field">Which gun did you shoot?
