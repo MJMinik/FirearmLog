@@ -139,17 +139,41 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       {/* Step 1 — paste or load the export */}
       {!parsed && (
         <div className="card">
-          <p className="report-note">Copy your results from PractiScore:</p>
+          <p className="report-note">
+            PractiScore has no download button. Copying the results page is the only
+            way to get your scores out, so here is the whole path:
+          </p>
           <ol className="report-note" style={{ paddingLeft: 20, margin: '6px 0 12px' }}>
             <li>Open your match on practiscore.com.</li>
             <li>Under "Old style results", tap <b>Html Results</b>.</li>
-            <li>On the <b>Overall</b> row, tap <b>Combined</b>.</li>
-            <li>Select the whole page, copy it, and paste it below.</li>
+            <li>
+              A table opens with one row per stage and a row at the very top reading{' '}
+              <b>Overall</b>. Tap <b>Combined</b> at the right-hand end of that top row.{' '}
+              <b>Overall</b> is the row's name, not a button, and every row has a{' '}
+              <b>Combined</b> — you want the one on the top row.
+            </li>
+            <li>
+              On a phone: press and hold on the match name just above the table until a
+              blue highlight appears, then drag the round handle at its lower end down
+              the page. It scrolls on its own while you hold. On a computer: click
+              anywhere in the page, then Command-A and Command-C.
+            </li>
+            <li>
+              Keep dragging until the highlight covers the last shooter, let go, and tap{' '}
+              <b>Copy</b>.
+            </li>
+            <li>Paste it in the box below.</li>
           </ol>
           <p className="report-note">
-            That brings the whole field across at once, and you pick your own row next.
-            If someone has sent you a results file instead, load it here: .csv or .txt.
-            To see how it all works first, tap "Try the sample".
+            Reach the last shooter before you let go. Stop part-way and the field arrives
+            short, and your finish then reads out of a smaller number than actually shot
+            the match — the places still run 1, 2, 3 with no gap, so nothing here can tell
+            it happened. The menus and adverts at the top of the page do no harm; nothing
+            is read from them.
+          </p>
+          <p className="report-note">
+            You pick your own row next. If someone has sent you a results file instead,
+            load it here: .csv or .txt. To see how it all works first, tap "Try the sample".
           </p>
           <label className="field">Results text
             <textarea rows={8} value={text} placeholder="Paste PractiScore results here…"

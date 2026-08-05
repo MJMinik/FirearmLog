@@ -618,6 +618,16 @@ h2.disclosure-h2 { margin: 0; font-size: inherit; font-weight: inherit; }
    hit-breakdown cells wrap; each keeps enough width for its two 44px buttons. */
 .break-fields { flex-wrap: wrap; }
 .break-fields .stepper-field { min-width: 150px; }
+/* Michael, 5 Aug 2026: "these titles should be centered over the greyed boxes."
+   The label sat hard left, which put it over the − button rather than over the
+   field it names. The − and + are the same 44px and flank the input, so the
+   centre of the whole stepper IS the centre of the input — plain centring lands
+   the label exactly over the box, with no padding to unpick at 320px.
+   Applied to EVERY stepper rather than just the USPSA hit breakdown he was
+   looking at: the same component draws the IDPA counts, the Steel plates-missed
+   count and the dry-fire rep count, and a label centred on one screen and left
+   on the next is the kind of drift a rule is for. */
+.stepper-field { text-align: center; }
 /* L6: on a wide (non-phone) viewport a lone stepper would stretch the whole
    column (~700px); cap it so −/number/+ stay a compact cluster. Phones, which
    are narrower than the cap, are unaffected. */
