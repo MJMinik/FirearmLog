@@ -5,14 +5,15 @@
 // Nothing is written until the final "Save match" — it creates one ordinary
 // Match record (editable/deletable like any other). The parser is pure + tested
 // in src/lib/practiscore.ts; this file is just the screen around it.
-import { useEffect, useRef, useState } from 'react';
-import type { Firearm } from '../lib/types.ts';
-import { getAll, putOne } from '../lib/db.ts';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { AppSettings, Firearm } from '../lib/types.ts';
+import { getAll, getSettings, putOne } from '../lib/db.ts';
 import { stampNew } from '../lib/stamps.ts';
 import { newId } from '../lib/id.ts';
 import { todayKey } from '../lib/dates.ts';
 import { MATCH_TYPES, DIVISIONS, POWER_FACTORS } from '../lib/competition.ts';
 import { fieldOptions } from '../lib/selectOptions.ts';
+import { findOwnRows, normaliseStoredNames, type NameMatch } from '../lib/shooterMatch.ts';
 import {
   parsePractiScore, countInDivision, SAMPLE_PRACTISCORE_CSV, type PsMatch
 } from '../lib/practiscore.ts';
@@ -47,7 +48,21 @@ export function PractiScoreImport({ onCancel, onSaved }: {
   const [entryFee, setEntryFee] = useState('');
   const [saving, setSaving] = useState(false);
   const [psQuery, setPsQuery] = useState(''); // audit #18 — find yourself in a big field
+  // The names the shooter told us are theirs (Settings -> Who you are). Used
+  // ONLY to lift their own rows to the top of the field; nothing is selected on
+  // their behalf, because a household can put two shooters in one match.
+  const [ownNames, setOwnNames] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null); // audit #19 — styled file picker
+
+  useEffect(() => {
+    let alive = true;
+    void (async () => {
+      const st = await getSettings<AppSettings>();
+      // ownerName is deliberately not read — see its note in AppSettings.
+      if (alive) setOwnNames(normaliseStoredNames(st?.shooterNames));
+    })();
+    return () => { alive = false; };
+  }, []);
 
   useEffect(() => { void (async () => setFirearms(await getAll<Firearm>('firearms')))(); }, []);
 
@@ -70,10 +85,15 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       setParsed(null);
       setProblem(e instanceof Error ? e.message : 'Could not read that.');
     }
+    setPsQuery(''); // a query from a previous field must not filter this one
   }
 
   function startOver() {
-    setParsed(null); setChosenIdx(null); setProblem('');
+    // psQuery goes with it. A query left over from the previous paste survived
+    // into the next one, where it filtered a shorter field down to nothing AND
+    // switched off the suggestions — with the search box itself hidden, because
+    // it only appears above eight shooters. An empty card with no way forward.
+    setParsed(null); setChosenIdx(null); setProblem(''); setPsQuery('');
   }
 
   async function save() {
@@ -125,6 +145,43 @@ export function PractiScoreImport({ onCancel, onSaved }: {
   }
 
   const me = parsed != null && chosenIdx != null ? parsed.competitors[chosenIdx] : null;
+
+  // Which rows in this field carry one of the shooter's own names. Computed
+  // fresh from the parse rather than stored, so changing the names in Settings
+  // and coming back cannot leave a stale suggestion behind.
+  // Memoised: without it this runs a regex per competitor on every keystroke in
+  // the search box, on a field that can be two hundred shooters long.
+  const suggested: NameMatch[] = useMemo(
+    () => (parsed ? findOwnRows(parsed.competitors, ownNames) : []),
+    [parsed, ownNames]
+  );
+
+  /** One shooter row. Shared so a suggested row and a row in the full field are
+   *  the same button doing the same thing — a suggestion is a position, not a
+   *  different kind of control. */
+  function shooterRow(i: number, isSuggestion: boolean) {
+    const c = parsed!.competitors[i];
+    return (
+      <button className="row-tap" key={`${isSuggestion ? 'sug' : 'all'}-${i}`}
+        aria-label={isSuggestion ? `${c.name || 'Unnamed shooter'} — suggested, this looks like you` : undefined}
+        onClick={() => {
+        setChosenIdx(i);
+        // Seed the editable fields from the row that was picked, so a
+        // change of shooter never leaves the previous one's division
+        // sitting in the form.
+        setDivision(c.division);
+        setPowerFactor(c.powerFactor || POWER_FACTORS[0]);
+      }}>
+        <span className="label">{c.name || '(no name)'}
+          <div className="row-sub">
+            {[c.division, c.classLetter && `Class ${c.classLetter}`, c.matchPercent != null ? `${c.matchPercent.toFixed(2)}%` : null]
+              .filter(Boolean).join(' · ')}
+          </div>
+        </span>
+        <span className="value">{c.overallPlace != null ? `#${c.overallPlace}` : ''} ›</span>
+      </button>
+    );
+  }
 
   return (
     <div className="screen">
@@ -208,25 +265,32 @@ export function PractiScoreImport({ onCancel, onSaved }: {
           {parsed.competitors.length > 8 && (
             <ListSearch value={psQuery} onChange={setPsQuery} placeholder="Search shooters by name" />
           )}
-          {parsed.competitors.map((c, i) =>
-            matchesQuery(psQuery, c.name) ? (
-              <button className="row-tap" key={i} onClick={() => {
-                setChosenIdx(i);
-                // Seed the editable fields from the row that was picked, so a
-                // change of shooter never leaves the previous one's division
-                // sitting in the form.
-                setDivision(c.division);
-                setPowerFactor(c.powerFactor || POWER_FACTORS[0]);
-              }}>
-                <span className="label">{c.name || '(no name)'}
-                  <div className="row-sub">
-                    {[c.division, c.classLetter && `Class ${c.classLetter}`, c.matchPercent != null ? `${c.matchPercent.toFixed(2)}%` : null]
-                      .filter(Boolean).join(' · ')}
-                  </div>
-                </span>
-                <span className="value">{c.overallPlace != null ? `#${c.overallPlace}` : ''} ›</span>
-              </button>
-            ) : null
+          {/* Rows carrying one of the shooter's OWN names, lifted out of the field
+              and shown first. They are still ordinary rows that have to be tapped:
+              two people from one household can shoot the same match, so the app
+              suggests and the shooter chooses. The whole field stays below,
+              unchanged, so a wrong or missing suggestion costs nothing. */}
+          {suggested.length > 0 && psQuery.trim() === '' && (
+            <>
+              <h3 className="report-note" style={{ marginTop: 10, marginBottom: 2, fontWeight: 600 }}>
+                {suggested.length === 1 ? 'This looks like you' : 'These look like you'}
+              </h3>
+              {suggested.map((m) => shooterRow(m.index, true))}
+              <h3 className="report-note" style={{ marginTop: 8, marginBottom: 2 }}>
+                Everyone who shot the match
+              </h3>
+            </>
+          )}
+          {parsed.competitors.map((c, i) => (matchesQuery(psQuery, c.name) ? shooterRow(i, false) : null))}
+          {/* Shown whenever nothing was suggested — including when names ARE
+              stored and none matched, which is precisely when a mistyped or
+              differently-spelled stored name needs pointing at. */}
+          {suggested.length === 0 && parsed.competitors.length > 8 && (
+            <p className="report-note" style={{ marginTop: 10 }}>
+              {ownNames.length === 0
+                ? 'Add your name under Settings → Who you are and this list will put you at the top next time.'
+                : 'None of the names in Settings → Who you are matched anyone here. Check the spelling against the list above.'}
+            </p>
           )}
           <button className="button secondary" style={{ marginTop: 10 }} onClick={startOver}>Start over</button>
         </div>
