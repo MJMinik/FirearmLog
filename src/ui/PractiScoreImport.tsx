@@ -272,13 +272,13 @@ export function PractiScoreImport({ onCancel, onSaved }: {
               unchanged, so a wrong or missing suggestion costs nothing. */}
           {suggested.length > 0 && psQuery.trim() === '' && (
             <>
-              <h3 className="report-note" style={{ marginTop: 10, marginBottom: 2, fontWeight: 600 }}>
-                {suggested.length === 1 ? 'This looks like you' : 'These look like you'}
-              </h3>
-              {suggested.map((m) => shooterRow(m.index, true))}
-              <h3 className="report-note" style={{ marginTop: 8, marginBottom: 2 }}>
-                Everyone who shot the match
-              </h3>
+              <div className="suggest-block">
+                <h3 className="suggest-label">
+                  {suggested.length === 1 ? 'This looks like you' : 'These look like you'}
+                </h3>
+                {suggested.map((m) => shooterRow(m.index, true))}
+              </div>
+              <h3 className="field-label">Everyone who shot the match</h3>
             </>
           )}
           {parsed.competitors.map((c, i) => (matchesQuery(psQuery, c.name) ? shooterRow(i, false) : null))}

@@ -1251,3 +1251,50 @@ svg text { -webkit-user-select: none; user-select: none; }
      bar, so it doesn't inherit the 52px clearance meant for screens beneath it. */
   .screen-overlay .screen { padding-top: max(12px, env(safe-area-inset-top)); }
 }
+
+/* The "this looks like you" block on the PractiScore pick step.
+   Michael, 5 Aug 2026, looking at the shipped version: "It worked but is too
+   subtle, it should be highlighted." He was right — a bold label over a row
+   drawn identically to the seventy-seven below it reads as another section
+   heading, not as an answer. So the suggestion becomes an OBJECT: an amber
+   wash, an amber edge, and its own rounded shape, sitting inside the card the
+   rest of the field is in.
+
+   The tint is deliberately weak (10% of the accent). It has to carry --text at
+   4.5:1 and --accent-ink for the label, in BOTH schemes, and a heavier wash
+   buys nothing once the edge and the shape are doing the work. Measured rather
+   than eyeballed: the contrast figures are asserted in
+   e2e/suggestion-highlight.spec.ts at 320/390/1440 in light and dark, so a
+   later token change cannot quietly take them under the floor. */
+.suggest-block {
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
+  border-left: 3px solid var(--accent);
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin: 10px 0 14px;
+}
+.suggest-label {
+  display: block;
+  font-size: var(--fs-caption);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  margin: 0 0 2px;
+}
+/* The suggested row is the same control as any other — same size, same target,
+   same behaviour — with its name carrying a little more weight, because the
+   block around it is what is doing the distinguishing. */
+.suggest-block .row-tap { font-weight: 600; }
+.suggest-block .row-tap:last-child { border-bottom: none; }
+/* The heading over the rest of the field, kept quiet on purpose so the contrast
+   between the two is the signal. */
+.field-label {
+  display: block;
+  font-size: var(--fs-caption);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin: 2px 0;
+}
