@@ -142,6 +142,46 @@ test.describe('PractiScore import', () => {
     ).toBeVisible();
   });
 
+  test('the division can be corrected before saving, and the division finish goes with it', async ({ page }) => {
+    // Michael's own club scores every shooter as Carry Optics whatever they
+    // actually shot, so without this an import writes a division into the log
+    // that he never competed in. The division PLACING has to go with it: it
+    // was worked out among the shooters PractiScore put in that division, so
+    // under a different label it describes a field the match never had.
+    await seedDemo(page);
+    await gotoTab(page, 'Compete');
+    const main = page.getByRole('main');
+
+    await main.getByRole('button', { name: 'Import…' }).click();
+    await page.getByRole('dialog', { name: 'Import' })
+      .getByRole('button', { name: 'Import from PractiScore' }).click();
+    await main.getByRole('textbox', { name: 'Results text' }).fill(REAL_PASTE);
+    await main.getByRole('button', { name: 'Read results' }).click();
+    await main.getByRole('button', { name: 'Minik, Michael' }).click();
+
+    // Seeded from the row that was picked, and kept as an option even though
+    // "O" is not one of our division names.
+    const divisionField = main.getByRole('combobox', { name: 'Division' });
+    await expect(divisionField).toHaveValue('O');
+
+    await divisionField.selectOption('Open');
+    await expect(main.getByText(/The results scored you as "O"/)).toBeVisible();
+
+    await main.getByLabel('Which gun did you shoot?').selectOption({ index: 1 });
+    await main.getByRole('button', { name: 'Save match' }).click();
+
+    await expect(
+      main.getByRole('heading', { name: 'Gun Craft Practical Shooters 1st Sunday August', level: 1 }),
+    ).toBeVisible();
+    const matchCard = main.locator('.card').filter({ has: page.getByRole('heading', { name: 'Match', exact: true }) });
+    const savedDivision = matchCard.locator('.row').filter({ has: page.getByText('Division', { exact: true }) });
+    await expect(savedDivision).toContainText('Open');
+    await expect(savedDivision).not.toContainText('O ·');
+    await expect(matchCard.locator('.row', { hasText: 'Division finish' })).toHaveCount(0);
+    // The overall finish is untouched: it never depended on the division.
+    await expect(matchCard.locator('.row', { hasText: 'Overall finish' })).toContainText('68 of 4');
+  });
+
   test('the screen names the click path that actually exists', async ({ page }) => {
     await seedDemo(page);
     await gotoTab(page, 'Compete');

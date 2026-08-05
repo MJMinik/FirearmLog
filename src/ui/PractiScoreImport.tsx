@@ -11,7 +11,7 @@ import { getAll, putOne } from '../lib/db.ts';
 import { stampNew } from '../lib/stamps.ts';
 import { newId } from '../lib/id.ts';
 import { todayKey } from '../lib/dates.ts';
-import { MATCH_TYPES } from '../lib/competition.ts';
+import { MATCH_TYPES, DIVISIONS, POWER_FACTORS } from '../lib/competition.ts';
 import {
   parsePractiScore, countInDivision, SAMPLE_PRACTISCORE_CSV, type PsMatch
 } from '../lib/practiscore.ts';
@@ -35,6 +35,13 @@ export function PractiScoreImport({ onCancel, onSaved }: {
   const [matchName, setMatchName] = useState('');
   const [matchDate, setMatchDate] = useState(todayKey());
   const [matchType, setMatchType] = useState(MATCH_TYPES[0]);
+  // Division and power factor are editable before saving, because the results
+  // are not always right about them. Michael's own club scores every shooter
+  // as Carry Optics whatever they actually shot, so an import would otherwise
+  // write a division into the log that the shooter never competed in. What
+  // PractiScore said is the starting value, never the final word.
+  const [division, setDivision] = useState('');
+  const [powerFactor, setPowerFactor] = useState('');
   const [firearmId, setFirearmId] = useState('');
   const [entryFee, setEntryFee] = useState('');
   const [saving, setSaving] = useState(false);
@@ -73,6 +80,12 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     if (!matchDate) { setProblem('Pick the match date.'); return; }
     if (!firearmId) { setProblem('Pick which gun you shot.'); return; }
     const me = parsed.competitors[chosenIdx];
+    // The division placing was worked out among the shooters PractiScore
+    // scored in the division IT recorded. Change the division and that placing
+    // describes a field the match never had, so it goes rather than being
+    // carried across under a new label. Same principle as the date: a figure
+    // nobody can check does not get written.
+    const divisionEdited = division !== me.division;
     setSaving(true);
     try {
       const mid = newId('mt');
@@ -80,13 +93,13 @@ export function PractiScoreImport({ onCancel, onSaved }: {
         date: matchDate,
         name: matchName.trim() || 'PractiScore Match',
         matchType,
-        division: me.division,
-        powerFactor: me.powerFactor || 'Minor',
+        division,
+        powerFactor,
         firearmId,
         totalRounds: null,
         matchPercent: me.matchPercent,
-        divisionPlace: me.divisionPlace,
-        divisionOf: countInDivision(parsed.competitors, me.division) || null,
+        divisionPlace: divisionEdited ? null : me.divisionPlace,
+        divisionOf: divisionEdited ? null : (countInDivision(parsed.competitors, me.division) || null),
         overallPlace: me.overallPlace,
         overallOf: parsed.competitors.length,
         stages: me.stages.map((s) => ({ number: s.number, points: null, time: null, percent: s.percent, notes: '' })),
@@ -170,7 +183,14 @@ export function PractiScoreImport({ onCancel, onSaved }: {
           )}
           {parsed.competitors.map((c, i) =>
             matchesQuery(psQuery, c.name) ? (
-              <button className="row-tap" key={i} onClick={() => setChosenIdx(i)}>
+              <button className="row-tap" key={i} onClick={() => {
+                setChosenIdx(i);
+                // Seed the editable fields from the row that was picked, so a
+                // change of shooter never leaves the previous one's division
+                // sitting in the form.
+                setDivision(c.division);
+                setPowerFactor(c.powerFactor || POWER_FACTORS[0]);
+              }}>
                 <span className="label">{c.name || '(no name)'}
                   <div className="row-sub">
                     {[c.division, c.classLetter && `Class ${c.classLetter}`, c.matchPercent != null ? `${c.matchPercent.toFixed(2)}%` : null]
@@ -219,6 +239,31 @@ export function PractiScoreImport({ onCancel, onSaved }: {
             <label className="field">Type
               <select value={matchType} onChange={(e) => setMatchType(e.target.value)}>
                 {MATCH_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+            <label className="field">Division
+              <select value={division} onChange={(e) => setDivision(e.target.value)}>
+                {/* Whatever the results said is kept as an option even when it
+                    is not one of ours, so choosing the list never silently
+                    overwrites what PractiScore recorded. */}
+                {!DIVISIONS.includes(division) && division !== '' && (
+                  <option value={division}>{division} (as scored)</option>
+                )}
+                {DIVISIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
+              {division !== me.division && (
+                <span className="report-note">
+                  The results scored you as "{me.division || 'no division'}". Your division finish
+                  will be left blank, because it was worked out among the shooters in that division.
+                </span>
+              )}
+            </label>
+            <label className="field">Power factor
+              <select value={powerFactor} onChange={(e) => setPowerFactor(e.target.value)}>
+                {!POWER_FACTORS.includes(powerFactor) && powerFactor !== '' && (
+                  <option value={powerFactor}>{powerFactor} (as scored)</option>
+                )}
+                {POWER_FACTORS.map((pf) => <option key={pf} value={pf}>{pf}</option>)}
               </select>
             </label>
             <label className="field">Which gun did you shoot?
