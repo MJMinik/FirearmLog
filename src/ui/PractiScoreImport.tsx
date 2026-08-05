@@ -53,7 +53,11 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       setParsed(m);
       setChosenIdx(null);
       setMatchName(m.name);
-      setMatchDate(m.date || todayKey());
+      // Only set a date the results actually carried. Falling back to today
+      // wrote the import date onto a match shot days earlier, silently, and a
+      // date nobody stated is a date nobody can check. An empty field stops at
+      // the "Pick the match date" guard in save() instead.
+      setMatchDate(m.date);
     } catch (e) {
       setParsed(null);
       setProblem(e instanceof Error ? e.message : 'Could not read that.');
@@ -119,10 +123,17 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       {/* Step 1 — paste or load the export */}
       {!parsed && (
         <div className="card">
+          <p className="report-note">Copy your results from PractiScore:</p>
+          <ol className="report-note" style={{ paddingLeft: 20, margin: '6px 0 12px' }}>
+            <li>Open your match on practiscore.com.</li>
+            <li>Under "Old style results", tap <b>Html Results</b>.</li>
+            <li>On the <b>Overall</b> row, tap <b>Combined</b>.</li>
+            <li>Select the whole page, copy it, and paste it below.</li>
+          </ol>
           <p className="report-note">
-            Open your match on PractiScore, export or copy the results, and paste them below.
-            One file holds the whole match — you'll pick your own row next. No real export handy?
-            Tap "Try the sample" to see how it works.
+            That brings the whole field across at once, and you pick your own row next.
+            You can also load a saved file instead: .csv or .txt.
+            To see how it works first, tap "Try the sample".
           </p>
           <label className="field">Results text
             <textarea rows={8} value={text} placeholder="Paste PractiScore results here…"
@@ -140,7 +151,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
             }} />
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <button className="button" style={{ flex: 1 }} disabled={!text.trim()} onClick={readResults}>Read results</button>
-            <button className="button secondary" style={{ flex: 1 }} onClick={() => fileRef.current?.click()}>Load a file</button>
+            <button className="button secondary" style={{ flex: 1 }} onClick={() => fileRef.current?.click()}>Load a file (.csv, .txt)</button>
             <button className="button secondary" style={{ flex: 1 }} onClick={() => { setText(SAMPLE_PRACTISCORE_CSV); setProblem(''); }}>Try the sample</button>
           </div>
         </div>

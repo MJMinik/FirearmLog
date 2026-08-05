@@ -90,3 +90,111 @@ test('skips blank lines and rows with no name or place', () => {
 test('throws a plain-language error on non-PractiScore text', () => {
   assert.throws(() => parsePractiScore('just some random text\nwith no table'), /PractiScore/);
 });
+
+// ---------------------------------------------------------------------------
+// The shape a shooter can ACTUALLY obtain (added 5 August 2026).
+//
+// PractiScore's public results pages carry no download of any kind — every
+// link and button on the results page, the Html Results page and the Match
+// Breakdown page was enumerated on 5 August 2026 and there is no export. The
+// only route is to open Html Results, choose Overall > Combined, and copy the
+// page. A browser puts that on the clipboard TAB separated, with the match
+// name and date on a title line and the site's own navigation wrapped around
+// it. Before this was handled, a real paste threw "no competitor rows".
+//
+// Both fixtures are faithful to the real captures in column order, headings,
+// empty cells, tab separation and the surrounding page furniture. Competitor
+// names and member numbers other than Michael's own are substituted, including
+// the real-world quirk of a lower-case member-number prefix.
+// ---------------------------------------------------------------------------
+
+const PAGE_CHROME_TOP = [
+  "Practiscore's Terms of Service, and Privacy Policy notice. Learn more",
+  'Got it!', 'Scores', 'Matches', 'Events', 'Clubs', 'Shooters', 'Guns',
+  'Support', 'Login', 'Register', 'Settings ',
+].join('\n');
+
+const PAGE_CHROME_BOTTOM = ['Search links', 'Scores', 'Matches', 'Misc links'].join('\n');
+
+/** A local Hit Factor match: no member numbers, no classes, no categories. */
+const REAL_PASTE_LOCAL = [
+  PAGE_CHROME_TOP,
+  'New Results',
+  'Take Aim Monday Night Mini Match 08-03-2026 - 2026-08-03',
+  '',
+  'Match Results - Combined',
+  ['Place', 'Name', 'No.', 'Class', 'Div', 'PF', 'Category', 'Match Pts', 'Match %'].join('\t'),
+  ['1', 'Olinchak, Matt', '', '', 'LO', 'Min', '', '347.0388', '100.0000%'].join('\t'),
+  ['2', 'Slack, Chris', '', '', 'CO', 'Min', '', '318.6548', '91.8211%'].join('\t'),
+  ['3', 'Buehler, Mike', '', '', 'LO', 'Min', '', '313.9015', '90.4514%'].join('\t'),
+  ['5', 'Tutko, Tank', '', '', 'CO', 'Min', '', '249.0468', '71.7634%'].join('\t'),
+  ['9', 'Cherry, Ian', '', '', 'O', 'Min', '', '223.0822', '64.2816%'].join('\t'),
+  ['18', 'Minik, Michael', '', '', 'CO', 'Min', '', '129.7697', '37.3934%'].join('\t'),
+  ['21', 'Nichols, Taylor', '', '', 'CO', 'Min', '', '96.5000', '27.8000%'].join('\t'),
+  PAGE_CHROME_BOTTOM,
+].join('\n');
+
+/** A sanctioned USPSA match: member numbers, classes, both power factors. */
+const REAL_PASTE_USPSA = [
+  PAGE_CHROME_TOP,
+  'New Results',
+  'HHA USPSA August 2026 - 2026-08-02',
+  '',
+  'Match Results - Combined',
+  ['Place', 'Name', 'No.', 'Class', 'Div', 'PF', 'Category', 'Match Pts', 'Match %'].join('\t'),
+  ['1', 'Alder, Robin', 'A100001', 'M', 'LO', 'Min', '', '639.1358', '100.0000%'].join('\t'),
+  ['2', 'Brandt, Casey', 'A100002', 'M', 'LO', 'Min', '', '636.2159', '99.5431%'].join('\t'),
+  ['3', 'Nolan, Devin', 'TY100003', 'M', 'LO', 'Min', '', '624.1549', '97.6561%'].join('\t'),
+  ['4', 'Okonkwo, Sam', 'a100004', 'M', 'O', 'Maj', '', '607.8751', '95.1089%'].join('\t'),
+  ['5', 'Prieto, Alex', 'FY100005', 'A', 'O', 'Maj', '', '577.5828', '90.3693%'].join('\t'),
+  ['6', 'Quill, Jordan', 'A100006', 'GM', 'CO', 'Min', 'Mil/LE', '573.0497', '89.6601%'].join('\t'),
+  PAGE_CHROME_BOTTOM,
+].join('\n');
+
+test('a tab-separated Html Results paste parses (the local Hit Factor match)', () => {
+  const m = parsePractiScore(REAL_PASTE_LOCAL);
+  assert.equal(m.competitors.length, 7, 'page furniture must not become competitors');
+  const me = m.competitors.find((c) => c.name === 'Minik, Michael');
+  assert.ok(me, 'found the shooter');
+  assert.equal(me!.overallPlace, 18);
+  assert.equal(me!.division, 'CO');
+  assert.equal(me!.powerFactor, 'Min');
+  assert.equal(me!.matchPercent, 37.3934);
+  assert.equal(me!.matchPoints, 129.7697);
+});
+
+test('the title line supplies the match name and date', () => {
+  const m = parsePractiScore(REAL_PASTE_LOCAL);
+  assert.equal(m.name, 'Take Aim Monday Night Mini Match 08-03-2026');
+  assert.equal(m.date, '2026-08-03');
+});
+
+test('a tab-separated paste reads member number, class and power factor', () => {
+  const m = parsePractiScore(REAL_PASTE_USPSA);
+  assert.equal(m.name, 'HHA USPSA August 2026');
+  assert.equal(m.date, '2026-08-02');
+  assert.equal(m.competitors.length, 6);
+  const gm = m.competitors.find((c) => c.name === 'Quill, Jordan');
+  assert.equal(gm!.memberNumber, 'A100006', '"No." is the member-number column');
+  assert.equal(gm!.classLetter, 'GM');
+  assert.equal(gm!.division, 'CO');
+  assert.equal(gm!.powerFactor, 'Min');
+  assert.equal(gm!.matchPoints, 573.0497, '"Match Pts" is the points column');
+  const lower = m.competitors.find((c) => c.name === 'Okonkwo, Sam');
+  assert.equal(lower!.memberNumber, 'a100004', 'a lower-case prefix is preserved verbatim');
+  assert.equal(lower!.powerFactor, 'Maj');
+});
+
+test('an explicit metadata block still beats the title line', () => {
+  const text = [
+    'Match Name,Explicit Wins',
+    'Match Date,2026-01-02',
+    'Some Other Match - 2026-09-09',
+    'Overall Place,Name,Division,Match %',
+    '1,Robin Alder,Open,100.00',
+    '2,Casey Brandt,Open,90.00',
+  ].join('\n');
+  const m = parsePractiScore(text);
+  assert.equal(m.name, 'Explicit Wins');
+  assert.equal(m.date, '2026-01-02');
+});

@@ -111,7 +111,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Importing results (PractiScore & USPSA)',
       view: { kind: 'practiscore-import' },
-      body: 'On Compete, tap "Import…" — there are two importers. "Import from PractiScore" brings in a match: paste or load its exported results (or try the built-in sample), then search for and tap which competitor is you, preview your result, pick the gun you shot, and add an entry fee if you like. "Import USPSA Classifiers" brings your classifier scores in from USPSA the same way. Either way nothing is written until you tap Save, and what comes in is a normal match or classifier you can edit or delete.',
+      body: 'On Compete, tap "Import…" — there are two importers. "Import from PractiScore" brings in a match. PractiScore shows the results you need under "Old style results": tap Html Results, then Combined on the Overall row, select the whole page and copy it. Paste that in (or load a saved .csv or .txt file, or try the built-in sample), then search for and tap which competitor is you, preview your result, pick the gun you shot, and add an entry fee if you like. "Import USPSA Classifiers" brings your classifier scores in from USPSA the same way. Either way nothing is written until you tap Save, and what comes in is a normal match or classifier you can edit or delete.',
     },
     {
       title: 'Progress — goals',

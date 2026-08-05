@@ -3,12 +3,20 @@
 // structured preview the UI shows BEFORE anything is written. No DB access here,
 // so it's fully unit-testable.
 //
-// Michael has no real export yet, so this is built against the fabricated sample
-// below (also mirrored in src/lib/samples/practiscore-sample.csv for reference).
-// Columns are matched by header NAME with fallbacks, and the import screen shows
-// a preview, so a real export with slightly different headers can be adapted
-// without code changes for the common cases.
-import { splitCsvLine, looseNum, findCol } from './csv.ts';
+// Two shapes reach this parser, and both are now covered by real captures
+// rather than by guesswork:
+//   1. A comma-separated export with a "Match Name,..." metadata block.
+//   2. The text of a PractiScore "Html Results" table, copied out of a browser
+//      and therefore TAB separated, with the match name and date on a title
+//      line above the table. This is the shape a shooter can actually obtain:
+//      PractiScore's public results pages carry no download of any kind
+//      (every link and button on the results page, the Html Results page and
+//      the Match Breakdown page was enumerated on 5 August 2026 — there is no
+//      export, no CSV, no download).
+// Columns are matched by header NAME with fallbacks and the delimiter is
+// sniffed, so a real export with slightly different headers or separators can
+// be adapted without code changes for the common cases.
+import { splitCsvLine, looseNum, findCol, sniffDelimiter } from './csv.ts';
 
 const num = looseNum;
 
@@ -50,16 +58,17 @@ function isHeaderRow(cells: string[]): boolean {
  */
 export function parsePractiScore(text: string): PsMatch {
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
+  const delim = sniffDelimiter(text);
 
   // Locate the results header row; anything above it that looks like "key,value"
   // is treated as match metadata (name / date / stage count).
   let headerIdx = -1;
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].trim() === '') continue;
-    if (isHeaderRow(splitCsvLine(lines[i]))) { headerIdx = i; break; }
+    if (isHeaderRow(splitCsvLine(lines[i], delim))) { headerIdx = i; break; }
   }
   if (headerIdx === -1) {
-    throw new Error("This doesn't look like a PractiScore results export — I couldn't find a results table (a row of column headings like Place, Division, Name).");
+    throw new Error("I couldn't find a results table in that. It needs a row of column headings like Place, Name, Div — copy the whole Combined results page from PractiScore and paste it again.");
   }
 
   // ---- Metadata block (optional) ----
@@ -69,7 +78,7 @@ export function parsePractiScore(text: string): PsMatch {
   for (let i = 0; i < headerIdx; i++) {
     const raw = lines[i].trim();
     if (raw === '') continue;
-    const cells = splitCsvLine(raw);
+    const cells = splitCsvLine(raw, delim);
     if (cells.length < 2) continue;
     const key = cells[0].toLowerCase();
     const value = cells.slice(1).join(',').trim();
@@ -83,16 +92,35 @@ export function parsePractiScore(text: string): PsMatch {
     }
   }
 
+  // PractiScore's Html Results pages carry no "key,value" metadata block. They
+  // put the match name and date on a single title line above the table, as
+  // "<match name> - YYYY-MM-DD". Read that only when the block above did not
+  // already supply the field, so an explicit "Match Date" row always wins.
+  if (name === '' || date === '') {
+    for (let i = 0; i < headerIdx; i++) {
+      const m = lines[i].trim().match(/^(.*\S)\s+[-\u2013]\s+(\d{4}-\d{2}-\d{2})$/);
+      if (m) {
+        if (name === '') name = m[1].trim();
+        if (date === '') date = m[2];
+        break;
+      }
+    }
+  }
+
   // ---- Header column mapping ----
-  const headers = splitCsvLine(lines[headerIdx]);
+  const headers = splitCsvLine(lines[headerIdx], delim);
   const claimed = new Set<number>();
   const col = {
     overallPlace: findCol(headers, claimed, [/overall\s*place/i, /^place$/i, /\bplace\b/i, /^pos$/i, /^rank$/i, /finish/i]),
     divisionPlace: findCol(headers, claimed, [/division\s*place/i, /div\.?\s*place/i, /class\s*place/i]),
     matchPercent: findCol(headers, claimed, [/match\s*%/i, /match\s*percent/i, /final\s*%/i, /^%$/i]),
-    matchPoints: findCol(headers, claimed, [/match\s*point/i, /\bpoints?\b/i]),
+    // "Match Pts" is what PractiScore's own results tables call this column;
+    // without the abbreviation the points were silently dropped.
+    matchPoints: findCol(headers, claimed, [/match\s*point/i, /match\s*pts/i, /\bpoints?\b/i, /\bpts\b/i]),
     powerFactor: findCol(headers, claimed, [/power\s*factor/i, /^pf$/i]),
-    memberNumber: findCol(headers, claimed, [/uspsa/i, /member/i, /\bnumber\b/i, /#/]),
+    // "No." is the member-number column heading on a PractiScore Html Results
+    // table; it matched none of the earlier patterns.
+    memberNumber: findCol(headers, claimed, [/uspsa/i, /member/i, /\bnumber\b/i, /^no\.?$/i, /#/]),
     division: findCol(headers, claimed, [/division/i, /\bdiv\b/i]),
     classLetter: findCol(headers, claimed, [/^class$/i, /\bclass\b/i]),
     name: findCol(headers, claimed, [/^name$/i, /competitor/i, /shooter/i]),
@@ -118,7 +146,7 @@ export function parsePractiScore(text: string): PsMatch {
   const competitors: PsCompetitor[] = [];
   for (let i = headerIdx + 1; i < lines.length; i++) {
     if (lines[i].trim() === '') continue;
-    const row = splitCsvLine(lines[i]);
+    const row = splitCsvLine(lines[i], delim);
     const singleName = cell(row, col.name);
     const combinedName = [cell(row, col.firstName), cell(row, col.lastName)]
       .filter((x) => x && x.trim()).join(' ').trim();
@@ -142,7 +170,7 @@ export function parsePractiScore(text: string): PsMatch {
   }
 
   if (competitors.length === 0) {
-    throw new Error('I found the results header but no competitor rows under it.');
+    throw new Error('I found the column headings but no shooters under them. Copy the whole Combined results page, headings and rows together, and paste it again.');
   }
 
   return { name, date, stageCount, competitors };
