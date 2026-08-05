@@ -16,7 +16,7 @@
 // Columns are matched by header NAME with fallbacks and the delimiter is
 // sniffed, so a real export with slightly different headers or separators can
 // be adapted without code changes for the common cases.
-import { splitCsvLine, looseNum, findCol, sniffDelimiter } from './csv.ts';
+import { splitCsvLine, looseNum, findCol, DELIMITER_CANDIDATES } from './csv.ts';
 
 const num = looseNum;
 
@@ -55,10 +55,36 @@ function isHeaderRow(cells: string[]): boolean {
 /**
  * Parse a PractiScore results export into a match + its competitors.
  * Throws a plain-language Error if it can't find a results table.
+ *
+ * The separator is chosen by RESULT, not by guesswork: the text is parsed once
+ * per candidate and the reading that finds the most competitors wins, ties
+ * going to the earlier candidate so a comma export can never be displaced.
+ *
+ * An earlier version scored the candidates with a heuristic over line shapes,
+ * and an audit broke it in four different ways in one sitting. Prose lines
+ * containing a comma out-voted the real table, a ragged final row sank it, and
+ * a category cell full of semicolons swept a genuine CSV. All of those are
+ * questions about which SPLIT YIELDS A TABLE, so the honest measure is to make
+ * the table and count it. Page furniture produces no competitors under any
+ * separator, which is precisely why it cannot win.
  */
 export function parsePractiScore(text: string): PsMatch {
+  let best: PsMatch | null = null;
+  let firstError: Error | null = null;
+  for (const delim of DELIMITER_CANDIDATES) {
+    try {
+      const attempt = parseWith(text, delim);
+      if (best === null || attempt.competitors.length > best.competitors.length) best = attempt;
+    } catch (e) {
+      if (firstError === null && e instanceof Error) firstError = e;
+    }
+  }
+  if (best === null) throw firstError ?? new Error('I could not read that as a results table.');
+  return best;
+}
+
+function parseWith(text: string, delim: string): PsMatch {
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
-  const delim = sniffDelimiter(text);
 
   // Locate the results header row; anything above it that looks like "key,value"
   // is treated as match metadata (name / date / stage count).
@@ -74,6 +100,8 @@ export function parsePractiScore(text: string): PsMatch {
   // ---- Metadata block (optional) ----
   let name = '';
   let date = '';
+  let titleName = '';
+  let titleDate = '';
   let stageCount: number | null = null;
   for (let i = 0; i < headerIdx; i++) {
     const raw = lines[i].trim();
@@ -96,15 +124,26 @@ export function parsePractiScore(text: string): PsMatch {
   // put the match name and date on a single title line above the table, as
   // "<match name> - YYYY-MM-DD". Read that only when the block above did not
   // already supply the field, so an explicit "Match Date" row always wins.
+  //
+  // The LAST such line before the table wins, not the first. A copied page can
+  // carry other dated lines above the results — a link to the next club match,
+  // a previous week's fixture — and taking the first one wrote a wrong date
+  // into the saved record with nothing to give it away, because the field was
+  // populated rather than empty. The line nearest the table is the one that
+  // titles it. All three dashes are accepted; a browser copy may carry any.
   if (name === '' || date === '') {
     for (let i = 0; i < headerIdx; i++) {
-      const m = lines[i].trim().match(/^(.*\S)\s+[-\u2013]\s+(\d{4}-\d{2}-\d{2})$/);
+      const cells = splitCsvLine(lines[i], delim).filter((c) => c !== '');
+      const candidate = cells.length > 0 ? cells[cells.length - 1] : '';
+      const m = candidate.match(/^(.*\S)\s+[-\u2013\u2014]\s+(\d{4}-\d{2}-\d{2})$/);
       if (m) {
-        if (name === '') name = m[1].trim();
-        if (date === '') date = m[2];
-        break;
+        // No break: keep overwriting so the last match before the table wins.
+        if (name === '') titleName = m[1].trim();
+        if (date === '') titleDate = m[2];
       }
     }
+    if (name === '') name = titleName;
+    if (date === '') date = titleDate;
   }
 
   // ---- Header column mapping ----
@@ -115,11 +154,16 @@ export function parsePractiScore(text: string): PsMatch {
     divisionPlace: findCol(headers, claimed, [/division\s*place/i, /div\.?\s*place/i, /class\s*place/i]),
     matchPercent: findCol(headers, claimed, [/match\s*%/i, /match\s*percent/i, /final\s*%/i, /^%$/i]),
     // "Match Pts" is what PractiScore's own results tables call this column;
-    // without the abbreviation the points were silently dropped.
-    matchPoints: findCol(headers, claimed, [/match\s*point/i, /match\s*pts/i, /\bpoints?\b/i, /\bpts\b/i]),
+    // without the abbreviation the points were silently dropped. The bare
+    // /\bpts\b/ that sat here as well is deliberately absent: it claimed the
+    // "Stage 1 Pts" column on a per-stage table and wrote a single stage's
+    // points into the record as the match score.
+    matchPoints: findCol(headers, claimed, [/match\s*point/i, /match\s*pts/i, /\bpoints?\b/i]),
     powerFactor: findCol(headers, claimed, [/power\s*factor/i, /^pf$/i]),
     // "No." is the member-number column heading on a PractiScore Html Results
-    // table; it matched none of the earlier patterns.
+    // table; it matched none of the earlier patterns. It is also what a table
+    // calls its row counter, so the values are checked below before it is
+    // believed — see the guard after the stage scan.
     memberNumber: findCol(headers, claimed, [/uspsa/i, /member/i, /\bnumber\b/i, /^no\.?$/i, /#/]),
     division: findCol(headers, claimed, [/division/i, /\bdiv\b/i]),
     classLetter: findCol(headers, claimed, [/^class$/i, /\bclass\b/i]),
@@ -139,6 +183,22 @@ export function parsePractiScore(text: string): PsMatch {
     if (m) stageCols.push({ idx: i, number: Number(m[1]) });
   }
   stageCols.sort((a, b) => a.number - b.number);
+
+  // A column headed "No." is the member number on a PractiScore results table
+  // and a plain row counter on plenty of others. A USPSA member number always
+  // carries a letter prefix (A185321, TY112817, L5268); a row counter never
+  // does. So the heading alone is not trusted: if every value under it is
+  // nothing but digits, the column is released rather than believed. Without
+  // this, importing such a table wrote "Imported from PractiScore (USPSA# 1)"
+  // into the saved record — a member number nobody has, invented by us.
+  if (col.memberNumber >= 0 && /^no\.?$/i.test(headers[col.memberNumber] ?? '')) {
+    let sawALetter = false;
+    for (let i = headerIdx + 1; i < lines.length; i++) {
+      const v = splitCsvLine(lines[i], delim)[col.memberNumber];
+      if (v != null && v !== '' && /[^0-9]/.test(v)) { sawALetter = true; break; }
+    }
+    if (!sawALetter) col.memberNumber = -1;
+  }
 
   const cell = (row: string[], idx: number): string | undefined => (idx >= 0 ? row[idx] : undefined);
 

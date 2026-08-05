@@ -198,3 +198,154 @@ test('an explicit metadata block still beats the title line', () => {
   assert.equal(m.name, 'Explicit Wins');
   assert.equal(m.date, '2026-01-02');
 });
+
+// ---------------------------------------------------------------------------
+// Regressions from the cold audit of 5 August 2026. Each reproduction below is
+// the auditor's, and each one is proved to FAIL on commit 4ada3a5, the version
+// that introduced the delimiter handling.
+// ---------------------------------------------------------------------------
+
+const TAB_HEADER = ['Place', 'Name', 'No.', 'Class', 'Div', 'PF', 'Category', 'Match Pts', 'Match %'].join('\t');
+
+test('AUDIT-1: comma-bearing prose above the table cannot out-vote the table', () => {
+  // Twelve lines of ordinary prose carrying one comma each used to beat a
+  // two-shooter tab table, and the reader was told to re-copy a page that was
+  // already correct. Nothing here depends on how MUCH furniture there is,
+  // because furniture yields no competitors under any separator.
+  const prose = Array.from({ length: 12 }, () => 'PractiScore LLC, Boise ID').join('\n');
+  const text = [
+    prose,
+    'Small Club Match - 2026-08-02',
+    TAB_HEADER,
+    ['1', 'Alder, Robin', '', '', 'LO', 'Min', '', '100.0000', '100.0000%'].join('\t'),
+    ['2', 'Brandt, Casey', '', '', 'CO', 'Min', '', '90.0000', '90.0000%'].join('\t'),
+  ].join('\n');
+  const m = parsePractiScore(text);
+  assert.equal(m.competitors.length, 2);
+  assert.equal(m.competitors[1].name, 'Brandt, Casey');
+});
+
+test('AUDIT-1b: a long run of page furniture before the table is still read', () => {
+  // The old sampler looked at the first 200 lines only, so a long copy hid the
+  // table from the delimiter decision entirely.
+  const furniture = Array.from({ length: 205 }, (_, i) => 'Nav link ' + i).join('\n');
+  const text = [
+    furniture,
+    TAB_HEADER,
+    ['1', 'Alder, Robin', '', '', 'LO', 'Min', '', '100.0000', '100.0000%'].join('\t'),
+    ['2', 'Brandt, Casey', '', '', 'CO', 'Min', '', '90.0000', '90.0000%'].join('\t'),
+  ].join('\n');
+  assert.equal(parsePractiScore(text).competitors.length, 2);
+});
+
+test('AUDIT-2: the dated line NEAREST the table titles it, not the first one', () => {
+  // A copied page can carry a link to the next fixture above the results. The
+  // first dated line used to win, which wrote a wrong date into the saved
+  // record with nothing to give it away, because the field was populated.
+  const text = [
+    'Next club match - 2026-09-14',
+    'Spring Classic - 2026-05-17',
+    'Match Results - Combined',
+    TAB_HEADER,
+    ['1', 'Alder, Robin', '', '', 'LO', 'Min', '', '100.0000', '100.0000%'].join('\t'),
+    ['2', 'Brandt, Casey', '', '', 'CO', 'Min', '', '90.0000', '90.0000%'].join('\t'),
+  ].join('\n');
+  const m = parsePractiScore(text);
+  assert.equal(m.date, '2026-05-17');
+  assert.equal(m.name, 'Spring Classic');
+});
+
+test('AUDIT-2b: an em dash in the title line is read like the other dashes', () => {
+  const text = [
+    'Autumn Open — 2026-10-04',
+    TAB_HEADER,
+    ['1', 'Alder, Robin', '', '', 'LO', 'Min', '', '100.0000', '100.0000%'].join('\t'),
+    ['2', 'Brandt, Casey', '', '', 'CO', 'Min', '', '90.0000', '90.0000%'].join('\t'),
+  ].join('\n');
+  const m = parsePractiScore(text);
+  assert.equal(m.name, 'Autumn Open');
+  assert.equal(m.date, '2026-10-04');
+});
+
+test('AUDIT-3: a per-stage points column is never read as the match score', () => {
+  // "Stage 1 Pts" used to be claimed as the match points, so one stage's score
+  // was stored as the whole match's.
+  const text = [
+    'Place,Name,Div,Match %,Stage 1 Pts,Stage 2 Pts',
+    '1,Robin Alder,Open,100.00,120.5,98.2',
+    '2,Casey Brandt,Open,90.00,110.1,88.0',
+  ].join('\n');
+  const m = parsePractiScore(text);
+  assert.equal(m.competitors[0].matchPoints, null, 'no match-points column exists in this table');
+  assert.equal(m.competitors[1].matchPoints, null);
+  assert.deepEqual(m.competitors[0].stages.map((s) => s.number), [1, 2]);
+});
+
+test('AUDIT-4: a "No." column of plain row numbers is not read as a member number', () => {
+  // A USPSA member number always carries a letter prefix; a row counter never
+  // does. Believing the heading alone wrote "USPSA# 1" into a saved record.
+  const text = [
+    'No.,Place,Name,Div,Match %',
+    '1,1,Robin Alder,Open,100.00',
+    '2,2,Casey Brandt,Open,90.00',
+  ].join('\n');
+  const m = parsePractiScore(text);
+  assert.equal(m.competitors[0].memberNumber, '');
+  assert.equal(m.competitors[1].memberNumber, '');
+});
+
+test('AUDIT-4b: a real "No." column of member numbers is still read', () => {
+  const text = [
+    TAB_HEADER,
+    ['1', 'Alder, Robin', 'A101033', 'G', 'O', 'Maj', '', '830.6178', '100.0000%'].join('\t'),
+    ['2', 'Brandt, Casey', '', '', 'CO', 'Min', '', '685.4327', '82.5208%'].join('\t'),
+  ].join('\n');
+  const m = parsePractiScore(text);
+  assert.equal(m.competitors[0].memberNumber, 'A101033', 'one lettered value is enough to trust the column');
+  assert.equal(m.competitors[1].memberNumber, '');
+});
+
+test('AUDIT-5: semicolons inside a category cell do not sweep a genuine CSV', () => {
+  const text = [
+    'Place,Name,Categories',
+    '1,Robin Alder,Senior;Lady;Mil;LE;Junior',
+    '2,Casey Brandt,Senior;Lady;Mil;LE;Junior',
+  ].join('\n');
+  const m = parsePractiScore(text);
+  assert.equal(m.competitors.length, 2);
+  assert.equal(m.competitors[0].name, 'Robin Alder');
+});
+
+test('AUDIT-6: an inch mark in a tab row does not swallow the rest of the row', () => {
+  // The shooter carrying the stray quote used to lose their score while
+  // everyone around them kept theirs.
+  const text = [
+    TAB_HEADER,
+    ['1', 'Alder, Robin', '', '', 'LO', 'Min', '', '100.0000', '100.0000%'].join('\t'),
+    ['2', 'Smith, Bob', '', '', 'LO 5" bbl', 'Min', '', '90.0000', '90.0000%'].join('\t'),
+  ].join('\n');
+  const m = parsePractiScore(text);
+  const bob = m.competitors.find((c) => c.name === 'Smith, Bob');
+  assert.equal(bob!.matchPercent, 90, 'the score survives the stray quote');
+  assert.equal(bob!.division, 'LO 5" bbl');
+});
+
+test('AUDIT-7: a table whose last row dropped a trailing cell still parses', () => {
+  const text = [
+    TAB_HEADER,
+    ['1', 'Alder, Robin', '', '', 'LO', 'Min', '', '100.0000', '100.0000%'].join('\t'),
+    ['2', 'Brandt, Casey', '', '', 'CO', 'Min', '', '90.0000'].join('\t'),
+  ].join('\n');
+  const m = parsePractiScore(text);
+  assert.equal(m.competitors.length, 2);
+  assert.equal(m.competitors[1].matchPoints, 90);
+});
+
+test('AUDIT-8: a genuine comma export is never displaced by another separator', () => {
+  // The guard on the whole delimiter change: the shape that worked before must
+  // keep working, and the sample is the shape the screen ships with.
+  const m = parsePractiScore(SAMPLE_PRACTISCORE_CSV);
+  assert.equal(m.competitors.length, 5);
+  assert.equal(m.competitors[2].name, 'Chris Calder');
+  assert.equal(m.competitors[2].matchPoints, 612.34);
+});

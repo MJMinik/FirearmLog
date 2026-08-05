@@ -132,8 +132,8 @@ export function PractiScoreImport({ onCancel, onSaved }: {
           </ol>
           <p className="report-note">
             That brings the whole field across at once, and you pick your own row next.
-            You can also load a saved file instead: .csv or .txt.
-            To see how it works first, tap "Try the sample".
+            If someone has sent you a results file instead, load it here: .csv or .txt.
+            To see how it all works first, tap "Try the sample".
           </p>
           <label className="field">Results text
             <textarea rows={8} value={text} placeholder="Paste PractiScore results here…"
@@ -212,6 +212,9 @@ export function PractiScoreImport({ onCancel, onSaved }: {
             </label>
             <label className="field">Date
               <input type="date" value={matchDate} onChange={(e) => setMatchDate(e.target.value)} />
+              {matchDate === '' && (
+                <span className="report-note">These results didn't carry a date. Pick the day you shot it.</span>
+              )}
             </label>
             <label className="field">Type
               <select value={matchType} onChange={(e) => setMatchType(e.target.value)}>
