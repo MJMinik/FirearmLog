@@ -1,8 +1,24 @@
 // Shared CSV helpers used by the importers (PractiScore, USPSA). Kept tiny and
 // dependency-free; pure + unit-testable.
 
-/** Split one CSV line, honouring double-quoted fields and "" escapes. */
-export function splitCsvLine(line: string): string[] {
+/**
+ * Split one delimited line, honouring double-quoted fields and "" escapes.
+ *
+ * The delimiter defaults to a comma, so every existing caller is unchanged.
+ *
+ * Quoting is honoured for comma and semicolon files and NOT for tabs, because
+ * the two carry different conventions and mixing them corrupts data. A machine
+ * CSV quotes a field that contains the delimiter. Tab-separated text copied out
+ * of a browser has no quoting convention at all, so a bare double quote in it
+ * is just a character: a barrel length written 5" bbl, or a nickname. Treating
+ * that as an opening quote swallowed the rest of the row, and the shooter it
+ * happened to lost their score while everyone around them kept theirs.
+ */
+export function splitCsvLine(
+  line: string,
+  delimiter = ',',
+  honourQuotes = delimiter !== '\t',
+): string[] {
   const out: string[] = [];
   let cur = '';
   let inQuotes = false;
@@ -13,9 +29,9 @@ export function splitCsvLine(line: string): string[] {
         if (line[i + 1] === '"') { cur += '"'; i++; }
         else inQuotes = false;
       } else cur += ch;
-    } else if (ch === '"') {
+    } else if (ch === '"' && honourQuotes) {
       inQuotes = true;
-    } else if (ch === ',') {
+    } else if (ch === delimiter) {
       out.push(cur); cur = '';
     } else {
       cur += ch;
@@ -24,6 +40,12 @@ export function splitCsvLine(line: string): string[] {
   out.push(cur);
   return out.map((c) => c.trim());
 }
+
+/**
+ * The separators a pasted or loaded results table might use, in preference
+ * order. A comma is first so that a genuine machine export always wins a tie.
+ */
+export const DELIMITER_CANDIDATES = [',', '\t', ';'];
 
 /** Parse a number that may carry %, commas or spaces. Empty/garbage -> null. */
 export function looseNum(s: string | undefined): number | null {

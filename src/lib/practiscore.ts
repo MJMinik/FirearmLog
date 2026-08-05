@@ -3,12 +3,20 @@
 // structured preview the UI shows BEFORE anything is written. No DB access here,
 // so it's fully unit-testable.
 //
-// Michael has no real export yet, so this is built against the fabricated sample
-// below (also mirrored in src/lib/samples/practiscore-sample.csv for reference).
-// Columns are matched by header NAME with fallbacks, and the import screen shows
-// a preview, so a real export with slightly different headers can be adapted
-// without code changes for the common cases.
-import { splitCsvLine, looseNum, findCol } from './csv.ts';
+// Two shapes reach this parser, and both are now covered by real captures
+// rather than by guesswork:
+//   1. A comma-separated export with a "Match Name,..." metadata block.
+//   2. The text of a PractiScore "Html Results" table, copied out of a browser
+//      and therefore TAB separated, with the match name and date on a title
+//      line above the table. This is the shape a shooter can actually obtain:
+//      PractiScore's public results pages carry no download of any kind
+//      (every link and button on the results page, the Html Results page and
+//      the Match Breakdown page was enumerated on 5 August 2026 — there is no
+//      export, no CSV, no download).
+// Columns are matched by header NAME with fallbacks and the delimiter is
+// sniffed, so a real export with slightly different headers or separators can
+// be adapted without code changes for the common cases.
+import { splitCsvLine, looseNum, findCol, DELIMITER_CANDIDATES } from './csv.ts';
 
 const num = looseNum;
 
@@ -47,29 +55,92 @@ function isHeaderRow(cells: string[]): boolean {
 /**
  * Parse a PractiScore results export into a match + its competitors.
  * Throws a plain-language Error if it can't find a results table.
+ *
+ * The separator is chosen by RESULT, not by guesswork: the text is parsed once
+ * per candidate and the reading that finds the most competitors wins, ties
+ * going to the earlier candidate so a comma export can never be displaced.
+ *
+ * An earlier version scored the candidates with a heuristic over line shapes,
+ * and an audit broke it in four different ways in one sitting. Prose lines
+ * containing a comma out-voted the real table, a ragged final row sank it, and
+ * a category cell full of semicolons swept a genuine CSV. All of those are
+ * questions about which SPLIT YIELDS A TABLE, so the honest measure is to make
+ * the table and count it. Page furniture produces no competitors under any
+ * separator, which is precisely why it cannot win.
  */
 export function parsePractiScore(text: string): PsMatch {
+  let best: PsMatch | null = null;
+  let firstError: Error | null = null;
+  for (const delim of DELIMITER_CANDIDATES) {
+    try {
+      const attempt = parseWith(text, delim);
+      if (best === null || beats(attempt, best)) best = attempt;
+    } catch (e) {
+      if (firstError === null && e instanceof Error) firstError = e;
+    }
+  }
+  if (best === null) throw firstError ?? new Error('I could not read that as a results table.');
+  return best;
+}
+
+/**
+ * Which of two readings of the same text is the better one.
+ *
+ * NAMED competitors decide it, and only then the raw count. Counting rows
+ * alone is not a proxy for correctness: a comma file with three near-empty
+ * summary rows under it read as three nameless shooters when split on tabs,
+ * because looseNum strips the commas out of ",,,100" and leaves a place of
+ * 100. Three nameless rows beat two real ones, and the reader was offered
+ * "(no name)" three times with a saved place of 100 waiting behind it. A
+ * results table has shooters in it; that is the thing to count.
+ *
+ * Exported only so the tie can be tested directly. A tie needs two readings
+ * of the same text to find the same number of named shooters, which is close
+ * to unreachable with real input — and an untestable rule is one that quietly
+ * stops holding, so the rule is asserted here rather than through a
+ * contrivance that would not survive its next edit.
+ */
+export function beats(attempt: PsMatch, best: PsMatch): boolean {
+  const named = (m: PsMatch) => m.competitors.filter((c) => c.name !== '').length;
+  const a = named(attempt);
+  const b = named(best);
+  if (a !== b) return a > b;
+  return attempt.competitors.length > best.competitors.length;
+}
+
+function parseWith(text: string, delim: string): PsMatch {
   const lines = text.replace(/\r\n?/g, '\n').split('\n');
 
   // Locate the results header row; anything above it that looks like "key,value"
   // is treated as match metadata (name / date / stage count).
+  // A results table has COLUMNS. If the heading row does not split into at
+  // least two of them under this separator, this separator is the wrong one
+  // and there is nothing more to discuss — which is the structural answer to a
+  // whole family of near-misses. Without it, a heading like "Pos,Shooter,Score"
+  // read as a single cell let the NAME column claim that one cell, so every
+  // raw line in the file became a named shooter, and a trailing line of page
+  // text gave the wrong separator one more "name" than the right one had. The
+  // reader was then offered "1,Robin Alder,100.00" as a person to be.
   let headerIdx = -1;
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].trim() === '') continue;
-    if (isHeaderRow(splitCsvLine(lines[i]))) { headerIdx = i; break; }
+    const cells = splitCsvLine(lines[i], delim);
+    if (cells.length >= 2 && isHeaderRow(cells)) { headerIdx = i; break; }
   }
   if (headerIdx === -1) {
-    throw new Error("This doesn't look like a PractiScore results export — I couldn't find a results table (a row of column headings like Place, Division, Name).");
+    throw new Error("I couldn't find a results table in that. It needs a row of column headings like Place, Name, Div — copy the whole Combined results page from PractiScore and paste it again.");
   }
 
   // ---- Metadata block (optional) ----
   let name = '';
   let date = '';
+  let titleName = '';
+  let titleDate = '';
   let stageCount: number | null = null;
   for (let i = 0; i < headerIdx; i++) {
     const raw = lines[i].trim();
     if (raw === '') continue;
-    const cells = splitCsvLine(raw);
+    const cells = splitCsvLine(raw, delim);
     if (cells.length < 2) continue;
     const key = cells[0].toLowerCase();
     const value = cells.slice(1).join(',').trim();
@@ -83,16 +154,57 @@ export function parsePractiScore(text: string): PsMatch {
     }
   }
 
+  // PractiScore's Html Results pages carry no "key,value" metadata block. They
+  // put the match name and date on a single title line above the table, as
+  // "<match name> - YYYY-MM-DD". Read that only when the block above did not
+  // already supply the field, so an explicit "Match Date" row always wins.
+  //
+  // The LAST such line before the table wins, not the first. A copied page can
+  // carry other dated lines above the results — a link to the next club match,
+  // a previous week's fixture — and taking the first one wrote a wrong date
+  // into the saved record with nothing to give it away, because the field was
+  // populated rather than empty. The line nearest the table is the one that
+  // titles it. All three dashes are accepted; a browser copy may carry any.
+  if (name === '' || date === '') {
+    for (let i = 0; i < headerIdx; i++) {
+      const m = lines[i].trim().match(/^(.*\S)\s+[-\u2013\u2014]\s+(\d{4}-\d{2}-\d{2})$/);
+      if (m) {
+        // The whole line is the candidate, not its last cell. Taking the last
+        // cell truncated a comma file titled "Spring Classic, Level 1" down to
+        // "Level 1" — a title may legitimately contain a comma, and the match
+        // was then saved under a name that was never its name. Only a TAB is
+        // structural: it means the title genuinely sat in a table cell, so
+        // anything before the last one is a neighbouring cell, not the title.
+        const raw = m[1].trim();
+        const cut = raw.lastIndexOf('\t');
+        // No break: keep overwriting so the last match before the table wins.
+        if (name === '') titleName = (cut >= 0 ? raw.slice(cut + 1) : raw).trim();
+        if (date === '') titleDate = m[2];
+      }
+    }
+    if (name === '') name = titleName;
+    if (date === '') date = titleDate;
+  }
+
   // ---- Header column mapping ----
-  const headers = splitCsvLine(lines[headerIdx]);
+  const headers = splitCsvLine(lines[headerIdx], delim);
   const claimed = new Set<number>();
   const col = {
     overallPlace: findCol(headers, claimed, [/overall\s*place/i, /^place$/i, /\bplace\b/i, /^pos$/i, /^rank$/i, /finish/i]),
     divisionPlace: findCol(headers, claimed, [/division\s*place/i, /div\.?\s*place/i, /class\s*place/i]),
     matchPercent: findCol(headers, claimed, [/match\s*%/i, /match\s*percent/i, /final\s*%/i, /^%$/i]),
-    matchPoints: findCol(headers, claimed, [/match\s*point/i, /\bpoints?\b/i]),
+    // "Match Pts" is what PractiScore's own results tables call this column;
+    // without the abbreviation the points were silently dropped. The bare
+    // /\bpts\b/ that sat here as well is deliberately absent: it claimed the
+    // "Stage 1 Pts" column on a per-stage table and wrote a single stage's
+    // points into the record as the match score.
+    matchPoints: findCol(headers, claimed, [/match\s*point/i, /match\s*pts/i, /\bpoints?\b/i]),
     powerFactor: findCol(headers, claimed, [/power\s*factor/i, /^pf$/i]),
-    memberNumber: findCol(headers, claimed, [/uspsa/i, /member/i, /\bnumber\b/i, /#/]),
+    // "No." is the member-number column heading on a PractiScore Html Results
+    // table; it matched none of the earlier patterns. It is also what a table
+    // calls its row counter, so the values are checked below before it is
+    // believed — see the guard after the stage scan.
+    memberNumber: findCol(headers, claimed, [/uspsa/i, /member/i, /\bnumber\b/i, /^no\.?$/i, /#/]),
     division: findCol(headers, claimed, [/division/i, /\bdiv\b/i]),
     classLetter: findCol(headers, claimed, [/^class$/i, /\bclass\b/i]),
     name: findCol(headers, claimed, [/^name$/i, /competitor/i, /shooter/i]),
@@ -112,13 +224,41 @@ export function parsePractiScore(text: string): PsMatch {
   }
   stageCols.sort((a, b) => a.number - b.number);
 
+  // "No." is the member-number heading on a PractiScore results table and a
+  // plain row counter on plenty of other tables, so under that ONE ambiguous
+  // heading a value is only believed if it is shaped like a member number: a
+  // letter prefix, an optional separator, then digits. That covers the USPSA
+  // forms seen in real captures (A185321, TY112817, L5268, FY100686, a133555),
+  // low-numbered life and benefactor numbers (A12, L52), and the hyphenated
+  // and spaced regional forms (USA-12345, A 12345). A row counter never
+  // matches, and neither does a stray line of page text.
+  //
+  // Two earlier attempts at this were worse. Trusting the heading wrote
+  // "Imported from PractiScore (USPSA# 1)" into a saved record, inventing a
+  // member number nobody holds. Guarding by "does any value contain a letter"
+  // was then defeated by the page footer the copy instructions tell the reader
+  // to include, which supplies a letter from outside the table entirely.
+  // Naming the shape we accept has no such back door. The cost is that a
+  // purely numeric roster number under a bare "No." heading is left blank; on
+  // an ambiguous heading a blank beats a plausible wrong number, which is the
+  // same call as leaving the date empty rather than guessing today.
+  const ambiguousMemberHeading =
+    col.memberNumber >= 0 && /^no\.?$/i.test(headers[col.memberNumber]);
+  const MEMBER_NUMBER_SHAPE = /^[A-Za-z]{1,4}[-\s]?\d{2,}$/;
+
   const cell = (row: string[], idx: number): string | undefined => (idx >= 0 ? row[idx] : undefined);
+  const memberNumberFrom = (v: string | undefined): string => {
+    const t = (v ?? '').trim();
+    if (t === '') return '';
+    if (ambiguousMemberHeading && !MEMBER_NUMBER_SHAPE.test(t)) return '';
+    return t;
+  };
 
   // ---- Data rows ----
   const competitors: PsCompetitor[] = [];
   for (let i = headerIdx + 1; i < lines.length; i++) {
     if (lines[i].trim() === '') continue;
-    const row = splitCsvLine(lines[i]);
+    const row = splitCsvLine(lines[i], delim);
     const singleName = cell(row, col.name);
     const combinedName = [cell(row, col.firstName), cell(row, col.lastName)]
       .filter((x) => x && x.trim()).join(' ').trim();
@@ -131,7 +271,7 @@ export function parsePractiScore(text: string): PsMatch {
       overallPlace: place,
       divisionPlace: num(cell(row, col.divisionPlace)),
       name: personName,
-      memberNumber: (cell(row, col.memberNumber) ?? '').trim(),
+      memberNumber: memberNumberFrom(cell(row, col.memberNumber)),
       division: (cell(row, col.division) ?? '').trim(),
       classLetter: (cell(row, col.classLetter) ?? '').trim(),
       powerFactor: (cell(row, col.powerFactor) ?? '').trim(),
@@ -142,7 +282,7 @@ export function parsePractiScore(text: string): PsMatch {
   }
 
   if (competitors.length === 0) {
-    throw new Error('I found the results header but no competitor rows under it.');
+    throw new Error('I found the column headings but no shooters under them. Copy the whole Combined results page, headings and rows together, and paste it again.');
   }
 
   return { name, date, stageCount, competitors };

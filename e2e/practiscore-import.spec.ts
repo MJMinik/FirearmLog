@@ -81,6 +81,123 @@ test.describe('PractiScore import', () => {
     await expect(matchesCard.getByText('Spring Classic USPSA Level 1')).toBeVisible();
   });
 
+
+  // A real paste, not the built-in sample. PractiScore's public results pages
+  // carry no download, so the only route a shooter has is Html Results >
+  // Overall > Combined and copying the page, which arrives TAB separated,
+  // wrapped in the site's own navigation, with the match name and date on a
+  // title line. Before 5 August 2026 this threw "no competitor rows" and there
+  // was no way at all to import a real match. The text below is faithful to
+  // the capture from Michael's own USPSA match on 2 August 2026, with the
+  // other competitors' names and member numbers substituted.
+  const REAL_PASTE = [
+    'Scores', 'Matches', 'Events', 'Clubs', 'Shooters', 'Guns', 'Support',
+    'New Results',
+    'Gun Craft Practical Shooters 1st Sunday August - 2026-08-02',
+    '',
+    'Match Results - Combined',
+    ['Place', 'Name', 'No.', 'Class', 'Div', 'PF', 'Category', 'Match Pts', 'Match %'].join('\t'),
+    ['1', 'Lima, Breno', 'A101033', 'G', 'O', 'Maj', '', '830.6178', '100.0000%'].join('\t'),
+    ['3', 'Nunez, Jeff', 'A172032', 'M', 'LO', 'Min', '', '705.7027', '84.9612%'].join('\t'),
+    ['5', 'Birrey, Clyde', '', '', 'CO', 'Min', '', '685.4327', '82.5208%'].join('\t'),
+    ['68', 'Minik, Michael', 'A185321', 'U', 'O', 'Min', '', '181.5609', '21.8585%'].join('\t'),
+    'Search links', 'Scores', 'Matches',
+  ].join('\n');
+
+  test('a real tab-separated paste from PractiScore imports end to end', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Compete');
+    const main = page.getByRole('main');
+
+    await main.getByRole('button', { name: 'Import…' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Import' });
+    await sheet.getByRole('button', { name: 'Import from PractiScore' }).click();
+
+    await main.getByRole('textbox', { name: 'Results text' }).fill(REAL_PASTE);
+    await main.getByRole('button', { name: 'Read results' }).click();
+
+    // The title line supplied the match name, and the site's navigation lines
+    // did NOT become competitors: four shooters in, four shooters listed.
+    await expect(
+      main.getByRole('heading', { name: 'Gun Craft Practical Shooters 1st Sunday August', level: 2 }),
+    ).toBeVisible();
+    await expect(main.getByText('4 shooters')).toBeVisible();
+
+    await main.getByRole('button', { name: 'Minik, Michael' }).click();
+
+    const resultCard = main.locator('.card').filter({ has: page.getByRole('heading', { name: 'Your result' }) });
+    await expect(resultCard.locator('.row', { hasText: 'Shooter' })).toContainText('Minik, Michael');
+    await expect(resultCard.locator('.row', { hasText: 'Match %' })).toContainText('21.86%');
+    await expect(resultCard.locator('.row', { hasText: 'Overall place' })).toContainText('68 of 4');
+
+    // The date came from the title line, so it is the day the match was shot
+    // and not the day it was imported.
+    await expect(main.getByLabel('Date')).toHaveValue('2026-08-02');
+
+    await main.getByLabel('Which gun did you shoot?').selectOption({ index: 1 });
+    await main.getByRole('button', { name: 'Save match' }).click();
+
+    await expect(
+      main.getByRole('heading', { name: 'Gun Craft Practical Shooters 1st Sunday August', level: 1 }),
+    ).toBeVisible();
+  });
+
+  test('the division can be corrected before saving, and the division finish goes with it', async ({ page }) => {
+    // Michael's own club scores every shooter as Carry Optics whatever they
+    // actually shot, so without this an import writes a division into the log
+    // that he never competed in. The division PLACING has to go with it: it
+    // was worked out among the shooters PractiScore put in that division, so
+    // under a different label it describes a field the match never had.
+    await seedDemo(page);
+    await gotoTab(page, 'Compete');
+    const main = page.getByRole('main');
+
+    await main.getByRole('button', { name: 'Import…' }).click();
+    await page.getByRole('dialog', { name: 'Import' })
+      .getByRole('button', { name: 'Import from PractiScore' }).click();
+    await main.getByRole('textbox', { name: 'Results text' }).fill(REAL_PASTE);
+    await main.getByRole('button', { name: 'Read results' }).click();
+    await main.getByRole('button', { name: 'Minik, Michael' }).click();
+
+    // Seeded from the row that was picked, and kept as an option even though
+    // "O" is not one of our division names.
+    const divisionField = main.getByRole('combobox', { name: 'Division' });
+    await expect(divisionField).toHaveValue('O');
+
+    await divisionField.selectOption('Open');
+    await expect(main.getByText(/The results scored you as "O"/)).toBeVisible();
+
+    await main.getByLabel('Which gun did you shoot?').selectOption({ index: 1 });
+    await main.getByRole('button', { name: 'Save match' }).click();
+
+    await expect(
+      main.getByRole('heading', { name: 'Gun Craft Practical Shooters 1st Sunday August', level: 1 }),
+    ).toBeVisible();
+    const matchCard = main.locator('.card').filter({ has: page.getByRole('heading', { name: 'Match', exact: true }) });
+    const savedDivision = matchCard.locator('.row').filter({ has: page.getByText('Division', { exact: true }) });
+    await expect(savedDivision).toContainText('Open');
+    await expect(savedDivision).not.toContainText('O ·');
+    await expect(matchCard.locator('.row', { hasText: 'Division finish' })).toHaveCount(0);
+    // The overall finish is untouched: it never depended on the division.
+    await expect(matchCard.locator('.row', { hasText: 'Overall finish' })).toContainText('68 of 4');
+  });
+
+  test('the screen names the click path that actually exists', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Compete');
+    const main = page.getByRole('main');
+    await main.getByRole('button', { name: 'Import…' }).click();
+    await page.getByRole('dialog', { name: 'Import' })
+      .getByRole('button', { name: 'Import from PractiScore' }).click();
+
+    // The old copy said "export or copy the results". No export exists, so the
+    // word must not come back: an instruction naming an action the reader
+    // cannot perform is the defect this whole change is about.
+    await expect(main.getByText('Html Results')).toBeVisible();
+    await expect(main.getByRole('button', { name: /Load a file \(\.csv, \.txt\)/ })).toBeVisible();
+    await expect(main.getByText(/export or copy the results/i)).toHaveCount(0);
+  });
+
   test('malformed input fails safely: a visible error, no shooter picker, no record created', async ({ page }) => {
     await seedDemo(page);
     await gotoTab(page, 'Compete');
