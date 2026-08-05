@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  parsePractiScore, countInDivision, SAMPLE_PRACTISCORE_CSV
+  parsePractiScore, countInDivision, beats, SAMPLE_PRACTISCORE_CSV, type PsMatch
 } from '../src/lib/practiscore.ts';
 
 test('parses the sample match metadata', () => {
@@ -330,15 +330,19 @@ test('AUDIT-6: an inch mark in a tab row does not swallow the rest of the row', 
   assert.equal(bob!.division, 'LO 5" bbl');
 });
 
-test('AUDIT-7: a table whose last row dropped a trailing cell still parses', () => {
+test('AUDIT-7: a header plus ONE ragged row still parses', () => {
+  // The reported input was a header and a SINGLE row that dropped its trailing
+  // cell. An earlier version of this test used two rows, which did not
+  // reproduce the defect and passed on the broken code — a test named for
+  // something it never constrained.
   const text = [
     TAB_HEADER,
-    ['1', 'Alder, Robin', '', '', 'LO', 'Min', '', '100.0000', '100.0000%'].join('\t'),
-    ['2', 'Brandt, Casey', '', '', 'CO', 'Min', '', '90.0000'].join('\t'),
+    ['1', 'Alder, Robin', '', '', 'LO', 'Min', '', '100.0000'].join('\t'),
   ].join('\n');
   const m = parsePractiScore(text);
-  assert.equal(m.competitors.length, 2);
-  assert.equal(m.competitors[1].matchPoints, 90);
+  assert.equal(m.competitors.length, 1);
+  assert.equal(m.competitors[0].name, 'Alder, Robin');
+  assert.equal(m.competitors[0].matchPoints, 100);
 });
 
 test('AUDIT-8: a genuine comma export is never displaced by another separator', () => {
@@ -348,4 +352,131 @@ test('AUDIT-8: a genuine comma export is never displaced by another separator', 
   assert.equal(m.competitors.length, 5);
   assert.equal(m.competitors[2].name, 'Chris Calder');
   assert.equal(m.competitors[2].matchPoints, 612.34);
+});
+
+// ---------------------------------------------------------------------------
+// Round two of the cold audit. Every finding below was created by round one's
+// own fixes, which is the documented shape of this feature rather than a
+// surprise. Each reproduction is the auditor's; each fails on c2129ef.
+// ---------------------------------------------------------------------------
+
+test('AUDIT-9: nameless summary rows never out-vote real shooters', () => {
+  // Split on tabs, ",,,100" is one field and looseNum strips the commas to a
+  // place of 100, so three nameless rows beat two real ones and the reader was
+  // offered "(no name)" three times with a saved place of 100 behind it.
+  const text = [
+    'Place,Name,Div,Match %',
+    '1,Robin Alder,Open,100.00',
+    '2,Casey Brandt,Open,90.00',
+    ',,,100',
+    ',,,90',
+    ',,,80',
+  ].join('\n');
+  const m = parsePractiScore(text);
+  assert.equal(m.competitors.length, 2);
+  assert.equal(m.competitors[0].name, 'Robin Alder');
+  assert.equal(m.competitors[1].name, 'Casey Brandt');
+});
+
+test('AUDIT-10: the page footer cannot vouch for a row-counter column', () => {
+  // The copy instructions say to select the whole page, so the footer comes
+  // with it. A guard that asked "does any value contain a letter" took its
+  // answer from a line outside the table and trusted a row counter.
+  const text = [
+    ['No.', 'Place', 'Name', 'Div', 'Match %'].join('\t'),
+    ['1', '1', 'Alder, Robin', 'LO', '100.00'].join('\t'),
+    ['2', '2', 'Brandt, Casey', 'CO', '90.00'].join('\t'),
+    ['Search links', 'Scores', 'Matches', 'Misc', 'Links'].join('\t'),
+  ].join('\n');
+  const m = parsePractiScore(text);
+  assert.equal(m.competitors[0].memberNumber, '', 'a row number is not a member number');
+  assert.equal(m.competitors[1].memberNumber, '');
+});
+
+test('AUDIT-11: a match name containing a comma is not truncated', () => {
+  const text = [
+    'Spring Classic, Level 1 - 2026-05-17',
+    'Place,Name,Div,Match %',
+    '1,Robin Alder,Open,100.00',
+    '2,Casey Brandt,Open,90.00',
+  ].join('\n');
+  assert.equal(parsePractiScore(text).name, 'Spring Classic, Level 1');
+});
+
+test('AUDIT-11b: a title sitting in a table cell drops its neighbouring cells', () => {
+  // A tab IS structural, unlike a comma: anything before the last one is a
+  // neighbouring cell rather than part of the title.
+  const text = [
+    ['Match Results', 'Spring Classic - 2026-05-17'].join('\t'),
+    TAB_HEADER,
+    ['1', 'Alder, Robin', '', '', 'LO', 'Min', '', '100.0000', '100.0000%'].join('\t'),
+    ['2', 'Brandt, Casey', '', '', 'CO', 'Min', '', '90.0000', '90.0000%'].join('\t'),
+  ].join('\n');
+  const m = parsePractiScore(text);
+  assert.equal(m.name, 'Spring Classic');
+  assert.equal(m.date, '2026-05-17');
+});
+
+test('AUDIT-12: a real member number under a bare "No." heading is still read', () => {
+  const text = [
+    TAB_HEADER,
+    ['1', 'Alder, Robin', 'A101033', 'G', 'O', 'Maj', '', '830.6178', '100.0000%'].join('\t'),
+    ['2', 'Nolan, Devin', 'TY112817', 'M', 'LO', 'Min', '', '705.7027', '84.9612%'].join('\t'),
+    ['3', 'Okonkwo, Sam', 'a133555', 'M', 'O', 'Maj', '', '607.8751', '73.1000%'].join('\t'),
+    ['4', 'Widman, Daniel', 'L5268', 'M', 'LO', 'Min', '', '659.9473', '79.4526%'].join('\t'),
+  ].join('\n');
+  const m = parsePractiScore(text);
+  assert.deepEqual(
+    m.competitors.map((c) => c.memberNumber),
+    ['A101033', 'TY112817', 'a133555', 'L5268'],
+    'every real prefix shape survives, upper and lower case',
+  );
+});
+
+test('AUDIT-13: an unambiguous member-number heading is taken as given', () => {
+  // The shape test applies only under the ambiguous "No." heading. A column
+  // that says what it is gets believed whatever it holds.
+  const text = [
+    'Place,Name,USPSA #,Div,Match %',
+    '1,Robin Alder,101033,Open,100.00',
+    '2,Casey Brandt,172032,Open,90.00',
+  ].join('\n');
+  const m = parsePractiScore(text);
+  assert.equal(m.competitors[0].memberNumber, '101033');
+  assert.equal(m.competitors[1].memberNumber, '172032');
+});
+
+function reading(names: string[]): PsMatch {
+  return {
+    name: '', date: '', stageCount: null,
+    competitors: names.map((n, i) => ({
+      overallPlace: i + 1, divisionPlace: null, name: n, memberNumber: '',
+      division: '', classLetter: '', powerFactor: '',
+      matchPoints: null, matchPercent: null, stages: [],
+    })),
+  };
+}
+
+test('AUDIT-14: a later separator must BEAT the incumbent, never tie it', () => {
+  // The property the try-each-separator design rests on: a comma export can
+  // never be displaced, because the comma is tried first and holds any tie.
+  // It was asserted nowhere, and changing the comparison to >= left every
+  // other test green.
+  assert.equal(beats(reading(['A']), reading(['B'])), false, 'an equal reading does not displace');
+  assert.equal(beats(reading(['A', 'B']), reading(['C'])), true, 'more named shooters wins');
+  assert.equal(beats(reading(['A']), reading(['B', 'C'])), false, 'fewer named shooters loses');
+});
+
+test('AUDIT-14b: named shooters decide before raw row count', () => {
+  // Three nameless rows must not beat two real ones, which is the whole point
+  // of AUDIT-9 stated as a property rather than as one input.
+  const nameless = reading(['', '', '']);
+  const real = reading(['Robin Alder', 'Casey Brandt']);
+  assert.equal(beats(nameless, real), false);
+  assert.equal(beats(real, nameless), true);
+});
+
+test('AUDIT-14c: with no names anywhere, the bigger table wins', () => {
+  assert.equal(beats(reading(['', '', '']), reading(['', ''])), true);
+  assert.equal(beats(reading(['', '']), reading(['', '', ''])), false);
 });

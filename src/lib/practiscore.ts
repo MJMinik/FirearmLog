@@ -74,13 +74,38 @@ export function parsePractiScore(text: string): PsMatch {
   for (const delim of DELIMITER_CANDIDATES) {
     try {
       const attempt = parseWith(text, delim);
-      if (best === null || attempt.competitors.length > best.competitors.length) best = attempt;
+      if (best === null || beats(attempt, best)) best = attempt;
     } catch (e) {
       if (firstError === null && e instanceof Error) firstError = e;
     }
   }
   if (best === null) throw firstError ?? new Error('I could not read that as a results table.');
   return best;
+}
+
+/**
+ * Which of two readings of the same text is the better one.
+ *
+ * NAMED competitors decide it, and only then the raw count. Counting rows
+ * alone is not a proxy for correctness: a comma file with three near-empty
+ * summary rows under it read as three nameless shooters when split on tabs,
+ * because looseNum strips the commas out of ",,,100" and leaves a place of
+ * 100. Three nameless rows beat two real ones, and the reader was offered
+ * "(no name)" three times with a saved place of 100 waiting behind it. A
+ * results table has shooters in it; that is the thing to count.
+ *
+ * Exported only so the tie can be tested directly. A tie needs two readings
+ * of the same text to find the same number of named shooters, which is close
+ * to unreachable with real input — and an untestable rule is one that quietly
+ * stops holding, so the rule is asserted here rather than through a
+ * contrivance that would not survive its next edit.
+ */
+export function beats(attempt: PsMatch, best: PsMatch): boolean {
+  const named = (m: PsMatch) => m.competitors.filter((c) => c.name !== '').length;
+  const a = named(attempt);
+  const b = named(best);
+  if (a !== b) return a > b;
+  return attempt.competitors.length > best.competitors.length;
 }
 
 function parseWith(text: string, delim: string): PsMatch {
@@ -133,12 +158,18 @@ function parseWith(text: string, delim: string): PsMatch {
   // titles it. All three dashes are accepted; a browser copy may carry any.
   if (name === '' || date === '') {
     for (let i = 0; i < headerIdx; i++) {
-      const cells = splitCsvLine(lines[i], delim).filter((c) => c !== '');
-      const candidate = cells.length > 0 ? cells[cells.length - 1] : '';
-      const m = candidate.match(/^(.*\S)\s+[-\u2013\u2014]\s+(\d{4}-\d{2}-\d{2})$/);
+      const m = lines[i].trim().match(/^(.*\S)\s+[-\u2013\u2014]\s+(\d{4}-\d{2}-\d{2})$/);
       if (m) {
+        // The whole line is the candidate, not its last cell. Taking the last
+        // cell truncated a comma file titled "Spring Classic, Level 1" down to
+        // "Level 1" — a title may legitimately contain a comma, and the match
+        // was then saved under a name that was never its name. Only a TAB is
+        // structural: it means the title genuinely sat in a table cell, so
+        // anything before the last one is a neighbouring cell, not the title.
+        const raw = m[1].trim();
+        const cut = raw.lastIndexOf('\t');
         // No break: keep overwriting so the last match before the table wins.
-        if (name === '') titleName = m[1].trim();
+        if (name === '') titleName = (cut >= 0 ? raw.slice(cut + 1) : raw).trim();
         if (date === '') titleDate = m[2];
       }
     }
@@ -184,23 +215,32 @@ function parseWith(text: string, delim: string): PsMatch {
   }
   stageCols.sort((a, b) => a.number - b.number);
 
-  // A column headed "No." is the member number on a PractiScore results table
-  // and a plain row counter on plenty of others. A USPSA member number always
-  // carries a letter prefix (A185321, TY112817, L5268); a row counter never
-  // does. So the heading alone is not trusted: if every value under it is
-  // nothing but digits, the column is released rather than believed. Without
-  // this, importing such a table wrote "Imported from PractiScore (USPSA# 1)"
-  // into the saved record — a member number nobody has, invented by us.
-  if (col.memberNumber >= 0 && /^no\.?$/i.test(headers[col.memberNumber] ?? '')) {
-    let sawALetter = false;
-    for (let i = headerIdx + 1; i < lines.length; i++) {
-      const v = splitCsvLine(lines[i], delim)[col.memberNumber];
-      if (v != null && v !== '' && /[^0-9]/.test(v)) { sawALetter = true; break; }
-    }
-    if (!sawALetter) col.memberNumber = -1;
-  }
+  // "No." is the member-number heading on a PractiScore results table and a
+  // plain row counter on plenty of other tables, so under that ONE ambiguous
+  // heading a value is only believed if it is shaped like a member number:
+  // a letter prefix and digits (A185321, TY112817, L5268, FY100686, a133555).
+  // A row counter never matches, and neither does a stray line of page text.
+  //
+  // Two earlier attempts at this were worse. Trusting the heading wrote
+  // "Imported from PractiScore (USPSA# 1)" into a saved record, inventing a
+  // member number nobody holds. Guarding by "does any value contain a letter"
+  // was then defeated by the page footer the copy instructions tell the reader
+  // to include, which supplies a letter from outside the table entirely.
+  // Naming the shape we accept has no such back door. The cost is that a
+  // purely numeric roster number under a bare "No." heading is left blank; on
+  // an ambiguous heading a blank beats a plausible wrong number, which is the
+  // same call as leaving the date empty rather than guessing today.
+  const ambiguousMemberHeading =
+    col.memberNumber >= 0 && /^no\.?$/i.test(headers[col.memberNumber] ?? '');
+  const MEMBER_NUMBER_SHAPE = /^[A-Za-z]{1,3}\d{3,}$/;
 
   const cell = (row: string[], idx: number): string | undefined => (idx >= 0 ? row[idx] : undefined);
+  const memberNumberFrom = (v: string | undefined): string => {
+    const t = (v ?? '').trim();
+    if (t === '') return '';
+    if (ambiguousMemberHeading && !MEMBER_NUMBER_SHAPE.test(t)) return '';
+    return t;
+  };
 
   // ---- Data rows ----
   const competitors: PsCompetitor[] = [];
@@ -219,7 +259,7 @@ function parseWith(text: string, delim: string): PsMatch {
       overallPlace: place,
       divisionPlace: num(cell(row, col.divisionPlace)),
       name: personName,
-      memberNumber: (cell(row, col.memberNumber) ?? '').trim(),
+      memberNumber: memberNumberFrom(cell(row, col.memberNumber)),
       division: (cell(row, col.division) ?? '').trim(),
       classLetter: (cell(row, col.classLetter) ?? '').trim(),
       powerFactor: (cell(row, col.powerFactor) ?? '').trim(),
