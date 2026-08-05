@@ -62,7 +62,7 @@ export function ManageListsScreen({ onBack, onOpen }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
+        <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
       <h1 className="large-title">Manage lists</h1>
@@ -269,7 +269,7 @@ export function ListDetailScreen({ listId, onBack }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
+        <button className="back-btn" onClick={onBack}>‹ Back</button>
         <span />
       </div>
       <h1 className="large-title">{def.uiName}</h1>
