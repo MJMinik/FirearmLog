@@ -491,7 +491,9 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
         <>
           {stats.trainingSince && (
             <p className="report-note" style={{ marginTop: -8, marginBottom: 12 }}>
-              {formatDayKey(new Date().toISOString().slice(0, 10))} · Training since {stats.trainingSince}
+              {/* The shooter's own day. Read through toISOString, this showed
+                  tomorrow's date west of Greenwich from late afternoon on. */}
+              {formatDayKey(todayKey())} · Training since {stats.trainingSince}
             </p>
           )}
           <div style={{ display: 'flex', gap: 8 }}>
@@ -1084,6 +1086,11 @@ export function MoreScreen({ refreshKey, open }: {
         <button className="row-tap" onClick={() => open({ kind: 'export-csv' })}>
           <span className="row-ico" aria-hidden="true"><Icon name="reports" size={20} /></span>
           <span className="label">Export as CSV</span>
+          <span className="value">›</span>
+        </button>
+        <button className="row-tap" onClick={() => open({ kind: 'import-csv' })}>
+          <span className="row-ico" aria-hidden="true"><Icon name="reports" size={20} /></span>
+          <span className="label">Import from CSV</span>
           <span className="value">›</span>
         </button>
         {/* Rung-1 transparency surface — hidden while telemetry ships dark

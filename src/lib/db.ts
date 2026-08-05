@@ -1,9 +1,17 @@
 // The data layer (spec §3.2). Nothing else in the app touches IndexedDB.
 // This module is the seam where a cloud sync service could plug in later.
 
-import type { DataSet, Media } from './types.ts';
+import type {
+  Ammunition, Classifier, CsvImportCounts, CsvImportHistoryEntry, CsvImportRowCounts, DataSet,
+  DrillDef, Firearm, Goal, Magazine, MaintenanceEntry, MalfunctionEntry, Match, Media, Optic,
+  Part, Purchase, Reference, Reminder, Session, SkillAssessment, SkillSet, TrashItem,
+} from './types.ts';
 import type { Snapshot } from './flog.ts';
 import { newestStamp } from './flog.ts';
+import {
+  deductUsageFromStock, restoreDeductedStock, usageThatMovedStock,
+} from './costing.ts';
+import { stampUpdate } from './stamps.ts';
 
 const DB_NAME = 'firearmlog';
 // v3 (T3-1, Timed Skills): adds the additive 'skillSets' object store. Same
@@ -217,6 +225,28 @@ export async function getMediaForOwner(
   });
   await txDone(tx);
   return out;
+}
+
+/**
+ * Walk one store a record at a time, keeping nothing. Same cursor reasoning as
+ * getMediaForOwner above: a `media` scan through getAll would materialise every
+ * photo and video in the log at once, which is the likeliest iPhone memory
+ * crash. Callers here only ever keep ids, so peak memory is one record.
+ */
+async function scanStore<T>(store: StoreName, visit: (record: T) => void): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(store, 'readonly');
+  await new Promise<void>((resolve, reject) => {
+    const req = tx.objectStore(store).openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) { resolve(); return; }
+      visit(cursor.value as T);
+      cursor.continue();
+    };
+    req.onerror = () => reject(req.error);
+  });
+  await txDone(tx);
 }
 
 export async function putOne<T>(store: StoreName, record: T): Promise<void> {
@@ -651,4 +681,684 @@ export async function clearAllData(): Promise<void> {
     });
     await txDone(tx);
   });
+}
+
+// ---------------------------------------------------------------------------
+// CSV import: commit one batch, and remove one (CSV design doc 3.6)
+// ---------------------------------------------------------------------------
+//
+// BOTH FUNCTIONS BELOW ARE ADDITIVE. No existing function's behaviour changes,
+// no object store is added and SCHEMA_VERSION is untouched: the import history
+// lives in the `meta` store under one key. A new store without a version bump
+// is silent cross-device erasure, and nothing here needs one.
+//
+// NOTE ON PUNCTUATION: no string added below uses an em dash. Every one of them
+// can reach a shooter's screen.
+
+/** Where the import history sits in the `meta` store. */
+const CSV_IMPORT_HISTORY_KEY = 'csvImportHistory';
+
+/**
+ * How many imports stay removable. Each entry is a few hundred bytes, so this
+ * is generous; it exists only so the row cannot grow without limit on a device
+ * that imports for years.
+ */
+const MAX_IMPORT_HISTORY = 50;
+
+/** The tag every record of an import carries, or null for anything else. */
+function importBatchTag(record: unknown): string | null {
+  const legacy = (record as { legacy?: unknown } | null)?.legacy;
+  if (!legacy || typeof legacy !== 'object') return null;
+  const tag = (legacy as Record<string, unknown>).importBatch;
+  return typeof tag === 'string' && tag !== '' ? tag : null;
+}
+
+function historyFromRow(row: unknown): CsvImportHistoryEntry[] {
+  const value = (row as { value?: unknown } | undefined)?.value;
+  if (!Array.isArray(value)) return [];
+  // A damaged row must never cost the shooter their undo of the OTHER imports,
+  // and must never throw inside a transaction: keep what is shaped right.
+  return value.filter(
+    (e): e is CsvImportHistoryEntry =>
+      !!e && typeof e === 'object' && typeof (e as CsvImportHistoryEntry).batchId === 'string',
+  );
+}
+
+/**
+ * Every import this device still knows how to remove, newest first.
+ *
+ * This exists because a history that is written but never read makes undo
+ * unreachable the moment the report is dismissed, which is exactly the state an
+ * earlier build shipped in.
+ */
+export async function getImportHistory(): Promise<CsvImportHistoryEntry[]> {
+  const row = await getOne<{ key: string; value: unknown }>('meta', CSV_IMPORT_HISTORY_KEY);
+  return historyFromRow(row);
+}
+
+/**
+ * Imports whose records are still tagged in the log but whose history entry is
+ * gone, rebuilt from the records themselves.
+ *
+ * The history keeps the newest MAX_IMPORT_HISTORY entries, so the 51st import
+ * used to push the 1st out of the list. The records kept their batch tag and
+ * undo still worked on that tag, but the ONLY way to reach undo is this list,
+ * so the ability to remove that import disappeared with no warning and no way
+ * back. Rather than say so and leave it, this walks what the log actually holds
+ * and hands the lost batches back.
+ *
+ * Pure, so it is unit-tested: the caller has already read both stores for other
+ * reasons, and passing them in keeps a screen render from costing two scans.
+ * What cannot be rebuilt is not invented: the filename is empty (the screen
+ * says "An earlier import") and only the counts that can be counted are filled.
+ */
+export function batchesMissingFromHistory(
+  sessions: readonly Session[],
+  firearms: readonly Firearm[],
+  history: readonly CsvImportHistoryEntry[],
+): CsvImportHistoryEntry[] {
+  const known = new Set(history.map((e) => e.batchId));
+  const found = new Map<string, { sessions: number; firearms: number; importedAt: number }>();
+  const note = (record: Session | Firearm, kind: 'sessions' | 'firearms') => {
+    const tag = importBatchTag(record);
+    if (!tag || known.has(tag)) return;
+    const seen = found.get(tag) ?? { sessions: 0, firearms: 0, importedAt: 0 };
+    seen[kind] += 1;
+    seen.importedAt = Math.max(seen.importedAt, record.createdAt || 0);
+    found.set(tag, seen);
+  };
+  for (const s of sessions) note(s, 'sessions');
+  for (const f of firearms) note(f, 'firearms');
+
+  return [...found.entries()]
+    .map(([batchId, seen]) => ({
+      batchId,
+      filename: '',
+      importedAt: seen.importedAt,
+      counts: {
+        rowsTotal: seen.sessions,
+        rowsPlanned: seen.sessions,
+        rowsFailed: 0,
+        rowsSkipped: 0,
+        duplicatesInFile: 0,
+        duplicatesInLog: 0,
+        sessions: seen.sessions,
+        firearms: seen.firearms,
+      },
+    }))
+    .sort((a, b) => b.importedAt - a.importedAt);
+}
+
+export interface CommitImportBatchInput {
+  /** Tags every record written here, and is what undo asks for later. */
+  batchId: string;
+  filename: string;
+  sessions: Session[];
+  firearms: Firearm[];
+  counts: CsvImportRowCounts;
+  now: number;
+}
+
+/**
+ * Write one approved import: every planned session, every gun it creates, and
+ * the history entry that makes it removable, in ONE transaction over
+ * ['sessions', 'firearms', 'meta'].
+ *
+ * Atomic by construction, the commitDataSet / seedGoalWithSettings shape: the
+ * history row is read, merged and written inside the same transaction as the
+ * records, and any throw while queueing aborts the lot. A crash mid-commit
+ * leaves the log exactly as it was, with no history entry pointing at records
+ * that are not there.
+ *
+ * CREATES ONLY, WITH ONE NAMED EXCEPTION: every record it puts carries a fresh
+ * id, so a bad file cannot corrupt a logbook even if every row in it is
+ * garbage. The exception is the ammunition count. An imported session that says
+ * which ammunition it used has to take those rounds off the can, because hand
+ * entry does (SessionForm) and because the Trash hands them back when a session
+ * is deleted (src/ui/sessionDelete.ts). A commit that recorded the usage without
+ * deducting it left on-hand counts overstated and then REFUNDED rounds that were
+ * never taken: 1000 became 1150 on a delete, which is stock that never existed.
+ *
+ * SHARING ONE CALL BETWEEN THE TWO DIRECTIONS WAS NOT ENOUGH, and the second
+ * instance of that same class proved it: a can cannot go below zero, so an
+ * import of 150 rounds against a can holding 100 takes 100, while a restore
+ * computed from the same rows hands back 150. One shared function does not make
+ * two directions agree when the function is not invertible. So the deduction
+ * WRITES DOWN what it actually took (deductUsageFromStock, stored on the history
+ * entry at `ammoDeducted`) and the undo plays that record back
+ * (restoreDeductedStock) instead of working out a figure of its own.
+ */
+export async function commitImportBatch(input: CommitImportBatchInput): Promise<CsvImportHistoryEntry> {
+  return withIoGuard('this import', () => commitImportBatchInner(input));
+}
+
+async function commitImportBatchInner(input: CommitImportBatchInput): Promise<CsvImportHistoryEntry> {
+  const { batchId, filename, sessions, firearms, counts, now } = input;
+  const db = await openDb();
+
+  // Read the cans BEFORE the transaction opens, the same shape as the undo's
+  // reference scan below and for the same reason: this write is one transaction,
+  // and a transaction cannot read a store it did not name until it has named it.
+  // withIoGuard keeps another import, restore or erase out of the way meanwhile.
+  const cans = await getAll<Ammunition>('ammunition');
+  const deduction = deductUsageFromStock(cans, usageThatMovedStock(sessions));
+  const newQuantities = deduction.quantities;
+
+  const entry: CsvImportHistoryEntry = {
+    batchId,
+    filename,
+    importedAt: now,
+    // The record counts are what actually went in, taken from the arrays rather
+    // than from the plan's own figures, so the history cannot overstate.
+    counts: { ...counts, sessions: sessions.length, firearms: firearms.length } as CsvImportCounts,
+    // And the same rule for the cans: what came off, not what was asked for.
+    // This is the number the undo hands back, so it is stored with the import
+    // rather than worked out again later from figures that cannot express it.
+    ammoDeducted: deduction.realised,
+  };
+
+  const tx = db.transaction(['sessions', 'firearms', 'ammunition', 'meta'], 'readwrite');
+  const meta = tx.objectStore('meta');
+  await new Promise<void>((resolve, reject) => {
+    const req = meta.get(CSV_IMPORT_HISTORY_KEY);
+    req.onsuccess = () => {
+      try {
+        // Guns first: a session written here points at one of them.
+        for (const f of firearms) tx.objectStore('firearms').put(f);
+        for (const s of sessions) tx.objectStore('sessions').put(s);
+        for (const [ammoId, quantity] of newQuantities) {
+          const previous = cans.find((a) => a.id === ammoId);
+          if (previous) tx.objectStore('ammunition').put(stampUpdate({ ...previous, quantity }, now));
+        }
+        const history = historyFromRow(req.result).filter((e) => e.batchId !== batchId);
+        meta.put({
+          key: CSV_IMPORT_HISTORY_KEY,
+          value: [entry, ...history].slice(0, MAX_IMPORT_HISTORY),
+        });
+        resolve();
+      } catch (e) {
+        try { tx.abort(); } catch { /* already aborting */ }
+        reject(e); // e.g. an unstorable value: abort + reject, never a partial import
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+  await txDone(tx);
+  return entry;
+}
+
+/** A gun the undo did NOT remove, and the plain words for why. */
+export interface KeptFirearm {
+  id: string;
+  name: string;
+  /** What still points at it, named the way a shooter would name it. */
+  referencedBy: string[];
+}
+
+export interface UndoImportResult {
+  sessionsRemoved: number;
+  firearmsRemoved: number;
+  firearmsKept: KeptFirearm[];
+  /**
+   * Rows filed AGAINST a removed session (timed-skill sets, malfunctions,
+   * photos and videos) that went with it. Counted, not silently done.
+   */
+  attachedRemoved: number;
+  /**
+   * True when this import had rounds off a can and the ammunition counts were
+   * NOT changed, because the import carries no record of what it took.
+   *
+   * Reported rather than assumed, because the screen has to say it: a count the
+   * shooter expects to move and does not is worse unexplained than explained.
+   */
+  ammoLeftAlone: boolean;
+}
+
+// ---------------------------------------------------------------------------
+// WHICH STORES POINT AT WHAT: one typed source of truth, checked by the compiler
+// ---------------------------------------------------------------------------
+//
+// The previous round of this code widened the FIREARM scan from one store to
+// nine and left the SESSION side untouched, so undo went on orphaning every
+// timed-skill set, malfunction and photo filed against a session it deleted.
+// Half a class closed is a class open. The tables below are therefore not lists
+// anyone maintains from memory: they are derived from the data model, and the
+// derivation is a TYPE, so the two ways this can go stale both stop compiling.
+//
+//  1. A NEW OBJECT STORE with no record type named in StoreRecordTypes fails on
+//     the FirearmRefStore / SessionRefStore lines, which index that map by
+//     every StoreName.
+//  2. A store whose record type DOES hold a firearm or session reference but is
+//     missing from the matching table fails on the table's own declaration,
+//     because RefTable is a mapped type over the derived union: every member is
+//     required, and there is no way to write eight of nine.
+//
+// So "remember to add your store to the scan" is not a convention anybody has to
+// hold. Forgetting is a build error.
+
+/**
+ * Every object store's record type. `meta` is the settings/history key-value
+ * row, which is the one store that is not a record collection.
+ */
+type StoreRecordTypes = {
+  firearms: Firearm;
+  sessions: Session;
+  drills: DrillDef;
+  ammunition: Ammunition;
+  purchases: Purchase;
+  maintenance: MaintenanceEntry;
+  malfunctions: MalfunctionEntry;
+  magazines: Magazine;
+  optics: Optic;
+  parts: Part;
+  goals: Goal;
+  skills: SkillAssessment;
+  skillSets: SkillSet;
+  matches: Match;
+  classifiers: Classifier;
+  references: Reference;
+  reminders: Reminder;
+  media: Media;
+  trash: TrashItem;
+  meta: { key: string; value: unknown };
+};
+
+/**
+ * Does this record type name a firearm? `firearmId` covers the eight singular
+ * holders, `firearmIds` catches Magazine (an ARRAY, and the one a scan written
+ * from memory misses), `guns` catches Session's per-gun splits, and `ownerType`
+ * catches the ownership shape Media uses. An optional field still counts: an
+ * optional key is a key.
+ */
+type HoldsFirearmRef<T> =
+  'firearmId' extends keyof T ? true
+    : 'firearmIds' extends keyof T ? true
+      : 'guns' extends keyof T ? true
+        : 'ownerType' extends keyof T ? true
+          : false;
+
+/** Does this record type belong to a session? Same reading, for `sessionId`. */
+type HoldsSessionRef<T> =
+  'sessionId' extends keyof T ? true
+    : 'ownerType' extends keyof T ? true
+      : false;
+
+type FirearmRefStore = {
+  [K in StoreName]: HoldsFirearmRef<StoreRecordTypes[K]> extends true ? K : never
+}[StoreName];
+
+type SessionRefStore = {
+  [K in StoreName]: HoldsSessionRef<StoreRecordTypes[K]> extends true ? K : never
+}[StoreName];
+
+/** How one store's records name the thing we are asking about. */
+type LiveRefSource<T> = { label: string; ids: (record: T) => string[] };
+
+/**
+ * Or an explicit statement that they do not. `notAReference` is a decision
+ * someone had to write down, which is the point: a store that turns up in the
+ * union above and genuinely does not matter says so out loud, with its reason,
+ * instead of being quietly absent. Stores marked that way are never even read.
+ */
+type RefSource<T> = LiveRefSource<T> | { notAReference: string };
+
+/**
+ * THE ONLY STORES ALLOWED TO SAY `notAReference`, one union per table.
+ *
+ * Without this, silencing a store that really does hold a reference is a
+ * two-word edit anywhere inside a forty-line object literal that compiles
+ * clean, and the scan quietly stops reading a store. Naming the silenced stores
+ * here makes that a change in two places, one of which exists for no other
+ * purpose than to be read: the diff says "another store has been silenced"
+ * without anyone having to notice a key among fifteen siblings.
+ *
+ * Each name here is explained in the table below, at the store itself.
+ */
+type SilencedFirearmStore = 'media';
+type SilencedSessionStore = never;
+
+type RefTable<Stores extends StoreName, Silenced extends StoreName> = {
+  [K in Stores]: K extends Silenced ? RefSource<StoreRecordTypes[K]> : LiveRefSource<StoreRecordTypes[K]>
+};
+
+const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' : String(v));
+
+/**
+ * EVERY PLACE A FIREARM ID LIVES. A scan that covers only `sessions` deletes a
+ * gun that a match still names, and NOTHING CRASHES, because every screen falls
+ * back to a dash: the match's gun silently becomes "-". That is the quietest
+ * damage this feature can do, which is why this is a table.
+ *
+ * Stores absent from the union entirely, each checked rather than assumed:
+ * Purchase, Goal, Classifier, Reference, DrillDef, SkillAssessment, Ammunition
+ * and TrashItem hold no firearm field at all, and SessionChecklist's `f_${id}`
+ * keys are only ever read by walking the LIVE firearms, so a stale key resolves
+ * to nothing and cannot orphan anything.
+ */
+const FIREARM_REF_SOURCES: RefTable<FirearmRefStore, SilencedFirearmStore> = {
+  sessions: {
+    label: 'sessions',
+    ids: (s) => (Array.isArray(s.guns) ? s.guns.map((g) => str(g?.firearmId)) : []),
+  },
+  maintenance: { label: 'maintenance entries', ids: (r) => [str(r.firearmId)] },
+  malfunctions: { label: 'malfunctions', ids: (r) => [str(r.firearmId)] },
+  magazines: {
+    label: 'magazines',
+    // An ARRAY: one magazine can belong to several guns.
+    ids: (r) => (Array.isArray(r.firearmIds) ? r.firearmIds.map(str) : []),
+  },
+  optics: { label: 'optics', ids: (r) => [str(r.firearmId)] },
+  parts: { label: 'parts', ids: (r) => [str(r.firearmId)] },
+  skillSets: { label: 'timed skills', ids: (r) => [str(r.firearmId)] },
+  matches: { label: 'matches', ids: (r) => [str(r.firearmId)] },
+  reminders: { label: 'reminders', ids: (r) => [str(r.firearmId)] },
+  media: {
+    // A photo is owned BY the gun rather than a record that degrades when the
+    // gun goes, and the app's own permanent delete leaves a gun's media behind
+    // too (GunRemoveSheet.deleteForever). A CSV import creates no media, so
+    // only a photo added after the import could be involved, and treating one
+    // as a reason to keep a gun would differ from what the rest of the app does
+    // with the same photo.
+    notAReference: 'a gun photo does not keep the gun; see GunRemoveSheet.deleteForever',
+  },
+};
+
+/**
+ * EVERY PLACE A SESSION ID LIVES. These records do not merely point at a
+ * session, they BELONG to one: SkillSet.sessionId (types.ts),
+ * MalfunctionEntry.sessionId, and Media owned by ownerType 'session'. When the
+ * session goes they go with it, which is exactly what the app's own permanent
+ * delete does (src/ui/sessionDelete.ts purgeSession) and what this undo now
+ * does, so the two agree.
+ *
+ * Leaving them behind does not crash anything, and that is the trouble: an
+ * orphaned timed-skill set is in neither the live set nor the trashed set that
+ * activeSkillSets filters, so its draw times keep counting in trends, PRs and
+ * cold-versus-warm for good, keep exporting, and no screen can reach them to
+ * delete them. Orphaned photo bytes are never freed.
+ */
+const SESSION_REF_SOURCES: RefTable<SessionRefStore, SilencedSessionStore> = {
+  skillSets: { label: 'timed skills', ids: (r) => [str(r.sessionId)] },
+  malfunctions: { label: 'malfunctions', ids: (r) => [str(r.sessionId)] },
+  media: {
+    label: 'photos and videos',
+    ids: (m) => (m.ownerType === 'session' ? [str(m.ownerId)] : []),
+  },
+};
+
+interface ReadableRefSource {
+  store: StoreName;
+  label: string;
+  /**
+   * Written against that store's own record type, so a renamed field in
+   * types.ts stops this file compiling. What a cursor hands back is whatever is
+   * stored, which is why every extractor is defensive about its own fields.
+   */
+  ids: (record: unknown) => string[];
+}
+
+/** The stores of one table that actually have to be read. */
+function readableSources<S extends StoreName, Q extends StoreName>(table: RefTable<S, Q>): ReadableRefSource[] {
+  const out: ReadableRefSource[] = [];
+  for (const store of Object.keys(table) as S[]) {
+    const source = table[store];
+    if ('notAReference' in source) continue;
+    out.push({ store, label: source.label, ids: source.ids as unknown as (record: unknown) => string[] });
+  }
+  return out;
+}
+
+/** One record that belongs to a session, and where it lives. */
+export interface AttachedRecord {
+  store: StoreName;
+  id: string;
+}
+
+/**
+ * The stores each scan actually reads, derived from the tables above.
+ *
+ * EXPORTED FOR THE TESTS ON PURPOSE. A test file that hand-lists the stores it
+ * covers goes stale the day a store is added to a table, and nothing says so;
+ * reading the list off the tables lets a test assert that it has a case for
+ * every store, so the coverage gap becomes a red test rather than a silence.
+ */
+export const REF_SCAN_STORES: { readonly firearm: readonly StoreName[]; readonly session: readonly StoreName[] } = {
+  firearm: readableSources(FIREARM_REF_SOURCES).map((s) => s.store),
+  session: readableSources(SESSION_REF_SOURCES).map((s) => s.store),
+};
+
+/**
+ * Everything filed against these sessions, found through the typed table above.
+ *
+ * Ids only, read with a cursor: a `media` scan that kept the records would hold
+ * every photo and video in the log in memory at once.
+ *
+ * PUBLIC ON PURPOSE. The import undo and the app's permanent delete
+ * (src/ui/sessionDelete.ts purgeSession) both ask this one question, so neither
+ * can be widened without the other. Before this they were two hand-written
+ * lists of the same three stores, and one of them was missing all three.
+ */
+export async function attachedToSessions(sessionIds: readonly string[]): Promise<AttachedRecord[]> {
+  const wanted = new Set(sessionIds);
+  const found: AttachedRecord[] = [];
+  if (wanted.size === 0) return found;
+  for (const source of readableSources(SESSION_REF_SOURCES)) {
+    await scanStore(source.store, (row) => {
+      const id = (row as { id?: unknown })?.id;
+      if (typeof id !== 'string') return;
+      if (source.ids(row).some((sid) => wanted.has(sid))) found.push({ store: source.store, id });
+    });
+  }
+  return found;
+}
+
+/**
+ * EVERY RECORD THIS UNDO IS GOING TO DELETE, worked out before anything is
+ * asked about the guns.
+ *
+ * WHY THIS EXISTS AS A THING RATHER THAN AS AN ORDER OF STATEMENTS. The scan
+ * that decides which imported guns to keep must ignore records that are on
+ * their way out, because a record that will not exist in a moment cannot be a
+ * reason to keep anything. The first attempt at that ignored the SESSIONS only,
+ * and the widening that took the malfunctions, timed-skill sets and photos with
+ * them was computed a dozen lines LATER, so the scan could not have known about
+ * them: a single malfunction logged on an imported session, which SessionForm
+ * fills in with that session's own gun by default, kept the imported gun alive
+ * and then deleted the malfunction that had been given as the reason.
+ *
+ * The fix is not a comment about ordering. This list is a REQUIRED ARGUMENT to
+ * the scan, so the scan cannot run before the deletions are known, and the
+ * write below deletes THIS SAME ARRAY. The set that is excluded and the set that
+ * is deleted are therefore one object, and a store added to SESSION_REF_SOURCES
+ * next month joins both at once with no second edit.
+ */
+interface DoomedRecords {
+  /** Store and id of every record that will be deleted, the sessions included. */
+  records: readonly AttachedRecord[];
+  /** Of those, the rows filed AGAINST a session, for the count the screen shows. */
+  attachedCount: number;
+  /** Is this exact row already on its way out? */
+  holds(store: StoreName, id: string): boolean;
+}
+
+async function doomedRecordsFor(sessionIds: readonly string[]): Promise<DoomedRecords> {
+  const attached = await attachedToSessions(sessionIds);
+  const records: AttachedRecord[] = [
+    ...sessionIds.map((id) => ({ store: 'sessions' as StoreName, id })),
+    ...attached,
+  ];
+  // A store name cannot contain a null byte, so no pair of (store, id) can
+  // collide with another.
+  const keys = new Set(records.map((r) => `${r.store}\u0000${r.id}`));
+  return {
+    records,
+    attachedCount: attached.length,
+    holds: (store, id) => keys.has(`${store}\u0000${id}`),
+  };
+}
+
+/**
+ * Which of these guns something OUTSIDE this undo still points at, and what.
+ *
+ * `doomed` is not a convenience parameter. It is how this function is stopped
+ * from running before the deletions are known: there is no default, and no way
+ * to ask the question without first answering the other one.
+ */
+async function firearmsStillReferenced(
+  candidateIds: ReadonlySet<string>,
+  doomed: DoomedRecords,
+): Promise<Map<string, string[]>> {
+  const referencedBy = new Map<string, string[]>();
+  if (candidateIds.size === 0) return referencedBy;
+  // Driven by the ONE typed table, never by nine hand-written passes, so a
+  // store cannot be left out by an edit somewhere else.
+  for (const source of readableSources(FIREARM_REF_SOURCES)) {
+    await scanStore(source.store, (row) => {
+      // A record this undo is about to DELETE cannot be a reason to keep the
+      // gun it was importing. Everything else counts, including a session in
+      // the Trash, which the shooter can still restore.
+      const id = (row as { id?: unknown })?.id;
+      if (doomed.holds(source.store, String(id))) return;
+      for (const firearmId of source.ids(row)) {
+        if (!candidateIds.has(firearmId)) continue;
+        const seen = referencedBy.get(firearmId) ?? [];
+        if (!seen.includes(source.label)) seen.push(source.label);
+        referencedBy.set(firearmId, seen);
+      }
+    });
+  }
+  return referencedBy;
+}
+
+/**
+ * Remove one import: every session it added, everything filed against those
+ * sessions, every gun it created that nothing else in the log points at any
+ * more, and the rounds it took off the cans.
+ *
+ * A gun that IS still pointed at is kept and named in the result, so the screen
+ * can say which and why. Deleting it instead would leave a match, a magazine or
+ * a maintenance entry naming a gun that is gone, and none of those screens
+ * would complain: they would just show a dash.
+ *
+ * Records that BELONG to a removed session go with it, exactly as the app's own
+ * permanent delete does it (src/ui/sessionDelete.ts purgeSession). Leaving them
+ * would orphan them: unreachable from any screen, undeletable, and still
+ * counted by every trend that reads them.
+ *
+ * Both scans read their stores BEFORE the write transaction opens, because the
+ * write is ONE transaction and a transaction cannot span stores it did not
+ * name. withIoGuard keeps another import, restore or erase out of the way
+ * meanwhile; an ordinary save in the same tab between the scan and the write is
+ * a window this deliberately accepts, and it can only ever mean a gun is
+ * removed that was pointed at a fraction of a second earlier.
+ */
+export async function undoImportBatch(batchId: string): Promise<UndoImportResult> {
+  return withIoGuard('removing this import', () => undoImportBatchInner(batchId));
+}
+
+async function undoImportBatchInner(batchId: string): Promise<UndoImportResult> {
+  const db = await openDb();
+
+  const sessions = await getAll<Session>('sessions');
+  const firearms = await getAll<Firearm>('firearms');
+  const batchSessions = sessions.filter((s) => importBatchTag(s) === batchId);
+  const sessionIds = batchSessions.map((s) => s.id);
+  const batchFirearms = firearms.filter((f) => importBatchTag(f) === batchId);
+
+  // FIRST, and before any question is asked about the guns: everything this
+  // undo is going to delete, through the same one question the app's permanent
+  // delete asks. The scan below takes it as an argument, so this cannot slip
+  // back down the function.
+  const doomed = await doomedRecordsFor(sessionIds);
+  const candidateIds = new Set(batchFirearms.map((f) => f.id));
+  const referencedBy = await firearmsStillReferenced(candidateIds, doomed);
+
+  // The rounds of this batch that are STILL off the cans, and which cans they
+  // are off NOW rather than which the import named. A session already in the
+  // Trash was refunded when it was trashed, and usageThatMovedStock knows it.
+  const cans = await getAll<Ammunition>('ammunition');
+  const stillDeducted = usageThatMovedStock(batchSessions);
+  // Is there anything for the restore to do at all? Only then can declining to
+  // do it be worth saying, and only then is it worth saying.
+  const wouldMoveAmmo = stillDeducted.some(
+    (u) => (u.rounds || 0) > 0 && cans.some((c) => c.id === u.ammoId),
+  );
+  let ammoLeftAlone = false;
+  const now = Date.now();
+
+  const firearmsKept: KeptFirearm[] = batchFirearms
+    .filter((f) => referencedBy.has(f.id))
+    .map((f) => ({ id: f.id, name: f.name, referencedBy: referencedBy.get(f.id) ?? [] }));
+  const firearmIdsToRemove = batchFirearms.filter((f) => !referencedBy.has(f.id)).map((f) => f.id);
+
+  // The stores this write touches are DERIVED from the same table the scan used,
+  // so a store added to that table is in the transaction automatically. Naming
+  // them by hand here is how the delete of a store the scan found would throw
+  // NotFoundError at the worst possible moment.
+  const attachedStores = readableSources(SESSION_REF_SOURCES).map((s) => s.store);
+  const stores: StoreName[] = [
+    ...new Set<StoreName>(['sessions', 'firearms', 'ammunition', 'meta', ...attachedStores]),
+  ];
+  const tx = db.transaction(stores, 'readwrite');
+  const meta = tx.objectStore('meta');
+  await new Promise<void>((resolve, reject) => {
+    const req = meta.get(CSV_IMPORT_HISTORY_KEY);
+    req.onsuccess = () => {
+      try {
+        const stored = historyFromRow(req.result);
+        // WHAT THE COMMIT ACTUALLY TOOK, read back rather than recomputed. A
+        // figure worked out here from the rows would be what the import ASKED
+        // for, and an import of 150 rounds against a can holding 100 only ever
+        // took 100: handing back 150 invents 50 rounds. Written down at commit
+        // (deductUsageFromStock), played back here, so the two directions are no
+        // longer two calculations that have to agree.
+        const ledger = stored.find((e) => e.batchId === batchId)?.ammoDeducted;
+        // AN ENTRY WITH NO LEDGER RESTORES NOTHING, and the screen says so.
+        //
+        // Two entries have none: one written by a build from before this was
+        // recorded, and one rebuilt from the log by batchesMissingFromHistory
+        // after it fell off the capped list. Falling back to the rows' own
+        // figures put the WHOLE ask back, which is defect B again: a can of 100
+        // that an import of 150 emptied came back as 150, and 50 rounds were
+        // invented. Nothing about a rebuilt entry says how much of the ask a can
+        // could give, so the full ask is the one figure it cannot justify, and
+        // there is no other figure to derive: the clamp only ever leaves a can
+        // at zero, and a can at zero today may have been bought up since.
+        //
+        // So it changes no count at all. That is the only answer here that
+        // cannot invent a round, it is correctable on the Ammo screen, and it is
+        // said out loud rather than left for the shooter to find.
+        ammoLeftAlone = !ledger && wouldMoveAmmo;
+        const newQuantities = ledger
+          ? restoreDeductedStock(cans, ledger, stillDeducted)
+          : new Map<string, number>();
+
+        // ONE list: the records excluded from the scan above are the records
+        // deleted here, because they are the same array.
+        for (const row of doomed.records) tx.objectStore(row.store).delete(row.id);
+        for (const id of firearmIdsToRemove) tx.objectStore('firearms').delete(id);
+        for (const [ammoId, quantity] of newQuantities) {
+          const previous = cans.find((a) => a.id === ammoId);
+          if (previous) tx.objectStore('ammunition').put(stampUpdate({ ...previous, quantity }, now));
+        }
+        const history = stored.filter((e) => e.batchId !== batchId);
+        if (history.length > 0) meta.put({ key: CSV_IMPORT_HISTORY_KEY, value: history });
+        else meta.delete(CSV_IMPORT_HISTORY_KEY);
+        resolve();
+      } catch (e) {
+        try { tx.abort(); } catch { /* already aborting */ }
+        reject(e); // abort + reject, never a half-removed import
+      }
+    };
+    req.onerror = () => reject(req.error);
+  });
+  await txDone(tx);
+
+  return {
+    sessionsRemoved: sessionIds.length,
+    firearmsRemoved: firearmIdsToRemove.length,
+    firearmsKept,
+    attachedRemoved: doomed.attachedCount,
+    ammoLeftAlone,
+  };
 }

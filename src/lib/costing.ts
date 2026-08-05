@@ -4,6 +4,12 @@
 // so nothing can ever double-count. The old app's F2 bug (multi-gun sessions
 // double-counting per-gun spend) is pinned down by a unit test.
 
+// The one shape here that is STORED rather than computed: the record a
+// deduction leaves behind lives in the import history, so its definition sits
+// with the rest of the data model. Type-only, so nothing here gains a runtime
+// dependency.
+import type { RealisedDeduction } from './types.ts';
+
 // ---- Narrow shapes (structural typing keeps tests dependency-free and
 // ---- avoids the Match[]-vs-MatchLike CI failures we hit in M5).
 
@@ -366,6 +372,152 @@ export function inventoryAfterUsageChange(
     const a = ammo.find((x) => x.id === ammoId);
     if (!a) continue;
     out.set(ammoId, Math.max(0, (a.quantity || 0) - d));
+  }
+  return out;
+}
+
+/**
+ * What one deduction did: the new on-hand figures to store, and the record of
+ * what each can actually gave up.
+ */
+export interface StockDeduction {
+  /** New on-hand for every can that moved. Only those; unmoved cans are absent. */
+  quantities: Map<string, number>;
+  /** Per can, what was asked for and what came off. The undo plays THIS back. */
+  realised: RealisedDeduction[];
+}
+
+/**
+ * Take a set of rounds off the cans, and say what that actually did.
+ *
+ * WHY THIS RETURNS A RECORD RATHER THAN QUANTITIES ALONE. `Math.max(0, ...)`
+ * makes the deduction NOT INVERTIBLE: a can of 100 that an import of 150 empties
+ * loses 100, and nothing in the new quantity says whether 100 or 150 was asked
+ * for. Two directions computed from the same request therefore disagree by
+ * whatever the clamp swallowed, and the difference lands in the shooter's
+ * on-hand count as rounds that were never fired and never bought. Sharing ONE
+ * function between the two directions does not fix that, because the function is
+ * not injective: the shared call was already in place when a can of 100 came
+ * back as 150.
+ *
+ * So the deduction writes down what it did, and restoreDeductedStock replays
+ * that number. The restore no longer computes anything that could differ.
+ */
+export function deductUsageFromStock(
+  ammo: AmmoLike[],
+  usage: readonly UsageLike[],
+): StockDeduction {
+  const requested = new Map<string, number>();
+  for (const u of usage) requested.set(u.ammoId, (requested.get(u.ammoId) ?? 0) + (u.rounds || 0));
+  const quantities = new Map<string, number>();
+  const realised: RealisedDeduction[] = [];
+  for (const [ammoId, want] of requested) {
+    if (want === 0) continue;
+    const a = ammo.find((x) => x.id === ammoId);
+    if (!a) continue;
+    const held = a.quantity || 0;
+    // The same arithmetic inventoryAfterUsageChange does, with the part it threw
+    // away kept: `taken` is read back OFF the clamped result, so it is by
+    // construction the amount the can really lost.
+    const left = Math.max(0, held - want);
+    quantities.set(ammoId, left);
+    realised.push({ ammoId, requested: want, taken: held - left });
+  }
+  return { quantities, realised };
+}
+
+/**
+ * Put back what a deduction took, to the can the rounds are off NOW.
+ *
+ * TWO SEPARATE QUESTIONS, and the ledger answers only one of them.
+ *
+ * WHERE the rounds go is read from `stillDeducted`, the batch's usage as it
+ * stands at this moment, and never from the ledger. A can merge repoints every
+ * session onto the kept can and DELETES the one the import named
+ * (src/ui/AmmoScreens.tsx, applyAmmoMerge), and a shooter editing an imported
+ * session's ammunition moves the rounds the same way. Looking the ledger's can
+ * up in the log then finds a can that is gone, or one the rounds are no longer
+ * off, and 150 rounds the shooter owns are never handed back. Both are ordinary
+ * features and both were measured at 350 where 500 was owed.
+ *
+ * HOW MANY go back is what the ledger is for. `requested - taken` is the part of
+ * the ask that no can ever gave up, because a can does not go below zero, and
+ * that part can never come back: it was never anywhere.
+ *
+ * Rounds whose session has since gone to the Trash are not in `stillDeducted` at
+ * all (usageThatMovedStock), because trashing handed them back already
+ * (src/ui/sessionDelete.ts softDeleteSession), so they cannot arrive twice.
+ */
+export function restoreDeductedStock(
+  ammo: AmmoLike[],
+  realised: readonly RealisedDeduction[],
+  stillDeducted: readonly UsageLike[],
+): Map<string, number> {
+  // What the rows asked of a can that no can ever gave up.
+  const shortfall = new Map<string, number>();
+  for (const row of realised) {
+    const missed = Math.max(0, row.requested - row.taken);
+    if (missed > 0) shortfall.set(row.ammoId, (shortfall.get(row.ammoId) ?? 0) + missed);
+  }
+  // Where this batch's rounds are off cans right now, and how many. Insertion
+  // order, so a given batch always settles the same way.
+  const owed = new Map<string, number>();
+  for (const u of stillDeducted) owed.set(u.ammoId, (owed.get(u.ammoId) ?? 0) + (u.rounds || 0));
+
+  // A SHORTFALL TRAVELS WITH THE ROUNDS IT BELONGS TO. Held against the can the
+  // import named, it is lost the moment that can is merged away, and the full
+  // ask goes back to a can that never gave it up. So a shortfall whose can is no
+  // longer carrying any of this batch's rounds joins a pool, and the pool is
+  // taken off whichever cans are.
+  let pooled = 0;
+  for (const [ammoId, missed] of shortfall) {
+    const rounds = owed.get(ammoId);
+    if (rounds === undefined) { pooled += missed; continue; }
+    owed.set(ammoId, Math.max(0, rounds - missed));
+    if (missed > rounds) pooled += missed - rounds;
+  }
+
+  const out = new Map<string, number>();
+  for (const [ammoId, rounds] of owed) {
+    const spend = Math.min(pooled, rounds);
+    pooled -= spend;
+    const back = rounds - spend;
+    if (back === 0) continue;
+    const a = ammo.find((x) => x.id === ammoId);
+    if (!a) continue;
+    out.set(ammoId, (a.quantity || 0) + back);
+  }
+  return out;
+}
+
+/** The little of a session that the stock question actually depends on. */
+export interface StockSessionLike {
+  planned?: boolean;
+  deletedAt?: number | null;
+  ammoUsage?: UsageLike[];
+}
+
+/**
+ * The ammo usage that IS currently off the cans for a set of sessions.
+ *
+ * Two rules, held here once rather than at each call site:
+ *  - a PLANNED session has not been shot, so it has never moved stock (the same
+ *    rule SessionForm applies when it saves);
+ *  - a session in the Trash has already had its rounds handed back
+ *    (src/ui/sessionDelete.ts softDeleteSession), so its usage is no longer off
+ *    the can and handing it back again would invent rounds.
+ *
+ * WHY ONE FUNCTION: the CSV import's commit deducts exactly this, and its undo
+ * restores exactly this, from the same call in the opposite direction. A rule
+ * added here applies to both halves at once, so the two cannot drift apart into
+ * inventing or destroying stock between them.
+ */
+export function usageThatMovedStock(sessions: readonly StockSessionLike[]): UsageLike[] {
+  const out: UsageLike[] = [];
+  for (const s of sessions) {
+    if (s.planned) continue;
+    if (s.deletedAt) continue;
+    for (const u of s.ammoUsage ?? []) out.push(u);
   }
   return out;
 }

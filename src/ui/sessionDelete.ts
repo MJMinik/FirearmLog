@@ -10,8 +10,8 @@
 // interrupted run can't split a session across stores (the corruption risk we
 // deliberately avoided by tombstoning rather than moving records).
 
-import type { Ammunition, MalfunctionEntry, Media, Session, SkillSet } from '../lib/types.ts';
-import { deleteOne, getAll, putOne } from '../lib/db.ts';
+import type { Ammunition, Session } from '../lib/types.ts';
+import { attachedToSessions, deleteOne, getAll, putOne } from '../lib/db.ts';
 import { stampUpdate } from '../lib/stamps.ts';
 import { inventoryAfterUsageChange } from '../lib/costing.ts';
 import { expiredOnly } from '../lib/softDelete.ts';
@@ -41,26 +41,21 @@ export async function restoreSession(session: Session, ammo: Ammunition[], now =
 }
 
 /**
- * Permanently remove a session and the photos/videos, malfunctions, and
- * timed-skill sets filed against it. Ammo is NOT touched here — it was
- * already returned when the session was trashed. Safe to call on an
- * already-purged id (the reads simply find nothing). Used by "Delete
- * Forever" and the automatic 30-day purge.
+ * Permanently remove a session and everything filed against it (photos/videos,
+ * malfunctions, timed-skill sets). Ammo is NOT touched here — it was already
+ * returned when the session was trashed. Safe to call on an already-purged id
+ * (the scan simply finds nothing). Used by "Delete Forever" and the automatic
+ * 30-day purge.
+ *
+ * WHICH STORES those are is no longer written out here. `attachedToSessions`
+ * (lib/db.ts) derives them from the data model, and the CSV import's undo asks
+ * the same function, so the two cannot drift: this list used to be right and
+ * that one used to be empty. It also reads with a cursor, so a purge no longer
+ * pulls every photo in the log into memory to find one session's.
  */
 export async function purgeSession(sessionId: string): Promise<void> {
-  const [media, malfs, sets] = await Promise.all([
-    getAll<Media>('media'),
-    getAll<MalfunctionEntry>('malfunctions'),
-    getAll<SkillSet>('skillSets'),
-  ]);
-  for (const m of media) {
-    if (m.ownerType === 'session' && m.ownerId === sessionId) await deleteOne('media', m.id);
-  }
-  for (const mf of malfs) {
-    if (mf.sessionId === sessionId) await deleteOne('malfunctions', mf.id);
-  }
-  for (const ss of sets) {
-    if (ss.sessionId === sessionId) await deleteOne('skillSets', ss.id);
+  for (const row of await attachedToSessions([sessionId])) {
+    await deleteOne(row.store, row.id);
   }
   await deleteOne('sessions', sessionId);
 }

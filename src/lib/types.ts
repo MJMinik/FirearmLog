@@ -418,6 +418,69 @@ export interface Reminder extends BaseRecord, Imported {
   enabled: boolean;
 }
 
+/**
+ * What one CSV import did, kept so "Remove this import" stays reachable after
+ * the report is dismissed (CSV design doc 3.6).
+ *
+ * These live in the EXISTING `meta` store under one key, exactly where saved
+ * mapping templates were designed to go (3.7): no new object store and no
+ * schema-version bump, so a device running an older build still opens this
+ * database and loses nothing. They ride the .flog sync like any other meta row.
+ */
+export interface CsvImportRowCounts {
+  rowsTotal: number;
+  rowsPlanned: number;
+  /** ROWS, not problems: a row with three faults counts once. */
+  rowsFailed: number;
+  rowsSkipped: number;
+  duplicatesInFile: number;
+  duplicatesInLog: number;
+}
+
+export interface CsvImportCounts extends CsvImportRowCounts {
+  /** Sessions actually written. */
+  sessions: number;
+  /** Guns actually created by this import. */
+  firearms: number;
+}
+
+/**
+ * What one deduction ACTUALLY did to one can, written down at the moment it
+ * happened.
+ *
+ * `requested` is what the rows named. `taken` is what came off, which is less
+ * whenever the can held less than the rows named, because a can cannot go below
+ * zero. The two are recorded separately because the difference is exactly what
+ * an undo would otherwise invent: a can of 100 that an import of 150 emptied
+ * must come back to 100, never to 150.
+ */
+export interface RealisedDeduction {
+  ammoId: string;
+  /** Rounds the sessions named for this can. */
+  requested: number;
+  /** Rounds that actually came off it. Never more than it held. */
+  taken: number;
+}
+
+export interface CsvImportHistoryEntry {
+  /** The tag every record of this import carries at `legacy.importBatch`. */
+  batchId: string;
+  filename: string;
+  importedAt: number; // ms epoch
+  counts: CsvImportCounts;
+  /**
+   * What this import took off each can, recorded by the commit so the undo can
+   * hand back THAT rather than recompute a figure of its own.
+   *
+   * Optional because two kinds of entry have none: one written by a build from
+   * before this was recorded, and one rebuilt from the log by
+   * batchesMissingFromHistory after it fell off the capped list. Both fall back
+   * to the older, requested-rounds restore, which is what they have always
+   * done; see undoImportBatch.
+   */
+  ammoDeducted?: RealisedDeduction[];
+}
+
 /** Old-app trash items, carried over so nothing is lost (Q7). */
 export interface TrashItem extends BaseRecord {
   recordType: string;
