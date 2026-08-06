@@ -32,16 +32,39 @@ test('the injected value is the SAVED STRING, undecorated, so it round-trips byt
   // If this ever returns a label like 'O (not a recognised division)', the screen will
   // write that label back into the record on save. That is the original defect wearing
   // a different hat, which is why the label belongs in the view and not here.
-  const stored = 'O';
+  // Uses a PADDED value on purpose. The first version of this test used 'O', where the
+  // trimmed and untrimmed forms are identical -- so it passed against an implementation
+  // that injected the trimmed string, which is the one input that could tell them apart.
+  // A cold audit found that; the test now uses the input that distinguishes them.
+  const stored = '  Weird Division  ';
   const out = optionsWithStored(DIVISIONS, stored);
   assert.equal(out[0], stored);
   assert.equal(out[0].length, stored.length);
 });
 
-test('a renamed Steel division is recognised through the alias map and NOT injected', () => {
-  // 'Rimfire Pistol Open' is the old shipped name for 'Rimfire Pistol Optics'.
+test('a renamed Steel division IS injected, because the select is bound to the raw string', () => {
+  // THIS TEST USED TO ASSERT THE OPPOSITE, and a cold audit caught it enshrining a bug.
+  // The reasoning that produced the wrong version: 'Rimfire Pistol Open' canonicalises
+  // to a member of STEEL_DIVISIONS, so it looked "recognised" and nothing was injected.
+  // But the <select value> is the RAW stored string, which still matched no <option> --
+  // so the picker rendered STEEL_DIVISIONS[0], 'Open', turning a rimfire match into a
+  // centerfire one on screen while the callout underneath said something different.
+  // That is precisely the population STEEL_DIVISION_ALIASES exists to protect.
   const out = optionsWithStored(STEEL_DIVISIONS, 'Rimfire Pistol Open');
-  assert.deepEqual(out, STEEL_DIVISIONS.slice());
+  assert.equal(out[0], 'Rimfire Pistol Open');
+  assert.equal(out.length, STEEL_DIVISIONS.length + 1);
+  // And the suggestion offers the current name, so one tap fixes it.
+  assert.equal(suggestDivision('Rimfire Pistol Open', STEEL_DIVISIONS), 'Rimfire Pistol Optics');
+});
+
+test('a padded value is injected and offered, rather than silently showing another division', () => {
+  // Also from the cold audit. 'Open ' trimmed to a member, so nothing was injected and
+  // nothing was suggested -- the select fell through to 'Carry Optics' with the screen
+  // saying nothing at all. Both halves are asserted because fixing one without the other
+  // leaves the user looking at a wrong division with no way to correct it.
+  const out = optionsWithStored(DIVISIONS, 'Open ');
+  assert.equal(out[0], 'Open ');
+  assert.equal(suggestDivision('Open ', DIVISIONS), 'Open');
 });
 
 test('an empty or whitespace division is never injected as a blank option', () => {

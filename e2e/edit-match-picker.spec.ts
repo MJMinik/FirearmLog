@@ -22,8 +22,8 @@ const MATCH_ID = 'e2e-picker-match';
 /** Write a match record directly, the way an import would, then reload so the app
  *  reads it fresh. `division` is written verbatim: no normalisation anywhere. */
 async function seedMatch(page: Page, division: string, matchType = 'USPSA Level 1 (club match)',
-  opts: { minimal?: boolean } = {}) {
-  await page.evaluate(async ({ id, division, matchType, minimal }) => {
+  opts: { minimal?: boolean; stageWithoutNotes?: boolean } = {}) {
+  await page.evaluate(async ({ id, division, matchType, minimal, stageWithoutNotes }) => {
     // A gun is REQUIRED by the form's own validation, so a match seeded without one
     // cannot be saved and the round-trip tests never reach their assertion. Read a real
     // one from the seeded demo rather than inventing an id.
@@ -41,7 +41,10 @@ async function seedMatch(page: Page, division: string, matchType = 'USPSA Level 
       id, date: '2026-08-02', name: 'Picker Round Trip', matchType, division,
       powerFactor: 'Minor', firearmId, scoringType: 'uspsa',
       totalRounds: null, matchPercent: null, divisionPlace: null, divisionOf: null,
-      overallPlace: null, overallOf: null, stages: [],
+      overallPlace: null, overallOf: null,
+      // A stage row with no `notes` key at all -- the shape an older record has, and the
+      // one that used to take the screen down during render.
+      stages: stageWithoutNotes ? [{ number: 1, points: 100, time: 12.5, percent: null }] : [],
       // `minimal` omits the optional string fields entirely, which is the shape an
       // older record actually has. The default keeps `notes` so the other tests are
       // exercising a normal record rather than the edge case.
@@ -58,7 +61,7 @@ async function seedMatch(page: Page, division: string, matchType = 'USPSA Level 
         tx.onerror = () => reject(tx.error);
       };
     });
-  }, { id: MATCH_ID, division, matchType, minimal: !!opts.minimal });
+  }, { id: MATCH_ID, division, matchType, minimal: !!opts.minimal, stageWithoutNotes: !!opts.stageWithoutNotes });
   await page.reload();
 }
 
@@ -99,6 +102,17 @@ async function saveAndWaitForWrite(page: Page) {
     .not.toBe(before.updatedAt);
 }
 
+/** The division <select>, by id.
+ *
+ *  NOT getByLabel('Division'): the suggestion callout is labelled "Check this division",
+ *  which getByLabel matches as a substring, so the locator resolved to two elements the
+ *  moment the callout appeared. And the field's own accessible name absorbs the selected
+ *  option's text, because the <label> wraps the <select> -- so the name is not stable
+ *  either. The id is. */
+function divisionPicker(page: Page) {
+  return page.locator('#match-division-select');
+}
+
 async function openTheMatch(page: Page) {
   await gotoTab(page, 'Compete');
   await page.getByText('Picker Round Trip').first().click();
@@ -113,7 +127,7 @@ test.describe('Edit Match: the picker shows what the record holds', () => {
     await seedMatch(page, 'O');
     await openTheMatch(page);
 
-    const picker = page.getByLabel('Division');
+    const picker = divisionPicker(page);
     // The assertion the pre-fix build fails: it rendered 'Carry Optics' here.
     await expect(picker).toHaveValue('O');
     await expect(picker).not.toHaveValue('Carry Optics');
@@ -138,7 +152,7 @@ test.describe('Edit Match: the picker shows what the record holds', () => {
     await seedMatch(page, 'Limited');
     await openTheMatch(page);
 
-    await expect(page.getByLabel('Division')).toHaveValue('Limited');
+    await expect(divisionPicker(page)).toHaveValue('Limited');
     await expect(page.getByText('Check this division')).toHaveCount(0);
   });
 });
@@ -170,11 +184,17 @@ test.describe('Edit Match: the suggestion is offered, never applied', () => {
     await openTheMatch(page);
 
     await page.getByRole('button', { name: 'Change it to Open' }).click();
-    await expect(page.getByLabel('Division')).toHaveValue('Open');
+    await expect(divisionPicker(page)).toHaveValue('Open');
     // The callout has done its job and goes away.
     await expect(page.getByText('Check this division')).toHaveCount(0);
     // And the entry that only existed to represent 'O' is gone from the list.
-    await expect(page.getByLabel('Division').locator('option', { hasText: /^O$/ })).toHaveCount(0);
+    // Assert on the option VALUES, not their text. The first version matched text
+    // /^O$/ against an option whose label is 'O (not a recognised division)', so it
+    // could never match and passed against any implementation, including one that
+    // never removed the entry. A cold audit measured it at 0 before the click too.
+    const values = await divisionPicker(page).locator('option')
+      .evaluateAll((os) => os.map((o) => (o as HTMLOptionElement).value));
+    expect(values).not.toContain('O');
 
     await saveAndWaitForWrite(page);
     expect(await storedDivision(page)).toBe('Open');
@@ -185,7 +205,7 @@ test.describe('Edit Match: the suggestion is offered, never applied', () => {
     await seedMatch(page, 'ZZ');
     await openTheMatch(page);
 
-    await expect(page.getByLabel('Division')).toHaveValue('ZZ');
+    await expect(divisionPicker(page)).toHaveValue('ZZ');
     await expect(page.getByText('Check this division')).toHaveCount(0);
   });
 });
@@ -217,21 +237,74 @@ test.describe('Edit Match: a record missing a string field still saves', () => {
   });
 });
 
+test.describe('Edit Match: what the cold audit found', () => {
+  /* Every case here is a defect a fresh-eyes audit measured against the first version of
+   * this branch. They are E2E rather than unit tests because each one was invisible in
+   * the pure functions and only showed up at the rendered <select>. */
+
+  test('a legacy Steel division name shows ITSELF, not centerfire Open', async ({ page }) => {
+    // Measured pre-fix: the picker rendered 'Open' while the callout underneath said the
+    // record was 'Rimfire Pistol Open'. The screen contradicted itself, and it did so for
+    // exactly the records STEEL_DIVISION_ALIASES was written to protect.
+    await seedDemo(page);
+    await seedMatch(page, 'Rimfire Pistol Open', 'Steel Challenge');
+    await openTheMatch(page);
+
+    await expect(divisionPicker(page)).toHaveValue('Rimfire Pistol Open');
+    await expect(page.getByRole('button', { name: 'Change it to Rimfire Pistol Optics' })).toBeVisible();
+  });
+
+  test('a padded division is shown and offered, not silently swapped', async ({ page }) => {
+    // Measured pre-fix: 'Open ' rendered as 'Carry Optics' with NO callout at all.
+    await seedDemo(page);
+    await seedMatch(page, 'Open ');
+    await openTheMatch(page);
+
+    await expect(divisionPicker(page)).toHaveValue('Open ');
+    await expect(page.getByRole('button', { name: 'Change it to Open' })).toBeVisible();
+  });
+
+  test('a stage with no notes does not take the whole screen down', async ({ page }) => {
+    // Measured pre-fix: st.notes.trim() runs inside a useMemo during RENDER, so an
+    // undefined stage note did not merely break Save -- Edit Match never appeared, and
+    // the error boundary showed "Something went wrong" instead.
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await seedDemo(page);
+    await seedMatch(page, 'Limited', 'USPSA Level 1 (club match)', { stageWithoutNotes: true });
+    await openTheMatch(page);
+
+    await expect(divisionPicker(page)).toHaveValue('Limited');
+    expect(errors, 'rendering must not throw').toEqual([]);
+  });
+
+  test('accepting the suggestion leaves focus on the field it changed', async ({ page }) => {
+    // Measured pre-fix: document.activeElement was <body>. A keyboard user was dropped at
+    // the top of the document with nothing announced.
+    await seedDemo(page);
+    await seedMatch(page, 'O');
+    await openTheMatch(page);
+
+    await page.getByRole('button', { name: 'Change it to Open' }).click();
+    await expect(divisionPicker(page)).toBeFocused();
+  });
+});
+
 test.describe('Edit Match: the one-way door', () => {
   test('changing match type across sports and back RESTORES the division', async ({ page }) => {
     await seedDemo(page);
     await seedMatch(page, 'Revolver');
     await openTheMatch(page);
-    await expect(page.getByLabel('Division')).toHaveValue('Revolver');
+    await expect(divisionPicker(page)).toHaveValue('Revolver');
 
     // Steel Challenge has no bare 'Revolver' division, so the division has to move.
     await page.getByLabel('Match type').selectOption('Steel Challenge');
-    await expect(page.getByLabel('Division')).not.toHaveValue('Revolver');
+    await expect(divisionPicker(page)).not.toHaveValue('Revolver');
 
     // Straight back. Pre-fix this landed on 'Carry Optics' and stayed there: two taps
     // to lose a value, with nothing said and no way back.
     await page.getByLabel('Match type').selectOption('USPSA Level 1 (club match)');
-    await expect(page.getByLabel('Division')).toHaveValue('Revolver');
+    await expect(divisionPicker(page)).toHaveValue('Revolver');
   });
 
   test('a division valid in BOTH sports is not disturbed by the switch', async ({ page }) => {
@@ -241,9 +314,9 @@ test.describe('Edit Match: the one-way door', () => {
 
     await page.getByLabel('Match type').selectOption('Steel Challenge');
     // Steel Challenge has Open too, so nothing should move.
-    await expect(page.getByLabel('Division')).toHaveValue('Open');
+    await expect(divisionPicker(page)).toHaveValue('Open');
     await page.getByLabel('Match type').selectOption('USPSA Level 1 (club match)');
-    await expect(page.getByLabel('Division')).toHaveValue('Open');
+    await expect(divisionPicker(page)).toHaveValue('Open');
   });
 
   test('LOADING a Steel match does not count as a switch', async ({ page }) => {
@@ -252,7 +325,7 @@ test.describe('Edit Match: the one-way door', () => {
     await seedDemo(page);
     await seedMatch(page, 'Rimfire Pistol Iron', 'Steel Challenge');
     await openTheMatch(page);
-    await expect(page.getByLabel('Division')).toHaveValue('Rimfire Pistol Iron');
+    await expect(divisionPicker(page)).toHaveValue('Rimfire Pistol Iron');
     expect(await storedDivision(page)).toBe('Rimfire Pistol Iron');
   });
 });

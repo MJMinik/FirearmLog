@@ -132,9 +132,20 @@ export const DIVISION_CODE_ALIASES: Readonly<Record<string, string>> = {
  *  would write the decoration back on save, which is the defect in a new costume. */
 export function optionsWithStored(options: readonly string[], stored: string): string[] {
   const list = options.slice();
-  const s = (stored ?? '').trim();
-  if (!s) return list;
-  if (list.includes(s) || list.includes(canonicalDivision(s))) return list;
+  if (!(stored ?? '').trim()) return list;
+  // The test is on the RAW stored string, because the raw string is what the <select>
+  // is bound to. Two earlier versions tested a trimmed or canonicalised form and let
+  // through exactly the values this function exists for:
+  //
+  //   'Rimfire Pistol Open'  -- canonicalises INTO the Steel list, so nothing was
+  //     injected, and the select then matched no option and rendered 'Open'. A rimfire
+  //     match read as centerfire while the callout underneath said otherwise. That is
+  //     the population STEEL_DIVISION_ALIASES was written to protect.
+  //   'Open ' (trailing space) -- trimmed to a member, so nothing was injected, and the
+  //     select silently showed 'Carry Optics' with no callout at all.
+  //
+  // Both were found by a cold audit of the first version of this file.
+  if (list.includes(stored)) return list;
   return [stored, ...list];
 }
 
@@ -161,7 +172,10 @@ export function suggestDivision(stored: string, options: readonly string[]): str
   if (!s) return null;
 
   const exact = options.find((o) => o.toLowerCase() === s.toLowerCase());
-  if (exact) return exact === s ? null : exact;
+  // Compare against the RAW stored value, not the trimmed one: 'Open ' trims to an
+  // exact member and used to return null, which is how a padded division reached the
+  // screen with no correction offered.
+  if (exact) return exact === stored ? null : exact;
 
   const aliased = canonicalDivision(s);
   if (aliased !== s && options.includes(aliased)) return aliased;

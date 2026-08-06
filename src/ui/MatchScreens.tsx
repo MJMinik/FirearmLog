@@ -585,6 +585,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
   const matchGroupRef = useRef<HTMLDivElement>(null);
   const dateFieldRef = useRef<HTMLInputElement>(null);
   const gunFieldRef = useRef<HTMLSelectElement>(null);
+  const divisionFieldRef = useRef<HTMLSelectElement>(null);
   const [discarding, setDiscarding] = useState(false);
   // M4: watch for any real user edit (bubbled change). Programmatic loads and the
   // async first-gun auto-select don't fire input events, so this never false-fires.
@@ -630,7 +631,10 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         // before it was ever shown. Recording the loaded sport here means the snap
         // sees no change and leaves the record alone.
         snapRef.current.lastType = scoringTypeFor(m.matchType);
-        setDivision(m.division); setPowerFactor(m.powerFactor || 'Minor');
+        // A record with no division at all left the <select> uncontrolled, rendering
+        // 'Carry Optics' and writing `undefined` back on save -- the exact untruth this
+        // branch exists to remove, in the one field it is about.
+        setDivision(m.division ?? ''); setPowerFactor(m.powerFactor || 'Minor');
         setFirearmId(m.firearmId);
         setTotalRounds(m.totalRounds == null ? '' : String(m.totalRounds));
         setMatchPercent(m.matchPercent == null ? '' : String(m.matchPercent));
@@ -647,7 +651,12 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
             points: st.points == null ? '' : String(st.points),
             time: st.time == null ? '' : String(st.time),
             percent: st.percent == null ? '' : String(st.percent),
-            notes: st.notes,
+            // ?? '' for the same reason as the match-level fields below, and this one is
+            // worse: st.notes.trim() runs inside the stageObjs useMemo, i.e. during RENDER,
+            // so an undefined stage note does not break Save -- it takes the whole Edit
+            // Match screen down behind the error boundary. Found by a cold audit after the
+            // match-level fix claimed to have closed this class. It had not.
+            notes: st.notes ?? '',
             showBreak: hasHitBreakdown(st),
             alphas: st.alphas == null ? '' : String(st.alphas),
             charlies: st.charlies == null ? '' : String(st.charlies),
@@ -697,6 +706,9 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
   // settles (mount, or a load), so neither counts as a user switch; `parked` holds the
   // division each sport had when it was left, so returning restores it.
   const snapRef = useRef<{ lastType: string | null; parked: Record<string, string> }>({ lastType: null, parked: {} });
+  // The live division, so the snap effect can read it without a state updater.
+  const divisionRef = useRef(division);
+  useEffect(() => { divisionRef.current = division; }, [division]);
   const scoringType = scoringTypeFor(matchType);
   const divisionOptions = scoringType === 'idpa' ? IDPA_DIVISIONS
     : scoringType === 'steel' ? STEEL_DIVISIONS : DIVISIONS;
@@ -729,19 +741,24 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
     st.lastType = scoringType;
     const opts = scoringType === 'idpa' ? IDPA_DIVISIONS
       : scoringType === 'steel' ? STEEL_DIVISIONS : DIVISIONS;
-    setDivision((d) => {
-      // Park the outgoing division against the sport being LEFT, unconditionally. The
-      // first version of this only parked when the value was invalid in the new sport,
-      // and its own E2E caught the hole on the first run: USPSA/Revolver -> Steel snaps
-      // to 'Open', and coming back, 'Open' IS a USPSA division, so the validity check
-      // returned it and the restore was never reached. Revolver was gone exactly as
-      // before. Parking always, and restoring first, is what actually closes it.
-      st.parked[from] = d;
-      const restored = st.parked[scoringType];
+    // Park the outgoing division against the sport being LEFT, unconditionally. The
+    // first version only parked when the value was invalid in the new sport, and its own
+    // E2E caught the hole on the first run: USPSA/Revolver -> Steel snaps to 'Open', and
+    // coming back, 'Open' IS a USPSA division, so the validity check returned it and the
+    // restore was never reached. Revolver was gone exactly as before.
+    //
+    // The parking happens HERE rather than inside the setDivision updater. A cold audit
+    // caught that: a state updater may be invoked more than once and must be pure, so
+    // mutating the ref inside it was a render-phase side effect. divisionRef carries the
+    // live value so this can read it without an updater.
+    const leaving = divisionRef.current;
+    st.parked[from] = leaving;
+    const restored = st.parked[scoringType];
+    setDivision(() => {
       if (restored !== undefined) return restored;
-      const c = canonicalDivision(d);
+      const c = canonicalDivision(leaving);
       if (opts.includes(c)) return c;
-      if (opts.includes(d)) return d;
+      if (opts.includes(leaving)) return leaving;
       return opts[0];
     });
   }, [scoringType]);
@@ -969,7 +986,12 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
               what gets written back. Only the LABEL says the list does not recognise
               it -- decorating the value would write the decoration into the record,
               which is the original defect in a different hat. */}
-          <select value={division} onChange={(e) => setDivision(e.target.value)}>
+          <select
+            ref={divisionFieldRef}
+            id="match-division-select"
+            value={division}
+            aria-describedby={divisionSuggestion ? 'division-suggestion' : undefined}
+            onChange={(e) => setDivision(e.target.value)}>
             {optionsWithStored(divisionOptions, division).map((d) => (
               <option key={d} value={d}>
                 {divisionOptions.includes(d) || divisionOptions.includes(canonicalDivision(d))
@@ -985,16 +1007,28 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
             .suggest-block treatment from the session-105 "Who you are" work rather than
             inventing a second amber callout. */}
         {divisionSuggestion && (
-          <div className="suggest-block">
-            <h3 className="suggest-label">Check this division</h3>
+          // role + aria-live so a screen reader is told the correction exists, and the
+          // <select> points here with aria-describedby so somebody sitting on the
+          // Division field hears it rather than just "Division, O". Both were missing in
+          // the first version; a cold audit measured the gap.
+          <div className="suggest-block" id="division-suggestion" role="group"
+            aria-labelledby="division-suggestion-label" aria-live="polite">
+            <h3 className="suggest-label" id="division-suggestion-label">Check this division</h3>
             <p style={{ margin: '2px 0 8px' }}>
-              This match is saved as <strong>{division}</strong>, which is not a division name.
-              It probably means <strong>{divisionSuggestion}</strong>.
+              This match is saved as <strong>{division}</strong>, which is not one of the
+              divisions in the list. It probably means <strong>{divisionSuggestion}</strong>.
             </p>
             <button
               type="button"
               className="button secondary"
-              onClick={() => { setDivision(divisionSuggestion); setTouched(true); }}>
+              onClick={() => {
+                setDivision(divisionSuggestion);
+                setTouched(true);
+                // The button is about to unmount. Without this, focus lands on <body> and
+                // a keyboard user is dropped at the top of the document with nothing
+                // announced. Send it to the field the change was about.
+                setTimeout(() => divisionFieldRef.current?.focus(), 0);
+              }}>
               Change it to {divisionSuggestion}
             </button>
           </div>
