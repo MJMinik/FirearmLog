@@ -9,7 +9,7 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { DIVISIONS, IDPA_DIVISIONS, STEEL_DIVISIONS, MATCH_TYPES, POWER_FACTORS, canonicalDivision, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown,
   scoringTypeFor, scoreSteelStage, steelMatchTotal, steelStringsExpected, STEEL_STAGES,
   scoreIdpaStage, idpaMatchTotal, reconcileTime, matchSpeedAccuracy, matchWhatItCost, coachingRead,
-  isMinorOnly } from '../lib/competition.ts';
+  isMinorOnly, optionsWithStored, suggestDivision } from '../lib/competition.ts';
 import type { SpeedAccuracy, WhatItCost } from '../lib/competition.ts';
 import { MarkThumb } from './MarkThumb.tsx';
 import { mediaLabel } from './media.ts';
@@ -623,6 +623,13 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         if (!alive || !m) return;
         setOriginal(m);
         setName(m.name); setDate(m.date); setMatchType(m.matchType);
+        // The snap effect below keys on scoringType. Loading a record CHANGES
+        // scoringType whenever the stored match type differs in sport from the
+        // form's default, and without this line that counted as a user switch --
+        // which is exactly how a loaded record used to have its division replaced
+        // before it was ever shown. Recording the loaded sport here means the snap
+        // sees no change and leaves the record alone.
+        snapRef.current.lastType = scoringTypeFor(m.matchType);
         setDivision(m.division); setPowerFactor(m.powerFactor || 'Minor');
         setFirearmId(m.firearmId);
         setTotalRounds(m.totalRounds == null ? '' : String(m.totalRounds));
@@ -672,21 +679,48 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
   }, [editing, id]);
 
   const num = (t: string): number | null => t.trim() === '' ? null : Number(t);
+  // Sport-switch memory for the snap effect below. `lastType` is null until the form
+  // settles (mount, or a load), so neither counts as a user switch; `parked` holds the
+  // division each sport had when it was left, so returning restores it.
+  const snapRef = useRef<{ lastType: string | null; parked: Record<string, string> }>({ lastType: null, parked: {} });
   const scoringType = scoringTypeFor(matchType);
   const divisionOptions = scoringType === 'idpa' ? IDPA_DIVISIONS
     : scoringType === 'steel' ? STEEL_DIVISIONS : DIVISIONS;
-  // Keep the division valid for the sport: switching scoring type swaps the division
-  // list (USPSA / IDPA / Steel), so snap to the first valid division if the current
-  // one isn't in the new list.
+  // Offered beside the picker, never applied. Returns null unless there is a confident
+  // answer, so a value nobody can interpret produces silence rather than a guess.
+  const divisionSuggestion = useMemo(
+    () => suggestDivision(division, divisionOptions), [division, divisionOptions]);
+  // Switching sport swaps the division list, so a division that is not in the new
+  // sport's list has to go somewhere. Two things changed here in session 106.
+  //
+  // (a) IT NO LONGER FIRES ON LOAD. It keys on scoringType, and loading a record
+  //     changes scoringType whenever the stored match type differs in sport from the
+  //     form's default -- which counted as a user switch and replaced the division
+  //     before the record was ever shown. `snapRef.lastType` is set by the load effect
+  //     above, so a load is not a change.
+  //
+  // (b) IT REMEMBERS (Michael, 6 Aug, decision 3a). The outgoing division is parked
+  //     against the sport it belonged to, and coming back restores it. Before this,
+  //     toggling match type across sports and straight back left the division at
+  //     opts[0] permanently -- two taps to lose a value, with nothing said.
+  //
+  // Canonicalising BEFORE the membership test stays, and matters for the same reason
+  // it always did: a saved match in one of the three renamed rimfire divisions is not
+  // found in the list by its old name.
   useEffect(() => {
+    const st = snapRef.current;
+    if (st.lastType === null) { st.lastType = scoringType; return; }
+    if (st.lastType === scoringType) return;
+    const from = st.lastType;
+    st.lastType = scoringType;
     const opts = scoringType === 'idpa' ? IDPA_DIVISIONS
       : scoringType === 'steel' ? STEEL_DIVISIONS : DIVISIONS;
-    // Canonicalise BEFORE the membership test. Without this, a saved match in
-    // one of the three renamed rimfire divisions is not found in the list and
-    // gets snapped to opts[0] -- centerfire "Open" -- and written back on save.
     setDivision((d) => {
       const c = canonicalDivision(d);
-      return opts.includes(c) ? c : (opts.includes(d) ? d : opts[0]);
+      if (opts.includes(c)) return c;
+      if (opts.includes(d)) return d;
+      st.parked[from] = d;
+      return st.parked[scoringType] ?? opts[0];
     });
   }, [scoringType]);
 
@@ -903,14 +937,46 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         </label>
         <label className="field">Match type
           <select value={matchType} onChange={(e) => setMatchType(e.target.value)}>
-            {MATCH_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            {optionsWithStored(MATCH_TYPES, matchType).map((t) => (
+              <option key={t} value={t}>{MATCH_TYPES.includes(t) ? t : `${t} (not a recognised match type)`}</option>
+            ))}
           </select>
         </label>
         <label className="field">Division
+          {/* The OPTION VALUE is the stored string, undecorated, so what was saved is
+              what gets written back. Only the LABEL says the list does not recognise
+              it -- decorating the value would write the decoration into the record,
+              which is the original defect in a different hat. */}
           <select value={division} onChange={(e) => setDivision(e.target.value)}>
-            {divisionOptions.map((d) => <option key={d} value={d}>{d}</option>)}
+            {optionsWithStored(divisionOptions, division).map((d) => (
+              <option key={d} value={d}>
+                {divisionOptions.includes(d) || divisionOptions.includes(canonicalDivision(d))
+                  ? d : `${d} (not a recognised division)`}
+              </option>
+            ))}
           </select>
         </label>
+        {/* Suggest, never apply (Michael, 6 Aug, decision 2a). The record is the truth
+            and the screen's job is to report it; the app does not get to fill something
+            in and save it as fact. Declining costs nothing and changes nothing: the
+            stored value stays selected and Save writes it back unchanged. Reuses the
+            .suggest-block treatment from the session-105 "Who you are" work rather than
+            inventing a second amber callout. */}
+        {divisionSuggestion && (
+          <div className="suggest-block">
+            <h3 className="suggest-label">Check this division</h3>
+            <p style={{ margin: '2px 0 8px' }}>
+              This match is saved as <strong>{division}</strong>, which is not a division name.
+              It probably means <strong>{divisionSuggestion}</strong>.
+            </p>
+            <button
+              type="button"
+              className="button secondary"
+              onClick={() => { setDivision(divisionSuggestion); setTouched(true); }}>
+              Change it to {divisionSuggestion}
+            </button>
+          </div>
+        )}
         {scoringType === 'uspsa' && (
           <>
             <h2>Power Factor
