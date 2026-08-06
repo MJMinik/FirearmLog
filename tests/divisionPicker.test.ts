@@ -216,8 +216,15 @@ test('the mismatch kind names the real difference, which is what the sentence tu
   assert.equal(divisionMismatchKind('Rimfire Pistol Open', 'Rimfire Pistol Optics'), 'unlisted');
 });
 
-test('a spacing difference is not reported as a spelling one, or the sentence lies twice', () => {
-  // ' open ' differs by BOTH. Spacing is checked first only when trimming alone resolves
-  // it; here it does not, so the honest answer is spelling.
-  assert.equal(divisionMismatchKind(' open ', 'Open'), 'spelling');
+test('a value that is wrong in BOTH ways says so, rather than naming one and hiding the other', () => {
+  // A cold audit measured '  carry optics  ' reported as 'spelling', so the callout named
+  // the case and said nothing about the padding -- and because HTML collapses the
+  // padding, the reader got a sentence about one invisible difference while a button
+  // silently fixed two.
+  assert.equal(divisionMismatchKind(' open ', 'Open'), 'spacing-and-spelling');
+  assert.equal(divisionMismatchKind('  carry optics  ', 'Carry Optics'), 'spacing-and-spelling');
+  // And the single-fault cases still answer singly.
+  assert.equal(divisionMismatchKind('Open ', 'Open'), 'spacing');
+  assert.equal(divisionMismatchKind('open', 'Open'), 'spelling');
+  assert.equal(divisionMismatchKind('O', 'Open'), 'unlisted');
 });

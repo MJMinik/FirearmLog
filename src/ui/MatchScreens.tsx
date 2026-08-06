@@ -281,7 +281,13 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
         <h2>Match</h2>
         <div className="row"><span className="label">Date</span><span className="value">{formatDayKey(match.date)}</span></div>
         <div className="row"><span className="label">Type</span><span className="value">{match.matchType}</span></div>
-        <div className="row"><span className="label">Division</span><span className="value">{canonicalDivision(match.division)}{!isSteel && !isIdpa && match.powerFactor ? ` · ${match.powerFactor}` : ''}</span></div>
+        {/* The RAW stored division, not canonicalDivision(). A cold audit measured this
+            screen reading "Rimfire Pistol Optics" while the Edit screen one tap away
+            showed "Rimfire Pistol Open (not in the list)" -- two screens, one record,
+            opposite claims, which is the exact sin this work exists to remove. The alias
+            map still does its job where it belongs: offering the rename in the editor,
+            where it can be declined. */}
+        <div className="row"><span className="label">Division</span><span className="value">{match.division}{!isSteel && !isIdpa && match.powerFactor ? ` · ${match.powerFactor}` : ''}</span></div>
         <div className="row"><span className="label">Gun</span><span className="value">{gunName}</span></div>
         {match.totalRounds != null && <div className="row"><span className="label">Rounds fired</span><span className="value">{match.totalRounds.toLocaleString()}</span></div>}
         {match.matchPercent != null && <div className="row"><span className="label">Match percent</span><span className="value">{match.matchPercent}%</span></div>}
@@ -623,14 +629,12 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         const [m, allMedia] = await Promise.all([getOne<Match>('matches', id), getAll<Media>('media')]);
         if (!alive || !m) return;
         setOriginal(m);
-        setName(m.name ?? ''); setDate(m.date); setMatchType(m.matchType);
-        // The snap effect below keys on scoringType. Loading a record CHANGES
-        // scoringType whenever the stored match type differs in sport from the
-        // form's default, and without this line that counted as a user switch --
-        // which is exactly how a loaded record used to have its division replaced
-        // before it was ever shown. Recording the loaded sport here means the snap
-        // sees no change and leaves the record alone.
-        snapRef.current.lastType = scoringTypeFor(m.matchType);
+        // matchType and date were the two string fields never defaulted, and a cold
+        // audit measured both: a record with no matchType takes Edit Match down behind
+        // the error boundary (scoringTypeFor calls .startsWith on it). MATCH_TYPES[0]
+        // rather than '' because an empty match type has no meaning and the picker
+        // would inject a blank row for it; the record is not rewritten unless saved.
+        setName(m.name ?? ''); setDate(m.date ?? ''); setMatchType(m.matchType ?? MATCH_TYPES[0]);
         // A record with no division at all left the <select> uncontrolled, rendering
         // 'Carry Optics' and writing `undefined` back on save -- the exact untruth this
         // branch exists to remove, in the one field it is about.
@@ -705,10 +709,6 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
   // Sport-switch memory for the snap effect below. `lastType` is null until the form
   // settles (mount, or a load), so neither counts as a user switch; `parked` holds the
   // division each sport had when it was left, so returning restores it.
-  const snapRef = useRef<{ lastType: string | null; parked: Record<string, string> }>({ lastType: null, parked: {} });
-  // The live division, so the snap effect can read it without a state updater.
-  const divisionRef = useRef(division);
-  useEffect(() => { divisionRef.current = division; }, [division]);
   const scoringType = scoringTypeFor(matchType);
   const divisionOptions = scoringType === 'idpa' ? IDPA_DIVISIONS
     : scoringType === 'steel' ? STEEL_DIVISIONS : DIVISIONS;
@@ -716,56 +716,35 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
   // answer, so a value nobody can interpret produces silence rather than a guess.
   const divisionSuggestion = useMemo(
     () => suggestDivision(division, divisionOptions), [division, divisionOptions]);
-  // Switching sport swaps the division list, so a division that is not in the new
-  // sport's list has to go somewhere. Two things changed here in session 106.
+  // THE SNAP EFFECT IS GONE. It used to replace the division when the sport changed, and
+  // three audit rounds each found it writing a value the user had not chosen:
   //
-  // (a) IT NO LONGER FIRES ON LOAD. It keys on scoringType, and loading a record
-  //     changes scoringType whenever the stored match type differs in sport from the
-  //     form's default -- which counted as a user switch and replaced the division
-  //     before the record was ever shown. `snapRef.lastType` is set by the load effect
-  //     above, so a load is not a change.
+  //   round 2 -- it fired on LOAD, replacing a division before the record was shown.
+  //   round 3 -- it called canonicalDivision() and returned it, so picking a match type
+  //              turned a stored 'Rimfire Pistol Open' into 'Rimfire Pistol Optics'.
+  //   round 4 -- with that removed, the remaining `opts[0]` fallback did the same thing
+  //              more crudely: the SAME record came back 'Open', a centerfire division on
+  //              a rimfire match, from one match-type tap. And a record with no division
+  //              at all was given 'Open' out of nowhere.
   //
-  // (b) IT REMEMBERS (Michael, 6 Aug, decision 3a). The outgoing division is parked
-  //     against the sport it belonged to, and coming back restores it. Before this,
-  //     toggling match type across sports and straight back left the division at
-  //     opts[0] permanently -- two taps to lose a value, with nothing said.
+  // Each fix narrowed the breach instead of closing it, which is the tell that the
+  // mechanism was wrong rather than its details. There is no version of "replace the
+  // division automatically" that does not write something the user did not choose, and
+  // that is the binding decision (2a).
   //
-  // Canonicalising BEFORE the membership test stays, and matters for the same reason
-  // it always did: a saved match in one of the three renamed rimfire divisions is not
-  // found in the list by its old name.
-  useEffect(() => {
-    const st = snapRef.current;
-    if (st.lastType === null) { st.lastType = scoringType; return; }
-    if (st.lastType === scoringType) return;
-    const from = st.lastType;
-    st.lastType = scoringType;
-    const opts = scoringType === 'idpa' ? IDPA_DIVISIONS
-      : scoringType === 'steel' ? STEEL_DIVISIONS : DIVISIONS;
-    // Park the outgoing division against the sport being LEFT, unconditionally. The
-    // first version only parked when the value was invalid in the new sport, and its own
-    // E2E caught the hole on the first run: USPSA/Revolver -> Steel snaps to 'Open', and
-    // coming back, 'Open' IS a USPSA division, so the validity check returned it and the
-    // restore was never reached. Revolver was gone exactly as before.
-    //
-    // The parking happens HERE rather than inside the setDivision updater. A cold audit
-    // caught that: a state updater may be invoked more than once and must be pure, so
-    // mutating the ref inside it was a render-phase side effect. divisionRef carries the
-    // live value so this can read it without an updater.
-    const leaving = divisionRef.current;
-    st.parked[from] = leaving;
-    const restored = st.parked[scoringType];
-    setDivision(() => {
-      if (restored !== undefined) return restored;
-      // No canonicalisation here. It used to read `canonicalDivision(leaving)` and
-      // return it, which meant choosing a MATCH TYPE silently rewrote the DIVISION:
-      // a cold audit measured a record holding 'Rimfire Pistol Open' being saved as
-      // 'Rimfire Pistol Optics' after nothing but a match-type change. That is the one
-      // thing this branch is not allowed to do. The rename is still offered, by the
-      // callout, where the user can decline it.
-      if (opts.includes(leaving)) return leaving;
-      return opts[0];
-    });
-  }, [scoringType]);
+  // It is not needed any more, and that is what makes removing it safe rather than
+  // merely simpler. The reason it existed was that a division outside the new sport's
+  // list had nowhere to be displayed -- the <select> fell through to the first option.
+  // optionsWithStored() fixed that: the value is now representable in ANY list, labelled
+  // "(not in the list)", with a callout offering the right one. So the division simply
+  // stays put, the picker shows it honestly, and the shooter changes it if he wants to.
+  //
+  // Decision 3a (switching sport and back must restore the division) is satisfied by
+  // construction now: nothing is taken away, so there is nothing to give back. The
+  // parking map that used to do that job is gone with it, along with the whole class of
+  // bug round 4 found lurking in it -- its own coverage gap, measured: a sabotage of the
+  // parking passed 21 of 21 tests.
+
 
   // T3-6a guardrail: Production, Carry Optics, Limited Optics, and PCC score Minor
   // only (competition.ts MINOR_ONLY_DIVISIONS) -- USPSA matches only, since IDPA and
@@ -981,7 +960,10 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         <label className="field">Match type
           <select value={matchType} onChange={(e) => setMatchType(e.target.value)}>
             {optionsWithStored(MATCH_TYPES, matchType).map((t) => (
-              <option key={t} value={t}>{MATCH_TYPES.includes(t) ? t : `${t} (not a recognised match type)`}</option>
+              <option key={t} value={t}>
+                {MATCH_TYPES.includes(t) ? t
+                  : `${t.trim() === t ? t : `"${t}"`} (not in the list)`}
+              </option>
             ))}
           </select>
         </label>
@@ -1028,15 +1010,26 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
             aria-labelledby="division-suggestion-label">
             <h3 className="suggest-label" id="division-suggestion-label">Check this division</h3>
             <p style={{ margin: '2px 0 8px' }}>
-              {divisionMismatchKind(division, divisionSuggestion) === 'spacing'
-                ? <>This match is saved as <strong>&quot;{division}&quot;</strong>, with extra
-                    spaces around it. Tidying it up makes it <strong>{divisionSuggestion}</strong>.</>
-                : divisionMismatchKind(division, divisionSuggestion) === 'spelling'
-                  ? <>This match is saved as <strong>{division}</strong>, which is spelled
-                      differently from <strong>{divisionSuggestion}</strong> in the list.</>
-                  : <>This match is saved as <strong>{division === '' ? 'nothing at all' : division}</strong>,
-                      which is not one of the divisions in the list. It probably means{' '}
-                      <strong>{divisionSuggestion}</strong>.</>}
+              {(() => {
+                // Every branch quotes the stored value, because the differences this
+                // sentence is about -- spaces and case -- are the ones a reader cannot
+                // see without the quotes.
+                const q = <strong>&quot;{division}&quot;</strong>;
+                switch (divisionMismatchKind(division, divisionSuggestion)) {
+                  case 'spacing':
+                    return <>This match is saved as {q}, with extra spaces around it.
+                      Tidying it up makes it <strong>{divisionSuggestion}</strong>.</>;
+                  case 'spelling':
+                    return <>This match is saved as {q}, which is spelled differently from{' '}
+                      <strong>{divisionSuggestion}</strong> in the list.</>;
+                  case 'spacing-and-spelling':
+                    return <>This match is saved as {q}, with extra spaces and a different
+                      spelling from <strong>{divisionSuggestion}</strong> in the list.</>;
+                  default:
+                    return <>This match is saved as {q}, which is not one of the divisions
+                      in the list. It probably means <strong>{divisionSuggestion}</strong>.</>;
+                }
+              })()}
             </p>
             <button
               type="button"

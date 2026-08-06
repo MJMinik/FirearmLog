@@ -170,10 +170,19 @@ function matchesParentheticalCode(option: string, code: string): boolean {
  *  and which reads as nonsense, because HTML collapses the space and the two look
  *  identical on screen. Naming the actual difference is what makes the sentence true and
  *  the button's effect predictable. */
-export function divisionMismatchKind(stored: string, suggestion: string): 'spacing' | 'spelling' | 'unlisted' {
+export function divisionMismatchKind(stored: string, suggestion: string):
+  'spacing' | 'spelling' | 'spacing-and-spelling' | 'unlisted' {
   const s = stored ?? '';
-  if (s !== s.trim() && s.trim() === suggestion) return 'spacing';
-  if (s.trim().toLowerCase() === suggestion.toLowerCase()) return 'spelling';
+  const padded = s !== s.trim();
+  const miscased = s.trim() !== suggestion && s.trim().toLowerCase() === suggestion.toLowerCase();
+  // Both kinds at once is its own answer rather than whichever test ran first. A cold
+  // audit measured '  carry optics  ' reported as 'spelling', so the sentence named the
+  // case and hid the padding -- and since HTML collapses the padding, the reader saw a
+  // sentence that mentioned one invisible difference and not the other, then a button
+  // that fixed both.
+  if (padded && miscased) return 'spacing-and-spelling';
+  if (padded && s.trim() === suggestion) return 'spacing';
+  if (miscased) return 'spelling';
   return 'unlisted';
 }
 

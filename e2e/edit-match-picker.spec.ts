@@ -22,8 +22,8 @@ const MATCH_ID = 'e2e-picker-match';
 /** Write a match record directly, the way an import would, then reload so the app
  *  reads it fresh. `division` is written verbatim: no normalisation anywhere. */
 async function seedMatch(page: Page, division: string, matchType = 'USPSA Level 1 (club match)',
-  opts: { minimal?: boolean; stageWithoutNotes?: boolean; noDivision?: boolean } = {}) {
-  await page.evaluate(async ({ id, division, matchType, minimal, stageWithoutNotes, noDivision }) => {
+  opts: { minimal?: boolean; stageWithoutNotes?: boolean; noDivision?: boolean; noMatchType?: boolean } = {}) {
+  await page.evaluate(async ({ id, division, matchType, minimal, stageWithoutNotes, noDivision, noMatchType }) => {
     // A gun is REQUIRED by the form's own validation, so a match seeded without one
     // cannot be saved and the round-trip tests never reach their assertion. Read a real
     // one from the seeded demo rather than inventing an id.
@@ -38,7 +38,8 @@ async function seedMatch(page: Page, division: string, matchType = 'USPSA Level 
       };
     });
     const rec = {
-      id, date: '2026-08-02', name: 'Picker Round Trip', matchType,
+      id, date: '2026-08-02', name: 'Picker Round Trip',
+      ...(noMatchType ? {} : { matchType }),
       ...(noDivision ? {} : { division }),
       powerFactor: 'Minor', firearmId, scoringType: 'uspsa',
       totalRounds: null, matchPercent: null, divisionPlace: null, divisionOf: null,
@@ -63,7 +64,8 @@ async function seedMatch(page: Page, division: string, matchType = 'USPSA Level 
       };
     });
   }, { id: MATCH_ID, division, matchType, minimal: !!opts.minimal,
-       stageWithoutNotes: !!opts.stageWithoutNotes, noDivision: !!opts.noDivision });
+       stageWithoutNotes: !!opts.stageWithoutNotes, noDivision: !!opts.noDivision,
+       noMatchType: !!opts.noMatchType });
   await page.reload();
 }
 
@@ -317,6 +319,64 @@ test.describe('Edit Match: round 3 of the cold audit', () => {
     expect(labels[0]).toBe('Rimfire Pistol Open (not in the list)');
   });
 
+  test('a match-type change never invents a division for a record that had none', async ({ page }) => {
+    // Measured in round 4: a record holding '' came back 'Open' after one match-type tap
+    // and a save. Round 3 made blank a first-class state; round 4 found the fallback
+    // still fabricating a value for it.
+    await seedDemo(page);
+    await seedMatch(page, '');
+    await openTheMatch(page);
+    await page.getByLabel('Match type').selectOption('Steel Challenge');
+    await saveAndWaitForWrite(page);
+    expect(await storedDivision(page), 'a blank division must stay blank').toBe('');
+  });
+
+  test('five sport switches and a division picked in the middle: nothing is discarded', async ({ page }) => {
+    // Round 4 sabotaged the old parking map and watched 21 of 21 tests pass, because no
+    // test switched sports more than twice or changed the division while in the second
+    // sport. The parking is gone now, but the property it was meant to protect is the
+    // one worth asserting, so this walks the sequence that exposed the gap.
+    await seedDemo(page);
+    await seedMatch(page, 'Revolver');
+    await openTheMatch(page);
+
+    await page.getByLabel('Match type').selectOption('Steel Challenge');
+    await divisionPicker(page).selectOption('Rimfire Pistol Iron');
+    await page.getByLabel('Match type').selectOption('USPSA Level 1 (club match)');
+    await expect(divisionPicker(page)).toHaveValue('Rimfire Pistol Iron');
+    await page.getByLabel('Match type').selectOption('Steel Challenge');
+    await divisionPicker(page).selectOption('PCC Iron');
+    await page.getByLabel('Match type').selectOption('IDPA Match');
+    await page.getByLabel('Match type').selectOption('Steel Challenge');
+    // The shooter's LAST choice survives every switch. Under the old parking map this
+    // came back 'Rimfire Pistol Iron' -- an earlier choice silently reinstated over a
+    // later one.
+    await expect(divisionPicker(page)).toHaveValue('PCC Iron');
+  });
+
+  test('a match with no matchType at all still opens', async ({ page }) => {
+    // Round 4: the screen went behind the error boundary with "Something went wrong",
+    // because scoringTypeFor calls .startsWith on it. matchType and date were the two
+    // string fields never defaulted at the load boundary.
+    const errors: string[] = [];
+    page.on('pageerror', (e) => errors.push(e.message));
+    await seedDemo(page);
+    await seedMatch(page, 'Limited', 'USPSA Level 1 (club match)', { noMatchType: true });
+    await openTheMatch(page);
+    await expect(divisionPicker(page)).toHaveValue('Limited');
+    expect(errors, 'a missing matchType must not take the screen down').toEqual([]);
+  });
+
+  test('the detail screen and the edit screen agree about the same record', async ({ page }) => {
+    // Round 4 measured the detail screen reading 'Rimfire Pistol Optics' while Edit one
+    // tap away showed 'Rimfire Pistol Open (not in the list)'.
+    await seedDemo(page);
+    await seedMatch(page, 'Rimfire Pistol Open', 'Steel Challenge');
+    await gotoTab(page, 'Compete');
+    await page.getByText('Picker Round Trip').first().click();
+    await expect(page.getByText('Rimfire Pistol Open', { exact: false }).first()).toBeVisible();
+  });
+
   test('a blank division shows as Not set rather than as the first division', async ({ page }) => {
     // The importer writes '' when the results table carries no division column, so this
     // is a shipped state. Measured pre-fix: it rendered 'Carry Optics' with no callout.
@@ -340,8 +400,14 @@ test.describe('Edit Match: round 3 of the cold audit', () => {
     await openTheMatch(page);
     await page.getByLabel('Match type').selectOption('Steel Challenge');
     await saveAndWaitForWrite(page);
-    const after = await storedDivision(page);
-    expect(after, 'a match-type change must never convert the division').not.toBe('Rimfire Pistol Optics');
+    // ASSERT THE VALUE, NOT THE ABSENCE OF ONE WRONG VALUE. The first version read
+    // `.not.toBe('Rimfire Pistol Optics')`, which 'Open' satisfies, and '' satisfies, and
+    // 'zzz' satisfies. It was GREEN while the division was being rewritten to 'Open' --
+    // a test named for the constraint it was failing to check, which is why the defect
+    // survived a whole audit round.
+    expect(await storedDivision(page),
+      'a match-type change must never write ANY division the user did not choose')
+      .toBe('Rimfire Pistol Open');
   });
 
   test('the field points a screen reader at the correction', async ({ page }) => {
@@ -374,12 +440,14 @@ test.describe('Edit Match: the one-way door', () => {
     await openTheMatch(page);
     await expect(divisionPicker(page)).toHaveValue('Revolver');
 
-    // Steel Challenge has no bare 'Revolver' division, so the division has to move.
+    // Steel Challenge has no bare 'Revolver'. The division STAYS ANYWAY, shown as
+    // not-in-the-list, because replacing it would be writing something the shooter did
+    // not choose. This assertion inverted when the snap effect was removed in round 4:
+    // it used to require the value to move, which is the behaviour that turned out to be
+    // the defect.
     await page.getByLabel('Match type').selectOption('Steel Challenge');
-    await expect(divisionPicker(page)).not.toHaveValue('Revolver');
+    await expect(divisionPicker(page)).toHaveValue('Revolver');
 
-    // Straight back. Pre-fix this landed on 'Carry Optics' and stayed there: two taps
-    // to lose a value, with nothing said and no way back.
     await page.getByLabel('Match type').selectOption('USPSA Level 1 (club match)');
     await expect(divisionPicker(page)).toHaveValue('Revolver');
   });
