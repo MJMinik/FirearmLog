@@ -80,6 +80,144 @@ export function canonicalDivision(division: string): string {
   return STEEL_DIVISION_ALIASES[division] ?? division;
 }
 
+/** ---------------------------------------------------------------------------
+ *  A PICKER MUST BE ABLE TO SHOW WHAT THE RECORD HOLDS (session 106, 6 Aug 2026)
+ *
+ *  A <select> whose value matches no <option> renders the FIRST option. So a match
+ *  stored with division "O" -- which is what the PractiScore importer writes, because
+ *  it stores that column verbatim (practiscore.ts, `division: (cell(...) ?? '').trim()`)
+ *  -- displayed as "Carry Optics", DIVISIONS[0], while the record still said "O".
+ *  Save wrote "O" straight back. The screen and the record disagreed and the screen
+ *  was the one lying.
+ *
+ *  The repair pattern was already in this codebase and had been applied to exactly one
+ *  of three pickers: `pickableGuns(list, keepIds)` forces the referenced gun into its
+ *  own option list so a match on a retired gun does not silently reassign itself. These
+ *  two helpers extend that principle to the pickers that were missed.
+ *
+ *  Read STEEL_DIVISION_ALIASES above for the evidence that this defect was already
+ *  KNOWN: that map exists, in its author's own words, because "the match form snaps a
+ *  division it does not recognise to the first in the list". It routed around the bug.
+ *  This fixes it, so the next rename does not need a workaround.
+ *  ------------------------------------------------------------------------- */
+
+/** USPSA short codes that appear in PractiScore results tables. DELIBERATELY SHORT and
+ *  deliberately conservative: a wrong suggestion is worse than no suggestion, because
+ *  the whole point is that the user decides. Codes that are genuinely ambiguous are
+ *  LEFT OUT rather than guessed -- "L" could be Limited or a truncated Limited Optics,
+ *  and "R" could be Revolver or Rimfire, so neither is here. IDPA and Steel codes are
+ *  not listed because they do not need to be: those division names carry their own code
+ *  in parentheses, and matchesParentheticalCode() below derives the mapping from the
+ *  option list itself rather than from a table somebody has to maintain. */
+export const DIVISION_CODE_ALIASES: Readonly<Record<string, string>> = {
+  O: 'Open',
+  CO: 'Carry Optics',
+  LO: 'Limited Optics',
+  LTD: 'Limited',
+  PROD: 'Production',
+  SS: 'Single Stack',
+  REV: 'Revolver',
+};
+
+/** The option list, plus the stored value when the list cannot represent it.
+ *
+ *  Returns the list UNCHANGED when the stored value is already in it (including via the
+ *  Steel alias map), so the common path allocates nothing new and the picker is
+ *  untouched for every record that was already fine. An empty or whitespace stored value
+ *  is NOT injected: "no division chosen" is representable as an empty select, and adding
+ *  a blank option would be inventing a choice.
+ *
+ *  The caller renders the injected entry with its own label; this returns raw values so
+ *  the SAVED STRING round-trips byte-for-byte. Anything that decorated the value here
+ *  would write the decoration back on save, which is the defect in a new costume. */
+export function optionsWithStored(options: readonly string[], stored: string): string[] {
+  const list = options.slice();
+  // A BLANK division is a real stored state, not an absence: the PractiScore importer
+  // writes '' when the results table has no division column, and PractiScoreImport.tsx
+  // already branches on `me.division === ''`. An earlier version of this function
+  // returned the list untouched here and its comment claimed 'no division chosen' was
+  // representable as an empty select. Measured by a cold audit: it is not. There is no
+  // empty <option>, so value='' fell through to the first one and a blank division
+  // rendered as 'Carry Optics'. Injecting the empty string gives it an option of its own.
+  if (stored === undefined || stored === null) return list;
+  // The test is on the RAW stored string, because the raw string is what the <select>
+  // is bound to. Two earlier versions tested a trimmed or canonicalised form and let
+  // through exactly the values this function exists for:
+  //
+  //   'Rimfire Pistol Open'  -- canonicalises INTO the Steel list, so nothing was
+  //     injected, and the select then matched no option and rendered 'Open'. A rimfire
+  //     match read as centerfire while the callout underneath said otherwise. That is
+  //     the population STEEL_DIVISION_ALIASES was written to protect.
+  //   'Open ' (trailing space) -- trimmed to a member, so nothing was injected, and the
+  //     select silently showed 'Carry Optics' with no callout at all.
+  //
+  // Both were found by a cold audit of the first version of this file.
+  if (list.includes(stored)) return list;
+  return [stored, ...list];
+}
+
+/** True when `option` carries `code` as its parenthetical, e.g. "Carry Optics (CO)"
+ *  for "CO". Case-insensitive. This is what lets IDPA and any future coded division
+ *  set work with no table entry at all. */
+function matchesParentheticalCode(option: string, code: string): boolean {
+  const m = option.match(/\(([^)]+)\)\s*$/);
+  return !!m && m[1].trim().toLowerCase() === code.toLowerCase();
+}
+
+/** Why a stored division differs from the division it probably means. The callout used
+ *  to say "saved as X, which is not one of the divisions in the list, it probably means
+ *  X" whenever the only difference was whitespace or case -- which a cold audit measured
+ *  and which reads as nonsense, because HTML collapses the space and the two look
+ *  identical on screen. Naming the actual difference is what makes the sentence true and
+ *  the button's effect predictable. */
+export function divisionMismatchKind(stored: string, suggestion: string):
+  'spacing' | 'spelling' | 'spacing-and-spelling' | 'unlisted' {
+  const s = stored ?? '';
+  const padded = s !== s.trim();
+  const miscased = s.trim() !== suggestion && s.trim().toLowerCase() === suggestion.toLowerCase();
+  // Both kinds at once is its own answer rather than whichever test ran first. A cold
+  // audit measured '  carry optics  ' reported as 'spelling', so the sentence named the
+  // case and hid the padding -- and since HTML collapses the padding, the reader saw a
+  // sentence that mentioned one invisible difference and not the other, then a button
+  // that fixed both.
+  if (padded && miscased) return 'spacing-and-spelling';
+  if (padded && s.trim() === suggestion) return 'spacing';
+  if (miscased) return 'spelling';
+  return 'unlisted';
+}
+
+/** The division this stored value most likely means, or null when there is no confident
+ *  answer. NEVER applied automatically -- the caller offers it and the user decides,
+ *  which is the whole of decision 2a: nothing is written that Michael did not say.
+ *
+ *  Resolution order, most certain first:
+ *    1. It already IS an option (case-insensitively, or via the Steel alias map).
+ *    2. It is an option's parenthetical code -- "SSP" for "Stock Service Pistol (SSP)".
+ *    3. It is a known USPSA short code AND that division is in this option list.
+ *  Anything else returns null. A suggestion is only ever returned when it is present in
+ *  the options passed in, so this can never propose a division from another sport. */
+export function suggestDivision(stored: string, options: readonly string[]): string | null {
+  const s = (stored ?? '').trim();
+  if (!s) return null;
+
+  const exact = options.find((o) => o.toLowerCase() === s.toLowerCase());
+  // Compare against the RAW stored value, not the trimmed one: 'Open ' trims to an
+  // exact member and used to return null, which is how a padded division reached the
+  // screen with no correction offered.
+  if (exact) return exact === stored ? null : exact;
+
+  const aliased = canonicalDivision(s);
+  if (aliased !== s && options.includes(aliased)) return aliased;
+
+  const byCode = options.find((o) => matchesParentheticalCode(o, s));
+  if (byCode) return byCode;
+
+  const mapped = DIVISION_CODE_ALIASES[s.toUpperCase()];
+  if (mapped && options.includes(mapped)) return mapped;
+
+  return null;
+}
+
 export const POWER_FACTORS = ['Minor', 'Major'];
 
 /** T3-6a guardrail: these four USPSA divisions score Minor power factor ONLY --
