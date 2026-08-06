@@ -12,6 +12,7 @@ import {
   deductUsageFromStock, restoreDeductedStock, usageThatMovedStock,
 } from './costing.ts';
 import { stampUpdate } from './stamps.ts';
+import { normalizeRecord, normalizeRecords } from './recordShape.ts';
 
 const DB_NAME = 'firearmlog';
 // v3 (T3-1, Timed Skills): adds the additive 'skillSets' object store. Same
@@ -175,12 +176,28 @@ export function withExclusiveIo<T>(what: string, fn: () => Promise<T>): Promise<
   return withIoGuard(what, fn);
 }
 
+/**
+ * THE READ BOUNDARY (session 107). Every record leaving storage passes through
+ * `normalizeRecord`, which fills any field `types.ts` declares as a plain
+ * required `string` and that the stored data does not actually carry. See
+ * `recordShape.ts` for why this lives here rather than at the call sites: a
+ * match with no `date` took the whole Compete tab down, and a sweep found 47
+ * sites of the same class across 23 files, only two thirds of them sorts.
+ *
+ * This module never writes as a result of normalising. It is NOT true that a
+ * filled-in blank only reaches disk when the user saves — several app-initiated
+ * paths read records and write them straight back, and `exportSnapshot` puts every
+ * store into the `.flog` backup. `recordShape.ts` lists them and explains why that
+ * is safe. (An earlier version of THIS comment claimed read-only in the same commit
+ * where recordShape.ts corrected exactly that sentence — two files disagreeing about
+ * the same fact, which is the defect class both were written to avoid.)
+ */
 export async function getAll<T>(store: StoreName): Promise<T[]> {
   const db = await openDb();
   const tx = db.transaction(store, 'readonly');
   const req = tx.objectStore(store).getAll();
   await txDone(tx);
-  return req.result as T[];
+  return normalizeRecords(store, req.result as T[]);
 }
 
 export async function getOne<T>(store: StoreName, id: string): Promise<T | undefined> {
@@ -188,7 +205,8 @@ export async function getOne<T>(store: StoreName, id: string): Promise<T | undef
   const tx = db.transaction(store, 'readonly');
   const req = tx.objectStore(store).get(id);
   await txDone(tx);
-  return req.result as T | undefined;
+  const row = req.result as T | undefined;
+  return row === undefined ? undefined : normalizeRecord(store, row);
 }
 
 /**
@@ -217,7 +235,7 @@ export async function getMediaForOwner(
     req.onsuccess = () => {
       const cursor = req.result;
       if (!cursor) { resolve(); return; }
-      const m = cursor.value as Media;
+      const m = normalizeRecord('media', cursor.value as Media);
       if (m.ownerType === ownerType && m.ownerId === ownerId) out.push(m);
       cursor.continue();
     };
@@ -241,7 +259,10 @@ async function scanStore<T>(store: StoreName, visit: (record: T) => void): Promi
     req.onsuccess = () => {
       const cursor = req.result;
       if (!cursor) { resolve(); return; }
-      visit(cursor.value as T);
+      // Normalised like every other read, even though today's callers keep only
+      // ids: a future caller doing string work here should not have to know
+      // that this one path was the exception.
+      visit(normalizeRecord(store, cursor.value as T));
       cursor.continue();
     };
     req.onerror = () => reject(req.error);

@@ -5,6 +5,7 @@
 //     EventSource) may appear ONLY in the telemetry chokepoint (the one auditable
 //     send point). The single allow-listed exception is SetupWizard's same-origin
 //     demo-dataset fetch. Anything else fails the build (R-C).
+//  4. The read boundary's shape map matches the data model (scripts/check-shape.mjs).
 //  3. Day-keys are LOCAL (lib/dates.ts, old bug F8). A YYYY-MM-DD cut out of
 //     toISOString is the UTC day, which is TOMORROW for anyone west of
 //     Greenwich from late afternoon on: the CSV import's past-imports list
@@ -13,6 +14,7 @@
 //     than in a review checklist because a convention nobody can forget is the
 //     only kind that holds.
 import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { checkRecordShape } from './check-shape.mjs';
 import { join } from 'node:path';
 
 function walk(dir, out = []) {
@@ -69,5 +71,9 @@ for (const path of walk('src')) {
     });
   }
 }
+// (4) THE READ-BOUNDARY KEEPER — see scripts/check-shape.mjs, which holds
+// src/lib/recordShape.ts to src/lib/types.ts using TypeScript's own parser.
+checkRecordShape((message) => { console.error(message); bad++; });
+
 if (bad > 0) process.exit(1);
 console.log('imports clean');

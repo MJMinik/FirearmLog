@@ -817,7 +817,10 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
   for (const m of shownMatches) {
     if (!m.date) continue;
     const list = calItems.get(m.date) ?? [];
-    list.push({ kind: 'match', id: m.id, label: m.name || 'Match', sub: `${m.matchType ?? 'Match'} · ${canonicalDivision(m.division ?? '')}` });
+    // `||` rather than `??` on matchType (session 107): the read boundary fills a
+    // missing one with '', which `??` passes straight through, and the calendar row
+    // then read " · Carry Optics" with nothing before the separator.
+    list.push({ kind: 'match', id: m.id, label: m.name || 'Match', sub: `${m.matchType || 'Match'} · ${canonicalDivision(m.division ?? '')}` });
     calItems.set(m.date, list);
   }
 
