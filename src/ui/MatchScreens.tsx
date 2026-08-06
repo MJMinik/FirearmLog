@@ -634,7 +634,12 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         // the error boundary (scoringTypeFor calls .startsWith on it). MATCH_TYPES[0]
         // rather than '' because an empty match type has no meaning and the picker
         // would inject a blank row for it; the record is not rewritten unless saved.
-        setName(m.name ?? ''); setDate(m.date ?? ''); setMatchType(m.matchType ?? MATCH_TYPES[0]);
+        // `||` rather than `??` (session 107, and this was a REGRESSION caught by a cold
+        // audit): the read boundary now fills a missing matchType with '', so `??` never
+        // fires and the paragraph above was quietly defeated — the picker received '' and
+        // rendered exactly the blank "(not in the list)" row that comment forbids. Empty
+        // and absent mean the same thing for this field, so both take the default.
+        setName(m.name ?? ''); setDate(m.date ?? ''); setMatchType(m.matchType || MATCH_TYPES[0]);
         // A record with no division at all left the <select> uncontrolled, rendering
         // 'Carry Optics' and writing `undefined` back on save -- the exact untruth this
         // branch exists to remove, in the one field it is about.
