@@ -9,7 +9,7 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { DIVISIONS, IDPA_DIVISIONS, STEEL_DIVISIONS, MATCH_TYPES, POWER_FACTORS, canonicalDivision, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown,
   scoringTypeFor, scoreSteelStage, steelMatchTotal, steelStringsExpected, STEEL_STAGES,
   scoreIdpaStage, idpaMatchTotal, reconcileTime, matchSpeedAccuracy, matchWhatItCost, coachingRead,
-  isMinorOnly, optionsWithStored, suggestDivision } from '../lib/competition.ts';
+  isMinorOnly, optionsWithStored, suggestDivision, divisionMismatchKind } from '../lib/competition.ts';
 import type { SpeedAccuracy, WhatItCost } from '../lib/competition.ts';
 import { MarkThumb } from './MarkThumb.tsx';
 import { mediaLabel } from './media.ts';
@@ -756,8 +756,12 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
     const restored = st.parked[scoringType];
     setDivision(() => {
       if (restored !== undefined) return restored;
-      const c = canonicalDivision(leaving);
-      if (opts.includes(c)) return c;
+      // No canonicalisation here. It used to read `canonicalDivision(leaving)` and
+      // return it, which meant choosing a MATCH TYPE silently rewrote the DIVISION:
+      // a cold audit measured a record holding 'Rimfire Pistol Open' being saved as
+      // 'Rimfire Pistol Optics' after nothing but a match-type change. That is the one
+      // thing this branch is not allowed to do. The rename is still offered, by the
+      // callout, where the user can decline it.
       if (opts.includes(leaving)) return leaving;
       return opts[0];
     });
@@ -994,8 +998,15 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
             onChange={(e) => setDivision(e.target.value)}>
             {optionsWithStored(divisionOptions, division).map((d) => (
               <option key={d} value={d}>
-                {divisionOptions.includes(d) || divisionOptions.includes(canonicalDivision(d))
-                  ? d : `${d} (not a recognised division)`}
+                {/* This test MUST be the same one optionsWithStored uses. It was not: this
+                    checked the canonicalised value while the injection checked the raw
+                    one, so a legacy Steel name was injected and then rendered plain --
+                    three visually identical Rimfire Pistol entries with the stale one
+                    first, while the callout below called it unlisted. Measured by a cold
+                    audit. Blank is labelled rather than left as an empty row. */}
+                {d === '' ? 'Not set'
+                  : divisionOptions.includes(d) ? d
+                  : `${d.trim() === d ? d : `"${d}"`} (not in the list)`}
               </option>
             ))}
           </select>
@@ -1007,16 +1018,25 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
             .suggest-block treatment from the session-105 "Who you are" work rather than
             inventing a second amber callout. */}
         {divisionSuggestion && (
-          // role + aria-live so a screen reader is told the correction exists, and the
-          // <select> points here with aria-describedby so somebody sitting on the
-          // Division field hears it rather than just "Division, O". Both were missing in
-          // the first version; a cold audit measured the gap.
+          // aria-describedby on the <select> is what actually carries this to a screen
+          // reader: somebody sitting on the Division field hears the correction rather
+          // than just "Division, O". aria-live was here too and has been REMOVED -- a
+          // cold audit measured the region mounting with its content already present,
+          // which most screen readers do not announce, so it was decoration claiming to
+          // be a feature.
           <div className="suggest-block" id="division-suggestion" role="group"
-            aria-labelledby="division-suggestion-label" aria-live="polite">
+            aria-labelledby="division-suggestion-label">
             <h3 className="suggest-label" id="division-suggestion-label">Check this division</h3>
             <p style={{ margin: '2px 0 8px' }}>
-              This match is saved as <strong>{division}</strong>, which is not one of the
-              divisions in the list. It probably means <strong>{divisionSuggestion}</strong>.
+              {divisionMismatchKind(division, divisionSuggestion) === 'spacing'
+                ? <>This match is saved as <strong>&quot;{division}&quot;</strong>, with extra
+                    spaces around it. Tidying it up makes it <strong>{divisionSuggestion}</strong>.</>
+                : divisionMismatchKind(division, divisionSuggestion) === 'spelling'
+                  ? <>This match is saved as <strong>{division}</strong>, which is spelled
+                      differently from <strong>{divisionSuggestion}</strong> in the list.</>
+                  : <>This match is saved as <strong>{division === '' ? 'nothing at all' : division}</strong>,
+                      which is not one of the divisions in the list. It probably means{' '}
+                      <strong>{divisionSuggestion}</strong>.</>}
             </p>
             <button
               type="button"

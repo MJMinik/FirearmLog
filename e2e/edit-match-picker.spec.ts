@@ -22,8 +22,8 @@ const MATCH_ID = 'e2e-picker-match';
 /** Write a match record directly, the way an import would, then reload so the app
  *  reads it fresh. `division` is written verbatim: no normalisation anywhere. */
 async function seedMatch(page: Page, division: string, matchType = 'USPSA Level 1 (club match)',
-  opts: { minimal?: boolean; stageWithoutNotes?: boolean } = {}) {
-  await page.evaluate(async ({ id, division, matchType, minimal, stageWithoutNotes }) => {
+  opts: { minimal?: boolean; stageWithoutNotes?: boolean; noDivision?: boolean } = {}) {
+  await page.evaluate(async ({ id, division, matchType, minimal, stageWithoutNotes, noDivision }) => {
     // A gun is REQUIRED by the form's own validation, so a match seeded without one
     // cannot be saved and the round-trip tests never reach their assertion. Read a real
     // one from the seeded demo rather than inventing an id.
@@ -38,7 +38,8 @@ async function seedMatch(page: Page, division: string, matchType = 'USPSA Level 
       };
     });
     const rec = {
-      id, date: '2026-08-02', name: 'Picker Round Trip', matchType, division,
+      id, date: '2026-08-02', name: 'Picker Round Trip', matchType,
+      ...(noDivision ? {} : { division }),
       powerFactor: 'Minor', firearmId, scoringType: 'uspsa',
       totalRounds: null, matchPercent: null, divisionPlace: null, divisionOf: null,
       overallPlace: null, overallOf: null,
@@ -61,7 +62,8 @@ async function seedMatch(page: Page, division: string, matchType = 'USPSA Level 
         tx.onerror = () => reject(tx.error);
       };
     });
-  }, { id: MATCH_ID, division, matchType, minimal: !!opts.minimal, stageWithoutNotes: !!opts.stageWithoutNotes });
+  }, { id: MATCH_ID, division, matchType, minimal: !!opts.minimal,
+       stageWithoutNotes: !!opts.stageWithoutNotes, noDivision: !!opts.noDivision });
   await page.reload();
 }
 
@@ -287,6 +289,81 @@ test.describe('Edit Match: what the cold audit found', () => {
 
     await page.getByRole('button', { name: 'Change it to Open' }).click();
     await expect(divisionPicker(page)).toBeFocused();
+  });
+});
+
+test.describe('Edit Match: round 3 of the cold audit', () => {
+  test('the padded-value callout names the SPACES, not a difference you cannot see', async ({ page }) => {
+    // Measured pre-fix: "saved as Open, which is not one of the divisions in the list.
+    // It probably means Open." HTML collapses the trailing space, so the sentence read
+    // as nonsense and nothing told the user what the button would actually change.
+    await seedDemo(page);
+    await seedMatch(page, 'Open ');
+    await openTheMatch(page);
+    await expect(page.getByText(/with extra spaces around it/)).toBeVisible();
+    await expect(page.getByText(/which is not one of the divisions in the list/)).toHaveCount(0);
+  });
+
+  test('an injected legacy name is LABELLED, not shown identical to the real ones', async ({ page }) => {
+    // Measured pre-fix: the option read plain 'Rimfire Pistol Open', visually identical
+    // to the two real Rimfire Pistol entries, while the callout called it unlisted. The
+    // label test checked the canonicalised value and the injection test checked the raw
+    // one, so they disagreed about the same option.
+    await seedDemo(page);
+    await seedMatch(page, 'Rimfire Pistol Open', 'Steel Challenge');
+    await openTheMatch(page);
+    const labels = await divisionPicker(page).locator('option')
+      .evaluateAll((os) => os.map((o) => o.textContent?.trim() ?? ''));
+    expect(labels[0]).toBe('Rimfire Pistol Open (not in the list)');
+  });
+
+  test('a blank division shows as Not set rather than as the first division', async ({ page }) => {
+    // The importer writes '' when the results table carries no division column, so this
+    // is a shipped state. Measured pre-fix: it rendered 'Carry Optics' with no callout.
+    await seedDemo(page);
+    await seedMatch(page, '');
+    await openTheMatch(page);
+    await expect(divisionPicker(page)).toHaveValue('');
+    const labels = await divisionPicker(page).locator('option')
+      .evaluateAll((os) => os.map((o) => o.textContent?.trim() ?? ''));
+    expect(labels[0]).toBe('Not set');
+  });
+
+  test('CHOOSING A MATCH TYPE MUST NOT REWRITE THE DIVISION', async ({ page }) => {
+    // The sharpest finding of the round, and a breach of the binding decision that
+    // nothing is written the user did not choose. Measured pre-fix END TO END: load a
+    // match holding 'Rimfire Pistol Open', pick Steel Challenge, press Save, and the
+    // stored division came back 'Rimfire Pistol Optics'. The user changed a match type
+    // and the app changed a division.
+    await seedDemo(page);
+    await seedMatch(page, 'Rimfire Pistol Open', 'USPSA Level 1 (club match)');
+    await openTheMatch(page);
+    await page.getByLabel('Match type').selectOption('Steel Challenge');
+    await saveAndWaitForWrite(page);
+    const after = await storedDivision(page);
+    expect(after, 'a match-type change must never convert the division').not.toBe('Rimfire Pistol Optics');
+  });
+
+  test('the field points a screen reader at the correction', async ({ page }) => {
+    // The whole accessibility fix had NO test, which the audit found by stripping every
+    // aria attribute and watching 15/15 still pass.
+    await seedDemo(page);
+    await seedMatch(page, 'O');
+    await openTheMatch(page);
+    await expect(divisionPicker(page)).toHaveAttribute('aria-describedby', 'division-suggestion');
+    const block = page.locator('#division-suggestion');
+    await expect(block).toHaveAttribute('role', 'group');
+    await expect(block).toHaveAttribute('aria-labelledby', 'division-suggestion-label');
+  });
+
+  test('a record with no division at all does not silently become Carry Optics', async ({ page }) => {
+    // Fix 5 (setDivision(m.division ?? '')) had no test either.
+    await seedDemo(page);
+    await seedMatch(page, 'Limited', 'USPSA Level 1 (club match)', { noDivision: true });
+    await openTheMatch(page);
+    await expect(divisionPicker(page)).toHaveValue('');
+    await saveAndWaitForWrite(page);
+    expect(await storedDivision(page)).toBe('');
   });
 });
 

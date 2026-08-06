@@ -9,7 +9,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  optionsWithStored, suggestDivision, DIVISION_CODE_ALIASES,
+  optionsWithStored, suggestDivision, divisionMismatchKind, DIVISION_CODE_ALIASES,
   DIVISIONS, IDPA_DIVISIONS, STEEL_DIVISIONS,
 } from '../src/lib/competition.ts';
 
@@ -67,9 +67,16 @@ test('a padded value is injected and offered, rather than silently showing anoth
   assert.equal(suggestDivision('Open ', DIVISIONS), 'Open');
 });
 
-test('an empty or whitespace division is never injected as a blank option', () => {
-  assert.deepEqual(optionsWithStored(DIVISIONS, ''), DIVISIONS.slice());
-  assert.deepEqual(optionsWithStored(DIVISIONS, '   '), DIVISIONS.slice());
+test('a blank or whitespace division IS injected, because it is a real stored state', () => {
+  // THIS TEST ASSERTED THE OPPOSITE and was wrong, which a cold audit caught by measuring
+  // the screen rather than reading the function: with nothing injected, a record holding
+  // '' rendered as 'Carry Optics', because a <select> with an unmatched value falls
+  // through to the first option. The old comment claimed 'no division chosen' was
+  // representable as an empty select. There is no empty option, so it was not.
+  assert.equal(optionsWithStored(DIVISIONS, '')[0], '');
+  assert.equal(optionsWithStored(DIVISIONS, '   ')[0], '   ');
+  // Only a genuinely absent value is left alone: there is nothing to represent.
+  assert.deepEqual(optionsWithStored(DIVISIONS, undefined as unknown as string), DIVISIONS.slice());
 });
 
 test('optionsWithStored does not mutate the list it was given', () => {
@@ -184,4 +191,33 @@ test('every alias in the table maps to a division that actually exists', () => {
     assert.ok(DIVISIONS.includes(division), `${code} maps to "${division}", which is not a USPSA division`);
     assert.equal(code, code.toUpperCase(), `${code} must be upper case; lookup upper-cases the input`);
   }
+});
+
+/* -------------------------------------------------- round 3 of the cold audit */
+
+test('a blank division gets an option of its own rather than falling through', () => {
+  // The audit measured a record holding '' rendering as 'Carry Optics' with no callout.
+  // The importer writes '' when the results table has no division column, so this is a
+  // shipped state and not a hypothetical.
+  const out = optionsWithStored(DIVISIONS, '');
+  assert.equal(out[0], '');
+  assert.equal(out.length, DIVISIONS.length + 1);
+});
+
+test('the mismatch kind names the real difference, which is what the sentence turns on', () => {
+  // The callout used to read "saved as Open, which is not one of the divisions in the
+  // list, it probably means Open" whenever the difference was whitespace: HTML collapses
+  // the space, so the two read identically and the sentence was nonsense on screen.
+  assert.equal(divisionMismatchKind('Open ', 'Open'), 'spacing');
+  assert.equal(divisionMismatchKind('  Open', 'Open'), 'spacing');
+  assert.equal(divisionMismatchKind('open', 'Open'), 'spelling');
+  assert.equal(divisionMismatchKind('CARRY OPTICS', 'Carry Optics'), 'spelling');
+  assert.equal(divisionMismatchKind('O', 'Open'), 'unlisted');
+  assert.equal(divisionMismatchKind('Rimfire Pistol Open', 'Rimfire Pistol Optics'), 'unlisted');
+});
+
+test('a spacing difference is not reported as a spelling one, or the sentence lies twice', () => {
+  // ' open ' differs by BOTH. Spacing is checked first only when trimming alone resolves
+  // it; here it does not, so the honest answer is spelling.
+  assert.equal(divisionMismatchKind(' open ', 'Open'), 'spelling');
 });

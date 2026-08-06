@@ -132,7 +132,14 @@ export const DIVISION_CODE_ALIASES: Readonly<Record<string, string>> = {
  *  would write the decoration back on save, which is the defect in a new costume. */
 export function optionsWithStored(options: readonly string[], stored: string): string[] {
   const list = options.slice();
-  if (!(stored ?? '').trim()) return list;
+  // A BLANK division is a real stored state, not an absence: the PractiScore importer
+  // writes '' when the results table has no division column, and PractiScoreImport.tsx
+  // already branches on `me.division === ''`. An earlier version of this function
+  // returned the list untouched here and its comment claimed 'no division chosen' was
+  // representable as an empty select. Measured by a cold audit: it is not. There is no
+  // empty <option>, so value='' fell through to the first one and a blank division
+  // rendered as 'Carry Optics'. Injecting the empty string gives it an option of its own.
+  if (stored === undefined || stored === null) return list;
   // The test is on the RAW stored string, because the raw string is what the <select>
   // is bound to. Two earlier versions tested a trimmed or canonicalised form and let
   // through exactly the values this function exists for:
@@ -155,6 +162,19 @@ export function optionsWithStored(options: readonly string[], stored: string): s
 function matchesParentheticalCode(option: string, code: string): boolean {
   const m = option.match(/\(([^)]+)\)\s*$/);
   return !!m && m[1].trim().toLowerCase() === code.toLowerCase();
+}
+
+/** Why a stored division differs from the division it probably means. The callout used
+ *  to say "saved as X, which is not one of the divisions in the list, it probably means
+ *  X" whenever the only difference was whitespace or case -- which a cold audit measured
+ *  and which reads as nonsense, because HTML collapses the space and the two look
+ *  identical on screen. Naming the actual difference is what makes the sentence true and
+ *  the button's effect predictable. */
+export function divisionMismatchKind(stored: string, suggestion: string): 'spacing' | 'spelling' | 'unlisted' {
+  const s = stored ?? '';
+  if (s !== s.trim() && s.trim() === suggestion) return 'spacing';
+  if (s.trim().toLowerCase() === suggestion.toLowerCase()) return 'spelling';
+  return 'unlisted';
 }
 
 /** The division this stored value most likely means, or null when there is no confident
