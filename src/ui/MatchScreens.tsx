@@ -622,7 +622,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         const [m, allMedia] = await Promise.all([getOne<Match>('matches', id), getAll<Media>('media')]);
         if (!alive || !m) return;
         setOriginal(m);
-        setName(m.name); setDate(m.date); setMatchType(m.matchType);
+        setName(m.name ?? ''); setDate(m.date); setMatchType(m.matchType);
         // The snap effect below keys on scoringType. Loading a record CHANGES
         // scoringType whenever the stored match type differs in sport from the
         // form's default, and without this line that counted as a user switch --
@@ -672,7 +672,21 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         }));
         setExistingMedia(allMedia.filter((x) => x.ownerType === 'match' && x.ownerId === id));
         setEntryFee(m.entryFee == null ? '' : String(m.entryFee));
-        setPsUrl(m.practiScoreUrl); setNotes(m.notes);
+        // Default the string fields AT THE LOAD BOUNDARY (session 106, found by this
+        // build's own E2E fixture and fixed on contact).
+        //
+        // A stored match missing any of these -- a record written before the field
+        // existed, an older .flog restore, an import that never set it -- put `undefined`
+        // into form state typed as string, and Save then threw
+        // `Cannot read properties of undefined (reading 'trim')` as an UNHANDLED
+        // rejection: no message, no error screen, the button simply did nothing. That is
+        // the zero-crash class (charter §4), and it is worse than a visible failure
+        // because the user has no way to know the save did not happen.
+        //
+        // Defaulting here rather than at each .trim() closes the class: form state is
+        // string, so every consumer downstream is safe by construction rather than by
+        // three call sites remembering.
+        setPsUrl(m.practiScoreUrl ?? ''); setNotes(m.notes ?? '');
       }
     })();
     return () => { alive = false; };
@@ -716,11 +730,19 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
     const opts = scoringType === 'idpa' ? IDPA_DIVISIONS
       : scoringType === 'steel' ? STEEL_DIVISIONS : DIVISIONS;
     setDivision((d) => {
+      // Park the outgoing division against the sport being LEFT, unconditionally. The
+      // first version of this only parked when the value was invalid in the new sport,
+      // and its own E2E caught the hole on the first run: USPSA/Revolver -> Steel snaps
+      // to 'Open', and coming back, 'Open' IS a USPSA division, so the validity check
+      // returned it and the restore was never reached. Revolver was gone exactly as
+      // before. Parking always, and restoring first, is what actually closes it.
+      st.parked[from] = d;
+      const restored = st.parked[scoringType];
+      if (restored !== undefined) return restored;
       const c = canonicalDivision(d);
       if (opts.includes(c)) return c;
       if (opts.includes(d)) return d;
-      st.parked[from] = d;
-      return st.parked[scoringType] ?? opts[0];
+      return opts[0];
     });
   }, [scoringType]);
 
