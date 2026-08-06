@@ -57,6 +57,15 @@ function openDb(): Promise<IDBDatabase> {
     // open proceed — but we remember it so the timeout can say WHY it fired.
     req.onblocked = () => { blocked = true; };
     req.onupgradeneeded = () => {
+      // MIGRATION AUTHORS, READ THIS FIRST (session 107). Everywhere else in the
+      // app, a record arriving from storage has already passed through
+      // `normalizeRecord` — see THE READ BOUNDARY below — so every field the model
+      // declares as a required string is guaranteed to BE a string. That guarantee
+      // does NOT hold in here. This handler works the upgrade transaction's stores
+      // directly, so it sees records exactly as they sit on disk, missing fields and
+      // all. A migration written on the habit of "reads are always clean" will throw
+      // on the first record an old backup left short, during an upgrade, which is the
+      // worst possible moment. Normalise explicitly if you touch record contents.
       const db = req.result;
       for (const name of STORE_NAMES) {
         if (!db.objectStoreNames.contains(name)) {
@@ -181,8 +190,13 @@ export function withExclusiveIo<T>(what: string, fn: () => Promise<T>): Promise<
  * `normalizeRecord`, which fills any field `types.ts` declares as a plain
  * required `string` and that the stored data does not actually carry. See
  * `recordShape.ts` for why this lives here rather than at the call sites: a
- * match with no `date` took the whole Compete tab down, and a sweep found 47
- * sites of the same class across 23 files, only two thirds of them sorts.
+ * match with no `date` took the whole Compete tab down, and a sweep found the
+ * same class in filters as well as sorts, on that same screen and many others.
+ * (No site count is written here. This sentence carried "47 sites across 23
+ * files, two thirds of them sorts" while recordShape.ts, in the same commit,
+ * explained that no such figure would be recorded because a number in a comment
+ * has no keeper — and both figures were wrong when re-measured. Two files
+ * disagreeing about one fact, in the change whose whole subject is that failure.)
  *
  * This module never writes as a result of normalising. It is NOT true that a
  * filled-in blank only reaches disk when the user saves — several app-initiated

@@ -64,6 +64,93 @@ const NEVER_NORMALISED = new Set(['id']);
 // assumed. Anything added here has to carry a reason like this one.
 const NESTED_EXEMPT = new Set(['SessionGun.magOverrides']);
 
+/**
+ * (5) THE `??` KEEPER.
+ *
+ * Once a field is normalised it is never `undefined` or `null`, so `?? fallback`
+ * on it can never fire. The fallback still READS like a live guard, which is worse
+ * than having none: `MatchScreens.tsx` carried a three-line comment explaining
+ * exactly why its `?? MATCH_TYPES[0]` mattered, and the read boundary had silently
+ * switched it off. That one was caught by an audit round. The next will be written
+ * a year from now by someone who has never heard of any of this.
+ *
+ * `||` is correct on a normalised field and `??` is not, because empty and absent
+ * now mean the same thing.
+ *
+ * THIS IS TYPE-AWARE, AND IT HAS TO BE. The first version matched the TEXT
+ * `.<field> ??` and returned 61 hits, nearly all of them wrong — record fields are
+ * called `name`, `date`, `label`, `notes`, so the match fired on an Error object's
+ * `.name`, on CSV column descriptors, on local form state. A check that cries wolf
+ * 61 times is not a keeper; it is something everyone learns to skip. So the
+ * receiver's TYPE is resolved and the flag fires only when it really is one of the
+ * record types the boundary normalises. Slower, and the only version worth having.
+ *
+ * `normalise-ok` on the line marks a deliberate exception.
+ */
+function checkNullishOnNormalisedFields(report, shapeByType) {
+  const config = ts.readConfigFile('tsconfig.json', ts.sys.readFile);
+  if (config.error) { report('NULLISH CHECK: cannot read tsconfig.json'); return; }
+  const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, '.');
+  const program = ts.createProgram(parsed.fileNames, { ...parsed.options, skipLibCheck: true });
+  const checker = program.getTypeChecker();
+
+  /**
+   * The record type behind an expression — but ONLY when that expression cannot
+   * itself be undefined or null.
+   *
+   * This distinction is the whole check. `firearms.find(f => f.id === id)?.name ?? '—'`
+   * is CORRECT code: the `??` is catching the FIND missing, not the field being
+   * absent, and rewriting it to `||` would change nothing while removing a real
+   * guard. A first pass unwrapped `Firearm | undefined` to `Firearm` and flagged
+   * twenty-nine of those, every one of them wrong. If the receiver can be nothing,
+   * the `??` has a job.
+   */
+  const recordTypeOf = (expr) => {
+    const t = checker.getTypeAtLocation(expr);
+    const parts = t.isUnion() ? t.types : [t];
+    if (parts.some((p) => p.flags & (ts.TypeFlags.Undefined | ts.TypeFlags.Null))) return null;
+    for (const part of parts) {
+      const name = part.getSymbol()?.getName();
+      if (name && shapeByType.has(name)) return name;
+    }
+    return null;
+  };
+
+  for (const file of program.getSourceFiles()) {
+    const rel = file.fileName.replace(/\\/g, '/').replace(/^.*?\/(src\/)/, '$1');
+    if (!rel.startsWith('src/') || rel === 'src/lib/recordShape.ts') continue;
+    const lines = file.getFullText().split('\n');
+    const visit = (node) => {
+      if (ts.isBinaryExpression(node)
+          && node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
+          && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))
+          && ts.isPropertyAccessExpression(node.left)) {
+        // `?? ''` on a normalised field is HARMLESS — redundant, but it produces
+        // exactly the value the boundary already guarantees, so nothing is hidden
+        // and nothing behaves unexpectedly. The hazard is a fallback that is
+        // SOMETHING ELSE: `?? MATCH_TYPES[0]`, `?? 'Match'`. Those read as live
+        // guards, never fire, and the code behaves as if the author's intent had
+        // been deleted — which is precisely what happened to the Edit Match picker.
+        // Flagging the harmless ones too produced nine findings whose only fix was
+        // to churn correct code, and noise is how a keeper gets ignored.
+        const fallback = node.right;
+        const isEmptyString = ts.isStringLiteral(fallback) && fallback.text === '';
+        if (isEmptyString) { ts.forEachChild(node, visit); return; }
+        const field = node.left.name.getText();
+        const owner = recordTypeOf(node.left.expression);
+        if (owner && shapeByType.get(owner)?.has(field)) {
+          const { line } = file.getLineAndCharacterOfPosition(node.getStart());
+          if (!(lines[line] ?? '').includes('normalise-ok')) {
+            report(`NULLISH ON A NORMALISED FIELD: ${rel}:${line + 1} — \`${owner}.${field} ??\` can never fire, because the read boundary fills that field with ''. Use \`||\` (empty and absent mean the same thing for it), or mark the line \`normalise-ok\` if the distinction is real.`);
+          }
+        }
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(file);
+  }
+}
+
 export function checkRecordShape(report) {
   // strictNullChecks MUST be on. Without it TypeScript collapses `string | null`
   // to `string`, and this check then demands that `serialNumber`, `referenceId`
@@ -262,4 +349,15 @@ export function checkRecordShape(report) {
       report(`RECORD SHAPE: ${stmt.name.text}.${m.name.text} holds ${rowType}[] which carries required strings, and ${rowType} is not in NESTED_FOR_TYPE in scripts/check-shape.mjs — map it or exempt it with a reason`);
     }
   }
+
+  // Which fields the boundary fills, PER RECORD TYPE — derived from the map we just
+  // parsed, so it stays in step for free rather than being a second hand-written list.
+  const shapeByType = new Map();
+  for (const [typeName, store] of Object.entries(STORE_FOR_TYPE)) {
+    shapeByType.set(typeName, new Set(declared[store]?.strings ?? []));
+  }
+  for (const [typeName, [store, field]] of Object.entries(NESTED_FOR_TYPE)) {
+    shapeByType.set(typeName, new Set(declared[store]?.nested?.[field] ?? []));
+  }
+  checkNullishOnNormalisedFields(report, shapeByType);
 }
