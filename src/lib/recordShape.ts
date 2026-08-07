@@ -186,7 +186,7 @@ type StoresWithNested = {
  *  - Stores in StoresWithNested are REQUIRED to declare `nested`, with exactly
  *    the fields NestedArrayField finds on their model type. A missing field is
  *    a missing-property error from the satisfies clause; a missing key inside a
- *    field is caught by the MissingNested assertions below.
+ *    field is caught by the _AllNestedComplete assertion below.
  *  - Stores not in StoresWithNested keep `nested` absent (runtime shape
  *    unchanged). A spurious `nested` key would be an excess-property error.
  *  - In both branches the `strings` value must contain only valid
@@ -224,8 +224,9 @@ type ExpectedRecordShape = {
  *    required plain-string field EXISTS on the interface but is ABSENT from this
  *    map. Error: "Type 'missing-key-name' does not satisfy the constraint 'never'".
  *    The type argument that fails names the missing key exactly. Add it here, in
- *    the right store's strings array. The MissingNested assertions below do the
- *    same for required string keys WITHIN each nested field's array.
+ *    the right store's strings array. The _AllNestedComplete assertion below does
+ *    the same for required string keys WITHIN each nested field's array, derived
+ *    automatically across all (store, field) pairs rather than listed by hand.
  *
  *  - `scripts/check-shape.mjs`: checks three things the type system cannot express
  *    -- the `??` usage guard (a normalised field with a non-empty fallback reads
@@ -312,23 +313,52 @@ export type _RemindersComplete    = AssertComplete<MissingStrings<'reminders'>>;
 export type _MediaComplete        = AssertComplete<MissingStrings<'media'>>;
 export type _TrashComplete        = AssertComplete<MissingStrings<'trash'>>;
 
-// Nested completeness: one assertion per (store, nested field) pair.
-// The satisfies clause (above) now enforces that every nested FIELD is present and
-// that no extra fields exist (both directions from ExpectedRecordShape). These
-// MissingNested assertions cover the remaining gap: missing string KEYS within a
-// field's array. A new `field: string` on a nested row type goes red here naming
-// the field, until it is added to RECORD_SHAPE_LITERAL above.
+// Nested key completeness: DERIVED, not hand-listed.
+// The satisfies clause (above) enforces that every nested FIELD is present and
+// that no extra fields exist (both directions from ExpectedRecordShape). The
+// assertion below covers the remaining gap: missing string KEYS within each
+// field's array -- across ALL stores and ALL nested fields, derived from the
+// model automatically. A new `field: string` on any nested row type goes red
+// here naming the field, until it is added to RECORD_SHAPE_LITERAL above.
+// A future store that gains a new nested array field and declares it in the map
+// with an incomplete key list is caught here without a new hand-written line.
+//
+// How it works: for each S in StoresWithNested, for each F in the store's nested
+// keys, compute the plain-string keys of the element type that are absent from
+// the listed array. Union them all. The whole union must be never.
 
-/** Keys declared as plain required strings on row type R absent from the nested list. */
-type MissingNested<R, Listed extends readonly string[]> =
-  Exclude<PlainStringKeys<R>, Listed[number]>;
+/**
+ * For each (store, nested-field) pair, the plain-string keys of that field's
+ * element type that are missing from the RECORD_SHAPE_LITERAL list. Must be
+ * never at rest; names missing keys exactly in the TS2344 error when non-never.
+ *
+ * The intersection `& NestedArrayField<RecordTypeForStore[S]>` on F serves two
+ * roles: it tells the type system that `RecordTypeForStore[S][F]` is an array of
+ * objects (so ElementOf gives a useful element type, not never), and it ensures
+ * the F index is valid on the record interface (NestedArrayField extends keyof T).
+ * NonNullable strips the implicit undefined from optional array fields before
+ * ElementOf so marks?: Mark[] contributes its row keys rather than being excluded.
+ */
+/** The literal `nested` object for store S cast to `Record<string, readonly string[]>`.
+ *  The cast is safe: `satisfies ExpectedRecordShape` already verified every value
+ *  is a `readonly PlainStringKeys[]`. Pulling it out as a named alias lets TypeScript
+ *  resolve the shape before mapping over F, which avoids the deferred-generic index
+ *  error that `(typeof RECORD_SHAPE_LITERAL)[S]['nested'][F]` hits when S and F are
+ *  both still generic parameters in the same mapped-type expression. */
+type LiteralNested<S extends StoresWithNested> =
+  (typeof RECORD_SHAPE_LITERAL)[S]['nested'] & Record<string, readonly string[]>;
 
-export type _SessionsGunsComplete    = AssertComplete<MissingNested<ElementOf<Session['guns']>,       typeof RECORD_SHAPE_LITERAL['sessions']['nested']['guns']>>;
-export type _SessionsDrillsComplete  = AssertComplete<MissingNested<ElementOf<Session['drills']>,     typeof RECORD_SHAPE_LITERAL['sessions']['nested']['drills']>>;
-export type _SessionsAmmoComplete    = AssertComplete<MissingNested<ElementOf<Session['ammoUsage']>,  typeof RECORD_SHAPE_LITERAL['sessions']['nested']['ammoUsage']>>;
-export type _MatchesStagesComplete   = AssertComplete<MissingNested<ElementOf<Match['stages']>,       typeof RECORD_SHAPE_LITERAL['matches']['nested']['stages']>>;
-export type _ReferencesLinksComplete = AssertComplete<MissingNested<ElementOf<Reference['links']>,    typeof RECORD_SHAPE_LITERAL['references']['nested']['links']>>;
-export type _MediaMarksComplete      = AssertComplete<MissingNested<ElementOf<Media['marks']>,        typeof RECORD_SHAPE_LITERAL['media']['nested']['marks']>>;
+type MissingNestedKeys = {
+  [S in StoresWithNested]: {
+    [F in keyof LiteralNested<S> & NestedArrayField<RecordTypeForStore[S]>]:
+      Exclude<
+        PlainStringKeys<ElementOf<NonNullable<RecordTypeForStore[S][F]>>>,
+        LiteralNested<S>[F][number]
+      >;
+  }[keyof LiteralNested<S> & NestedArrayField<RecordTypeForStore[S]>];
+}[StoresWithNested];
+
+export type _AllNestedComplete = AssertComplete<MissingNestedKeys>;
 
 /** A store that carries records rather than the settings blob. */
 function shapeFor(store: StoreName): StoreShape | undefined {
