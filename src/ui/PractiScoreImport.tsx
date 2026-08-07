@@ -18,6 +18,7 @@ import { findOwnRows, normaliseStoredNames, type NameMatch } from '../lib/shoote
 import {
   parsePractiScore, countInDivision, SAMPLE_PRACTISCORE_CSV, type PsMatch
 } from '../lib/practiscore.ts';
+import { looksLikeNewStyleResults } from '../lib/practiscoreDetect.ts';
 import { FormProblem } from './FormProblem.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
@@ -84,7 +85,11 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       setMatchDate(m.date);
     } catch (e) {
       setParsed(null);
-      setProblem(e instanceof Error ? e.message : 'Could not read that.');
+      if (looksLikeNewStyleResults(text)) {
+        setProblem("That looks like PractiScore’s new results page, which doesn’t carry the table this import reads. Nothing was imported. On your match page, find Old style results and tap Html Results, then tap Combined at the right-hand end of the top Overall row, and copy that whole page — the numbered steps above walk through it.");
+      } else {
+        setProblem(e instanceof Error ? e.message : 'Could not read that.');
+      }
     }
     setPsQuery(''); // a query from a previous field must not filter this one
   }
@@ -211,7 +216,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
             way to get your scores out, so here is the whole path:
           </p>
           <ol className="report-note" style={{ paddingLeft: 20, margin: '6px 0 12px' }}>
-            <li>Open your match on practiscore.com.</li>
+            <li>Open your match on practiscore.com. PractiScore opens its new results view first. Scroll down the match page to find Old style results.</li>
             <li>Under "Old style results", tap <b>Html Results</b>.</li>
             <li>
               A table opens with one row per stage and a row at the very top reading{' '}
