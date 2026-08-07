@@ -84,6 +84,11 @@
 // NOT be acceptable if this module could blank a value — which is precisely why
 // it no longer can.
 import type { StoreName } from './db.ts';
+import type {
+  Firearm, Session, DrillDef, Ammunition, Purchase, MaintenanceEntry,
+  MalfunctionEntry, Magazine, Optic, Part, Goal, SkillAssessment, SkillSet,
+  Match, Classifier, Reference, Reminder, Media, TrashItem,
+} from './types.ts';
 
 export interface StoreShape {
   /** Fields the model declares as a plain required `string`. Never includes `id`. */
@@ -92,13 +97,149 @@ export interface StoreShape {
   readonly nested?: Readonly<Record<string, readonly string[]>>;
 }
 
+// ---- type-level keeper: the types below make RECORD_SHAPE's `satisfies` clause
+// provable at compile time. They do not change runtime behaviour at all. ----
+
+/**
+ * Maps each store name to the record interface that backs it. This is the
+ * single point where "store name" meets "record interface" for the type system.
+ * `meta` is deliberately absent -- the same reason RECORD_SHAPE excludes it.
+ */
+interface RecordTypeForStore {
+  firearms: Firearm;
+  sessions: Session;
+  drills: DrillDef;
+  ammunition: Ammunition;
+  purchases: Purchase;
+  maintenance: MaintenanceEntry;
+  malfunctions: MalfunctionEntry;
+  magazines: Magazine;
+  optics: Optic;
+  parts: Part;
+  goals: Goal;
+  skills: SkillAssessment;
+  skillSets: SkillSet;
+  matches: Match;
+  classifiers: Classifier;
+  references: Reference;
+  reminders: Reminder;
+  media: Media;
+  trash: TrashItem;
+}
+
+/**
+ * The string-valued field names of T that are:
+ *  - required (not optional),
+ *  - not in the exclusion set (defaults to `id`),
+ *  - typed as a plain `string` (NOT `string | null`, NOT `string | undefined`,
+ *    NOT a string union that carries null/undefined).
+ *
+ * The `[T[K]] extends [string]` wrapper stops `string | null` from being
+ * distributed into `string`. Without the tuple, `null extends string ? ... :
+ * never` collapses exactly the way `strictNullChecks: false` would, which is
+ * the class of hole the script's `strictNullChecks: true` line exists to close.
+ */
+type PlainStringKeys<T, Excl extends string = 'id'> = {
+  [K in keyof T]-?: (
+    object extends Pick<T, K> ? never :        // required only (optional fields fail this)
+    K extends Excl ? never :                   // exclude by name
+    K extends string ? (
+      [T[K]] extends [string] ? K : never      // must be EXACTLY string, not string | null
+    ) : never
+  );
+}[keyof T & string];
+
+/** The element type of an array-typed property of T, or never. */
+type ElementOf<T> = T extends readonly (infer E)[] ? E : never;
+
+/** Property names of T whose values are arrays of object rows. */
+type NestedArrayField<T> = {
+  [K in keyof T]-?: T[K] extends readonly object[] ? K : never;
+}[keyof T] & string;
+
+/**
+ * The shape the map must have, per store. A missing required-string field makes
+ * this type unsatisfiable; a listed field that is not a required plain string
+ * on the interface also fails.
+ */
+type ExpectedShape<S extends keyof RecordTypeForStore> = {
+  readonly strings: readonly PlainStringKeys<RecordTypeForStore[S]>[];
+  readonly nested?: {
+    readonly [F in NestedArrayField<RecordTypeForStore[S]>]?:
+      readonly PlainStringKeys<ElementOf<RecordTypeForStore[S][F]>>[];
+  };
+};
+
+// Per-store aliases so tsc errors name a readable type rather than the full
+// generic expression. When the satisfies clause fails, the error quotes the
+// alias name, which identifies the broken store immediately.
+type ExpectedFirearmShape       = ExpectedShape<'firearms'>;
+type ExpectedSessionShape       = ExpectedShape<'sessions'>;
+type ExpectedDrillShape         = ExpectedShape<'drills'>;
+type ExpectedAmmunitionShape    = ExpectedShape<'ammunition'>;
+type ExpectedPurchaseShape      = ExpectedShape<'purchases'>;
+type ExpectedMaintenanceShape   = ExpectedShape<'maintenance'>;
+type ExpectedMalfunctionShape   = ExpectedShape<'malfunctions'>;
+type ExpectedMagazineShape      = ExpectedShape<'magazines'>;
+type ExpectedOpticShape         = ExpectedShape<'optics'>;
+type ExpectedPartShape          = ExpectedShape<'parts'>;
+type ExpectedGoalShape          = ExpectedShape<'goals'>;
+type ExpectedSkillShape         = ExpectedShape<'skills'>;
+type ExpectedSkillSetShape      = ExpectedShape<'skillSets'>;
+type ExpectedMatchShape         = ExpectedShape<'matches'>;
+type ExpectedClassifierShape    = ExpectedShape<'classifiers'>;
+type ExpectedReferenceShape     = ExpectedShape<'references'>;
+type ExpectedReminderShape      = ExpectedShape<'reminders'>;
+type ExpectedMediaShape         = ExpectedShape<'media'>;
+type ExpectedTrashShape         = ExpectedShape<'trash'>;
+
+/** The full expected map, built from the per-store aliases. */
+type ExpectedRecordShape = {
+  readonly firearms:     ExpectedFirearmShape;
+  readonly sessions:     ExpectedSessionShape;
+  readonly drills:       ExpectedDrillShape;
+  readonly ammunition:   ExpectedAmmunitionShape;
+  readonly purchases:    ExpectedPurchaseShape;
+  readonly maintenance:  ExpectedMaintenanceShape;
+  readonly malfunctions: ExpectedMalfunctionShape;
+  readonly magazines:    ExpectedMagazineShape;
+  readonly optics:       ExpectedOpticShape;
+  readonly parts:        ExpectedPartShape;
+  readonly goals:        ExpectedGoalShape;
+  readonly skills:       ExpectedSkillShape;
+  readonly skillSets:    ExpectedSkillSetShape;
+  readonly matches:      ExpectedMatchShape;
+  readonly classifiers:  ExpectedClassifierShape;
+  readonly references:   ExpectedReferenceShape;
+  readonly reminders:    ExpectedReminderShape;
+  readonly media:        ExpectedMediaShape;
+  readonly trash:        ExpectedTrashShape;
+};
+
 /**
  * One entry per persisted store. Derived by hand from `types.ts` and held to it
- * by the check in `scripts/check-imports.mjs` — if the two ever disagree, the
- * build fails and names the field.
+ * by two complementary checks:
+ *  - The `satisfies ExpectedRecordShape` clause below: tsc refuses to compile
+ *    when any required plain-string field is missing from this map, or when this
+ *    map lists a field that is not a required plain string on the interface.
+ *  - `scripts/check-shape.mjs`: still checks the `??` usage guard and the
+ *    "no unmapped nested row type" rule, which the type system cannot express.
  *
  * `meta` is absent on purpose: it holds a settings blob keyed by `key`, not
  * records, and `AppSettings` is written only by the app itself.
+ *
+ * HOW TO READ A `satisfies` FAILURE HERE. If `npx tsc --noEmit` fails with
+ * "does not satisfy the expected type 'ExpectedFirearmShape'" (or another
+ * per-store alias), read the error like this:
+ *   1. The alias name (e.g. ExpectedFirearmShape) names the store that is broken.
+ *   2. tsc will show two unions of string literals. The key MISSING from this
+ *      map appears in the "expected" union but not in the "actual" union. Diff
+ *      them; that key needs adding here.
+ *   3. The reverse -- a literal in this map that is NOT in the expected union --
+ *      means the field on the interface changed (became optional, became
+ *      `string | null`, or was renamed) and this map lists a stale name.
+ * The fix is always in this file or in `src/lib/types.ts`. The read boundary
+ * functions below do not need changing to fix a keeper failure.
  */
 export const RECORD_SHAPE: Readonly<Record<Exclude<StoreName, 'meta'>, StoreShape>> = {
   firearms: { strings: ['name', 'manufacturer', 'model', 'caliber', 'dateAcquired', 'notes', 'category'] },
@@ -135,7 +276,7 @@ export const RECORD_SHAPE: Readonly<Record<Exclude<StoreName, 'meta'>, StoreShap
   reminders: { strings: ['title', 'notes', 'source', 'trigger'] },
   media: { strings: ['ownerId', 'name', 'mime', 'ownerType', 'kind'], nested: { marks: ['color', 'label'] } },
   trash: { strings: ['recordType'] },
-} as const;
+} as const satisfies ExpectedRecordShape;
 
 /** A store that carries records rather than the settings blob. */
 function shapeFor(store: StoreName): StoreShape | undefined {
