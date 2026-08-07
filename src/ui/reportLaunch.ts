@@ -12,7 +12,7 @@ import type {
 } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
 import { canonicalDivision, formatClassPct } from '../lib/competition.ts';
-import { getAll } from '../lib/db.ts';
+import { getAll, getAllMediaWholeStore } from '../lib/db.ts';
 import { activeOnly, activeMalfunctions, trashedIdSet } from '../lib/softDelete.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { roundsForFirearm, dryRepsForFirearm, totalRounds } from '../lib/stats.ts';
@@ -49,7 +49,7 @@ export async function loadReportBundle(): Promise<ReportBundle> {
       getAll<Purchase>('purchases'), getAll<Ammunition>('ammunition'), getAll<Classifier>('classifiers'),
       getAll<MalfunctionEntry>('malfunctions'), getAll<MaintenanceEntry>('maintenance'),
       getAll<Reference>('references'), getAll<DrillDef>('drills'), getAll<Goal>('goals'),
-      getAll<Media>('media'), getAll<Part>('parts'), getAll<Magazine>('magazines')
+      getAllMediaWholeStore(), getAll<Part>('parts'), getAll<Magazine>('magazines')
     ]);
   // App 7: every report works off live data only.
   const liveSessions = activeOnly(sessions);

@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Firearm, MaintenanceEntry, Match, Media, Optic, Reference, Session } from '../lib/types.ts';
-import { getAll, getOne, putOne } from '../lib/db.ts';
+import { getAll, getMediaForOwner, getOne, putOne } from '../lib/db.ts';
 import { activeOnly } from '../lib/softDelete.ts';
 import { newId } from '../lib/id.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
@@ -53,7 +53,7 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
         getAll<Firearm>('firearms'),
         getAll<Session>('sessions'),
         getAll<Match>('matches'),
-        getAll<Media>('media'),
+        getMediaForOwner('firearm', id),
         getAll<MaintenanceEntry>('maintenance'),
         getAll<Reference>('references'),
         getAll<Optic>('optics')
@@ -65,7 +65,7 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
       // references this gun, so it must not be hard-deletable yet.
       const live = activeOnly(sessions);
       setGun(g);
-      setPhotos(media.filter((m) => m.ownerType === 'firearm' && m.ownerId === id));
+      setPhotos(media);
       setStats({
         rounds: roundsForFirearm(id, firearms, live, matches),
         sessions: live.filter((s) => !s.planned && s.guns.some((x) => x.firearmId === id)).length,

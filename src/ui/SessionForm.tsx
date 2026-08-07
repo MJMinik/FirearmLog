@@ -7,7 +7,7 @@ import type {
   Magazine, MalfunctionEntry, Media, Session, SessionChecklist, SessionGun, SkillSet, TimedSkill
 } from '../lib/types.ts';
 import { splitRounds } from '../lib/mags.ts';
-import { deleteOne, getAll, getOne, getSettings, putOne, putSettings, rewriteSessionSkillSets } from '../lib/db.ts';
+import { deleteOne, getAll, getMediaForOwner, getOne, getSettings, putOne, putSettings, rewriteSessionSkillSets } from '../lib/db.ts';
 import { dayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -339,7 +339,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       if (id !== undefined) {
         const [s, allMedia, allMalfs, allSkillSets] = await Promise.all([
           getOne<Session>('sessions', id),
-          getAll<Media>('media'),
+          getMediaForOwner('session', id),
           getAll<MalfunctionEntry>('malfunctions'),
           getAll<SkillSet>('skillSets')
         ]);
@@ -381,7 +381,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         // Editing/converting an existing session: never auto-overwrite its saved
         // ammo — treat the section as already user-managed.
         setAmmoTouched(true);
-        setExistingMedia(allMedia.filter((m) => m.ownerType === 'session' && m.ownerId === id));
+        setExistingMedia(allMedia);
         const mine = allMalfs.filter((m) => m.sessionId === id);
         setOldMalfIds(mine.map((m) => m.id));
         setMalfs(mine.map((m) => ({

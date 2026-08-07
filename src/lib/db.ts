@@ -206,12 +206,37 @@ export function withExclusiveIo<T>(what: string, fn: () => Promise<T>): Promise<
  * where recordShape.ts corrected exactly that sentence — two files disagreeing about
  * the same fact, which is the defect class both were written to avoid.)
  */
-export async function getAll<T>(store: StoreName): Promise<T[]> {
+export async function getAll<T>(store: Exclude<StoreName, 'media'>): Promise<T[]> {
   const db = await openDb();
   const tx = db.transaction(store, 'readonly');
   const req = tx.objectStore(store).getAll();
   await txDone(tx);
   return normalizeRecords(store, req.result as T[]);
+}
+
+/**
+ * Load the entire media store at once — raw bytes included.
+ *
+ * DANGER: each Media record carries its full ArrayBuffer (photo / video bytes).
+ * Loading the whole store simultaneously is the likeliest iPhone memory crash
+ * on a large log (see getMediaForOwner for the cursor-based alternative that
+ * keeps only one owner's few records in memory at a time).
+ *
+ * Callers that legitimately need the whole store (and therefore own the
+ * memory risk):
+ *   - PhotoCleanupCard.tsx — whole-library dedup / cleanup (P-7, treated
+ *     separately; do not add callers here without a similar explicit review)
+ *   - reportLaunch.ts — report bundle spans all firearms / sessions / matches
+ *     in one pass; P-1 converted single-owner callers to getMediaForOwner
+ *
+ * Points at P-7 for the eventual cursor-based cleanup path.
+ */
+export async function getAllMediaWholeStore(): Promise<Media[]> {
+  const db = await openDb();
+  const tx = db.transaction('media', 'readonly');
+  const req = tx.objectStore('media').getAll();
+  await txDone(tx);
+  return normalizeRecords('media', req.result as Media[]);
 }
 
 export async function getOne<T>(store: StoreName, id: string): Promise<T | undefined> {
@@ -490,7 +515,7 @@ async function commitDataSetInner(
   for (const f of data.firearms) ownerIds.add(f.id);
   for (const sn of data.sessions) ownerIds.add(sn.id);
   for (const m of data.matches) ownerIds.add(m.id);
-  const existing = await getAll<Media>('media');
+  const existing = await getAllMediaWholeStore();
   for (const m of existing) {
     if (ownerIds.has(m.ownerId) && !newIds.has(m.id)) {
       const dtx = db.transaction('media', 'readwrite');
@@ -606,13 +631,13 @@ export async function seedDrillsWithSettings<T extends object>(
 
 /** Every store except media (which travels in its own snapshot section) —
  *  derived from the canonical STORE_NAMES so it can never drift (B4/M-4). */
-const SNAPSHOT_STORES: StoreName[] = STORE_NAMES.filter((n) => n !== 'media');
+const SNAPSHOT_STORES: Exclude<StoreName, 'media'>[] = STORE_NAMES.filter((n): n is Exclude<StoreName, 'media'> => n !== 'media');
 
 /** Everything in the database, packaged to travel (spec §7.1). */
 export async function exportSnapshot(): Promise<Snapshot> {
   const stores: Record<string, unknown[]> = {};
   for (const name of SNAPSHOT_STORES) stores[name] = await getAll(name);
-  const media = await getAll<Media>('media');
+  const media = await getAllMediaWholeStore();
   return {
     exportedAt: Date.now(),
     lastModified: newestStamp(stores, media),
@@ -625,7 +650,7 @@ export async function exportSnapshot(): Promise<Snapshot> {
 export async function localLastModified(): Promise<number> {
   const stores: Record<string, unknown[]> = {};
   for (const name of SNAPSHOT_STORES) stores[name] = await getAll(name);
-  const media = await getAll<Media>('media');
+  const media = await getAllMediaWholeStore();
   return newestStamp(stores, media);
 }
 
@@ -709,7 +734,7 @@ async function restoreSnapshotInner(
   }
   // …then remove anything that isn't in the new set. The store is never empty.
   const keepIds = new Set(snapshot.media.map((m) => m.id));
-  const existing = await getAll<Media>('media');
+  const existing = await getAllMediaWholeStore();
   for (const m of existing) {
     if (!keepIds.has(m.id)) {
       const dtx = db.transaction('media', 'readwrite');

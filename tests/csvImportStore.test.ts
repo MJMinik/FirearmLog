@@ -20,7 +20,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   applyAmmoMerge, batchesMissingFromHistory, clearAllData, commitImportBatch, getAll,
-  getImportHistory, putOne, REF_SCAN_STORES, undoImportBatch,
+  getAllMediaWholeStore, getImportHistory, putOne, REF_SCAN_STORES, undoImportBatch,
 } from '../src/lib/db.ts';
 import { repointAmmoUsage } from '../src/lib/ammoMerge.ts';
 import type { StoreName } from '../src/lib/db.ts';
@@ -28,6 +28,13 @@ import type { CsvImportRowCounts, Firearm, Session } from '../src/lib/types.ts';
 import { readCsvFile } from '../src/ui/importCsvFile.ts';
 import { purgeSession } from '../src/ui/sessionDelete.ts';
 import { MAX_IMPORT_FILE_BYTES } from '../src/lib/inputLimits.ts';
+
+// Helper: read any store including 'media', routing media through getAllMediaWholeStore
+// because getAll's type excludes 'media' (P-1 guard).
+async function getAllStore<T>(store: StoreName): Promise<T[]> {
+  if (store === 'media') return getAllMediaWholeStore() as Promise<T[]>;
+  return getAll<T>(store as Exclude<StoreName, 'media'>);
+}
 
 const COUNTS: CsvImportRowCounts = {
   rowsTotal: 3, rowsPlanned: 3, rowsFailed: 0, rowsSkipped: 0,
@@ -302,7 +309,7 @@ for (const attachedCase of ATTACHED_REFERENCE_CASES) {
       !has(await getAll('firearms'), `fa-${batchId}`),
       'the gun the import created does not outlive the import',
     );
-    assert.equal((await getAll<{ id: string }>(attachedCase.store)).length, 0);
+    assert.equal((await getAllStore<{ id: string }>(attachedCase.store)).length, 0);
   });
 }
 
@@ -401,7 +408,7 @@ for (const cascade of SESSION_CASCADE_CASES) {
 
     await undoImportBatch(batchId);
 
-    const rows = await getAll<{ id: string }>(cascade.store);
+    const rows = await getAllStore<{ id: string }>(cascade.store);
     assert.ok(
       !rows.some((r) => r.id.endsWith('-orphan')),
       `a ${cascade.store} row pointing at a deleted session is an orphan nothing can reach`,
@@ -438,7 +445,7 @@ test('the app\'s own permanent delete asks the SAME question the undo asks', asy
   await purgeSession('se-purge');
 
   for (const cascade of SESSION_CASCADE_CASES) {
-    const rows = await getAll<{ id: string }>(cascade.store);
+    const rows = await getAllStore<{ id: string }>(cascade.store);
     assert.ok(!rows.some((r) => r.id.endsWith('-orphan')), `${cascade.store} filed against the purged session goes`);
     assert.ok(rows.some((r) => r.id.endsWith('-keep')), `${cascade.store} on another session stays`);
   }

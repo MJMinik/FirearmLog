@@ -14,6 +14,7 @@ import {
   untrashSession,
   clearAllData,
   getAll,
+  getAllMediaWholeStore,
   getMediaForOwner,
   getSettings,
   putSettings,
@@ -174,9 +175,10 @@ test('clearAllData erases every store and the settings (hard-gate)', async () =>
 
   await clearAllData();
 
-  for (const store of ['firearms', 'sessions', 'goals', 'media', 'meta', 'matches', 'classifiers', 'trash', 'skillSets'] as const) {
+  for (const store of ['firearms', 'sessions', 'goals', 'meta', 'matches', 'classifiers', 'trash', 'skillSets'] as const) {
     assert.equal((await getAll(store)).length, 0, `${store} is empty after clearAllData`);
   }
+  assert.equal((await getAllMediaWholeStore()).length, 0, 'media is empty after clearAllData');
   assert.equal(await getSettings(), undefined, 'settings gone after clearAllData');
 });
 
@@ -233,7 +235,7 @@ test('B7: a restore interrupted in the media phase never LOSES existing photos',
     media: [{ id: 'md-bad', oops: () => {} }, { id: 'md-new', ownerType: 'session', ownerId: 's2', kind: 'image', data: new ArrayBuffer(4) }],
   } as Snapshot;
   await assert.rejects(restoreSnapshot(poisoned));
-  const media = await getAll<{ id: string }>('media');
+  const media = await getAllMediaWholeStore();
   assert.ok(has(media, 'md-old'), 'existing photo survived the interrupted restore');
 });
 
