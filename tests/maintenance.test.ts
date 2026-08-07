@@ -45,6 +45,26 @@ test('roundsSince counts only this gun, after the date, never planned', () => {
   assert.equal(roundsSince('2026-01-15', 'fa-1', sessions), 200);
 });
 
+test('roundsSince excludes dry-fire reps (C-1): reps are not rounds fired', () => {
+  // A dry-fire session's reps must NOT advance a round-count maintenance
+  // schedule — mirrors stats.roundsForFirearm and liveSessionsSince, which
+  // both already skip dry fire.
+  const sessions = [
+    session('2026-02-01', 100),
+    session('2026-02-02', 500, 'dry_fire'),
+    session('2026-02-03', 200)
+  ];
+  assert.equal(roundsSince('2026-01-31', 'fa-1', sessions), 300);
+});
+
+test('dry-fire reps do not advance the deep-clean round count (C-1)', () => {
+  const g = gun({ deepCleanInterval: 1000 });
+  // 900 live rounds (warn at 90%) + 5000 dry-fire reps: still warn, never due.
+  const sessions = [session('2026-01-01', 900), session('2026-01-02', 5000, 'dry_fire')];
+  const items = maintenanceStatus(g, undefined, sessions, [maint('2025-12-31', 'deep_clean')], [g], NOW);
+  assert.equal(items.find((i) => i.type === 'deep_clean')!.level, 'warn');
+});
+
 test('liveSessionsSince excludes dry fire and planned', () => {
   const sessions = [
     session('2026-02-01', 100),

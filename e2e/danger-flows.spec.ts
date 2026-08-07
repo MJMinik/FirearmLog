@@ -48,9 +48,66 @@ test.describe('Danger flows (M-13)', () => {
     await expect(page.getByRole('heading', { name: 'Compete' }).first()).toBeVisible();
   });
 
+  // T-4: the stores whose survival the round-trip must PROVE, row by row —
+  // the same read-the-real-database pattern export-csv.spec.ts uses. Covers
+  // the core stores plus the three a dropped restore path would lose
+  // silently: classifiers, media, skillSets.
+  const COUNTED_STORES = [
+    'firearms', 'sessions', 'drills', 'ammunition', 'purchases', 'maintenance',
+    'magazines', 'matches', 'classifiers', 'media', 'skillSets',
+  ];
+
+  /** Per-store row counts, read in-page from the live IndexedDB. */
+  async function storeCounts(page: Page): Promise<Record<string, number>> {
+    return page.evaluate(async (stores) => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('firearmlog');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      const count = (store: string) => new Promise<number>((resolve) => {
+        const r = db.transaction(store, 'readonly').objectStore(store).count();
+        r.onsuccess = () => resolve(r.result);
+        r.onerror = () => resolve(-1);
+      });
+      const out: Record<string, number> = {};
+      for (const st of stores) out[st] = await count(st);
+      db.close();
+      return out;
+    }, COUNTED_STORES);
+  }
+
   test('backup round-trip: Save to File → erase → Load from File restores the log', async ({ page }) => {
     test.slow(); // downloads + a full restore; give CI room
     await seedDemo(page);
+
+    // The demo dataset holds no timed-skill sets, so plant one — written
+    // through the page's own IndexedDB — or a restore path that dropped the
+    // skillSets store entirely could never be caught below.
+    await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('firearmlog');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction('skillSets', 'readwrite');
+        tx.objectStore('skillSets').put({
+          id: 'sk-e2e-roundtrip', createdAt: Date.now(), updatedAt: Date.now(),
+          sessionId: 'se-e2e', date: '2026-08-01', skill: 'draw', firearmId: 'fa-e2e',
+          dryFire: false, count: 10, bestSec: 1.2, typicalSec: null, parSec: null,
+          cold: true, repTimesSec: null, notes: 'round-trip sentinel',
+        });
+        tx.oncomplete = () => { db.close(); resolve(); };
+        tx.onerror = () => reject(tx.error);
+      });
+    });
+
+    // Per-store counts before the backup — what the restore must give back.
+    const before = await storeCounts(page);
+    for (const st of ['firearms', 'sessions', 'matches', 'classifiers', 'media', 'skillSets']) {
+      expect(before[st], `store '${st}' has rows to round-trip`).toBeGreaterThan(0);
+    }
 
     // 1. Save to File — capture the real .flog download.
     await gotoSection(page, 'Sync & Backup');
@@ -90,8 +147,13 @@ test.describe('Danger flows (M-13)', () => {
     await gotoTab(page, 'Home');
     await expect(page.getByText('Live-fire rounds')).toBeVisible();
     // (D-5: removed a self-swallowing `.not.toBeVisible().catch(() => {})` that
-    // could never fail. The 'Live-fire rounds' assertion above is the real proof
-    // the restore repopulated the log — the empty first-run Home shows the "Add
-    // your first gun" CTA instead of live stats.)
+    // could never fail.)
+
+    // 5. T-4: the REAL proof — every counted store holds exactly the rows it
+    // held before the wipe. Home rendering live stats can't tell a full
+    // restore from one that quietly dropped classifiers, media, or skillSets;
+    // these counts can.
+    const after = await storeCounts(page);
+    expect(after, 'per-store row counts after restore match the pre-wipe log').toEqual(before);
   });
 });

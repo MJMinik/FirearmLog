@@ -37,11 +37,13 @@ export interface MaintItem {
   detail: string;
 }
 
-/** Rounds this gun fired in non-planned sessions strictly after a date. */
+/** Rounds this gun fired in live (not dry, not planned) sessions strictly after a date.
+ * Dry-fire reps are NOT rounds fired (C-1) — same rule as stats.roundsForFirearm
+ * and liveSessionsSince below, so a schedule never advances on reps. */
 export function roundsSince(date: string, gunId: string, sessions: Session[]): number {
   let total = 0;
   for (const s of sessions) {
-    if (s.planned || s.date <= date) continue;
+    if (s.planned || s.type === 'dry_fire' || s.date <= date) continue;
     for (const g of s.guns) if (g.firearmId === gunId) total += g.rounds;
   }
   return total;

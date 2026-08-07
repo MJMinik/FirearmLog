@@ -22,18 +22,64 @@ test.describe('Sessions', () => {
 
     await page.getByRole('button', { name: '+ Log Session' }).click();
 
-    // Pick the first gun in the "Guns & Rounds" card and enter a round count.
+    // T-1: count the sessions store in-page BEFORE the save (the same
+    // read-the-real-database pattern export-csv.spec.ts uses), so the
+    // assertion below anchors on the DB write itself — a green run proves
+    // the session was PERSISTED, not merely drawn into the list.
+    const sessionCount = () => page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('firearmlog');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      return new Promise<number>((resolve) => {
+        const r = db.transaction('sessions', 'readonly').objectStore('sessions').count();
+        r.onsuccess = () => { db.close(); resolve(r.result); };
+        r.onerror = () => { db.close(); resolve(-1); };
+      });
+    });
+    const before = await sessionCount();
+    expect(before).toBeGreaterThan(0); // demo data really seeded
+
+    // Pick the first gun in the "Guns & Rounds" card and enter a distinctive
+    // round count no demo session uses, so the row we find below is OURS.
     const gunsCard = page.getByTestId('session-guns-card');
     await gunsCard.locator('button.gun-toggle').first().click();
-    await gunsCard.getByRole('spinbutton').first().fill('50');
+    await gunsCard.getByRole('spinbutton').first().fill('47');
 
     // Save via the navbar action (date is prefilled to today).
     await page.locator('.navbar-action').click();
 
-    // We return to the Log list; the new 50-round session is there
+    // We return to the Log list; the new 47-round session is there
     // (rounds render as "rds" for live fire, "reps" for dry fire).
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
-    await expect(page.getByText(/50\s*(rds|reps)/).first()).toBeVisible();
+    await expect(page.getByText(/47\s*(rds|reps)/).first()).toBeVisible();
+
+    // The write actually landed: one more row in the sessions store, and the
+    // stored record carries our distinctive count.
+    expect(await sessionCount()).toBe(before + 1);
+    const stored = await page.evaluate(async () => {
+      const db = await new Promise<IDBDatabase>((resolve, reject) => {
+        const req = indexedDB.open('firearmlog');
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+      return new Promise<boolean>((resolve) => {
+        const r = db.transaction('sessions', 'readonly').objectStore('sessions').getAll();
+        r.onsuccess = () => {
+          db.close();
+          const rows = r.result as { guns?: { rounds?: number }[] }[];
+          resolve(rows.some((row) => (row.guns ?? []).some((g) => g.rounds === 47)));
+        };
+        r.onerror = () => { db.close(); resolve(false); };
+      });
+    });
+    expect(stored, 'a session with 47 rounds is in the sessions store').toBe(true);
+
+    // And it survives a full reload — persistence, not React state.
+    await page.reload();
+    await gotoTab(page, 'Log');
+    await expect(page.getByText(/47\s*(rds|reps)/).first()).toBeVisible();
   });
 
   // Session-55 fresh-eyes find: with an EMPTY ammo library the Ammo Used card
