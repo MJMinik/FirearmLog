@@ -250,4 +250,49 @@ test.describe('PractiScore import', () => {
     await main.getByLabel('Results text').fill('   ');
     await expect(main.getByRole('button', { name: 'Read results' })).toBeDisabled();
   });
+
+  test('each step change snaps the page to the top — the suggested row is what you see first', async ({ page }) => {
+    // Michael's device tap-test (7 Aug 2026): with a 78-shooter field, "Read
+    // results" left the page at the old scroll position, mid-field, and the
+    // highlighted "This looks like you" row sat off-screen above. Each step
+    // change must land at the top. A big generated field makes step 2 taller
+    // than any viewport, so a kept scroll position would be caught, not clamped
+    // away by the browser (a short page forces scrollY to 0 on its own, which
+    // would make this test pass even without the fix).
+    await seedDemo(page);
+    await gotoTab(page, 'Compete');
+    const main = page.getByRole('main');
+
+    await main.getByRole('button', { name: 'Import…' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Import' });
+    await sheet.getByRole('button', { name: 'Import from PractiScore' }).click();
+
+    const rows = Array.from({ length: 60 }, (_, i) =>
+      `${i + 1},${i + 1},Shooter,Number${String(i + 1).padStart(2, '0')},A${10000 + i},Carry Optics,B,Minor,${(700 - i * 5).toFixed(4)},${(100 - i).toFixed(2)},90.00,90.00,90.00,90.00,90.00`);
+    const bigCsv = [
+      'Match Name,Big Field Classic',
+      'Match Date,2026-08-02',
+      'Stages,5',
+      '',
+      'Overall Place,Division Place,First Name,Last Name,USPSA #,Division,Class,Power Factor,Match Points,Match %,Stage 1 %,Stage 2 %,Stage 3 %,Stage 4 %,Stage 5 %',
+      ...rows,
+      '',
+    ].join('\n');
+    await main.getByLabel('Results text').fill(bigCsv);
+
+    // Step 1 is long (the how-to instructions); stand at the bottom of it, where
+    // the Read results button lives, the way a real paste leaves you.
+    await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+    await main.getByRole('button', { name: 'Read results' }).click();
+    await expect(main.getByText('Which one is you?')).toBeVisible();
+    // The 60-row field is taller than the viewport, so only the fix puts us here.
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+
+    // Step 2 -> step 3: picking a row far down the field snaps back up too.
+    await main.getByRole('button', { name: 'Number55' }).click();
+    await expect(main.getByRole('heading', { name: 'Your result' })).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  });
 });

@@ -68,6 +68,17 @@ export function PractiScoreImport({ onCancel, onSaved }: {
 
   useEffect(() => { void (async () => setFirearms(await getAll<Firearm>('firearms')))(); }, []);
 
+  // Michael's device tap-test (7 Aug 2026): "Read results" swapped the paste card
+  // for the shooter field, but the page kept its old scroll position — mid-field,
+  // with the suggested "This looks like you" row sitting off-screen above. Tab and
+  // screen changes already snap to the top (App.tsx scrollTop); these in-screen
+  // step changes are the same movement, so they get the same snap. rAF so it runs
+  // after the new step has rendered.
+  const step = parsed == null ? 1 : chosenIdx == null ? 2 : 3;
+  useEffect(() => {
+    requestAnimationFrame(() => window.scrollTo(0, 0));
+  }, [step]);
+
   function readResults() {
     setProblem('');
     // S-2: cap the pasted text before the parser walks it (guard at the boundary).
