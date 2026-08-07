@@ -17,6 +17,7 @@
 // sniffed, so a real export with slightly different headers or separators can
 // be adapted without code changes for the common cases.
 import { splitCsvLine, looseNum, findCol, DELIMITER_CANDIDATES } from './csv.ts';
+import { suggestDivision, DIVISIONS } from './competition.ts';
 
 const num = looseNum;
 
@@ -288,10 +289,20 @@ function parseWith(text: string, delim: string): PsMatch {
   return { name, date, stageCount, competitors };
 }
 
-/** How many competitors are in a given division (for "X of Y" division place). */
+/** How many competitors are in a given division (for "X of Y" division place).
+ *
+ * Canonicalises BOTH sides before comparing (spec §3.3, §5.1.2): a file whose
+ * rows all say "CO" counts correctly when asked for "Carry Optics", and a file
+ * that says "Carry Optics" counts correctly when asked for "CO". Without this,
+ * saving with the canonical name and then reading divisionOf from the still-raw
+ * competitor list gave 0 of 0 for any short-code file. One canonical form per
+ * string, per suggestDivision's conservative table -- ambiguous codes stay
+ * ambiguous and only exact or known-alias matches are canonicalised.
+ */
 export function countInDivision(competitors: PsCompetitor[], division: string): number {
-  const d = division.trim().toLowerCase();
-  return competitors.filter((c) => c.division.trim().toLowerCase() === d).length;
+  const canonical = (d: string) => suggestDivision(d, DIVISIONS) ?? d.trim();
+  const d = canonical(division);
+  return competitors.filter((c) => canonical(c.division) === d).length;
 }
 
 // A realistic, self-contained sample so Michael can try the importer before he
