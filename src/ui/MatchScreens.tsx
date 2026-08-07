@@ -2,7 +2,7 @@
 // auto hit factors, stage videos, entry fee, and PractiScore link.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { AppSettings, Firearm, Match, MatchStage, Media } from '../lib/types.ts';
-import { deleteOne, getAll, getOne, getSettings, putOne, putSettings } from '../lib/db.ts';
+import { deleteOne, getAll, getMediaForOwner, getOne, getSettings, putOne, putSettings } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -183,14 +183,14 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
     void (async () => {
       try {
         const [m, f, media, settings] = await Promise.all([
-          getOne<Match>('matches', id), getAll<Firearm>('firearms'), getAll<Media>('media'),
+          getOne<Match>('matches', id), getAll<Firearm>('firearms'), getMediaForOwner('match', id),
           getSettings<AppSettings>()
         ]);
         if (!alive) return;
         if (!m) { setNotFound(true); return; }
         setMatch(m);
         setFirearms(f);
-        setVideos(media.filter((x) => x.ownerType === 'match' && x.ownerId === id));
+        setVideos(media);
         setCoachingRemarks(settings?.coachingRemarks !== false);
       } catch (e) {
         console.error('Match detail load failed', e);
@@ -626,7 +626,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
       const firstPick = pickableGuns(sorted);
       if (!editing && firstPick.length > 0) setFirearmId(firstPick[0].id);
       if (id !== undefined) {
-        const [m, allMedia] = await Promise.all([getOne<Match>('matches', id), getAll<Media>('media')]);
+        const [m, allMedia] = await Promise.all([getOne<Match>('matches', id), getMediaForOwner('match', id)]);
         if (!alive || !m) return;
         setOriginal(m);
         // matchType and date were the two string fields never defaulted, and a cold
@@ -688,7 +688,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
             idpaFtdr: st.idpaFailureToDoRight == null ? '' : String(st.idpaFailureToDoRight),
           };
         }));
-        setExistingMedia(allMedia.filter((x) => x.ownerType === 'match' && x.ownerId === id));
+        setExistingMedia(allMedia);
         setEntryFee(m.entryFee == null ? '' : String(m.entryFee));
         // Default the string fields AT THE LOAD BOUNDARY (session 106, found by this
         // build's own E2E fixture and fixed on contact).

@@ -11,8 +11,7 @@
 //  - Processed one at a time so a phone never holds many decoded images at once.
 //  - The user is told to Save to File (back up) first, and must confirm.
 import { useEffect, useState } from 'react';
-import type { Media } from '../lib/types.ts';
-import { getAll, putOne, withExclusiveIo } from '../lib/db.ts';
+import { getAllMediaWholeStore, putOne, withExclusiveIo } from '../lib/db.ts';
 import { stampUpdate } from '../lib/stamps.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
 import { ConfirmSheet } from './Sheet.tsx';
@@ -39,7 +38,7 @@ export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean 
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const all = await getAll<Media>('media');
+      const all = await getAllMediaWholeStore();
       const oversized = all.some((m) => m.kind === 'image' && m.data.byteLength > OVERSIZE_BYTES);
       if (alive) { setHasOversized(oversized); setChecked(true); }
     })();
@@ -62,7 +61,7 @@ export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean 
   }
 
   async function runInner() {
-    const all = await getAll<Media>('media');
+    const all = await getAllMediaWholeStore();
     const images = all.filter((m) => m.kind === 'image');
     let shrunk = 0;
     let saved = 0;

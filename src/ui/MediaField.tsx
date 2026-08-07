@@ -7,7 +7,7 @@
 // and calls commitMedia() at save time.
 import { useRef, useState } from 'react';
 import type { Media } from '../lib/types.ts';
-import { getAll, putOne, deleteOne } from '../lib/db.ts';
+import { getMediaForOwner, putOne, deleteOne } from '../lib/db.ts';
 import { MAX_MEDIA_BYTES, humanBytes } from '../lib/inputLimits.ts';
 import { stampNew } from '../lib/stamps.ts';
 import { newId } from '../lib/id.ts';
@@ -96,8 +96,7 @@ export function MediaField({
   }
 
   async function reloadExisting(): Promise<void> {
-    const all = await getAll<Media>('media');
-    setExistingMedia(all.filter((m) => m.ownerType === ownerType && m.ownerId === ownerId));
+    setExistingMedia(await getMediaForOwner(ownerType, ownerId));
   }
 
   return (

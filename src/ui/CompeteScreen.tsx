@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ScreenLoading } from './ScreenState.tsx';
 import type { Classifier, Firearm, Match, Media } from '../lib/types.ts';
-import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
+import { deleteOne, getAll, getMediaForOwner, getOne, putOne } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -311,8 +311,8 @@ export function ClassifierForm({ id, onSaved, onCancel, onDirtyChange, onSaverCh
       setPercent(c.percent === null ? '' : String(c.percent));
       setNotes(c.notes);
     });
-    void getAll<Media>('media').then((all) => {
-      if (alive) setExistingMedia(all.filter((m) => m.ownerType === 'classifier' && m.ownerId === id));
+    void getMediaForOwner('classifier', id).then((media) => {
+      if (alive) setExistingMedia(media);
     });
     return () => { alive = false; };
   }, [id]);

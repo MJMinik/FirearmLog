@@ -60,17 +60,22 @@ test('v2 -> v3 upgrade: every store exists afterwards and all v2 data survives',
 
   // Importing db.ts here (not at the top) so ITS open, at SCHEMA_VERSION 3,
   // is the first thing to touch the seeded v2 database -- the real upgrade path.
-  const { getAll, STORE_NAMES } = await import('../src/lib/db.ts');
+  const { getAll, getAllMediaWholeStore, STORE_NAMES } = await import('../src/lib/db.ts');
 
   // Every current store must exist -- getAll opens a transaction on the store,
   // which throws NotFoundError if the upgrade failed to create it.
   for (const name of STORE_NAMES) {
-    await assert.doesNotReject(getAll(name), `store '${name}' is missing after the v2 -> v3 upgrade`);
+    const storeCheck = name === 'media'
+      ? getAllMediaWholeStore()
+      : getAll(name as Exclude<typeof name, 'media'>);
+    await assert.doesNotReject(storeCheck, `store '${name}' is missing after the v2 -> v3 upgrade`);
   }
 
   // And the v2 records rode through the upgrade untouched.
   for (const [store, rows] of Object.entries(V2_ROWS)) {
-    const after = await getAll<{ id?: string; key?: string }>(store as (typeof STORE_NAMES)[number]);
+    const after = store === 'media'
+      ? await getAllMediaWholeStore() as { id?: string; key?: string }[]
+      : await getAll<{ id?: string; key?: string }>(store as Exclude<(typeof STORE_NAMES)[number], 'media'>);
     for (const row of rows) {
       const found = row.key
         ? after.some((r) => r.key === row.key)
