@@ -11,7 +11,8 @@ import { getAll, getSettings, putOne } from '../lib/db.ts';
 import { stampNew } from '../lib/stamps.ts';
 import { newId } from '../lib/id.ts';
 import { todayKey } from '../lib/dates.ts';
-import { MATCH_TYPES, DIVISIONS, POWER_FACTORS } from '../lib/competition.ts';
+import { MATCH_TYPES, DIVISIONS, POWER_FACTORS, suggestDivision, divisionMismatchKind } from '../lib/competition.ts';
+import { divisionActuallyChanged } from '../lib/divisionNormalise.ts';
 import { fieldOptions } from '../lib/selectOptions.ts';
 import { findOwnRows, normaliseStoredNames, type NameMatch } from '../lib/shooterMatch.ts';
 import {
@@ -106,7 +107,10 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     // describes a field the match never had, so it goes rather than being
     // carried across under a new label. Same principle as the date: a figure
     // nobody can check does not get written.
-    const divisionEdited = division !== me.division;
+    // divisionActuallyChanged is false when the selection equals the raw scored string
+    // OR its canonical form (spec §3.3). Saving "Carry Optics" after pre-selection on
+    // a "CO" file does NOT fire the guard, so the real placing is preserved.
+    const divisionChanged = divisionActuallyChanged(me.division, division, DIVISIONS);
     setSaving(true);
     try {
       const mid = newId('mt');
@@ -119,10 +123,12 @@ export function PractiScoreImport({ onCancel, onSaved }: {
         firearmId,
         totalRounds: null,
         matchPercent: me.matchPercent,
-        divisionPlace: divisionEdited ? null : me.divisionPlace,
+        divisionPlace: divisionChanged ? null : me.divisionPlace,
         // A blank division is not a division: counting everyone whose Div cell
         // was empty produced "N in your division" on a match that recorded none.
-        divisionOf: divisionEdited || me.division === '' ? null : (countInDivision(parsed.competitors, me.division) || null),
+        // Pass the canonical saved division so an all-"CO" file counts under
+        // "Carry Optics" (spec §3.3, §5.1.2).
+        divisionOf: divisionChanged || me.division === '' ? null : (countInDivision(parsed.competitors, division) || null),
         overallPlace: me.overallPlace,
         overallOf: parsed.competitors.length,
         stages: me.stages.map((s) => ({ number: s.number, points: null, time: null, percent: s.percent, notes: '' })),
@@ -168,8 +174,12 @@ export function PractiScoreImport({ onCancel, onSaved }: {
         setChosenIdx(i);
         // Seed the editable fields from the row that was picked, so a
         // change of shooter never leaves the previous one's division
-        // sitting in the form.
-        setDivision(c.division);
+        // sitting in the form. Pre-select the canonical division name
+        // (spec §3.1, §3.2): if PractiScore stored "CO" the picker starts
+        // on "Carry Optics", not on the short code. The raw scored string
+        // stays in the preview row above. The "as scored" option in the
+        // picker lets the user revert if the guess is wrong.
+        setDivision(suggestDivision(c.division, DIVISIONS) ?? c.division);
         setPowerFactor(c.powerFactor || POWER_FACTORS[0]);
       }}>
         <span className="label">{c.name || '(no name)'}
@@ -341,7 +351,38 @@ export function PractiScoreImport({ onCancel, onSaved }: {
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
-              {division !== me.division && (
+              {/* When the picker shows the canonical name for what the results said
+                  (e.g. "Carry Optics" for "CO"), tell the user what the results said
+                  and that the placing is preserved. Only shown when they differ and
+                  the canonical is not the same string PractiScore wrote (spec §3.1).
+                  The sentence names the ACTUAL difference (audit finding 1): calling
+                  "carry optics" or "Open " a short code is false, and the spacing/case
+                  differences are invisible without the quotes -- same lesson as the
+                  divisionMismatchKind callout on the match screen. */}
+              {division !== me.division && !divisionActuallyChanged(me.division, division, DIVISIONS) && (
+                <span className="report-note">
+                  {(() => {
+                    const q = <b>&quot;{me.division}&quot;</b>;
+                    switch (divisionMismatchKind(me.division, division)) {
+                      case 'spacing':
+                        return <>The results scored you as {q}, with extra spaces around it. Selected below
+                          as <b>{division}</b>. Change it if that is wrong.</>;
+                      case 'spelling':
+                        return <>The results scored you as {q}, spelled differently from the list. Selected below
+                          as <b>{division}</b>. Change it if that is wrong.</>;
+                      case 'spacing-and-spelling':
+                        return <>The results scored you as {q}, with extra spaces and a different spelling. Selected below
+                          as <b>{division}</b>. Change it if that is wrong.</>;
+                      default:
+                        return <>The results scored you as {q}, a short code. Selected below
+                          as <b>{division}</b>. Change it if that is wrong.</>;
+                    }
+                  })()}
+                </span>
+              )}
+              {/* When the user has picked a genuinely different division, warn that
+                  the division placing will be cleared (spec §3.3). */}
+              {divisionActuallyChanged(me.division, division, DIVISIONS) && (
                 <span className="report-note">
                   The results scored you as "{me.division || 'no division'}". Your division finish
                   will be left blank, because it was worked out among the shooters in that division.
