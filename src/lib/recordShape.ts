@@ -218,30 +218,33 @@ type ExpectedRecordShape = {
 
 /**
  * One entry per persisted store. Derived by hand from `types.ts` and held to it
- * by two complementary checks:
- *  - The `satisfies ExpectedRecordShape` clause below: tsc refuses to compile
- *    when any required plain-string field is missing from this map, or when this
- *    map lists a field that is not a required plain string on the interface.
- *  - `scripts/check-shape.mjs`: still checks the `??` usage guard and the
- *    "no unmapped nested row type" rule, which the type system cannot express.
+ * by two complementary type checks and one script check:
+ *
+ *  - The `satisfies ExpectedRecordShape` clause on RECORD_SHAPE_LITERAL: tsc
+ *    refuses to compile when this map LISTS a field that is not a required plain
+ *    string on the interface (stale key, renamed field, field made optional or
+ *    `string | null`). Error: "does not satisfy the expected type
+ *    'ExpectedFirearmShape'" (or another per-store alias). The alias name
+ *    identifies the broken store; tsc shows two unions of string literals and the
+ *    stale key appears in the "actual" union but not in "expected". Remove it, or
+ *    update `types.ts` if the change was wrong.
+ *
+ *  - The AssertComplete lines below RECORD_SHAPE: tsc refuses to compile when a
+ *    required plain-string field EXISTS on the interface but is ABSENT from this
+ *    map. Error: "Type 'missing-key-name' does not satisfy the constraint 'never'".
+ *    The type argument that fails names the missing key exactly. Add it here, in
+ *    the right store's strings array.
+ *
+ *  - `scripts/check-shape.mjs`: checks two things the type system cannot express
+ *    -- the `??` usage guard (a normalised field with a non-empty fallback reads
+ *    as a live guard but can never fire) and the "no unmapped nested row type"
+ *    rule (a named interface used as an array element must appear in
+ *    NESTED_FOR_TYPE or NESTED_EXEMPT).
  *
  * `meta` is absent on purpose: it holds a settings blob keyed by `key`, not
  * records, and `AppSettings` is written only by the app itself.
- *
- * HOW TO READ A `satisfies` FAILURE HERE. If `npx tsc --noEmit` fails with
- * "does not satisfy the expected type 'ExpectedFirearmShape'" (or another
- * per-store alias), read the error like this:
- *   1. The alias name (e.g. ExpectedFirearmShape) names the store that is broken.
- *   2. tsc will show two unions of string literals. The key MISSING from this
- *      map appears in the "expected" union but not in the "actual" union. Diff
- *      them; that key needs adding here.
- *   3. The reverse -- a literal in this map that is NOT in the expected union --
- *      means the field on the interface changed (became optional, became
- *      `string | null`, or was renamed) and this map lists a stale name.
- * The fix is always in this file or in `src/lib/types.ts`. The read boundary
- * functions below do not need changing to fix a keeper failure.
  */
-export const RECORD_SHAPE: Readonly<Record<Exclude<StoreName, 'meta'>, StoreShape>> = {
+const RECORD_SHAPE_LITERAL = {
   firearms: { strings: ['name', 'manufacturer', 'model', 'caliber', 'dateAcquired', 'notes', 'category'] },
   sessions: {
     strings: ['date', 'type', 'location', 'distances', 'notes'],
@@ -271,12 +274,67 @@ export const RECORD_SHAPE: Readonly<Record<Exclude<StoreName, 'meta'>, StoreShap
     nested: { stages: ['notes'] },
   },
   classifiers: { strings: ['date', 'code', 'name', 'division', 'notes'] },
-  // `links` is inline-typed too — the same shape as sessions.ammoUsage above.
+  // `links` is inline-typed too -- the same shape as sessions.ammoUsage above.
   references: { strings: ['name', 'guidance', 'category'], nested: { links: ['label', 'url'] } },
   reminders: { strings: ['title', 'notes', 'source', 'trigger'] },
   media: { strings: ['ownerId', 'name', 'mime', 'ownerType', 'kind'], nested: { marks: ['color', 'label'] } },
   trash: { strings: ['recordType'] },
 } as const satisfies ExpectedRecordShape;
+
+export const RECORD_SHAPE: Readonly<Record<Exclude<StoreName, 'meta'>, StoreShape>> = RECORD_SHAPE_LITERAL;
+
+// ---- completeness assertions: go red when a required plain-string key is absent
+// from the map. The AssertComplete<Missing extends never> trick makes tsc name
+// the missing key in the error: "Type 'missing-key' does not satisfy the
+// constraint 'never'". These are pure compile-time; they produce no runtime code.
+//
+// If a missing key is reported, add it to the right store's strings array above.
+// If a missing nested key is reported, add it to the store's nested block above.
+
+/** Fails -- naming the offending key -- when MissingKeys is not empty. */
+type AssertComplete<MissingKeys extends never> = MissingKeys;
+
+/** Keys declared as plain required strings on store S that are absent from the map. */
+type MissingStrings<S extends keyof RecordTypeForStore> =
+  Exclude<PlainStringKeys<RecordTypeForStore[S]>, typeof RECORD_SHAPE_LITERAL[S]['strings'][number]>;
+
+// One assertion per store. A new `field: string` on any of these interfaces goes
+// red here, naming the field, until it is added to RECORD_SHAPE_LITERAL above.
+export type _FirearmsComplete     = AssertComplete<MissingStrings<'firearms'>>;
+export type _SessionsComplete     = AssertComplete<MissingStrings<'sessions'>>;
+export type _DrillsComplete       = AssertComplete<MissingStrings<'drills'>>;
+export type _AmmunitionComplete   = AssertComplete<MissingStrings<'ammunition'>>;
+export type _PurchasesComplete    = AssertComplete<MissingStrings<'purchases'>>;
+export type _MaintenanceComplete  = AssertComplete<MissingStrings<'maintenance'>>;
+export type _MalfunctionsComplete = AssertComplete<MissingStrings<'malfunctions'>>;
+export type _MagazinesComplete    = AssertComplete<MissingStrings<'magazines'>>;
+export type _OpticsComplete       = AssertComplete<MissingStrings<'optics'>>;
+export type _PartsComplete        = AssertComplete<MissingStrings<'parts'>>;
+export type _GoalsComplete        = AssertComplete<MissingStrings<'goals'>>;
+export type _SkillsComplete       = AssertComplete<MissingStrings<'skills'>>;
+export type _SkillSetsComplete    = AssertComplete<MissingStrings<'skillSets'>>;
+export type _MatchesComplete      = AssertComplete<MissingStrings<'matches'>>;
+export type _ClassifiersComplete  = AssertComplete<MissingStrings<'classifiers'>>;
+export type _ReferencesComplete   = AssertComplete<MissingStrings<'references'>>;
+export type _RemindersComplete    = AssertComplete<MissingStrings<'reminders'>>;
+export type _MediaComplete        = AssertComplete<MissingStrings<'media'>>;
+export type _TrashComplete        = AssertComplete<MissingStrings<'trash'>>;
+
+// Nested completeness: one assertion per (store, nested field) pair that appears
+// in RECORD_SHAPE_LITERAL. Index into the literal (not the wide type) so the
+// tuple element type is available. A new `field: string` on a nested row type
+// goes red here naming the field, until it is added above.
+
+/** Keys declared as plain required strings on row type R absent from the nested list. */
+type MissingNested<R, Listed extends readonly string[]> =
+  Exclude<PlainStringKeys<R>, Listed[number]>;
+
+export type _SessionsGunsComplete   = AssertComplete<MissingNested<ElementOf<Session['guns']>,   typeof RECORD_SHAPE_LITERAL['sessions']['nested']['guns']>>;
+export type _SessionsDrillsComplete = AssertComplete<MissingNested<ElementOf<Session['drills']>, typeof RECORD_SHAPE_LITERAL['sessions']['nested']['drills']>>;
+export type _SessionsAmmoComplete   = AssertComplete<MissingNested<ElementOf<Session['ammoUsage']>, typeof RECORD_SHAPE_LITERAL['sessions']['nested']['ammoUsage']>>;
+export type _MatchesStagesComplete  = AssertComplete<MissingNested<ElementOf<Match['stages']>,   typeof RECORD_SHAPE_LITERAL['matches']['nested']['stages']>>;
+export type _ReferencesLinksComplete = AssertComplete<MissingNested<ElementOf<Reference['links']>, typeof RECORD_SHAPE_LITERAL['references']['nested']['links']>>;
+export type _MediaMarksComplete     = AssertComplete<MissingNested<ElementOf<Media['marks']>,    typeof RECORD_SHAPE_LITERAL['media']['nested']['marks']>>;
 
 /** A store that carries records rather than the settings blob. */
 function shapeFor(store: StoreName): StoreShape | undefined {
@@ -285,22 +343,22 @@ function shapeFor(store: StoreName): StoreShape | undefined {
 
 /**
  * The one place that decides what a non-string becomes. Returns `undefined` when
- * the value must be LEFT ALONE — the add-never-replace rule in one function.
+ * the value must be LEFT ALONE -- the add-never-replace rule in one function.
  */
 function stringFor(value: unknown): string | undefined {
   if (typeof value === 'string') return undefined;          // already fine
   if (value === undefined || value === null) return '';     // absent: safe to fill
-  // A number is the one non-string that plainly denotes the same information —
+  // A number is the one non-string that plainly denotes the same information --
   // a hand-edited backup carrying `date: 20260802` means that date. Converting
   // keeps the value AND stops the crash.
   if (typeof value === 'number' || typeof value === 'bigint') return String(value);
   // A boolean is converted too, and the tradeoff is written down because it went
   // back and forth twice. `String(false)` is the TRUTHY text "false", so a render
-  // guard reading `if (rec.notes)` changes behaviour — that is the cost. The
+  // guard reading `if (rec.notes)` changes behaviour -- that is the cost. The
   // alternative is leaving it, and `false.trim()` then takes the screen down,
   // which is the thing this module exists to prevent and the higher-severity of
   // the two (zero-crash outranks a cosmetic surprise). No importer can produce a
-  // boolean here — all four coerce — so this is a hand-edited-backup shape either
+  // boolean here -- all four coerce -- so this is a hand-edited-backup shape either
   // way, and the visible, editable outcome beats the dead screen.
   if (typeof value === 'boolean') return String(value);
   // Objects, symbols and functions are left alone. There is no honest string for
@@ -312,11 +370,11 @@ function stringFor(value: unknown): string | undefined {
  * A value we may safely treat as a record row: a PLAIN object.
  *
  * Not `typeof x === 'object'`, which is also true of arrays, Dates, Maps, Sets
- * and boxed primitives — spreading any of those into `{...}` destroys them. An
+ * and boxed primitives -- spreading any of those into `{...}` destroys them. An
  * audit measured `stages: [new Date(...)]` becoming `{notes: ''}` and a boxed
- * `new String('note')` becoming `{0:'n',1:'o',…}`. All of these survive
+ * `new String('note')` becoming `{0:'n',1:'o',...}`. All of these survive
  * IndexedDB's structured clone, so they are storable, and `parseFlog` does no
- * per-record validation — so they are reachable.
+ * per-record validation -- so they are reachable.
  */
 function isPlainRow(v: unknown): v is Record<string, unknown> {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
@@ -325,7 +383,7 @@ function isPlainRow(v: unknown): v is Record<string, unknown> {
 }
 
 /**
- * True when nothing may usefully be done to this row — either it already
+ * True when nothing may usefully be done to this row -- either it already
  * satisfies its declared shape, or it is not a shape we are allowed to touch.
  * (Deliberately not named "isValid": a bare string row returns true here and is
  * still capable of crashing a screen. What it means is "leave it as it is.")
@@ -349,7 +407,7 @@ function fixRow(row: unknown, fields: readonly string[]): unknown {
 
 /**
  * Rebuild a nested array with its rows repaired, keeping any own properties the
- * array itself carries. `arr.map()` alone drops them — measured: a `stages`
+ * array itself carries. `arr.map()` alone drops them -- measured: a `stages`
  * array with `importedFrom: 'ps.csv'` on it lost that property on read, and the
  * next backup wrote the loss.
  */
@@ -360,7 +418,7 @@ function fixRows(arr: unknown[], fields: readonly string[]): unknown[] {
     // do not, and are ordinary own properties that a regex on digits would drop.
     // Deliberately generous: anything that is not a CANONICAL array index gets
     // copied. `'-1'` and `'NaN'` stringify back to themselves and are not indices,
-    // so the earlier test dropped them — the same data loss this loop exists to
+    // so the earlier test dropped them -- the same data loss this loop exists to
     // prevent, found by a fourth audit round.
     const asIndex = Number(key);
     const isIndex = Number.isInteger(asIndex) && asIndex >= 0
@@ -379,7 +437,7 @@ function fixRows(arr: unknown[], fields: readonly string[]): unknown[] {
  */
 export function normalizeRecord<T>(store: StoreName, record: T): T {
   const shape = shapeFor(store);
-  // isPlainRow, not `typeof === 'object'` — the same guard the nested rows use.
+  // isPlainRow, not `typeof === 'object'` -- the same guard the nested rows use.
   // With the looser test a top-level record that was an Array or a Date fell
   // through to the repair path, where `fixRow` handed the same object back and the
   // nested loop then MUTATED the caller's object in place. The only place this
@@ -392,7 +450,7 @@ export function normalizeRecord<T>(store: StoreName, record: T): T {
     for (const [key, fields] of Object.entries(shape.nested)) {
       const arr = src[key];
       // Not an array: untouchable, so it counts as whole. See the one rule at
-      // the top — the version that replaced this with [] deleted every stage of
+      // the top -- the version that replaced this with [] deleted every stage of
       // any match whose `stages` arrived as a keyed object, permanently, because
       // the blanked record is what the next backup writes.
       if (!Array.isArray(arr)) continue;

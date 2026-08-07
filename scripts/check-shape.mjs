@@ -193,7 +193,7 @@ export function checkRecordShape(report) {
   const literalStrings = (node) => node.elements.map((e) => (ts.isStringLiteral(e) ? e.text : null))
     .filter((x) => x !== null);
   const visit = (node) => {
-    if (ts.isVariableDeclaration(node) && node.name.getText() === 'RECORD_SHAPE') {
+    if (ts.isVariableDeclaration(node) && (node.name.getText() === 'RECORD_SHAPE_LITERAL' || node.name.getText() === 'RECORD_SHAPE')) {
       // Unwrap `as const satisfies T` (SatisfiesExpression wrapping an AsExpression)
       // and any parentheses, to reach the ObjectLiteralExpression underneath.
       let init = node.initializer;
