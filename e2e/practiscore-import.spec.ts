@@ -148,6 +148,12 @@ test.describe('PractiScore import', () => {
     // that he never competed in. The division PLACING has to go with it: it
     // was worked out among the shooters PractiScore put in that division, so
     // under a different label it describes a field the match never had.
+    //
+    // Updated for the division normalisation fix (session 108): the picker now
+    // pre-selects the CANONICAL name. For "O" the picker starts on "Open" rather
+    // than "O". Selecting "Open" (canonical of "O") is NOT a genuine change and
+    // does NOT null the placing (divisionActuallyChanged returns false). To test
+    // that a genuine division change nulls the placing, we pick "Limited" instead.
     await seedDemo(page);
     await gotoTab(page, 'Compete');
     const main = page.getByRole('main');
@@ -159,12 +165,14 @@ test.describe('PractiScore import', () => {
     await main.getByRole('button', { name: 'Read results' }).click();
     await main.getByRole('button', { name: 'Minik, Michael' }).click();
 
-    // Seeded from the row that was picked, and kept as an option even though
-    // "O" is not one of our division names.
+    // The picker now starts on the CANONICAL name for the raw "O" scored division.
     const divisionField = main.getByRole('combobox', { name: 'Division' });
-    await expect(divisionField).toHaveValue('O');
+    await expect(divisionField).toHaveValue('Open');
+    // The short-code note is shown (not the placing-will-be-blank warning).
+    await expect(main.getByText(/short code/)).toBeVisible();
 
-    await divisionField.selectOption('Open');
+    // Select a genuinely different division to verify the placing is nulled.
+    await divisionField.selectOption('Limited');
     await expect(main.getByText(/The results scored you as "O"/)).toBeVisible();
 
     await main.getByLabel('Which gun did you shoot?').selectOption({ index: 1 });
@@ -175,8 +183,7 @@ test.describe('PractiScore import', () => {
     ).toBeVisible();
     const matchCard = main.locator('.card').filter({ has: page.getByRole('heading', { name: 'Match', exact: true }) });
     const savedDivision = matchCard.locator('.row').filter({ has: page.getByText('Division', { exact: true }) });
-    await expect(savedDivision).toContainText('Open');
-    await expect(savedDivision).not.toContainText('O ·');
+    await expect(savedDivision).toContainText('Limited');
     await expect(matchCard.locator('.row', { hasText: 'Division finish' })).toHaveCount(0);
     // The overall finish is untouched: it never depended on the division.
     await expect(matchCard.locator('.row', { hasText: 'Overall finish' })).toContainText('68 of 4');
