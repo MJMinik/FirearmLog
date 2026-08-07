@@ -48,8 +48,6 @@ const TAKE_AIM_CSV = `Place,Name,No.,Class,Div,PF,Category,Match Pts,Match %
 22,"(DQ) Minik, Michael",,,CO,Min,,,
 `;
 
-// CO rows: 2,3,6,10,12,13,14,16,18,19,20,21,22 = 13 CO shooters.
-const CO_COUNT = 13;
 
 // Helper: navigate to the PractiScore import screen with the Take Aim fixture loaded
 // and pick "Pepperoni, Les" (row 2, CO, overall place 2).
