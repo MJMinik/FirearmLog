@@ -2,7 +2,7 @@
 //
 // `src/lib/recordShape.ts` fills in any field the model declares as a required
 // string but the stored data does not actually carry. That map is written by
-// hand. This script checks two things the TypeScript type system cannot express:
+// hand. This script checks three things the TypeScript type system cannot express:
 //
 // (1) THE `??` GUARD (checkNullishOnNormalisedFields, ~65 lines).
 //     Once a field is normalised it is never undefined or null, so `?? fallback`
