@@ -10,12 +10,15 @@ import {
   applyAmmoMerge,
   commitClassifiers,
   rewriteSessionSkillSets,
+  trashSession,
+  untrashSession,
   clearAllData,
   getAll,
   getMediaForOwner,
   getSettings,
   putSettings,
   validateSnapshotShape,
+  putOne,
 } from '../src/lib/db.ts';
 import type { DataSet } from '../src/lib/types.ts';
 import type { Snapshot } from '../src/lib/flog.ts';
@@ -290,4 +293,174 @@ test('2a/R-4: an analytics opt-out survives Clear All, and ONLY that flag does',
   assert.equal(settings?.analyticsOptOut, true, 'the opt-out refusal survived the wipe');
   assert.equal(settings?.goldenGoalId, undefined, 'nothing else was carried over');
   assert.equal(settings?.theme, undefined, 'nothing else was carried over');
+});
+
+
+// ---- D-1: atomic trash / restore (fix/atomic-session-trash) ----
+// These tests exercise trashSession and untrashSession in db.ts directly.
+// Six tests: a happy-path round-trip for each direction, a poison-ammo
+// atomicity test for each direction, and a poison-session discriminator
+// test for each direction (see the discriminator note further down).
+
+test('D-1: trashSession writes session tombstone and ammo update together (happy path)', async () => {
+  await clearAllData();
+  const can = { id: 'can-d1-trash', label: '9mm', quantity: 100, caliber: '9mm', brand: '', grains: 0,
+    type: '', purchased: 0, cost: 0, createdAt: 0, updatedAt: 0 };
+  await putOne('ammunition', can);
+  await putOne('sessions', { id: 'se-d1-trash', planned: false, ammoUsage: [{ ammoId: 'can-d1-trash', rounds: 50 }], createdAt: 0, updatedAt: 0 });
+
+  const updatedCan = { ...can, quantity: 150 }; // rounds returned on trash
+  const ammoRecords = [updatedCan];
+  const trashedSession = { id: 'se-d1-trash', planned: false, ammoUsage: [{ ammoId: 'can-d1-trash', rounds: 50 }],
+    createdAt: 0, updatedAt: 1, deletedAt: 1 };
+
+  await trashSession(trashedSession, ammoRecords);
+
+  const sessions = await getAll<{ id: string; deletedAt?: number | null }>('sessions');
+  const cans = await getAll<{ id: string; quantity: number }>('ammunition');
+  const se = sessions.find((s) => s.id === 'se-d1-trash');
+  const c = cans.find((a) => a.id === 'can-d1-trash');
+  assert.equal(se?.deletedAt, 1, 'session is tombstoned');
+  assert.equal(c?.quantity, 150, 'ammo quantity updated');
+});
+
+test('D-1: untrashSession clears session tombstone and ammo update together (happy path)', async () => {
+  await clearAllData();
+  const can = { id: 'can-d1-restore', label: '9mm', quantity: 150, caliber: '9mm', brand: '', grains: 0,
+    type: '', purchased: 0, cost: 0, createdAt: 0, updatedAt: 0 };
+  await putOne('ammunition', can);
+  await putOne('sessions', { id: 'se-d1-restore', planned: false, ammoUsage: [{ ammoId: 'can-d1-restore', rounds: 50 }],
+    deletedAt: 1, createdAt: 0, updatedAt: 0 });
+
+  const updatedCan = { ...can, quantity: 100 }; // rounds re-deducted on restore
+  const ammoRecords = [updatedCan];
+  const restoredSession = { id: 'se-d1-restore', planned: false, ammoUsage: [{ ammoId: 'can-d1-restore', rounds: 50 }],
+    createdAt: 0, updatedAt: 2, deletedAt: null };
+
+  await untrashSession(restoredSession, ammoRecords);
+
+  const sessions = await getAll<{ id: string; deletedAt?: number | null }>('sessions');
+  const cans = await getAll<{ id: string; quantity: number }>('ammunition');
+  const se = sessions.find((s) => s.id === 'se-d1-restore');
+  const c = cans.find((a) => a.id === 'can-d1-restore');
+  assert.equal(se?.deletedAt, null, 'session tombstone cleared');
+  assert.equal(c?.quantity, 100, 'ammo quantity re-deducted');
+});
+
+test('D-1: trashSession is atomic — a poisoned ammo record rolls BOTH writes back (B7 pattern)', async () => {
+  await clearAllData();
+  const can = { id: 'can-d1-poison', label: '9mm', quantity: 100, caliber: '9mm', brand: '', grains: 0,
+    type: '', purchased: 0, cost: 0, createdAt: 0, updatedAt: 0 };
+  await putOne('ammunition', can);
+  await putOne('sessions', { id: 'se-d1-poison', planned: false, ammoUsage: [{ ammoId: 'can-d1-poison', rounds: 50 }],
+    createdAt: 0, updatedAt: 0 });
+
+  // IndexedDB cannot clone a function, so the put throws mid-transaction and
+  // queueOrAbort aborts the whole transaction — neither the ammo change nor the
+  // session tombstone should land.
+  const poisonedCan = { ...can, quantity: 150, oops: () => {} };
+  const ammoRecords = [poisonedCan];
+  const trashedSession = { id: 'se-d1-poison', planned: false, ammoUsage: [{ ammoId: 'can-d1-poison', rounds: 50 }],
+    createdAt: 0, updatedAt: 1, deletedAt: 1 };
+
+  await assert.rejects(trashSession(trashedSession, ammoRecords),
+    'a poisoned ammo record causes the whole transaction to reject');
+
+  const sessions = await getAll<{ id: string; deletedAt?: number | null }>('sessions');
+  const cans = await getAll<{ id: string; quantity: number }>('ammunition');
+  const se = sessions.find((s) => s.id === 'se-d1-poison');
+  const c = cans.find((a) => a.id === 'can-d1-poison');
+  assert.equal(se?.deletedAt, undefined, 'session tombstone did NOT land after ammo put failed');
+  assert.equal(c?.quantity, 100, 'ammo quantity unchanged after failed transaction');
+});
+
+test('D-1: untrashSession is atomic — a poisoned ammo record rolls BOTH writes back (B7 pattern)', async () => {
+  await clearAllData();
+  const can = { id: 'can-d1-upoi', label: '9mm', quantity: 150, caliber: '9mm', brand: '', grains: 0,
+    type: '', purchased: 0, cost: 0, createdAt: 0, updatedAt: 0 };
+  await putOne('ammunition', can);
+  await putOne('sessions', { id: 'se-d1-upoi', planned: false, ammoUsage: [{ ammoId: 'can-d1-upoi', rounds: 50 }],
+    deletedAt: 1, createdAt: 0, updatedAt: 0 });
+
+  const poisonedCan = { ...can, quantity: 100, oops: () => {} };
+  const ammoRecords = [poisonedCan];
+  const restoredSession = { id: 'se-d1-upoi', planned: false, ammoUsage: [{ ammoId: 'can-d1-upoi', rounds: 50 }],
+    createdAt: 0, updatedAt: 2, deletedAt: null };
+
+  await assert.rejects(untrashSession(restoredSession, ammoRecords),
+    'a poisoned ammo record causes the whole transaction to reject');
+
+  const sessions = await getAll<{ id: string; deletedAt?: number | null }>('sessions');
+  const cans = await getAll<{ id: string; quantity: number }>('ammunition');
+  const se = sessions.find((s) => s.id === 'se-d1-upoi');
+  const c = cans.find((a) => a.id === 'can-d1-upoi');
+  assert.equal(se?.deletedAt, 1, 'session tombstone still present (restore did NOT commit)');
+  assert.equal(c?.quantity, 150, 'ammo quantity unchanged after failed transaction');
+});
+
+// D-1 discriminator tests — poison the SESSION record instead of the ammo record.
+// The existing ammo-poison tests queue ammo FIRST, so even a non-atomic impl that
+// puts each store in its own transaction would pass (the ammo put throws before the
+// session put runs). These tests poison the SESSION record (queued SECOND) so the
+// ammo put succeeds first — only a truly shared transaction rolls the ammo write
+// back when the session put fails.
+
+test('D-1 discriminator: trashSession — poisoned session rolls back the ammo update too', async () => {
+  await clearAllData();
+  const can = { id: 'can-d1-disc-t', label: '9mm', quantity: 100, caliber: '9mm', brand: '', grains: 0,
+    type: '', purchased: 0, cost: 0, createdAt: 0, updatedAt: 0 };
+  // Seed via putOne (live path, not commitDataSet).
+  await putOne('ammunition', can);
+  await putOne('sessions', { id: 'se-d1-disc-t', planned: false,
+    ammoUsage: [{ ammoId: 'can-d1-disc-t', rounds: 50 }], createdAt: 0, updatedAt: 0 });
+
+  const updatedCan = { ...can, quantity: 150 };
+  // Poison is on the SESSION record (queued second inside queueOrAbort).
+  const poisonedSession = { id: 'se-d1-disc-t', planned: false,
+    ammoUsage: [{ ammoId: 'can-d1-disc-t', rounds: 50 }],
+    createdAt: 0, updatedAt: 1, deletedAt: 1, oops: () => {} };
+
+  await assert.rejects(
+    trashSession(poisonedSession, [updatedCan]),
+    'a poisoned session record causes the whole transaction to reject',
+  );
+
+  // Ammo must be unchanged — if the impl used two transactions the ammo write
+  // would already have committed before the session put threw.
+  const cans = await getAll<{ id: string; quantity: number }>('ammunition');
+  const sessions = await getAll<{ id: string; deletedAt?: number | null }>('sessions');
+  const c = cans.find((a) => a.id === 'can-d1-disc-t');
+  const se = sessions.find((s) => s.id === 'se-d1-disc-t');
+  assert.equal(c?.quantity, 100, 'ammo quantity unchanged — ammo write rolled back with the session');
+  assert.equal(se?.deletedAt, undefined, 'session tombstone did not land');
+});
+
+test('D-1 discriminator: untrashSession — poisoned session rolls back the ammo update too', async () => {
+  await clearAllData();
+  const can = { id: 'can-d1-disc-u', label: '9mm', quantity: 150, caliber: '9mm', brand: '', grains: 0,
+    type: '', purchased: 0, cost: 0, createdAt: 0, updatedAt: 0 };
+  // Seed via putOne (live path, not commitDataSet).
+  await putOne('ammunition', can);
+  await putOne('sessions', { id: 'se-d1-disc-u', planned: false,
+    ammoUsage: [{ ammoId: 'can-d1-disc-u', rounds: 50 }],
+    deletedAt: 1, createdAt: 0, updatedAt: 0 });
+
+  const updatedCan = { ...can, quantity: 100 };
+  // Poison is on the SESSION record (queued second inside queueOrAbort).
+  const poisonedSession = { id: 'se-d1-disc-u', planned: false,
+    ammoUsage: [{ ammoId: 'can-d1-disc-u', rounds: 50 }],
+    createdAt: 0, updatedAt: 2, deletedAt: null, oops: () => {} };
+
+  await assert.rejects(
+    untrashSession(poisonedSession, [updatedCan]),
+    'a poisoned session record causes the whole transaction to reject',
+  );
+
+  // Ammo must be unchanged — the ammo put ran first and must be rolled back too.
+  const cans = await getAll<{ id: string; quantity: number }>('ammunition');
+  const sessions = await getAll<{ id: string; deletedAt?: number | null }>('sessions');
+  const c = cans.find((a) => a.id === 'can-d1-disc-u');
+  const se = sessions.find((s) => s.id === 'se-d1-disc-u');
+  assert.equal(c?.quantity, 150, 'ammo quantity unchanged — ammo write rolled back with the session');
+  assert.equal(se?.deletedAt, 1, 'session tombstone still present (restore did NOT commit)');
 });

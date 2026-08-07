@@ -5,39 +5,45 @@
 //
 // Ammo bookkeeping mirrors the old hard-delete: soft-deleting a LOGGED session
 // puts its rounds back on the can; restoring takes them off again. Planned
-// sessions never moved stock, so their ammo is left alone. Each write is its own
-// IndexedDB transaction; nothing here rebuilds or relocates a record, so an
-// interrupted run can't split a session across stores (the corruption risk we
-// deliberately avoided by tombstoning rather than moving records).
+// sessions never moved stock, so their ammo is left alone.
+//
+// D-1 FIX: softDeleteSession and restoreSession delegate to trashSession /
+// untrashSession (lib/db.ts), which write the session tombstone AND every ammo-can
+// update in ONE ['sessions','ammunition'] IndexedDB transaction. Previously each
+// write was its own transaction; a crash between them silently drifted round counts
+// (rounds returned to the can but the session still live, or vice versa). The
+// atomic helpers mirror the applyAmmoMerge / queueOrAbort pattern already in db.ts.
 
 import type { Ammunition, Session } from '../lib/types.ts';
-import { attachedToSessions, deleteOne, getAll, putOne } from '../lib/db.ts';
+import { attachedToSessions, deleteOne, getAll, trashSession, untrashSession } from '../lib/db.ts';
 import { stampUpdate } from '../lib/stamps.ts';
 import { inventoryAfterUsageChange } from '../lib/costing.ts';
 import { expiredOnly } from '../lib/softDelete.ts';
 
 /** Put a session in the Trash. Logged sessions hand their rounds back to the can. */
 export async function softDeleteSession(session: Session, ammo: Ammunition[], now = Date.now()): Promise<void> {
+  const ammoRecords: object[] = [];
   if (!session.planned) {
     const changes = inventoryAfterUsageChange(ammo, session.ammoUsage ?? [], []);
     for (const [ammoId, quantity] of changes) {
       const can = ammo.find((a) => a.id === ammoId);
-      if (can) await putOne('ammunition', stampUpdate({ ...can, quantity }, now));
+      if (can) ammoRecords.push(stampUpdate({ ...can, quantity }, now));
     }
   }
-  await putOne('sessions', stampUpdate({ ...session, deletedAt: now }, now));
+  await trashSession(stampUpdate({ ...session, deletedAt: now }, now), ammoRecords);
 }
 
 /** Bring a session back from the Trash. Logged sessions re-deduct their rounds. */
 export async function restoreSession(session: Session, ammo: Ammunition[], now = Date.now()): Promise<void> {
+  const ammoRecords: object[] = [];
   if (!session.planned) {
     const changes = inventoryAfterUsageChange(ammo, [], session.ammoUsage ?? []);
     for (const [ammoId, quantity] of changes) {
       const can = ammo.find((a) => a.id === ammoId);
-      if (can) await putOne('ammunition', stampUpdate({ ...can, quantity }, now));
+      if (can) ammoRecords.push(stampUpdate({ ...can, quantity }, now));
     }
   }
-  await putOne('sessions', stampUpdate({ ...session, deletedAt: null }, now));
+  await untrashSession(stampUpdate({ ...session, deletedAt: null }, now), ammoRecords);
 }
 
 /**

@@ -323,6 +323,47 @@ export async function applyAmmoMerge(ops: {
   await txDone(tx);
 }
 
+/** Internal: write a session record and its ammo-can updates in one atomic
+ * ['sessions','ammunition'] transaction. Both trashSession and untrashSession
+ * delegate here — the bodies are identical; only the caller supplies the
+ * already-stamped session record.
+ */
+async function applySessionAmmoTransaction(sessionRecord: object, ammoRecords: object[]): Promise<void> {
+  const db = await openDb();
+  const tx = db.transaction(['sessions', 'ammunition'], 'readwrite');
+  queueOrAbort(tx, () => {
+    for (const record of ammoRecords) tx.objectStore('ammunition').put(record);
+    tx.objectStore('sessions').put(sessionRecord);
+  });
+  await txDone(tx);
+}
+
+/**
+ * D-1: soft-delete (trash) a session ATOMICALLY — the session tombstone and
+ * every ammo-can round-count adjustment land in ONE ['sessions','ammunition']
+ * transaction. Before this fix, each write was its own transaction, so a crash
+ * between them could leave rounds returned to the can but the session still live,
+ * or the session trashed but the can counts unchanged. Mirrors applyAmmoMerge.
+ *
+ * `trashedSession` is the session record already stamped with deletedAt.
+ * `ammoRecords` is the array of fully-updated ammo-can records produced by the
+ * caller (pure math via inventoryAfterUsageChange, no IndexedDB reads in the
+ * transaction).
+ */
+export async function trashSession(trashedSession: object, ammoRecords: object[]): Promise<void> {
+  await applySessionAmmoTransaction(trashedSession, ammoRecords);
+}
+
+/**
+ * D-1: un-trash (restore) a session ATOMICALLY — mirrors trashSession above.
+ * The session's deletedAt is cleared and the ammo-can adjustments all land in
+ * ONE transaction so neither half can succeed without the other.
+ * `ammoRecords` is the array of fully-updated ammo-can records.
+ */
+export async function untrashSession(restoredSession: object, ammoRecords: object[]): Promise<void> {
+  await applySessionAmmoTransaction(restoredSession, ammoRecords);
+}
+
 /**
  * T1-5: write imported classifier rows in ONE transaction (mirrors applyAmmoMerge),
  * so an interrupted USPSA import can't leave a half-written set. Replaces a
