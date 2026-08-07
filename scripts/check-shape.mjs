@@ -1,31 +1,44 @@
 // (4) THE READ-BOUNDARY KEEPER (session 107, 6 Aug 2026).
 //
 // `src/lib/recordShape.ts` fills in any field the model declares as a required
-// string but the stored data does not actually carry — the fix for the class of
-// crash where a match with no `date` took the whole Compete tab down. That map is
-// written by hand, and a hand-written map of the model goes stale the first time
-// somebody adds a field. Silently, which is the whole problem: the new field is
-// simply not filled in, and the crash returns wearing the next field's name.
+// string but the stored data does not actually carry. That map is written by
+// hand. This script checks three things the TypeScript type system cannot express:
 //
-// So the map is held to `types.ts` here. Add a required string to an interface
-// without listing it and this fails, naming the field and the file to edit.
+// (1) THE `??` GUARD (checkNullishOnNormalisedFields, ~65 lines).
+//     Once a field is normalised it is never undefined or null, so `?? fallback`
+//     on it can never fire. A fallback that can never fire reads like a live guard,
+//     which is dangerous: MatchScreens.tsx carried a three-line comment explaining
+//     why its `?? MATCH_TYPES[0]` mattered, and the read boundary had silently
+//     switched it off. This check finds those dead fallbacks across all of src/.
+//
+// (2) THE "NO UNMAPPED NESTED ROW TYPE" GUARD (lines near the bottom).
+//     When a named interface is used as an array element inside a mapped store,
+//     it must appear in NESTED_FOR_TYPE or NESTED_EXEMPT. This catches the case
+//     where a new nested row type (e.g. MatchStageComment[]) is added to the
+//     model and the shape map is not updated. The type system cannot express this
+//     because the question is about ABSENCE from a map, not shape of a value.
+//
+// (3) THE EMPTY-MODEL REFUSAL.
+//     If types.ts declares none of the record interfaces, the type-level
+//     `satisfies ExpectedRecordShape` check in recordShape.ts would still pass
+//     (because ExpectedRecordShape requires what RecordTypeForStore declares, and
+//     RecordTypeForStore imports from types.ts). A deliberate refusal catches that.
+//
+// WHAT THIS NO LONGER CHECKS (moved to the type system):
+//     The field-agreement check -- "does RECORD_SHAPE list every required plain
+//     string from every record interface?" -- now lives as a `satisfies` clause
+//     in src/lib/recordShape.ts. Any drift causes `npx tsc --noEmit` to fail,
+//     which already runs on every build. See that file's header comment for how
+//     to read the tsc error when the satisfies clause fires.
 //
 // WHY THIS USES THE TYPESCRIPT COMPILER AND NOT A REGEX. The first version parsed
-// `types.ts` one line at a time. A cold audit then wrote nine perfectly ordinary
-// declarations it did not see — a comma terminator instead of a semicolon, a
-// declaration split over two lines, `readonly`, `Array<{…}>` instead of `{…}[]`,
-// a field inherited from a base interface, a union alias of a union alias, an
-// alias imported from another module, a store declared as a type intersection,
-// and an index signature. Every one of them would have gone unnormalised AND
-// unreported. A keeper with nine known holes is worse than no keeper, because it
-// is trusted. TypeScript's own parser has none of those holes, it is already a
-// dependency of this repo, and it is what `npm run build` uses to decide whether
-// the code is valid at all. Using anything else here is guessing at a language we
-// already have a parser for.
+// types.ts one line at a time. A cold audit then wrote nine perfectly ordinary
+// declarations it did not see. A keeper with nine known holes is worse than no
+// keeper, because it is trusted. TypeScript's own parser has none of those holes.
 //
 // WHAT THIS STILL DOES NOT SEE, stated rather than implied. A record interface
-// rewritten as a TYPE ALIAS (`export type Classifier = BaseRecord & { … }`) is
-// skipped, because the walk below visits interface declarations only — measured
+// rewritten as a TYPE ALIAS (`export type Classifier = BaseRecord & { ... }`) is
+// skipped, because the walk below visits interface declarations only -- measured
 // by a fourth audit round, not assumed. So is a computed property name
 // (`["clubName"]: string`). Neither shape exists in `types.ts` today and neither
 // is a natural way to write it, but a hole written down is a different thing from
@@ -52,14 +65,10 @@ const NESTED_FOR_TYPE = {
   MatchStage: ['matches', 'stages'], Mark: ['media', 'marks'],
 };
 
-// `id` is excluded everywhere by design — it is IndexedDB's key path, so a record
-// without one could never have been stored. recordShape.ts says why in full.
-const NEVER_NORMALISED = new Set(['id']);
-
 // Nested arrays deliberately left out of the shape map, each with its reason.
 // `sessions.guns.magOverrides` sits TWO levels deep (session -> gun -> override),
 // which StoreShape cannot express, and its only string, `magId`, is used solely as
-// an object key and in equality tests — never as the receiver of a string method,
+// an object key and in equality tests -- never as the receiver of a string method,
 // so it cannot produce this crash. Checked in SessionForm.tsx and lib/mags.ts, not
 // assumed. Anything added here has to carry a reason like this one.
 const NESTED_EXEMPT = new Set(['SessionGun.magOverrides']);
@@ -78,7 +87,7 @@ const NESTED_EXEMPT = new Set(['SessionGun.magOverrides']);
  * now mean the same thing.
  *
  * THIS IS TYPE-AWARE, AND IT HAS TO BE. The first version matched the TEXT
- * `.<field> ??` and returned 61 hits, nearly all of them wrong — record fields are
+ * `.<field> ??` and returned 61 hits, nearly all of them wrong -- record fields are
  * called `name`, `date`, `label`, `notes`, so the match fired on an Error object's
  * `.name`, on CSV column descriptors, on local form state. A check that cries wolf
  * 61 times is not a keeper; it is something everyone learns to skip. So the
@@ -95,7 +104,7 @@ function checkNullishOnNormalisedFields(report, shapeByType) {
   const checker = program.getTypeChecker();
 
   /**
-   * The record type behind an expression — but ONLY when that expression cannot
+   * The record type behind an expression -- but ONLY when that expression cannot
    * itself be undefined or null.
    *
    * This distinction is the whole check. `firearms.find(f => f.id === id)?.name ?? '—'`
@@ -125,12 +134,12 @@ function checkNullishOnNormalisedFields(report, shapeByType) {
           && node.operatorToken.kind === ts.SyntaxKind.QuestionQuestionToken
           && (ts.isPropertyAccessExpression(node.left) || ts.isElementAccessExpression(node.left))
           && ts.isPropertyAccessExpression(node.left)) {
-        // `?? ''` on a normalised field is HARMLESS — redundant, but it produces
+        // `?? ''` on a normalised field is HARMLESS -- redundant, but it produces
         // exactly the value the boundary already guarantees, so nothing is hidden
         // and nothing behaves unexpectedly. The hazard is a fallback that is
         // SOMETHING ELSE: `?? MATCH_TYPES[0]`, `?? 'Match'`. Those read as live
         // guards, never fire, and the code behaves as if the author's intent had
-        // been deleted — which is precisely what happened to the Edit Match picker.
+        // been deleted -- which is precisely what happened to the Edit Match picker.
         // Flagging the harmless ones too produced nine findings whose only fix was
         // to churn correct code, and noise is how a keeper gets ignored.
         const fallback = node.right;
@@ -152,99 +161,31 @@ function checkNullishOnNormalisedFields(report, shapeByType) {
 }
 
 export function checkRecordShape(report) {
-  // strictNullChecks MUST be on. Without it TypeScript collapses `string | null`
-  // to `string`, and this check then demands that `serialNumber`, `referenceId`
-  // and `sessionId` be normalised — the exact fields where `null` means "not
-  // recorded" and `''` would be a different fact. Caught on the first run of this
-  // rewrite, which is the argument for running a new check before trusting it.
+  // Parse types.ts to check model interfaces are present and find nested arrays.
   const program = ts.createProgram([TYPES_FILE], {
     target: ts.ScriptTarget.ES2022, module: ts.ModuleKind.ESNext,
     strict: true, strictNullChecks: true, skipLibCheck: true,
   });
-  const checker = program.getTypeChecker();
   const source = program.getSourceFile(TYPES_FILE);
   if (!source) { report(`RECORD SHAPE: cannot read ${TYPES_FILE}`); return; }
 
-  // A CHECKER MUST NOT SPEAK WHEN IT CANNOT SEE. With a syntax error mid-edit in
-  // types.ts the compiler still hands back a partial tree, and this check then
-  // reported eight confident instructions to DELETE correct entries. Someone
-  // following them would have removed real normalisation because of a stray
-  // bracket. Refuse instead: say what is wrong and let `tsc` do the explaining.
-  const syntax = program.getSyntacticDiagnostics(source);
-  if (syntax.length > 0) {
-    report(`RECORD SHAPE: ${TYPES_FILE} does not parse (${syntax.length} syntax error(s)) — fix it first; this check cannot read a broken model`);
-    return;
-  }
-  // An EMPTY or record-free types.ts would otherwise pass in silence, which reads
-  // as "the map matches the model" when it means "there is no model".
+  // An EMPTY or record-free types.ts would otherwise appear clean because the
+  // type-level `satisfies` check only verifies the map against RecordTypeForStore,
+  // not that RecordTypeForStore has any substance. Refuse instead.
   if (!source.statements.some((s) => ts.isInterfaceDeclaration(s) && STORE_FOR_TYPE[s.name.text])) {
-    report(`RECORD SHAPE: ${TYPES_FILE} declares none of the record interfaces — refusing to report clean`);
+    report(`RECORD SHAPE: ${TYPES_FILE} declares none of the record interfaces -- refusing to report clean`);
     return;
   }
 
-  /** Is this type node a required string as far as this defect is concerned? */
-  const isStringy = (node) => {
-    if (!node) return false;
-    const t = checker.getTypeAtLocation(node);
-    // `string`, a string literal, or a union of them — but NOT a union that
-    // includes null or undefined, where the absence is meaningful and must stay.
-    const parts = t.isUnion() ? t.types : [t];
-    if (parts.some((p) => p.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined))) return false;
-    return parts.every((p) => p.flags & (ts.TypeFlags.String | ts.TypeFlags.StringLiteral));
-  };
-
-  /** The required string-valued property names of one interface, own members only. */
-  const stringProps = (decl) => decl.members
-    .filter((m) => ts.isPropertySignature(m) && m.name && ts.isIdentifier(m.name))
-    .filter((m) => !m.questionToken)
-    .filter((m) => isStringy(m.type))
-    .map((m) => m.name.text)
-    .filter((n) => !NEVER_NORMALISED.has(n));
-
-  /** Inherited members too — a required string added to a base interface reaches every store. */
-  const inheritedStringProps = (decl) => {
-    const out = [];
-    for (const clause of decl.heritageClauses ?? []) {
-      for (const t of clause.types) {
-        const sym = checker.getSymbolAtLocation(t.expression);
-        for (const d of sym?.declarations ?? []) {
-          if (ts.isInterfaceDeclaration(d)) out.push(...stringProps(d), ...inheritedStringProps(d));
-        }
-      }
-    }
-    return out;
-  };
-
-  /** Nested arrays declared inline: `foo: { bar: string }[]` or `Array<{ bar: string }>`. */
-  const inlineNested = (decl) => {
-    const out = [];
-    for (const m of decl.members) {
-      if (!ts.isPropertySignature(m) || !m.name || !ts.isIdentifier(m.name) || !m.type) continue;
-      let element = null;
-      if (ts.isArrayTypeNode(m.type)) element = m.type.elementType;
-      else if (ts.isTypeReferenceNode(m.type) && m.type.typeName.getText() === 'Array') {
-        element = m.type.typeArguments?.[0] ?? null;
-      }
-      if (!element || !ts.isTypeLiteralNode(element)) continue;
-      const fields = element.members
-        .filter((x) => ts.isPropertySignature(x) && x.name && ts.isIdentifier(x.name))
-        .filter((x) => !x.questionToken && isStringy(x.type))
-        .map((x) => x.name.text)
-        .filter((n) => !NEVER_NORMALISED.has(n));
-      if (fields.length) out.push({ field: m.name.text, fields });
-    }
-    return out;
-  };
-
-  // What recordShape.ts declares. Parsed with the compiler as well, so the map is
-  // read as source rather than pattern-matched.
+  // Parse recordShape.ts's RECORD_SHAPE value so shapeByType can be built for
+  // the ?? checker below. The compiler parser is used rather than a regex for
+  // the same reasons documented at the top: nine classes of declaration a line-
+  // by-line parser would miss.
   let shapeText;
   try {
     shapeText = readFileSync(SHAPE_FILE, 'utf8');
   } catch {
-    // A missing file used to throw ENOENT and block the build with a stack trace
-    // instead of a sentence. A checker that crashes is a checker nobody can act on.
-    report(`RECORD SHAPE: ${SHAPE_FILE} is missing — the read boundary's shape map is gone`);
+    report(`RECORD SHAPE: ${SHAPE_FILE} is missing -- the read boundary's shape map is gone`);
     return;
   }
   const shapeSource = ts.createSourceFile(SHAPE_FILE, shapeText, ts.ScriptTarget.ES2022, true);
@@ -252,9 +193,15 @@ export function checkRecordShape(report) {
   const literalStrings = (node) => node.elements.map((e) => (ts.isStringLiteral(e) ? e.text : null))
     .filter((x) => x !== null);
   const visit = (node) => {
-    if (ts.isVariableDeclaration(node) && node.name.getText() === 'RECORD_SHAPE') {
+    if (ts.isVariableDeclaration(node) && (node.name.getText() === 'RECORD_SHAPE_LITERAL' || node.name.getText() === 'RECORD_SHAPE')) {
+      // Unwrap `as const satisfies T` (SatisfiesExpression wrapping an AsExpression)
+      // and any parentheses, to reach the ObjectLiteralExpression underneath.
       let init = node.initializer;
-      while (init && (ts.isAsExpression(init) || ts.isParenthesizedExpression(init))) init = init.expression;
+      while (init && (
+        ts.isAsExpression(init) ||
+        ts.isParenthesizedExpression(init) ||
+        ts.isSatisfiesExpression(init)
+      )) init = init.expression;
       if (init && ts.isObjectLiteralExpression(init)) {
         for (const store of init.properties) {
           if (!ts.isPropertyAssignment(store)) continue;
@@ -283,52 +230,30 @@ export function checkRecordShape(report) {
   };
   visit(shapeSource);
 
-  for (const stmt of source.statements) {
-    if (!ts.isInterfaceDeclaration(stmt)) continue;
-    const typeName = stmt.name.text;
-    const store = STORE_FOR_TYPE[typeName];
-    const nested = NESTED_FOR_TYPE[typeName];
-    if (!store && !nested) continue;
-    const where = store ?? `${nested[0]}.${nested[1]}`;
-
-    const expected = [...new Set([...stringProps(stmt), ...inheritedStringProps(stmt)])];
-    const entry = declared[store ?? nested[0]];
-    const list = store ? entry?.strings : entry?.nested?.[nested[1]];
-    if (!list) {
-      report(`RECORD SHAPE: no entry for ${where} (${typeName}) in ${SHAPE_FILE}`);
-      continue;
-    }
-    for (const f of expected) {
-      if (!list.includes(f)) {
-        report(`RECORD SHAPE: ${typeName}.${f} is a required string but is not normalised — add it to RECORD_SHAPE.${where} in ${SHAPE_FILE}`);
-      }
-    }
-    for (const f of list) {
-      if (!expected.includes(f)) {
-        report(`RECORD SHAPE: RECORD_SHAPE.${where} lists '${f}', which ${typeName} does not declare as a required string — remove it`);
-      }
-    }
-
-    for (const { field, fields } of inlineNested(stmt)) {
-      if (NESTED_EXEMPT.has(`${typeName}.${field}`)) continue;
-      if (nested) {
-        report(`RECORD SHAPE: ${typeName}.${field} is a nested array two levels deep carrying required strings (${fields.join(', ')}) — flatten it, or add '${typeName}.${field}' to NESTED_EXEMPT with the reason`);
-        continue;
-      }
-      const declaredInline = entry?.nested?.[field];
-      for (const f of fields) {
-        if (!declaredInline?.includes(f)) {
-          report(`RECORD SHAPE: ${typeName}.${field}[].${f} is a required string but is not normalised — add it to RECORD_SHAPE.${store}.nested.${field} in ${SHAPE_FILE}`);
-        }
-      }
-    }
-  }
-
-  // A named nested row type that nobody mapped is invisible to everything above,
-  // which is how three inline arrays went uncovered. Catch the shape itself:
-  // any interface referenced as an array element by a mapped store must be
-  // declared in NESTED_FOR_TYPE.
+  // A named nested row type that nobody mapped is invisible to the type-level
+  // satisfies check, which only asks "does the map's value fit the interface?"
+  // not "is every interface-backed array covered?" Catch the gap: any interface
+  // referenced as an array element by a mapped store must appear in
+  // NESTED_FOR_TYPE or NESTED_EXEMPT.
   const mapped = new Set([...Object.keys(STORE_FOR_TYPE), ...Object.keys(NESTED_FOR_TYPE)]);
+  const checker = program.getTypeChecker();
+
+  /** Required string-valued property names of one interface, own members only. */
+  const ownStringProps = (decl) => {
+    const out = [];
+    for (const m of decl.members) {
+      if (!ts.isPropertySignature(m) || !m.name || !ts.isIdentifier(m.name) || m.questionToken) continue;
+      if (!m.type) continue;
+      const t = checker.getTypeAtLocation(m.type);
+      const parts = t.isUnion() ? t.types : [t];
+      if (parts.some((p) => p.flags & (ts.TypeFlags.Null | ts.TypeFlags.Undefined))) continue;
+      if (parts.every((p) => p.flags & (ts.TypeFlags.String | ts.TypeFlags.StringLiteral))) {
+        out.push(m.name.text);
+      }
+    }
+    return out;
+  };
+
   for (const stmt of source.statements) {
     if (!ts.isInterfaceDeclaration(stmt)) continue;
     if (!STORE_FOR_TYPE[stmt.name.text] && !NESTED_FOR_TYPE[stmt.name.text]) continue;
@@ -345,12 +270,12 @@ export function checkRecordShape(report) {
       const rowDecl = source.statements.find(
         (x) => ts.isInterfaceDeclaration(x) && x.name.text === rowType);
       if (!rowDecl) continue;                      // not declared here; nothing to check
-      if (stringProps(rowDecl).length === 0) continue;
-      report(`RECORD SHAPE: ${stmt.name.text}.${m.name.text} holds ${rowType}[] which carries required strings, and ${rowType} is not in NESTED_FOR_TYPE in scripts/check-shape.mjs — map it or exempt it with a reason`);
+      if (ownStringProps(rowDecl).length === 0) continue;
+      report(`RECORD SHAPE: ${stmt.name.text}.${m.name.text} holds ${rowType}[] which carries required strings, and ${rowType} is not in NESTED_FOR_TYPE in scripts/check-shape.mjs -- map it or exempt it with a reason`);
     }
   }
 
-  // Which fields the boundary fills, PER RECORD TYPE — derived from the map we just
+  // Which fields the boundary fills, PER RECORD TYPE -- derived from the map we just
   // parsed, so it stays in step for free rather than being a second hand-written list.
   const shapeByType = new Map();
   for (const [typeName, store] of Object.entries(STORE_FOR_TYPE)) {

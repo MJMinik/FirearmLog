@@ -84,6 +84,11 @@
 // NOT be acceptable if this module could blank a value — which is precisely why
 // it no longer can.
 import type { StoreName } from './db.ts';
+import type {
+  Firearm, Session, DrillDef, Ammunition, Purchase, MaintenanceEntry,
+  MalfunctionEntry, Magazine, Optic, Part, Goal, SkillAssessment, SkillSet,
+  Match, Classifier, Reference, Reminder, Media, TrashItem,
+} from './types.ts';
 
 export interface StoreShape {
   /** Fields the model declares as a plain required `string`. Never includes `id`. */
@@ -92,15 +97,147 @@ export interface StoreShape {
   readonly nested?: Readonly<Record<string, readonly string[]>>;
 }
 
+// ---- type-level keeper: the types below make RECORD_SHAPE's `satisfies` clause
+// provable at compile time. They do not change runtime behaviour at all. ----
+
+/**
+ * Maps each store name to the record interface that backs it. This is the
+ * single point where "store name" meets "record interface" for the type system.
+ * `meta` is deliberately absent -- the same reason RECORD_SHAPE excludes it.
+ */
+interface RecordTypeForStore {
+  firearms: Firearm;
+  sessions: Session;
+  drills: DrillDef;
+  ammunition: Ammunition;
+  purchases: Purchase;
+  maintenance: MaintenanceEntry;
+  malfunctions: MalfunctionEntry;
+  magazines: Magazine;
+  optics: Optic;
+  parts: Part;
+  goals: Goal;
+  skills: SkillAssessment;
+  skillSets: SkillSet;
+  matches: Match;
+  classifiers: Classifier;
+  references: Reference;
+  reminders: Reminder;
+  media: Media;
+  trash: TrashItem;
+}
+
+/**
+ * The string-valued field names of T that are:
+ *  - required (not optional),
+ *  - not in the exclusion set (defaults to `id`),
+ *  - typed as a plain `string` (NOT `string | null`, NOT `string | undefined`,
+ *    NOT a string union that carries null/undefined).
+ *
+ * The `[T[K]] extends [string]` wrapper stops `string | null` from being
+ * distributed into `string`. Without the tuple, `null extends string ? ... :
+ * never` collapses exactly the way `strictNullChecks: false` would, which is
+ * the class of hole the script's `strictNullChecks: true` line exists to close.
+ */
+type PlainStringKeys<T, Excl extends string = 'id'> = {
+  [K in keyof T]-?: (
+    object extends Pick<T, K> ? never :        // required only (optional fields fail this)
+    K extends Excl ? never :                   // exclude by name
+    K extends string ? (
+      [T[K]] extends [string] ? K : never      // must be EXACTLY string, not string | null
+    ) : never
+  );
+}[keyof T & string];
+
+/** The element type of an array-typed property of T, or never. */
+type ElementOf<T> = T extends readonly (infer E)[] ? E : never;
+
+/**
+ * Property names of T whose values are arrays of object rows. Uses -? so that
+ * optional array fields (e.g. marks?: Mark[]) are included -- the array field
+ * exists and has row strings that need covering regardless of whether the field
+ * itself is required on the interface. NonNullable strips the implicit undefined
+ * that -? leaves on the value type when the original property was optional;
+ * without it (Mark[] | undefined) extends readonly object[] = false because the
+ * union is wider, so optional array fields are silently excluded.
+ *
+ * Correctly excludes unknown[] and string[]: neither satisfies `extends readonly
+ * object[]` -- confirmed by probe during the auditor fix (session 108).
+ */
+type NestedArrayField<T> = {
+  [K in keyof T]-?: NonNullable<T[K]> extends readonly object[] ? K : never;
+}[keyof T] & string;
+
+/**
+ * Stores whose model type has at least one nested array-of-object field.
+ * Pre-computed at the RecordTypeForStore level so that ExpectedRecordShape can
+ * distribute over a concrete union (string literals) rather than deferring a
+ * conditional on a generic parameter -- TypeScript defers the latter, which
+ * prevents the satisfies clause from resolving the nested-required vs
+ * nested-absent branches at compile time.
+ */
+type StoresWithNested = {
+  [S in keyof RecordTypeForStore]:
+    [NestedArrayField<RecordTypeForStore[S]>] extends [never] ? never : S;
+}[keyof RecordTypeForStore];
+
+/**
+ * The shape each store's entry in RECORD_SHAPE_LITERAL must have:
+ *  - Stores in StoresWithNested are REQUIRED to declare `nested`, with exactly
+ *    the fields NestedArrayField finds on their model type. A missing field is
+ *    a missing-property error from the satisfies clause; a missing key inside a
+ *    field is caught by the _AllNestedComplete assertion below.
+ *  - Stores not in StoresWithNested keep `nested` absent (runtime shape
+ *    unchanged). A spurious `nested` key would be an excess-property error.
+ *  - In both branches the `strings` value must contain only valid
+ *    PlainStringKeys for the store's model type.
+ */
+type ExpectedRecordShape = {
+  readonly [S in keyof RecordTypeForStore]:
+    S extends StoresWithNested
+      ? {
+          readonly strings: readonly PlainStringKeys<RecordTypeForStore[S]>[];
+          readonly nested: {
+            readonly [F in NestedArrayField<RecordTypeForStore[S]>]:
+              readonly PlainStringKeys<ElementOf<RecordTypeForStore[S][F]>>[];
+          };
+        }
+      : { readonly strings: readonly PlainStringKeys<RecordTypeForStore[S]>[] };
+};
+
 /**
  * One entry per persisted store. Derived by hand from `types.ts` and held to it
- * by the check in `scripts/check-imports.mjs` — if the two ever disagree, the
- * build fails and names the field.
+ * by two complementary type checks and one script check:
+ *
+ *  - The `satisfies ExpectedRecordShape` clause on RECORD_SHAPE_LITERAL: tsc
+ *    refuses to compile when this map LISTS a field that is not a required plain
+ *    string on the interface (stale key, renamed field, field made optional or
+ *    `string | null`). Error names the broken store's key in the "actual" union.
+ *    Remove it, or update `types.ts` if the change was wrong.
+ *
+ *    Also: for stores that have nested array fields, `satisfies` now enforces
+ *    that `nested` is present and covers exactly the right fields. A missing
+ *    nested key is a missing-property error on the `nested` object. A spurious
+ *    nested key on a store with no array fields is an excess-property error.
+ *
+ *  - The AssertComplete lines below RECORD_SHAPE: tsc refuses to compile when a
+ *    required plain-string field EXISTS on the interface but is ABSENT from this
+ *    map. Error: "Type 'missing-key-name' does not satisfy the constraint 'never'".
+ *    The type argument that fails names the missing key exactly. Add it here, in
+ *    the right store's strings array. The _AllNestedComplete assertion below does
+ *    the same for required string keys WITHIN each nested field's array, derived
+ *    automatically across all (store, field) pairs rather than listed by hand.
+ *
+ *  - `scripts/check-shape.mjs`: checks three things the type system cannot express
+ *    -- the `??` usage guard (a normalised field with a non-empty fallback reads
+ *    as a live guard but can never fire), the "no unmapped nested row type" guard
+ *    (a named interface used as an array element must appear in NESTED_FOR_TYPE
+ *    or NESTED_EXEMPT), and the empty-model refusal.
  *
  * `meta` is absent on purpose: it holds a settings blob keyed by `key`, not
  * records, and `AppSettings` is written only by the app itself.
  */
-export const RECORD_SHAPE: Readonly<Record<Exclude<StoreName, 'meta'>, StoreShape>> = {
+const RECORD_SHAPE_LITERAL = {
   firearms: { strings: ['name', 'manufacturer', 'model', 'caliber', 'dateAcquired', 'notes', 'category'] },
   sessions: {
     strings: ['date', 'type', 'location', 'distances', 'notes'],
@@ -130,12 +267,98 @@ export const RECORD_SHAPE: Readonly<Record<Exclude<StoreName, 'meta'>, StoreShap
     nested: { stages: ['notes'] },
   },
   classifiers: { strings: ['date', 'code', 'name', 'division', 'notes'] },
-  // `links` is inline-typed too — the same shape as sessions.ammoUsage above.
+  // `links` is inline-typed too -- the same shape as sessions.ammoUsage above.
   references: { strings: ['name', 'guidance', 'category'], nested: { links: ['label', 'url'] } },
   reminders: { strings: ['title', 'notes', 'source', 'trigger'] },
   media: { strings: ['ownerId', 'name', 'mime', 'ownerType', 'kind'], nested: { marks: ['color', 'label'] } },
   trash: { strings: ['recordType'] },
-} as const;
+} as const satisfies ExpectedRecordShape;
+
+export const RECORD_SHAPE: Readonly<Record<Exclude<StoreName, 'meta'>, StoreShape>> = RECORD_SHAPE_LITERAL;
+
+// ---- completeness assertions: go red when a required plain-string key is absent
+// from the map. The AssertComplete<Missing extends never> trick makes tsc name
+// the missing key in the error: "Type 'missing-key' does not satisfy the
+// constraint 'never'". These are pure compile-time; they produce no runtime code.
+//
+// If a missing key is reported, add it to the right store's strings array above.
+// If a missing nested key is reported, add it to the store's nested block above.
+
+/** Fails -- naming the offending key -- when MissingKeys is not empty. */
+type AssertComplete<MissingKeys extends never> = MissingKeys;
+
+/** Keys declared as plain required strings on store S that are absent from the map. */
+type MissingStrings<S extends keyof RecordTypeForStore> =
+  Exclude<PlainStringKeys<RecordTypeForStore[S]>, typeof RECORD_SHAPE_LITERAL[S]['strings'][number]>;
+
+// One assertion per store. A new `field: string` on any of these interfaces goes
+// red here, naming the field, until it is added to RECORD_SHAPE_LITERAL above.
+export type _FirearmsComplete     = AssertComplete<MissingStrings<'firearms'>>;
+export type _SessionsComplete     = AssertComplete<MissingStrings<'sessions'>>;
+export type _DrillsComplete       = AssertComplete<MissingStrings<'drills'>>;
+export type _AmmunitionComplete   = AssertComplete<MissingStrings<'ammunition'>>;
+export type _PurchasesComplete    = AssertComplete<MissingStrings<'purchases'>>;
+export type _MaintenanceComplete  = AssertComplete<MissingStrings<'maintenance'>>;
+export type _MalfunctionsComplete = AssertComplete<MissingStrings<'malfunctions'>>;
+export type _MagazinesComplete    = AssertComplete<MissingStrings<'magazines'>>;
+export type _OpticsComplete       = AssertComplete<MissingStrings<'optics'>>;
+export type _PartsComplete        = AssertComplete<MissingStrings<'parts'>>;
+export type _GoalsComplete        = AssertComplete<MissingStrings<'goals'>>;
+export type _SkillsComplete       = AssertComplete<MissingStrings<'skills'>>;
+export type _SkillSetsComplete    = AssertComplete<MissingStrings<'skillSets'>>;
+export type _MatchesComplete      = AssertComplete<MissingStrings<'matches'>>;
+export type _ClassifiersComplete  = AssertComplete<MissingStrings<'classifiers'>>;
+export type _ReferencesComplete   = AssertComplete<MissingStrings<'references'>>;
+export type _RemindersComplete    = AssertComplete<MissingStrings<'reminders'>>;
+export type _MediaComplete        = AssertComplete<MissingStrings<'media'>>;
+export type _TrashComplete        = AssertComplete<MissingStrings<'trash'>>;
+
+// Nested key completeness: DERIVED, not hand-listed.
+// The satisfies clause (above) enforces that every nested FIELD is present and
+// that no extra fields exist (both directions from ExpectedRecordShape). The
+// assertion below covers the remaining gap: missing string KEYS within each
+// field's array -- across ALL stores and ALL nested fields, derived from the
+// model automatically. A new `field: string` on any nested row type goes red
+// here naming the field, until it is added to RECORD_SHAPE_LITERAL above.
+// A future store that gains a new nested array field and declares it in the map
+// with an incomplete key list is caught here without a new hand-written line.
+//
+// How it works: for each S in StoresWithNested, for each F in the store's nested
+// keys, compute the plain-string keys of the element type that are absent from
+// the listed array. Union them all. The whole union must be never.
+
+/**
+ * For each (store, nested-field) pair, the plain-string keys of that field's
+ * element type that are missing from the RECORD_SHAPE_LITERAL list. Must be
+ * never at rest; names missing keys exactly in the TS2344 error when non-never.
+ *
+ * The intersection `& NestedArrayField<RecordTypeForStore[S]>` on F serves two
+ * roles: it tells the type system that `RecordTypeForStore[S][F]` is an array of
+ * objects (so ElementOf gives a useful element type, not never), and it ensures
+ * the F index is valid on the record interface (NestedArrayField extends keyof T).
+ * NonNullable strips the implicit undefined from optional array fields before
+ * ElementOf so marks?: Mark[] contributes its row keys rather than being excluded.
+ */
+/** The literal `nested` object for store S cast to `Record<string, readonly string[]>`.
+ *  The cast is safe: `satisfies ExpectedRecordShape` already verified every value
+ *  is a `readonly PlainStringKeys[]`. Pulling it out as a named alias lets TypeScript
+ *  resolve the shape before mapping over F, which avoids the deferred-generic index
+ *  error that `(typeof RECORD_SHAPE_LITERAL)[S]['nested'][F]` hits when S and F are
+ *  both still generic parameters in the same mapped-type expression. */
+type LiteralNested<S extends StoresWithNested> =
+  (typeof RECORD_SHAPE_LITERAL)[S]['nested'] & Record<string, readonly string[]>;
+
+type MissingNestedKeys = {
+  [S in StoresWithNested]: {
+    [F in keyof LiteralNested<S> & NestedArrayField<RecordTypeForStore[S]>]:
+      Exclude<
+        PlainStringKeys<ElementOf<NonNullable<RecordTypeForStore[S][F]>>>,
+        LiteralNested<S>[F][number]
+      >;
+  }[keyof LiteralNested<S> & NestedArrayField<RecordTypeForStore[S]>];
+}[StoresWithNested];
+
+export type _AllNestedComplete = AssertComplete<MissingNestedKeys>;
 
 /** A store that carries records rather than the settings blob. */
 function shapeFor(store: StoreName): StoreShape | undefined {
@@ -144,22 +367,22 @@ function shapeFor(store: StoreName): StoreShape | undefined {
 
 /**
  * The one place that decides what a non-string becomes. Returns `undefined` when
- * the value must be LEFT ALONE — the add-never-replace rule in one function.
+ * the value must be LEFT ALONE -- the add-never-replace rule in one function.
  */
 function stringFor(value: unknown): string | undefined {
   if (typeof value === 'string') return undefined;          // already fine
   if (value === undefined || value === null) return '';     // absent: safe to fill
-  // A number is the one non-string that plainly denotes the same information —
+  // A number is the one non-string that plainly denotes the same information --
   // a hand-edited backup carrying `date: 20260802` means that date. Converting
   // keeps the value AND stops the crash.
   if (typeof value === 'number' || typeof value === 'bigint') return String(value);
   // A boolean is converted too, and the tradeoff is written down because it went
   // back and forth twice. `String(false)` is the TRUTHY text "false", so a render
-  // guard reading `if (rec.notes)` changes behaviour — that is the cost. The
+  // guard reading `if (rec.notes)` changes behaviour -- that is the cost. The
   // alternative is leaving it, and `false.trim()` then takes the screen down,
   // which is the thing this module exists to prevent and the higher-severity of
   // the two (zero-crash outranks a cosmetic surprise). No importer can produce a
-  // boolean here — all four coerce — so this is a hand-edited-backup shape either
+  // boolean here -- all four coerce -- so this is a hand-edited-backup shape either
   // way, and the visible, editable outcome beats the dead screen.
   if (typeof value === 'boolean') return String(value);
   // Objects, symbols and functions are left alone. There is no honest string for
@@ -171,11 +394,11 @@ function stringFor(value: unknown): string | undefined {
  * A value we may safely treat as a record row: a PLAIN object.
  *
  * Not `typeof x === 'object'`, which is also true of arrays, Dates, Maps, Sets
- * and boxed primitives — spreading any of those into `{...}` destroys them. An
+ * and boxed primitives -- spreading any of those into `{...}` destroys them. An
  * audit measured `stages: [new Date(...)]` becoming `{notes: ''}` and a boxed
- * `new String('note')` becoming `{0:'n',1:'o',…}`. All of these survive
+ * `new String('note')` becoming `{0:'n',1:'o',...}`. All of these survive
  * IndexedDB's structured clone, so they are storable, and `parseFlog` does no
- * per-record validation — so they are reachable.
+ * per-record validation -- so they are reachable.
  */
 function isPlainRow(v: unknown): v is Record<string, unknown> {
   if (typeof v !== 'object' || v === null || Array.isArray(v)) return false;
@@ -184,7 +407,7 @@ function isPlainRow(v: unknown): v is Record<string, unknown> {
 }
 
 /**
- * True when nothing may usefully be done to this row — either it already
+ * True when nothing may usefully be done to this row -- either it already
  * satisfies its declared shape, or it is not a shape we are allowed to touch.
  * (Deliberately not named "isValid": a bare string row returns true here and is
  * still capable of crashing a screen. What it means is "leave it as it is.")
@@ -208,7 +431,7 @@ function fixRow(row: unknown, fields: readonly string[]): unknown {
 
 /**
  * Rebuild a nested array with its rows repaired, keeping any own properties the
- * array itself carries. `arr.map()` alone drops them — measured: a `stages`
+ * array itself carries. `arr.map()` alone drops them -- measured: a `stages`
  * array with `importedFrom: 'ps.csv'` on it lost that property on read, and the
  * next backup wrote the loss.
  */
@@ -219,7 +442,7 @@ function fixRows(arr: unknown[], fields: readonly string[]): unknown[] {
     // do not, and are ordinary own properties that a regex on digits would drop.
     // Deliberately generous: anything that is not a CANONICAL array index gets
     // copied. `'-1'` and `'NaN'` stringify back to themselves and are not indices,
-    // so the earlier test dropped them — the same data loss this loop exists to
+    // so the earlier test dropped them -- the same data loss this loop exists to
     // prevent, found by a fourth audit round.
     const asIndex = Number(key);
     const isIndex = Number.isInteger(asIndex) && asIndex >= 0
@@ -238,7 +461,7 @@ function fixRows(arr: unknown[], fields: readonly string[]): unknown[] {
  */
 export function normalizeRecord<T>(store: StoreName, record: T): T {
   const shape = shapeFor(store);
-  // isPlainRow, not `typeof === 'object'` — the same guard the nested rows use.
+  // isPlainRow, not `typeof === 'object'` -- the same guard the nested rows use.
   // With the looser test a top-level record that was an Array or a Date fell
   // through to the repair path, where `fixRow` handed the same object back and the
   // nested loop then MUTATED the caller's object in place. The only place this
@@ -251,7 +474,7 @@ export function normalizeRecord<T>(store: StoreName, record: T): T {
     for (const [key, fields] of Object.entries(shape.nested)) {
       const arr = src[key];
       // Not an array: untouchable, so it counts as whole. See the one rule at
-      // the top — the version that replaced this with [] deleted every stage of
+      // the top -- the version that replaced this with [] deleted every stage of
       // any match whose `stages` arrived as a keyed object, permanently, because
       // the blanked record is what the next backup writes.
       if (!Array.isArray(arr)) continue;
