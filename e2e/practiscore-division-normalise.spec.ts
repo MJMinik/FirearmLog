@@ -191,6 +191,9 @@ test.describe('PractiScore division normalisation (spec §5.2)', () => {
     // We assert the division is stored canonical -- if the old bug were present, the
     // user would see the placing-warning on a no-touch save, which test 4 traps.
     // The test_4-specific statement: overall finish IS present (it never depended on division).
+    // The stored divisionPlace/divisionOf non-null proof (spec §5.2.4) lives in
+    // test 5's save-and-reopen step: this fixture has no Division Place column, so
+    // the Division finish row never renders here and cannot carry that assertion.
     await expect(matchCard.locator('.row', { hasText: 'Overall finish' })).toBeVisible();
   });
 
@@ -203,7 +206,7 @@ test.describe('PractiScore division normalisation (spec §5.2)', () => {
   // This is the test that fails without the countInDivision fix: the preview would
   // show "1 of 0" (0 Carry Optics rows when comparing against all-"CO" rows) instead
   // of the correct "1 of 3".
-  test('5 - divisionOf: preview shows correct division count from a short-code-only file', async ({ page }) => {
+  test('5 - divisionOf: preview and stored record carry the correct division count from a short-code-only file', async ({ page }) => {
     // Three CO shooters, one LO, one O. Short codes only. No metadata.
     const SHORT_CODE_CSV = [
       'Overall Place,Division Place,Name,Div,PF,Match %',
@@ -236,6 +239,14 @@ test.describe('PractiScore division normalisation (spec §5.2)', () => {
     // Division place row: "1 of 3". With the fix, countInDivision canonicalises
     // "CO" rows and counts 3. Without the fix, it counts 0 and shows "1 of 0".
     await expect(resultCard.locator('.row', { hasText: 'Division place' })).toContainText('1 of 3');
+
+    // The STORED record, not just the preview (audit findings 2-3): save without
+    // touching the picker, reopen the match, and prove the Division finish row
+    // carries the computed count. This is the assertion that fails if a no-touch
+    // save of a short-code file nulls divisionOf on the way to disk.
+    await saveAndOpen(page);
+    const matchCard = main.locator('.card').filter({ has: page.getByRole('heading', { name: 'Match', exact: true }) });
+    await expect(matchCard.locator('.row', { hasText: 'Division finish' })).toContainText('1 of 3');
   });
 
 });

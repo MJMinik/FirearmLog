@@ -11,7 +11,7 @@ import { getAll, getSettings, putOne } from '../lib/db.ts';
 import { stampNew } from '../lib/stamps.ts';
 import { newId } from '../lib/id.ts';
 import { todayKey } from '../lib/dates.ts';
-import { MATCH_TYPES, DIVISIONS, POWER_FACTORS, suggestDivision } from '../lib/competition.ts';
+import { MATCH_TYPES, DIVISIONS, POWER_FACTORS, suggestDivision, divisionMismatchKind } from '../lib/competition.ts';
 import { divisionActuallyChanged } from '../lib/divisionNormalise.ts';
 import { fieldOptions } from '../lib/selectOptions.ts';
 import { findOwnRows, normaliseStoredNames, type NameMatch } from '../lib/shooterMatch.ts';
@@ -351,14 +351,33 @@ export function PractiScoreImport({ onCancel, onSaved }: {
                   <option key={o.value} value={o.value}>{o.label}</option>
                 ))}
               </select>
-              {/* When the picker shows the canonical name for a short code (e.g.
-                  "Carry Optics" for "CO"), tell the user what the results said and
-                  that the placing is preserved. Only shown when they differ and the
-                  canonical is not the same string PractiScore wrote (spec §3.1). */}
+              {/* When the picker shows the canonical name for what the results said
+                  (e.g. "Carry Optics" for "CO"), tell the user what the results said
+                  and that the placing is preserved. Only shown when they differ and
+                  the canonical is not the same string PractiScore wrote (spec §3.1).
+                  The sentence names the ACTUAL difference (audit finding 1): calling
+                  "carry optics" or "Open " a short code is false, and the spacing/case
+                  differences are invisible without the quotes -- same lesson as the
+                  divisionMismatchKind callout on the match screen. */}
               {division !== me.division && !divisionActuallyChanged(me.division, division, DIVISIONS) && (
                 <span className="report-note">
-                  The results scored you as {me.division ? <b>{me.division}</b> : 'no division'}, a short code. Selected below
-                  as <b>{division}</b>. Change it if that is wrong.
+                  {(() => {
+                    const q = <b>&quot;{me.division}&quot;</b>;
+                    switch (divisionMismatchKind(me.division, division)) {
+                      case 'spacing':
+                        return <>The results scored you as {q}, with extra spaces around it. Selected below
+                          as <b>{division}</b>. Change it if that is wrong.</>;
+                      case 'spelling':
+                        return <>The results scored you as {q}, spelled differently from the list. Selected below
+                          as <b>{division}</b>. Change it if that is wrong.</>;
+                      case 'spacing-and-spelling':
+                        return <>The results scored you as {q}, with extra spaces and a different spelling. Selected below
+                          as <b>{division}</b>. Change it if that is wrong.</>;
+                      default:
+                        return <>The results scored you as {q}, a short code. Selected below
+                          as <b>{division}</b>. Change it if that is wrong.</>;
+                    }
+                  })()}
                 </span>
               )}
               {/* When the user has picked a genuinely different division, warn that
