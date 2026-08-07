@@ -2,7 +2,7 @@
 // data rows and footer. Simulates a paste that missed the top of the table.
 // Contains short division codes (CO, LO, O) and abbreviated PF (Min) but:
 //   - No full division name adjacent to MINOR/MAJOR
-//   - No lines matching /^d+-name/
+//   - No lines matching /^\d+-[letter]/ (place glued to name)
 //   - None of the page furniture strings
 // Therefore looksLikeNewStyleResults must return false on this.
 export const TAKE_AIM_MINI_2026_08_03_TRUNCATED_OLDSTYLE = `1	Olinchak, Matt			LO	Min		347.0388	100.0000%

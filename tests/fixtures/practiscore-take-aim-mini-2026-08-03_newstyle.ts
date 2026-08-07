@@ -6,7 +6,7 @@
 //
 // Key signals present in this fixture:
 //   - Full division name + MINOR/MAJOR on same line (e.g. 'Limited Optics	MINOR')
-//   - Lines starting with /^d+-/ (e.g. '1-Matt Olinchak', '18-Michael Minik')
+//   - Lines starting with /^\d+-/ (e.g. '1-Matt Olinchak', '18-Michael Minik')
 //   - Page furniture: 'Old style results', 'Score Edit History', 'Horizontal Scroll'
 export const TAKE_AIM_MINI_2026_08_03_NEWSTYLE = `Take Aim Monday Night Mini Match 08-03-2026 HIT FACTOR 2026-08-03
 Horizontal Scroll

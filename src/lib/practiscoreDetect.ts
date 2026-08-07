@@ -16,14 +16,16 @@
 //   (CO, LO, O) and abbreviated PF (Min) in separate tab-separated columns, so
 //   this pattern cannot appear in a parseable table. 21 occurrences in the real
 //   Take Aim Mini fixture.
-//   Matched case-insensitively; requires the division name and PF word to sit on
-//   one line with at most a tab or spaces between them.
+//   Matched case-insensitively at word boundaries (so prose like "reopen major"
+//   cannot fire); requires the division name and PF word to sit on one line with
+//   at most a tab or spaces between them.
 //
 // Family B — Place glued to name with a hyphen at line start.
 //   The new-style viewer renders "1-Matt Olinchak" (place-hyphen-name) as the
-//   first token of each shooter line. The old-style table has bare integers in a
-//   Place column, separated by tabs from the name. 21+ occurrences in the
-//   fixture; absent from any tab-separated old-style result or truncated paste.
+//   first token of each shooter line: one to three digits, a hyphen, then a
+//   letter. Requiring the letter keeps line-leading dates (2026-08-04) and phone
+//   numbers (1-800...) from matching. The old-style table has bare integers in a
+//   Place column, separated by tabs from the name. 21+ occurrences in the fixture.
 //
 // Family C — Page furniture unique to the new-style viewer.
 //   Literal strings that appear in the new-style page but never in the old-style
@@ -57,13 +59,13 @@ const DIVISION_NAMES = [
  * Built once at module load, not per call.
  */
 const DIVISION_PF_RE = new RegExp(
-  '(?:' + DIVISION_NAMES.map((d) => d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')' +
-    '[\\t ]+(?:MINOR|MAJOR)',
+  '\\b(?:' + DIVISION_NAMES.map((d) => d.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|') + ')' +
+    '[\\t ]+(?:MINOR|MAJOR)\\b',
   'i',
 );
 
-/** Lines starting with a digit-hyphen (place glued to name). */
-const PLACE_HYPHEN_RE = /^\d+-/m;
+/** Lines starting with 1-3 digits, a hyphen, then a letter (place glued to name). */
+const PLACE_HYPHEN_RE = /^\d{1,3}-[A-Za-z]/m;
 
 /** Page furniture strings unique to the new-style viewer. */
 const FURNITURE_STRINGS = ['Old style results', 'Score Edit History', 'Horizontal Scroll'];

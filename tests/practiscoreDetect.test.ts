@@ -87,6 +87,31 @@ test('division+PF adjacency + place-hyphen → true', () => {
   assert.equal(looksLikeNewStyleResults(twoSignals), true);
 });
 
+test('a parseable old-style capture with new-style chrome around it: parser accepts it AND the detector would fire — pinning that the UI must consult the detector only after a refusal', () => {
+  const withChrome = 'Horizontal Scroll\nOld style results\n1-Matt Olinchak\n' + TAKE_AIM_MINI_2026_08_03_OLDSTYLE;
+  assert.doesNotThrow(() => parsePractiScore(withChrome));
+  assert.equal(looksLikeNewStyleResults(withChrome), true);
+});
+
+test('"reopen major" is not a division: word boundary pins Family A (audit finding 3)', () => {
+  // Without the leading \b, 'reopen Major' matched the Open+MAJOR pattern, and
+  // together with the place-hyphen line this text fired both families.
+  const prose = 'Please reopen Major season planning.\n1-Matt Olinchak said so.';
+  assert.equal(looksLikeNewStyleResults(prose), false);
+});
+
+test('a phone number is not a place: letter-after-hyphen pins Family B (audit finding 4)', () => {
+  // Without requiring a letter after the hyphen, '1-800-555-0100' at line start
+  // matched Family B, and with the division line this text fired both families.
+  const prose = '1-800-555-0100 is the range office.\nShe shoots Carry Optics MINOR this season.';
+  assert.equal(looksLikeNewStyleResults(prose), false);
+});
+
+test('line-leading ISO dates are not places (audit finding 4)', () => {
+  const prose = '2026-08-04 was the make-up date.\nHe moved from Production MAJOR loads years ago.';
+  assert.equal(looksLikeNewStyleResults(prose), false);
+});
+
 test('case-insensitive PF matching (minor/major in any case)', () => {
   const lower = '1-Matt Olinchak\nLimited Optics\tminor';
   assert.equal(looksLikeNewStyleResults(lower), true);
