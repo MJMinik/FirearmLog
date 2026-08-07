@@ -58,7 +58,9 @@ test.describe('PractiScore import — the as-scored value stays reachable', () =
     const main = await reachPreview(page);
     const sel = divisionField(main).locator('select');
 
-    await expect(sel).toHaveValue('O');
+    // Since the normalisation branch the picker STARTS on the canonical name
+    // ("Open"), not the raw code -- the raw "O" stays reachable as "as scored".
+    await expect(sel).toHaveValue('Open');
     await expect(divisionField(main).locator('option', { hasText: 'as scored' })).toHaveCount(1);
 
     await sel.selectOption('Carry Optics');
@@ -119,7 +121,7 @@ test.describe('PractiScore import — the as-scored value stays reachable', () =
     await main.getByRole('button', { name: 'Devin Nolan' }).click();
 
     const sel = divisionField(main).locator('select');
-    await expect(sel).toHaveValue('O');
+    await expect(sel).toHaveValue('Open');   // canonical pre-selection (normalisation branch)
     await sel.selectOption('PCC');           // away
     await sel.selectOption('O');             // and back — impossible before the fix
     await expect(sel).toHaveValue('O');
