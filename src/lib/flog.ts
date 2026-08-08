@@ -35,11 +35,20 @@ export function newestStamp(stores: Record<string, unknown[]>, media: { updatedA
       if (typeof u === 'number' && u > newest) newest = u;
     }
   }
-  for (const m of media) if (m.updatedAt > newest) newest = m.updatedAt;
+  // Same typeof rule as the store loop above. It used to be missing here, which
+  // meant a media record whose updatedAt was stored as TEXT was compared with a
+  // number — JavaScript quietly coerces, so "9999999999" won and this function
+  // returned a string where its own signature promises a number. Audit finding E,
+  // session 114: newestMediaStamp (the cursor path) already applied the rule, so
+  // the two functions answering the same question disagreed.
+  for (const m of media) {
+    const u = (m as { updatedAt?: unknown }).updatedAt;
+    if (typeof u === 'number' && u > newest) newest = u;
+  }
   return newest;
 }
 
-export function buildFlog(snapshot: Snapshot): Uint8Array {
+export function buildFlog(snapshot: Snapshot): Uint8Array<ArrayBuffer> {
   const mediaMeta = snapshot.media.map((m) => {
     const meta = { ...m } as Record<string, unknown>;
     delete meta.data;

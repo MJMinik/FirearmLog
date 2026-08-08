@@ -20,8 +20,12 @@ import {
   putSettings,
   validateSnapshotShape,
   putOne,
+  localLastModified,
+  hasOversizedMedia,
+  scanMediaImageIds,
 } from '../src/lib/db.ts';
 import type { DataSet } from '../src/lib/types.ts';
+import { newestStamp } from '../src/lib/flog.ts';
 import type { Snapshot } from '../src/lib/flog.ts';
 
 // Minimal DataSet with every array commitDataSet reads (empty unless overridden).
@@ -465,4 +469,279 @@ test('D-1 discriminator: untrashSession — poisoned session rolls back the ammo
   const se = sessions.find((s) => s.id === 'se-d1-disc-u');
   assert.equal(c?.quantity, 150, 'ammo quantity unchanged — ammo write rolled back with the session');
   assert.equal(se?.deletedAt, 1, 'session tombstone still present (restore did NOT commit)');
+});
+
+// ---- P-series media-load discipline tests (P-4 / P-7 / P-8) ----
+// These tests go through the PUBLIC API so the cursor-vs-getAll distinction is
+// a source-level property, not something visible in a unit test. The memory
+// behaviour is not directly observable here — source-level guards handle that
+// (mediaGetAllFence.test.ts, the P-5 source guard in syncCardBlobCopy.test.ts).
+// What these tests prove: the RESULT of localLastModified, hasOversizedMedia,
+// scanMediaImageIds, and the stale-media deletion paths is correct.
+
+// P-4: localLastModified returns the media record's updatedAt when that is newest.
+test('P-4: localLastModified picks up a media updatedAt that is newer than every store record', async () => {
+  await clearAllData();
+  // Seed a session with an older stamp and a media record with a newer one.
+  const olderStamp = 1_000_000;
+  const newerStamp = 2_000_000;
+  await putOne('sessions', { id: 'se-p4', planned: false, ammoUsage: [], updatedAt: olderStamp, createdAt: 0 });
+  await putOne('media', { id: 'md-p4', ownerType: 'session', ownerId: 'se-p4', kind: 'image',
+    name: 'test.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: newerStamp, createdAt: 0 });
+  const stamp = await localLastModified();
+  assert.equal(stamp, newerStamp, 'media updatedAt drives localLastModified when it is newest');
+});
+
+test('P-4: localLastModified returns 0 when the store is empty', async () => {
+  await clearAllData();
+  const stamp = await localLastModified();
+  assert.equal(stamp, 0, 'empty store returns 0');
+});
+
+test('P-4: localLastModified returns the store stamp when it is newer than any media record', async () => {
+  await clearAllData();
+  const olderMediaStamp = 500;
+  const newerSessionStamp = 999_999;
+  await putOne('sessions', { id: 'se-p4b', planned: false, ammoUsage: [], updatedAt: newerSessionStamp, createdAt: 0 });
+  await putOne('media', { id: 'md-p4b', ownerType: 'session', ownerId: 'se-p4b', kind: 'image',
+    name: 'x.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: olderMediaStamp, createdAt: 0 });
+  const stamp = await localLastModified();
+  assert.equal(stamp, newerSessionStamp, 'session updatedAt wins when it is newest');
+});
+
+// P-7: hasOversizedMedia — probe returns true on first oversized hit, false when none.
+test('P-7: hasOversizedMedia returns false when no image exceeds the threshold', async () => {
+  await clearAllData();
+  await putOne('media', { id: 'md-small', ownerType: 'firearm', ownerId: 'g1', kind: 'image',
+    name: 'small.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(100), updatedAt: 1, createdAt: 0 });
+  const result = await hasOversizedMedia(1_000);
+  assert.equal(result, false, 'small image: hasOversizedMedia is false');
+});
+
+test('P-7: hasOversizedMedia returns true when an image exceeds the threshold', async () => {
+  await clearAllData();
+  await putOne('media', { id: 'md-big', ownerType: 'firearm', ownerId: 'g1', kind: 'image',
+    name: 'big.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(5_000), updatedAt: 1, createdAt: 0 });
+  const result = await hasOversizedMedia(1_000);
+  assert.equal(result, true, 'big image: hasOversizedMedia is true');
+});
+
+test('P-7: hasOversizedMedia ignores video records even if their data is large', async () => {
+  await clearAllData();
+  await putOne('media', { id: 'md-vid', ownerType: 'session', ownerId: 's1', kind: 'video',
+    name: 'clip.mp4', annotations: [], mime: 'video/mp4',
+    data: new ArrayBuffer(9_999_999), updatedAt: 1, createdAt: 0 });
+  const result = await hasOversizedMedia(1_000);
+  assert.equal(result, false, 'video is not counted as oversized');
+});
+
+// P-7: scanMediaImageIds — returns ids of image records only, skips videos.
+test('P-7: scanMediaImageIds returns ids of images and skips videos', async () => {
+  await clearAllData();
+  await putOne('media', { id: 'md-img-a', ownerType: 'firearm', ownerId: 'g1', kind: 'image',
+    name: 'a.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 });
+  await putOne('media', { id: 'md-img-b', ownerType: 'session', ownerId: 's1', kind: 'image',
+    name: 'b.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 });
+  await putOne('media', { id: 'md-vid-c', ownerType: 'session', ownerId: 's1', kind: 'video',
+    name: 'c.mp4', annotations: [], mime: 'video/mp4',
+    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 });
+  const ids = await scanMediaImageIds();
+  assert.ok(ids.includes('md-img-a'), 'image a included');
+  assert.ok(ids.includes('md-img-b'), 'image b included');
+  assert.ok(!ids.includes('md-vid-c'), 'video excluded');
+  assert.equal(ids.length, 2, 'exactly 2 image ids returned');
+});
+
+// P-8: delete-stale-media path in commitDataSet removes the right photos and keeps the right ones.
+test('P-8: commitDataSet deletes stale media for re-imported owners and keeps media for other owners', async () => {
+  await clearAllData();
+  // Seed two guns each with one photo. Only gun-a is in the re-import.
+  const gunAPhoto = { id: 'md-gun-a-old', ownerType: 'firearm', ownerId: 'gun-a', kind: 'image',
+    name: 'old.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 };
+  const gunBPhoto = { id: 'md-gun-b', ownerType: 'firearm', ownerId: 'gun-b', kind: 'image',
+    name: 'b.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 };
+  await putOne('media', gunAPhoto);
+  await putOne('media', gunBPhoto);
+
+  // Re-import: gun-a with a NEW photo; gun-b not in the import at all.
+  const newAPhoto = { id: 'md-gun-a-new', ownerType: 'firearm', ownerId: 'gun-a', kind: 'image',
+    name: 'new.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 2, createdAt: 0 };
+  const ds = {
+    firearms: [{ id: 'gun-a', name: 'A' }], sessions: [], drills: [], ammunition: [],
+    purchases: [], maintenance: [], malfunctions: [], magazines: [], optics: [], parts: [],
+    goals: [], skills: [], skillSets: [], matches: [], classifiers: [], references: [], trash: [],
+    media: [newAPhoto],
+  };
+  await commitDataSet(ds as unknown as import('../src/lib/types.ts').DataSet, undefined);
+
+  const media = await getAllMediaWholeStore();
+  const ids = media.map((m) => m.id);
+  assert.ok(!ids.includes('md-gun-a-old'), 'stale photo for re-imported owner deleted');
+  assert.ok(ids.includes('md-gun-a-new'), 'new photo for re-imported owner kept');
+  assert.ok(ids.includes('md-gun-b'), 'photo for non-imported owner untouched');
+});
+
+// P-8: restoreSnapshot delete-stale path keeps the right photos and removes the rest.
+test('P-8: restoreSnapshot deletes media not in the snapshot and keeps media that is', async () => {
+  await clearAllData();
+  const oldPhoto = { id: 'md-restore-old', ownerType: 'session', ownerId: 's-old', kind: 'image',
+    name: 'old.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 };
+  await putOne('media', oldPhoto);
+
+  const newPhoto = { id: 'md-restore-new', ownerType: 'session', ownerId: 's-new', kind: 'image',
+    name: 'new.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 2, createdAt: 0 };
+  const snap = {
+    exportedAt: Date.now(), lastModified: Date.now(),
+    stores: { firearms: [], sessions: [{ id: 's-new', planned: false, ammoUsage: [], updatedAt: 2, createdAt: 0 }],
+      drills: [], ammunition: [], purchases: [], maintenance: [], malfunctions: [],
+      magazines: [], optics: [], parts: [], goals: [], skills: [], skillSets: [],
+      matches: [], classifiers: [], references: [], reminders: [], trash: [], meta: [] },
+    media: [newPhoto],
+  } as unknown as import('../src/lib/flog.ts').Snapshot;
+  await restoreSnapshot(snap);
+
+  const media = await getAllMediaWholeStore();
+  const ids = media.map((m) => m.id);
+  assert.ok(!ids.includes('md-restore-old'), 'photo not in snapshot deleted');
+  assert.ok(ids.includes('md-restore-new'), 'photo in snapshot kept');
+});
+
+// ---------------------------------------------------------------------------
+// Audit finding 1 (session 114): the stale-media passes must not decide by
+// reading a raw record field. The first version of the P-8 fix read
+// cursor.value.ownerId directly and skipped anything that was not a string —
+// which meant a media record with a missing, null or non-string ownerId, or a
+// non-string id, survived restore FOREVER. Nothing deletes it later: it gets
+// packed into every .flog backup, travels to the other device, and eats space
+// until the free-space preflight starts refusing to load files.
+//
+// Restore decides purely by id, so it now walks primary KEYS (openKeyCursor) and
+// never reads a record field at all — structurally immune to the whole class.
+// These tests are the proof: each one fails on the pre-fix code.
+// ---------------------------------------------------------------------------
+test('audit-1: restore deletes an orphaned photo whose ownerId is missing', async () => {
+  await clearAllData();
+  // A damaged record: no ownerId at all. Reading the field raw would skip it.
+  await putOne('media', { id: 'md-no-owner', ownerType: 'firearm', kind: 'image',
+    name: 'orphan.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 });
+
+  const snap = snapshotWith({ firearms: [], sessions: [], drills: [], ammunition: [],
+    purchases: [], maintenance: [], malfunctions: [], magazines: [], optics: [], parts: [],
+    goals: [], skills: [], skillSets: [], matches: [], classifiers: [], references: [],
+    reminders: [], trash: [], meta: [] });
+  await restoreSnapshot(snap);
+
+  const ids = (await getAllMediaWholeStore()).map((m) => m.id);
+  assert.ok(!ids.includes('md-no-owner'), 'a photo with no ownerId is still cleaned up by restore');
+});
+
+test('audit-1: restore deletes an orphaned photo whose ownerId is null', async () => {
+  await clearAllData();
+  await putOne('media', { id: 'md-null-owner', ownerType: 'firearm', ownerId: null, kind: 'image',
+    name: 'orphan.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 });
+
+  const snap = snapshotWith({ firearms: [], sessions: [], drills: [], ammunition: [],
+    purchases: [], maintenance: [], malfunctions: [], magazines: [], optics: [], parts: [],
+    goals: [], skills: [], skillSets: [], matches: [], classifiers: [], references: [],
+    reminders: [], trash: [], meta: [] });
+  await restoreSnapshot(snap);
+
+  const ids = (await getAllMediaWholeStore()).map((m) => m.id);
+  assert.ok(!ids.includes('md-null-owner'), 'a photo with a null ownerId is still cleaned up by restore');
+});
+
+test('audit-1: restore deletes a photo whose id is not a string', async () => {
+  await clearAllData();
+  // normalizeRecord never coerces id (it is the key, and rewriting a key would
+  // move the record). So the delete must go by the key the store actually holds.
+  await putOne('media', { id: 12345, ownerType: 'firearm', ownerId: 'g1', kind: 'image',
+    name: 'numeric.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 });
+
+  const snap = snapshotWith({ firearms: [], sessions: [], drills: [], ammunition: [],
+    purchases: [], maintenance: [], malfunctions: [], magazines: [], optics: [], parts: [],
+    goals: [], skills: [], skillSets: [], matches: [], classifiers: [], references: [],
+    reminders: [], trash: [], meta: [] });
+  await restoreSnapshot(snap);
+
+  const all = await getAllMediaWholeStore();
+  assert.equal(all.length, 0, 'a photo with a numeric id is deleted by key, not by a string comparison');
+});
+
+test('audit-1: the import commit deletes a superseded photo whose id is not a string', async () => {
+  await clearAllData();
+  await putOne('media', { id: 999, ownerType: 'firearm', ownerId: 'gun-a', kind: 'image',
+    name: 'old.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 });
+
+  const newPhoto = { id: 'md-new', ownerType: 'firearm', ownerId: 'gun-a', kind: 'image',
+    name: 'new.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 2, createdAt: 0 };
+  await commitDataSet(dataSetWith({ firearms: [{ id: 'gun-a', name: 'A' }], media: [newPhoto] }), undefined);
+
+  const ids = (await getAllMediaWholeStore()).map((m) => m.id);
+  assert.ok(!ids.includes(999 as unknown as string), 'the superseded photo is deleted by its real key');
+  assert.ok(ids.includes('md-new'), 'the replacement photo is kept');
+});
+
+// Observation 10 (session 114): hasOversizedMedia's comparison is `>`, so a photo
+// exactly ON the threshold is NOT oversized. Nothing pinned that boundary, which
+// meant `>` could drift to `>=` unnoticed and the Free Up Space card would start
+// offering to shrink photos it cannot improve. Both sides are now pinned.
+test('P-7: hasOversizedMedia is false for a photo exactly on the threshold', async () => {
+  await clearAllData();
+  await putOne('media', { id: 'md-exact', ownerType: 'firearm', ownerId: 'g1', kind: 'image',
+    name: 'exact.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(1_000), updatedAt: 1, createdAt: 0 });
+  assert.equal(await hasOversizedMedia(1_000), false, 'exactly on the threshold is not oversized');
+});
+
+test('P-7: hasOversizedMedia is true one byte over the threshold', async () => {
+  await clearAllData();
+  await putOne('media', { id: 'md-plus-one', ownerType: 'firearm', ownerId: 'g1', kind: 'image',
+    name: 'plusone.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(1_001), updatedAt: 1, createdAt: 0 });
+  assert.equal(await hasOversizedMedia(1_000), true, 'one byte over the threshold is oversized');
+});
+
+// Audit finding D (second pass, session 114): the Free Up Space card's mount
+// probe and its run pass must answer the same question. The probe used to ignore
+// the id while the run required a string id, so a photo with a numeric id made
+// the card appear promising space to free — and then the run freed none.
+test('P-7: the probe and the id scan agree — a photo the run cannot touch does not raise the card', async () => {
+  await clearAllData();
+  await putOne('media', { id: 77, ownerType: 'firearm', ownerId: 'g1', kind: 'image',
+    name: 'numeric.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(5_000), updatedAt: 1, createdAt: 0 });
+  assert.equal(await hasOversizedMedia(1_000), false, 'probe does not raise the card');
+  assert.equal((await scanMediaImageIds()).length, 0, 'and the run would touch nothing — the two agree');
+});
+
+// Audit finding E (second pass, session 114): newestStamp compared media
+// timestamps without checking the type, while the cursor path checked. So a
+// timestamp stored as TEXT won the comparison in one path and was ignored in the
+// other, and the two functions answering "when did this last change?" disagreed.
+test('audit-E: a timestamp stored as text is ignored by both the backup path and the device path', async () => {
+  await clearAllData();
+  await putOne('media', { id: 'md-text-stamp', ownerType: 'firearm', ownerId: 'g1', kind: 'image',
+    name: 'x.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: '9999999999', createdAt: 0 });
+  const device = await localLastModified();
+  assert.equal(device, 0, 'the device stamp ignores a non-number');
+  assert.equal(typeof device, 'number', 'and is still a number, not a string');
+  const viaSnapshot = newestStamp({}, [{ updatedAt: '9999999999' } as unknown as { updatedAt: number }]);
+  assert.equal(viaSnapshot, 0, 'the backup path now applies the same rule');
 });

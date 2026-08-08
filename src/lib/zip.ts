@@ -27,7 +27,12 @@ function dosDateTime(d: Date): { time: number; date: number } {
   };
 }
 
-export function writeZip(entries: ZipEntry[], when: Date = new Date()): Uint8Array {
+// The return type is Uint8Array<ArrayBuffer>, not the wider Uint8Array: the bytes
+// below are allocated with `new Uint8Array(total)`, which always creates a plain
+// ArrayBuffer (never a SharedArrayBuffer). Declaring what is actually allocated
+// lets callers hand these bytes straight to a Blob with no cast — a cast is a
+// promise the compiler cannot check, and this removes the need for one.
+export function writeZip(entries: ZipEntry[], when: Date = new Date()): Uint8Array<ArrayBuffer> {
   const te = new TextEncoder();
   const { time, date } = dosDateTime(when);
   const parts: Uint8Array[] = [];

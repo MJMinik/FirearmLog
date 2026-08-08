@@ -9,10 +9,11 @@
 //    photos not yet reached are simply untouched, and re-running is safe (an
 //    already-small photo is skipped because the re-encode isn't smaller).
 //  - Processed one at a time so a phone never holds many decoded images at once.
+//    The loop itself lives in photoCleanupRun.ts so it can be tested directly.
 //  - The user is told to Save to File (back up) first, and must confirm.
 import { useEffect, useState } from 'react';
-import { getAllMediaWholeStore, putOne, withExclusiveIo } from '../lib/db.ts';
-import { stampUpdate } from '../lib/stamps.ts';
+import { hasOversizedMedia, withExclusiveIo } from '../lib/db.ts';
+import { runPhotoCleanup } from './photoCleanupRun.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 
@@ -35,11 +36,12 @@ export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean 
   // On open, check whether any stored photo is still full-size. If none, the
   // card hides itself — there's nothing to free up. On its own screen
   // (standalone) it stays and shows a plain "nothing to free up" state instead.
+  // P-7 probe: cursor stops at the first oversize hit so the photo library
+  // never lands in memory at once — only one record is live at a time.
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const all = await getAllMediaWholeStore();
-      const oversized = all.some((m) => m.kind === 'image' && m.data.byteLength > OVERSIZE_BYTES);
+      const oversized = await hasOversizedMedia(OVERSIZE_BYTES);
       if (alive) { setHasOversized(oversized); setChecked(true); }
     })();
     return () => { alive = false; };
@@ -61,22 +63,11 @@ export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean 
   }
 
   async function runInner() {
-    const all = await getAllMediaWholeStore();
-    const images = all.filter((m) => m.kind === 'image');
-    let shrunk = 0;
-    let saved = 0;
-    for (let i = 0; i < images.length; i++) {
-      const m = images[i];
-      setStage({ name: 'working', done: i, total: images.length });
-      const blob = new Blob([m.data], { type: m.mime || 'image/jpeg' });
-      const { data, mime } = await prepareUploadBytes(blob);
-      if (data.byteLength < m.data.byteLength) {
-        saved += m.data.byteLength - data.byteLength;
-        await putOne('media', stampUpdate({ ...m, data, mime }, Date.now()));
-        shrunk += 1;
-      }
-    }
-    setStage({ name: 'done', shrunk, savedMB: (saved / (1024 * 1024)).toFixed(1) });
+    const { shrunk, savedBytes } = await runPhotoCleanup(
+      async (data, mime) => prepareUploadBytes(new Blob([data], { type: mime })),
+      (done, total) => setStage({ name: 'working', done, total })
+    );
+    setStage({ name: 'done', shrunk, savedMB: (savedBytes / (1024 * 1024)).toFixed(1) });
   }
 
   // Nothing to free up (and not mid-run / not showing a result). Inline on the

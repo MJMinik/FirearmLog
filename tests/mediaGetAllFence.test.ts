@@ -1,14 +1,17 @@
 // P-1 fence: getAll('media') must never appear in src/ outside the allowed
-// files. The allowed list is deliberately narrow:
-//   - src/lib/db.ts          (the data layer — internal whole-store ops: import,
-//                             export, restore, cleanup; not re-exported as getAll)
-//   - src/ui/PhotoCleanupCard.tsx (P-7 — whole-store cleanup, gets its own fix
-//                             later; explicitly excluded here so its treatment
-//                             is tracked, not silently overlooked)
-// These files (plus reportLaunch.ts, whose multi-owner report bundle cannot use
-// a single-owner cursor — its whole-store load is tracked with P-7) use the
-// getAllMediaWholeStore escape hatch (or internal access) and are the ONLY
-// files permitted to load the whole media store at once.
+// files. The allowed list is deliberately narrow, and is exactly two files:
+//   - src/lib/db.ts            (the data layer itself — it owns the whole-store
+//                               export path; every other whole-store use inside
+//                               db.ts was replaced by a cursor in P-4/P-7/P-8)
+//   - src/ui/reportLaunch.ts   (the multi-owner report bundle, which cannot use
+//                               the single-owner cursor — KNOWN OPEN ITEM: it
+//                               loads every photo AND retains them in React
+//                               state while the Reports screen is mounted, which
+//                               is a bigger memory hazard than anything P-4/7/8
+//                               fixed. Queued as its own item, session 114.)
+// PhotoCleanupCard.tsx WAS on this list and is not any more: P-7 replaced its two
+// whole-store loads with hasOversizedMedia (early-exit cursor probe) and
+// runPhotoCleanup (id scan, then one record at a time).
 // Every other caller must use getMediaForOwner (a cursor that never materialises
 // all bytes in memory).
 //
@@ -21,11 +24,13 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 
 // Files legitimately allowed to call getAll('media') or getAllMediaWholeStore.
-// db.ts owns its own internals; PhotoCleanupCard.tsx is tracked for P-7.
+// db.ts owns its own internals (exportSnapshot legitimately needs every byte).
 // reportLaunch.ts loads the whole bundle for multi-record reports (P-1).
+// PhotoCleanupCard.tsx was removed (P-7 fix): it imports hasOversizedMedia for
+// its mount probe and hands the run to runPhotoCleanup — the escape hatch is
+// gone from that file.
 const ALLOWED = new Set([
   'src/lib/db.ts',
-  'src/ui/PhotoCleanupCard.tsx',
   'src/ui/reportLaunch.ts',
 ]);
 
