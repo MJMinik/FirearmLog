@@ -11,7 +11,8 @@
 //  - Processed one at a time so a phone never holds many decoded images at once.
 //  - The user is told to Save to File (back up) first, and must confirm.
 import { useEffect, useState } from 'react';
-import { getAllMediaWholeStore, putOne, withExclusiveIo } from '../lib/db.ts';
+import { hasOversizedMedia, scanMediaImageIds, getOne, putOne, withExclusiveIo } from '../lib/db.ts';
+import type { Media } from '../lib/types.ts';
 import { stampUpdate } from '../lib/stamps.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
 import { ConfirmSheet } from './Sheet.tsx';
@@ -35,11 +36,12 @@ export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean 
   // On open, check whether any stored photo is still full-size. If none, the
   // card hides itself — there's nothing to free up. On its own screen
   // (standalone) it stays and shows a plain "nothing to free up" state instead.
+  // P-7 probe: cursor stops at the first oversize hit so the photo library
+  // never lands in memory at once — only one record is live at a time.
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const all = await getAllMediaWholeStore();
-      const oversized = all.some((m) => m.kind === 'image' && m.data.byteLength > OVERSIZE_BYTES);
+      const oversized = await hasOversizedMedia(OVERSIZE_BYTES);
       if (alive) { setHasOversized(oversized); setChecked(true); }
     })();
     return () => { alive = false; };
@@ -60,14 +62,17 @@ export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean 
     }
   }
 
+  // P-7 run: scan ids first (no blobs loaded), then load and process one record
+  // at a time. A record that disappears between the id scan and the load is
+  // skipped, not a crash. Only one photo lives in memory at any point.
   async function runInner() {
-    const all = await getAllMediaWholeStore();
-    const images = all.filter((m) => m.kind === 'image');
+    const ids = await scanMediaImageIds();
     let shrunk = 0;
     let saved = 0;
-    for (let i = 0; i < images.length; i++) {
-      const m = images[i];
-      setStage({ name: 'working', done: i, total: images.length });
+    for (let i = 0; i < ids.length; i++) {
+      setStage({ name: 'working', done: i, total: ids.length });
+      const m = await getOne<Media>('media', ids[i]);
+      if (!m) continue; // deleted between the scan and the load — skip safely
       const blob = new Blob([m.data], { type: m.mime || 'image/jpeg' });
       const { data, mime } = await prepareUploadBytes(blob);
       if (data.byteLength < m.data.byteLength) {
