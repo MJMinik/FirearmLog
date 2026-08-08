@@ -32,3 +32,297 @@ test('a damaged file is refused with a plain-language error', () => {
 test('random bytes are refused', () => {
   assert.throws(() => readZip(new Uint8Array(100)), /Not a FirearmLog data file/);
 });
+
+// ─── Tests for writeZipBlob, readZipDirectory, readZipEntry ──────────────────
+// The overriding constraint: a file written by writeZipBlob must be byte-identical
+// to one written by writeZip from the same input, and every existing corruption
+// test must fire on the new reader with the same messages as readZip.
+
+import {
+  writeZipBlob, readZipDirectory, readZipEntry,
+} from '../src/lib/zip.ts';
+import type { ZipSource } from '../src/lib/zip.ts';
+import { readFileSync } from 'node:fs';
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+function makeSource(name: string, data: Uint8Array<ArrayBuffer>): ZipSource {
+  return { name, open: async () => data };
+}
+
+async function blobToBytes(blob: Blob): Promise<Uint8Array<ArrayBuffer>> {
+  return new Uint8Array(await blob.arrayBuffer()) as Uint8Array<ArrayBuffer>;
+}
+
+// Large-ish binary payload used across several tests.
+const BIG = (() => {
+  const b = new Uint8Array(110_000) as Uint8Array<ArrayBuffer>;
+  for (let i = 0; i < b.length; i++) b[i] = (i * 137 + 7) & 0xFF;
+  return b;
+})();
+
+// ── 1. Byte equivalence ───────────────────────────────────────────────────────
+// For every case, new Uint8Array(await writeZipBlob(sources, when).arrayBuffer())
+// must equal writeZip(entries, when) byte for byte.
+
+const WHEN = new Date(2026, 5, 11, 12, 0, 0); // pinned so DOS timestamps match
+
+test('byte-equivalence: zero entries', async () => {
+  const blob = await writeZipBlob([], WHEN);
+  const fromBlob = await blobToBytes(blob);
+  const fromSync = writeZip([], WHEN);
+  assert.deepEqual([...fromBlob], [...fromSync]);
+});
+
+test('byte-equivalence: one text entry', async () => {
+  const data = new TextEncoder().encode('{"hello":"world"}') as Uint8Array<ArrayBuffer>;
+  const blob = await writeZipBlob([makeSource('data.json', data)], WHEN);
+  const fromBlob = await blobToBytes(blob);
+  const fromSync = writeZip([{ name: 'data.json', data }], WHEN);
+  assert.deepEqual([...fromBlob], [...fromSync]);
+});
+
+test('byte-equivalence: zero-length entry', async () => {
+  const empty = new Uint8Array(0) as Uint8Array<ArrayBuffer>;
+  const blob = await writeZipBlob([makeSource('empty', empty)], WHEN);
+  const fromBlob = await blobToBytes(blob);
+  const fromSync = writeZip([{ name: 'empty', data: empty }], WHEN);
+  assert.deepEqual([...fromBlob], [...fromSync]);
+});
+
+test('byte-equivalence: several entries including one >100 KB', async () => {
+  const small1 = new TextEncoder().encode('small-a') as Uint8Array<ArrayBuffer>;
+  const small2 = new Uint8Array(0) as Uint8Array<ArrayBuffer>;
+  const sources: ZipSource[] = [
+    makeSource('data.json', small1),
+    makeSource('media/big', BIG),
+    makeSource('media/empty', small2),
+  ];
+  const entries = [
+    { name: 'data.json', data: small1 },
+    { name: 'media/big', data: BIG },
+    { name: 'media/empty', data: small2 },
+  ];
+  const blob = await writeZipBlob(sources, WHEN);
+  const fromBlob = await blobToBytes(blob);
+  const fromSync = writeZip(entries, WHEN);
+  assert.deepEqual([...fromBlob], [...fromSync]);
+});
+
+test('byte-equivalence: multi-byte UTF-8 name (emoji in path)', async () => {
+  // A name with multi-byte UTF-8 characters stresses the name-length field.
+  const data = new TextEncoder().encode('hi') as Uint8Array<ArrayBuffer>;
+  const name = 'media/café-🔫';
+  const blob = await writeZipBlob([makeSource(name, data)], WHEN);
+  const fromBlob = await blobToBytes(blob);
+  const fromSync = writeZip([{ name, data }], WHEN);
+  assert.deepEqual([...fromBlob], [...fromSync]);
+});
+
+// ── 2. Round-trip through the new reader ─────────────────────────────────────
+
+test('round-trip: writeZipBlob → readZipDirectory → readZipEntry returns exact bytes', async () => {
+  const text = new TextEncoder().encode('round-trip text') as Uint8Array<ArrayBuffer>;
+  const sources: ZipSource[] = [
+    makeSource('data.json', text),
+    makeSource('media/big', BIG),
+    makeSource('media/empty', new Uint8Array(0) as Uint8Array<ArrayBuffer>),
+  ];
+  const blob = await writeZipBlob(sources, WHEN);
+  const dir = await readZipDirectory(blob);
+  assert.equal(dir.length, 3);
+  assert.deepEqual(dir.map((e) => e.name), ['data.json', 'media/big', 'media/empty']);
+
+  const back0 = await readZipEntry(blob, dir[0]);
+  assert.deepEqual([...back0], [...text]);
+
+  const back1 = await readZipEntry(blob, dir[1]);
+  assert.deepEqual([...back1], [...BIG]);
+
+  const back2 = await readZipEntry(blob, dir[2]);
+  assert.equal(back2.length, 0);
+});
+
+test('round-trip: readZip on writeZipBlob output agrees with readZipDirectory', async () => {
+  const text = new TextEncoder().encode('abc') as Uint8Array<ArrayBuffer>;
+  const sources: ZipSource[] = [makeSource('a.txt', text)];
+  const blob = await writeZipBlob(sources, WHEN);
+
+  // Old reader on new writer's output
+  const oldResult = readZip(new Uint8Array(await blob.arrayBuffer()));
+  assert.equal(oldResult.length, 1);
+  assert.deepEqual([...oldResult[0].data], [...text]);
+
+  // New reader on old writer's output
+  const oldZip = writeZip([{ name: 'a.txt', data: text }], WHEN);
+  const oldBlob = new Blob([oldZip]);
+  const newDir = await readZipDirectory(oldBlob);
+  assert.equal(newDir.length, 1);
+  const newEntry = await readZipEntry(oldBlob, newDir[0]);
+  assert.deepEqual([...newEntry], [...text]);
+});
+
+// ── 3. Cross-compatibility ────────────────────────────────────────────────────
+
+test('cross-compat: writeZip output readable by readZipDirectory + readZipEntry', async () => {
+  const data = new TextEncoder().encode('cross-compat') as Uint8Array<ArrayBuffer>;
+  const bytes = writeZip([{ name: 'x.txt', data }], WHEN);
+  const blob = new Blob([bytes]);
+  const dir = await readZipDirectory(blob);
+  assert.equal(dir.length, 1);
+  const entry = await readZipEntry(blob, dir[0]);
+  assert.deepEqual([...entry], [...data]);
+});
+
+test('cross-compat: writeZipBlob output readable by readZip', async () => {
+  const data = new TextEncoder().encode('cross-compat-blob') as Uint8Array<ArrayBuffer>;
+  const blob = await writeZipBlob([makeSource('y.txt', data)], WHEN);
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const entries = readZip(bytes);
+  assert.equal(entries.length, 1);
+  assert.deepEqual([...entries[0].data], [...data]);
+});
+
+// ── 4. Corruption tests repeated for the new reader ──────────────────────────
+// Every message must match the existing readZip messages exactly (same wording,
+// not just same shape) because the error strings are user-facing.
+
+test('new reader: flipped byte inside data triggers checksum error', async () => {
+  const data = new TextEncoder().encode('hello hello') as Uint8Array<ArrayBuffer>;
+  const bytes = writeZip([{ name: 'a.txt', data }], WHEN);
+  // byte 35 is the first byte of the stored data (30-byte local header + 5-char name)
+  bytes[35] ^= 0xFF;
+  const blob = new Blob([bytes]);
+  await assert.rejects(
+    async () => {
+      const dir = await readZipDirectory(blob);
+      await readZipEntry(blob, dir[0]);
+    },
+    /damaged/,
+  );
+});
+
+test('new reader: random bytes have no zip directory', async () => {
+  const blob = new Blob([new Uint8Array(100)]);
+  await assert.rejects(readZipDirectory(blob), /Not a FirearmLog data file \(no zip directory found\)/);
+});
+
+test('new reader: truncated file is refused', async () => {
+  const data = new TextEncoder().encode('hello') as Uint8Array<ArrayBuffer>;
+  const bytes = writeZip([{ name: 'a.txt', data }]);
+  // truncate to half — no valid EOCD possible
+  const blob = new Blob([bytes.slice(0, bytes.length >> 1)]);
+  await assert.rejects(readZipDirectory(blob), /Not a FirearmLog data file/);
+});
+
+test('new reader: bad directory signature is refused', async () => {
+  const data = new TextEncoder().encode('hello') as Uint8Array<ArrayBuffer>;
+  const bytes = writeZip([{ name: 'a.txt', data }]);
+  // The central directory starts right after the local header + data.
+  // local header = 30 + 5 (name) = 35 bytes, data = 5 bytes, so CD starts at 40.
+  // Flip the first byte of the CD signature to break it.
+  bytes[40] ^= 0xFF;
+  const blob = new Blob([bytes]);
+  await assert.rejects(readZipDirectory(blob), /damaged/);
+});
+
+test('new reader: non-zero compression method is refused', async () => {
+  const data = new TextEncoder().encode('hello') as Uint8Array<ArrayBuffer>;
+  const bytes = writeZip([{ name: 'a.txt', data }]);
+  // Central directory method field is at CD+10. CD starts at 40 (35+5).
+  // Find the CD: scan from the end for the EOCD, read cdOffset.
+  const v = new DataView(bytes.buffer);
+  const len = bytes.length;
+  let eocdPos = -1;
+  for (let i = len - 22; i >= 0; i--) {
+    if (v.getUint32(i, true) === 0x06054b50) { eocdPos = i; break; }
+  }
+  const cdOffset = v.getUint32(eocdPos + 16, true);
+  // method is at CD entry offset +10
+  v.setUint16(cdOffset + 10, 8, true); // 8 = DEFLATE
+  const blob = new Blob([bytes]);
+  await assert.rejects(readZipDirectory(blob), /packing method/);
+});
+
+test('new reader: absurd entry count is refused', async () => {
+  const data = new TextEncoder().encode('hi') as Uint8Array<ArrayBuffer>;
+  const bytes = writeZip([{ name: 'a.txt', data }]);
+  const v = new DataView(bytes.buffer);
+  const len = bytes.length;
+  let eocdPos = -1;
+  for (let i = len - 22; i >= 0; i--) {
+    if (v.getUint32(i, true) === 0x06054b50) { eocdPos = i; break; }
+  }
+  // Set entry count to 200000 (above the 100000 sanity cap)
+  v.setUint16(eocdPos + 8, 200000 & 0xFFFF, true);
+  v.setUint16(eocdPos + 10, 200000 & 0xFFFF, true);
+  const blob = new Blob([bytes]);
+  await assert.rejects(readZipDirectory(blob), /damaged/);
+});
+
+// ── 5. Memory-discipline guard ────────────────────────────────────────────────
+// These source-level checks prove that writeZipBlob never allocates a
+// whole-file Uint8Array, and parseFlogLazy never calls .arrayBuffer() on the
+// whole Blob. The approach mirrors mediaLoadDiscipline.test.ts: the behavioural
+// tests above prove correctness; these guards prove the memory property by
+// reading the source.
+
+test('memory discipline: writeZipBlob body contains no whole-file Uint8Array allocation', () => {
+  const src = readFileSync('src/lib/zip.ts', 'utf8');
+  // Find the body of writeZipBlob.
+  const startIdx = src.indexOf('export async function writeZipBlob(');
+  assert.ok(startIdx !== -1, 'writeZipBlob not found in zip.ts');
+  let depth = 0, bodyStart = -1, bodyEnd = -1;
+  for (let i = startIdx; i < src.length; i++) {
+    if (src[i] === '{') {
+      if (depth === 0) bodyStart = i;
+      depth++;
+    } else if (src[i] === '}') {
+      depth--;
+      if (depth === 0) { bodyEnd = i; break; }
+    }
+  }
+  assert.ok(bodyEnd > bodyStart, 'could not find writeZipBlob body');
+  const body = src.slice(bodyStart, bodyEnd + 1);
+  // The whole-file allocation pattern is: new Uint8Array(total) where `total`
+  // is the accumulated file size. We ban any `new Uint8Array(` that is NOT
+  // an entry header (which is always small: 30+nameLen or 46+nameLen).
+  // Concretely: writeZip uses `const out = new Uint8Array(total)` — that
+  // pattern must NOT appear inside writeZipBlob.
+  assert.equal(
+    /new Uint8Array\(total\)/.test(body),
+    false,
+    'writeZipBlob contains `new Uint8Array(total)` — whole-file allocation not removed',
+  );
+  // Positive check: entries must be wrapped in Blob before the loop advances.
+  assert.ok(
+    body.includes('new Blob([local])') && body.includes('new Blob([bytes])'),
+    'writeZipBlob must wrap each entry in a Blob immediately — Blob([local]) and Blob([bytes]) not found',
+  );
+});
+
+test('memory discipline: parseFlogLazy body does not call .arrayBuffer() on the whole blob', () => {
+  const src = readFileSync('src/lib/flog.ts', 'utf8');
+  const startIdx = src.indexOf('export async function parseFlogLazy(');
+  assert.ok(startIdx !== -1, 'parseFlogLazy not found in flog.ts');
+  let depth = 0, bodyStart = -1, bodyEnd = -1;
+  for (let i = startIdx; i < src.length; i++) {
+    if (src[i] === '{') {
+      if (depth === 0) bodyStart = i;
+      depth++;
+    } else if (src[i] === '}') {
+      depth--;
+      if (depth === 0) { bodyEnd = i; break; }
+    }
+  }
+  assert.ok(bodyEnd > bodyStart, 'could not find parseFlogLazy body');
+  const body = src.slice(bodyStart, bodyEnd + 1);
+  // The forbidden pattern is `blob.arrayBuffer()` — reading the whole file
+  // into one buffer. The lazy path must only ever slice the blob and call
+  // .arrayBuffer() on those small slices (inside readZipDirectory/readZipEntry).
+  assert.equal(
+    /\bblob\.arrayBuffer\(\)/.test(body),
+    false,
+    'parseFlogLazy calls blob.arrayBuffer() — whole-file allocation reintroduced',
+  );
+});

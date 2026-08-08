@@ -96,3 +96,157 @@ test('a version-3 .flog (from a newer app) is refused, not silently dropped', ()
   }]);
   assert.throws(() => parseFlog(fromTheFuture), /NEWER version/);
 });
+
+// ─── Tests for buildFlogBlob and parseFlogLazy ───────────────────────────────
+
+import {
+  buildFlogBlob, parseFlogLazy,
+} from '../src/lib/flog.ts';
+import type { FlogMediaSource } from '../src/lib/flog.ts';
+
+// Re-use the same snapshot factory from above. Add a helper that builds the
+// FlogMediaSource list from a Snapshot's media array.
+function toMediaSources(media: Media[]): FlogMediaSource[] {
+  return media.map((m) => {
+    const meta = { ...m } as Record<string, unknown>;
+    delete meta.data;
+    return {
+      id: m.id,
+      meta,
+      open: async () => new Uint8Array(m.data) as Uint8Array<ArrayBuffer>,
+    };
+  });
+}
+
+// ── 5. buildFlogBlob produces byte-identical output to buildFlog ─────────────
+
+test('buildFlogBlob equals buildFlog byte-for-byte', async () => {
+  const s = sampleSnapshot();
+  const syncBytes = buildFlog(s);
+  const blobBytes = new Uint8Array(
+    await (await buildFlogBlob({
+      exportedAt: s.exportedAt,
+      lastModified: s.lastModified,
+      stores: s.stores,
+      media: toMediaSources(s.media),
+    })).arrayBuffer()
+  );
+  assert.deepEqual([...blobBytes], [...syncBytes]);
+});
+
+// ── parseFlogLazy reports the same metadata as parseFlog ─────────────────────
+
+test('parseFlogLazy: same stores, stamps, mediaCount and mediaBytes as parseFlog', async () => {
+  const s = sampleSnapshot();
+  const syncBytes = buildFlog(s);
+  const blob = new Blob([syncBytes]);
+
+  const eager = parseFlog(syncBytes);
+  const lazy = await parseFlogLazy(blob);
+
+  assert.equal(lazy.exportedAt, eager.exportedAt);
+  assert.equal(lazy.lastModified, eager.lastModified);
+  assert.deepEqual(lazy.stores, eager.stores);
+  assert.equal(lazy.mediaCount, eager.media.length);
+  // mediaBytes must equal the sum of each media entry's byte length.
+  const expectedBytes = eager.media.reduce((sum, m) => sum + m.data.byteLength, 0);
+  assert.equal(lazy.mediaBytes, expectedBytes);
+});
+
+// ── parseFlogLazy.readMedia returns identical bytes for every index ───────────
+
+test('parseFlogLazy.readMedia gives identical bytes as parseFlog.media', async () => {
+  const s = sampleSnapshot();
+  const syncBytes = buildFlog(s);
+  const blob = new Blob([syncBytes]);
+
+  const eager = parseFlog(syncBytes);
+  const lazy = await parseFlogLazy(blob);
+
+  assert.equal(lazy.mediaCount, eager.media.length);
+  for (let i = 0; i < eager.media.length; i++) {
+    const lazyRecord = await lazy.readMedia(i);
+    assert.deepEqual(
+      [...new Uint8Array(lazyRecord.data)],
+      [...new Uint8Array(eager.media[i].data)],
+    );
+    assert.equal(lazyRecord.name, eager.media[i].name);
+  }
+});
+
+// ── 6. Cross-compatibility between old/new writers and old/new readers ───────
+
+test('buildFlog output loads under parseFlogLazy', async () => {
+  const s = sampleSnapshot();
+  const syncBytes = buildFlog(s);
+  const blob = new Blob([syncBytes]);
+  const lazy = await parseFlogLazy(blob);
+  assert.equal(lazy.exportedAt, s.exportedAt);
+  assert.deepEqual(lazy.stores.firearms, s.stores.firearms);
+  assert.equal(lazy.mediaCount, s.media.length);
+});
+
+test('buildFlogBlob output loads under parseFlog', async () => {
+  const s = sampleSnapshot();
+  const blob = await buildFlogBlob({
+    exportedAt: s.exportedAt,
+    lastModified: s.lastModified,
+    stores: s.stores,
+    media: toMediaSources(s.media),
+  });
+  const bytes = new Uint8Array(await blob.arrayBuffer());
+  const eager = parseFlog(bytes);
+  assert.equal(eager.exportedAt, s.exportedAt);
+  assert.deepEqual(eager.stores.firearms, s.stores.firearms);
+  assert.equal(eager.media.length, s.media.length);
+  assert.deepEqual([...new Uint8Array(eager.media[0].data)], [1, 2, 3, 4, 5, 200, 100, 0]);
+});
+
+// ── 7. Version fence and prototype-pollution guard still fire on the lazy path
+
+test('parseFlogLazy: file from a newer app is refused with the existing message', async () => {
+  const futuristic = writeZip([{
+    name: 'data.json',
+    data: new TextEncoder().encode(JSON.stringify({ format: 'FirearmLog', version: 99, stores: {}, mediaMeta: [] }))
+  }]);
+  const blob = new Blob([futuristic]);
+  await assert.rejects(parseFlogLazy(blob), /NEWER version/);
+});
+
+test('parseFlogLazy: non-flog zip is refused with the existing message', async () => {
+  const notFlog = writeZip([{ name: 'whatever.txt', data: new Uint8Array([1]) }]);
+  const blob = new Blob([notFlog]);
+  await assert.rejects(parseFlogLazy(blob), /isn't a FirearmLog data file/);
+});
+
+test('parseFlogLazy: __proto__ key in data.json does not pollute Object.prototype', async () => {
+  const poisoned = JSON.stringify({
+    format: 'FirearmLog', version: FLOG_VERSION, stores: {}, mediaMeta: [],
+    __proto__: { polluted: true }
+  });
+  const zip = writeZip([{ name: 'data.json', data: new TextEncoder().encode(poisoned) }]);
+  const blob = new Blob([zip]);
+  // Should parse without throwing (the key is stripped, not rejected).
+  const lazy = await parseFlogLazy(blob);
+  assert.equal((Object.prototype as Record<string, unknown>).polluted, undefined);
+  assert.equal(lazy.mediaCount, 0);
+});
+
+test('parseFlogLazy: missing media entry is caught at open time, not during readMedia', async () => {
+  // Build a data.json that claims a media entry, but omit it from the zip.
+  const mediaMeta = [{ id: 'md-ghost-1', file: 'media/md-ghost-1', kind: 'image',
+    createdAt: 1, updatedAt: 1, ownerType: 'firearm', ownerId: 'fa-1',
+    name: 'Ghost', annotations: [], mime: 'image/jpeg' }];
+  const json = JSON.stringify({ format: 'FirearmLog', version: FLOG_VERSION,
+    exportedAt: 1, lastModified: 1, stores: {}, mediaMeta });
+  const zip = writeZip([{ name: 'data.json', data: new TextEncoder().encode(json) }]);
+  const blob = new Blob([zip]);
+  // parseFlogLazy itself must throw — not lazily on readMedia.
+  await assert.rejects(parseFlogLazy(blob), /damaged.*missing/i);
+});
+
+test('parseFlogLazy: missing data.json is refused with the existing message', async () => {
+  const zip = writeZip([{ name: 'not-data.json', data: new Uint8Array([1]) }]);
+  const blob = new Blob([zip]);
+  await assert.rejects(parseFlogLazy(blob), /data\.json missing/);
+});
