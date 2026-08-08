@@ -15,9 +15,9 @@
 // the helper that call site delegates to, sailed through green. The auditor
 // proved it: replacing newestMediaStamp's whole body with a call to
 // getAllMediaWholeStore left every one of these tests passing. So the guards now
-// cover BOTH the call sites AND the bodies of the five cursor helpers those call
+// cover BOTH the call sites AND the bodies of every cursor helper those call
 // sites depend on. The helper list is asserted to be complete against db.ts, so
-// a seventh helper added tomorrow fails this file until it is guarded too.
+// the next helper added fails this file until it is guarded too.
 //
 // THE COMPLETENESS CHECK WAS ITSELF TOO NARROW (second audit, same session). It
 // recognised a helper only if it was spelled `async function name()` and opened
@@ -46,15 +46,30 @@ const DB = readFileSync('src/lib/db.ts', 'utf8');
  * guard cannot silently scope itself to the wrong span.
  */
 function bodyOf(src: string, decl: string): string {
+  const body = bodyOrNull(src, decl);
+  assert.ok(body !== null, `could not scope "${decl}" — has it been renamed, or is it a one-liner?`);
+  return body;
+}
+
+/**
+ * The same, but returns null instead of failing when the declaration has no
+ * braced body — a one-line arrow such as `export const f = (x: number) => x + 1;`
+ * is a perfectly ordinary thing to add to db.ts, and the completeness sweep below
+ * must step over it rather than turning the suite red for an innocent edit.
+ * (Third audit, session 114: it did exactly that.)
+ */
+function bodyOrNull(src: string, decl: string): string | null {
   const start = src.indexOf(decl);
-  assert.ok(start !== -1, `could not find "${decl}" — has it been renamed?`);
+  if (start === -1) return null;
   // The opening brace of the BODY is the one at end of line. Taking the first
   // `{` instead would land inside an inline return type such as
   // `Promise<{ key: IDBValidKey }[]>` and scope the guard to the type — which is
   // exactly the mistake that made an earlier version of this file pass on code
   // it should have failed.
   const open = src.indexOf('{\n', start);
-  assert.ok(open !== -1, `no opening brace after "${decl}"`);
+  if (open === -1) return null;
+  // A brace on a LATER declaration's line is not this one's body.
+  if (src.slice(start, open).includes(';\n')) return null;
   let depth = 0;
   for (let i = open; i < src.length; i++) {
     if (src[i] === '{') depth++;
@@ -63,7 +78,7 @@ function bodyOf(src: string, decl: string): string {
       if (depth === 0) return src.slice(start, i + 1);
     }
   }
-  throw new Error(`unbalanced braces after "${decl}"`);
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -82,7 +97,7 @@ const CURSOR_HELPERS = [
 ];
 
 for (const decl of CURSOR_HELPERS) {
-  const name = decl.match(/(?:async function|const)\s+(\w+)/)?.[1] ?? decl;
+  const name = decl.match(/(?:function|const)\s+(\w+)/)?.[1] ?? decl;
   test(`media discipline: ${name} walks the store with a cursor and never loads it whole`, () => {
     const body = bodyOf(DB, decl);
     assert.equal(
@@ -111,23 +126,33 @@ for (const decl of CURSOR_HELPERS) {
 // ---------------------------------------------------------------------------
 // Completeness: the guarded list must be the WHOLE list. Any function in db.ts
 // that opens a cursor on the media store has to appear above, or this fails —
-// which is what stops a sixth helper being added next month with no guard.
+// which is what stops the next helper being added with no guard. No count is
+// written here on purpose: a hand-kept number is a fact with no keeper, and the
+// one that used to live in this comment went stale within a day.
+//
+// THE PATTERNS ARE DELIBERATELY LOOSE, AND WERE WIDENED TWICE (sessions 114).
+// A guard that only recognises one way of writing a function stops nobody in a
+// year's time. Two rounds of auditors planted seven spellings between them; all
+// seven now fail this test. What is NOT covered is stated honestly in the header.
 // ---------------------------------------------------------------------------
 test('media discipline: every media-store cursor helper in db.ts is guarded above', () => {
-  // Any top-level function, however it is spelled: `function name(`,
-  // `async function name<T>(`, or `const name = async (`.
-  const DECL_RE = /^(export )?(async function \w+\s*[<(]|const \w+ = (async )?[(<])/;
+  // Every way a top-level function gets written here:
+  //   function name(  ·  async function name<T>(  ·  const name = (
+  //   const name = async (  ·  const name = function (  ·  const name = async function (
+  const DECL_RE = /^(export )?(default )?(async )?(function \w+\s*[<(]|const \w+\s*=\s*(async\s+)?(function\b|[(<]))/;
   const declared = DB.split('\n').filter((l) => DECL_RE.test(l)).map((l) => l.trim());
 
-  // Any spelling of opening a transaction that includes the media store:
-  // transaction('media', …), transaction(['media'], …), transaction([...STORES, 'media'], …).
-  const MEDIA_TX_RE = /transaction\(\s*(\[[^\]]*)?'media'/;
+  // Every way the media store gets named in a transaction, either quote style:
+  //   transaction('media', …)  ·  transaction("media", …)  ·  transaction(['media'], …)
+  //   transaction([...STORE_NAMES, 'media'], …)
+  const MEDIA_TX_RE = /transaction\(\s*(\[[^\]]*)?['"]media['"]/;
   const mediaCursorFns = declared.filter((decl) => {
-    const body = bodyOf(DB, decl);
+    const body = bodyOrNull(DB, decl);
+    if (body === null) return false; // a one-liner has no body to walk a store in
     return MEDIA_TX_RE.test(body) && (body.includes('openCursor(') || body.includes('openKeyCursor('));
   });
 
-  const nameOf = (decl: string) => decl.match(/(?:async function|const)\s+(\w+)/)?.[1] ?? '';
+  const nameOf = (decl: string) => decl.match(/(?:function|const)\s+(\w+)/)?.[1] ?? '';
   const guarded = new Set(CURSOR_HELPERS.map(nameOf));
   const unguarded = mediaCursorFns.map(nameOf).filter((n) => !guarded.has(n));
   assert.deepEqual(

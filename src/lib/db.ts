@@ -391,8 +391,9 @@ async function scanStore<T>(store: StoreName, visit: (record: T) => void): Promi
  * matches an owner in the re-write set, so the photo is RETAINED, never deleted),
  * and it matches what the pre-fix code did. Reading cursor.value.ownerId raw and
  * skipping anything that wasn't a string was the defect: it silently dropped those
- * records from the delete pass, so an orphaned photo could never be cleaned up. The id comes from cursor.primaryKey, which is the record's
- * real key whatever its type, so a delete by that key always matches.
+ * records from the delete pass, so an orphaned photo could never be cleaned up.
+ * The id comes from cursor.primaryKey, which is the record's real key whatever its
+ * type, so a delete by that key always matches.
  */
 async function scanMediaOwnerIds(): Promise<{ key: IDBValidKey; ownerId: string }[]> {
   const db = await openDb();
