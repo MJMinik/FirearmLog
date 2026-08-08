@@ -69,9 +69,36 @@ export function buildFlog(snapshot: Snapshot): Uint8Array<ArrayBuffer> {
   ], new Date(snapshot.exportedAt));
 }
 
+// ─── One name index, shared by both readers ───────────────────────────────────
+// Three audit rounds all landed on the same defect in different clothes: the
+// eager and lazy readers resolving the SAME name to different entries, silently.
+// Round 2 found it on data.json (find() takes the first, new Map() keeps the
+// last). Round 3 found it again on media entries, because round 2's fix only
+// touched the data.json lookup one line above.
+//
+// Making two implementations agree is a convention, and a convention is what
+// failed twice. So both readers now index through this one function, and it
+// REFUSES duplicates rather than picking a winner. Nothing legitimate loses:
+// buildFlog writes exactly one data.json and derives media names from unique
+// record ids, so a .flog with a duplicate name is corrupt or crafted, and a
+// crafted one is a file where an attacker chooses which photo each reader sees.
+
+function indexByUniqueName<T>(items: readonly T[], nameOf: (item: T) => string): Map<string, T> {
+  const byName = new Map<string, T>();
+  for (const item of items) {
+    const name = nameOf(item);
+    if (byName.has(name)) {
+      throw new Error('This data file looks damaged (it contains the same item twice).');
+    }
+    byName.set(name, item);
+  }
+  return byName;
+}
+
 export function parseFlog(bytes: Uint8Array): Snapshot {
   const entries = readZip(bytes);
-  const dataEntry = entries.find((e) => e.name === 'data.json');
+  const byName = indexByUniqueName(entries, (e) => e.name);
+  const dataEntry = byName.get('data.json');
   if (!dataEntry) throw new Error("That file isn't a FirearmLog data file (data.json missing inside).");
 
   // Validated by the SAME helper parseFlogLazy uses. It was inline here until
@@ -82,10 +109,9 @@ export function parseFlog(bytes: Uint8Array): Snapshot {
   // coincidence, so it gets ONE implementation rather than a convention.
   const d = parseFlogDataJson(dataEntry.data);
 
-  const byName = new Map(entries.map((e) => [e.name, e.data]));
   const media: Media[] = d.mediaMeta.map((meta) => {
     const file = String(meta.file ?? '');
-    const bytesFor = byName.get(file);
+    const bytesFor = byName.get(file)?.data;
     if (!bytesFor) throw new Error(`This data file looks damaged (missing ${file}).`);
     const m = { ...meta } as Record<string, unknown>;
     delete m.file;
@@ -187,6 +213,15 @@ function parseFlogDataJson(jsonBytes: Uint8Array): {
   if (d.mediaMeta !== undefined && d.mediaMeta !== null && !Array.isArray(d.mediaMeta)) {
     throw new Error('This data file looks damaged (the photo list inside is unreadable).');
   }
+  // ...and every ENTRY in it must be an object. `null` slipped through the check
+  // above and reached both readers as `String(meta.file ?? '')`, which is a raw
+  // TypeError — a crash on the restore path rather than a message. Same refusal
+  // as the list-level check, so a caller has one wording to handle.
+  for (const meta of d.mediaMeta ?? []) {
+    if (typeof meta !== 'object' || meta === null || Array.isArray(meta)) {
+      throw new Error('This data file looks damaged (the photo list inside is unreadable).');
+    }
+  }
   return {
     exportedAt: typeof d.exportedAt === 'number' ? d.exportedAt : 0,
     lastModified: typeof d.lastModified === 'number' ? d.lastModified : 0,
@@ -215,21 +250,17 @@ export interface LazyFlog {
   stores: Record<string, unknown[]>;
   mediaCount: number;
   mediaBytes: number;       // summed from the directory — no payload read
+  // COPIES, with the internal `file` key stripped — the same shape parseFlog
+  // returns. Handing out the live objects let a caller change what readMedia
+  // returns by writing to l.mediaMeta[0].file, and exposed a key that is an
+  // implementation detail of the archive rather than part of a Media record.
   mediaMeta: Record<string, unknown>[];
   readMedia(index: number): Promise<Media>;
 }
 
 export async function parseFlogLazy(blob: Blob): Promise<LazyFlog> {
   const dir = await readZipDirectory(blob);
-  // FIRST match wins, not last. parseFlog resolves names with entries.find(),
-  // so a hostile .flog carrying TWO data.json entries used to be read one way by
-  // the eager reader and the other way by this one — same file, two different
-  // logbooks, no error from either. A Map built with new Map(dir.map(...))
-  // silently keeps the LAST duplicate, which is the opposite rule. Found by the
-  // session-114 cold audit's second pass; single-byte mutation cannot surface it
-  // because it needs a whole extra entry. Building the map in reverse makes the
-  // first entry the one that survives, so both readers now agree.
-  const byName = new Map([...dir].reverse().map((e) => [e.name, e]));
+  const byName = indexByUniqueName(dir, (e) => e.name);
 
   const dataEntry = byName.get('data.json');
   if (!dataEntry) throw new Error("That file isn't a FirearmLog data file (data.json missing inside).");
@@ -266,7 +297,11 @@ export async function parseFlogLazy(blob: Blob): Promise<LazyFlog> {
     stores,
     mediaCount: mediaMeta.length,
     mediaBytes,
-    mediaMeta,
+    mediaMeta: mediaMeta.map((meta) => {
+      const copy = { ...meta };
+      delete copy.file;
+      return copy;
+    }),
     async readMedia(index: number): Promise<Media> {
       const meta = mediaMeta[index];
       if (!meta) throw new Error(`readMedia: index ${index} out of range`);

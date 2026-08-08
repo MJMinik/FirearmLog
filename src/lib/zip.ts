@@ -44,20 +44,26 @@ function dosDateTime(d: Date): { time: number; date: number } {
 const ZIP_MAX_ENTRIES = 0xFFFF;
 const ZIP_MAX_OFFSET = 0xFFFFFFFF;
 
-function checkZipLimits(entryCount: number, totalBytes: number): void {
+function checkZipEntryCount(entryCount: number): void {
   if (entryCount > ZIP_MAX_ENTRIES) {
     throw new Error(`This logbook has too many photos and videos to fit in one backup file (${entryCount.toLocaleString()}; the limit is 65,535). Nothing was saved.`);
   }
-  if (totalBytes > ZIP_MAX_OFFSET) {
-    throw new Error('This logbook is too large to fit in one backup file (over 4 GB). Nothing was saved.');
+}
+
+// The only value that can wrap is an offset written into a header, so that is
+// what is checked — the exact running offset, not an estimate of the finished
+// size. An earlier version estimated, and the two writers estimated differently
+// (one counted name lengths in JS characters at 4 bytes each, the other in
+// encoded bytes at 2), so they disagreed about the same logbook near the limit
+// and the message claimed to measure something neither measured.
+function checkZipOffset(offset: number): void {
+  if (offset > ZIP_MAX_OFFSET) {
+    throw new Error('This logbook is too large to fit in one backup file — a backup file cannot go past 4 GB. Nothing was saved.');
   }
 }
 
 export function writeZip(entries: ZipEntry[], when: Date = new Date()): Uint8Array<ArrayBuffer> {
-  // Refuse before writing a single byte — see checkZipLimits above. The name
-  // bytes and headers add to the true total, so this under-counts slightly and
-  // errs toward refusing a hair early rather than wrapping a hair late.
-  checkZipLimits(entries.length, entries.reduce((n, e) => n + e.data.length + 30 + 46 + e.name.length * 4, 0));
+  checkZipEntryCount(entries.length);
   const te = new TextEncoder();
   const { time, date } = dosDateTime(when);
   const parts: Uint8Array[] = [];
@@ -104,9 +110,11 @@ export function writeZip(entries: ZipEntry[], when: Date = new Date()): Uint8Arr
     parts.push(local, e.data);
     central.push(cen);
     offset += local.length + e.data.length;
+    checkZipOffset(offset);
   }
 
   const cdSize = central.reduce((s, c) => s + c.length, 0);
+  checkZipOffset(offset + cdSize + 22);
   const eocd = new Uint8Array(22);
   const ev = new DataView(eocd.buffer);
   ev.setUint32(0, 0x06054b50, true);
@@ -139,7 +147,7 @@ export async function writeZipBlob(sources: ZipSource[], when: Date = new Date()
   // The count is known now; the byte total is not, because a source's size only
   // becomes known when it is opened. So the count is checked here and the
   // running offset is checked inside the loop, before it is written anywhere.
-  checkZipLimits(sources.length, 0);
+  checkZipEntryCount(sources.length);
   const te = new TextEncoder();
   const { time, date } = dosDateTime(when);
   // parts accumulates Blobs (not Uint8Arrays) so the engine can evict each
@@ -151,7 +159,6 @@ export async function writeZipBlob(sources: ZipSource[], when: Date = new Date()
   for (const src of sources) {
     const name = te.encode(src.name);
     const bytes = await src.open();
-    checkZipLimits(0, offset + bytes.length + 30 + 46 + name.length * 2);
     const crc = crc32(bytes);
 
     const local: Uint8Array<ArrayBuffer> = new Uint8Array(30 + name.length);
@@ -192,9 +199,11 @@ export async function writeZipBlob(sources: ZipSource[], when: Date = new Date()
     parts.push(new Blob([local]), new Blob([bytes]));
     central.push(cen);
     offset += local.length + bytes.length;
+    checkZipOffset(offset);
   }
 
   const cdSize = central.reduce((s, c) => s + c.length, 0);
+  checkZipOffset(offset + cdSize + 22);
   const eocd: Uint8Array<ArrayBuffer> = new Uint8Array(22);
   const ev = new DataView(eocd.buffer);
   ev.setUint32(0, 0x06054b50, true);
@@ -214,6 +223,21 @@ export async function writeZipBlob(sources: ZipSource[], when: Date = new Date()
 
 export interface ZipDirEntry { name: string; dataStart: number; size: number; crc: number; }
 
+// A Blob backed by a File on disk can stop being readable between the moment it
+// is handed to us and the moment we read it — the user moves or deletes the file
+// in Files.app mid-restore, iCloud evicts it, the drive unmounts. The browser
+// reports that as a DOMException, which would surface as a crash rather than a
+// message on the restore path. Every read of the archive goes through here so
+// there is one wording for it. (parseFlog cannot hit this: it is handed bytes
+// that are already in memory. It arrives with the lazy reader.)
+async function readRange(blob: Blob, start: number, end: number): Promise<ArrayBuffer> {
+  try {
+    return await blob.slice(start, end).arrayBuffer();
+  } catch {
+    throw new Error('FirearmLog could not finish reading that file. If it is stored in iCloud or on a drive, make sure it is downloaded and still there, then try again.');
+  }
+}
+
 export async function readZipDirectory(blob: Blob): Promise<ZipDirEntry[]> {
   const td = new TextDecoder();
   const len = blob.size;
@@ -223,7 +247,7 @@ export async function readZipDirectory(blob: Blob): Promise<ZipDirEntry[]> {
 
   // Read only the tail to locate the EOCD — same window as readZip uses on bytes.
   const tailSize = Math.min(len, 22 + 65535);
-  const tailBuf = await blob.slice(len - tailSize, len).arrayBuffer();
+  const tailBuf = await readRange(blob, len - tailSize, len);
   const tv = new DataView(tailBuf);
 
   let eocdInTail = -1;
@@ -255,10 +279,17 @@ export async function readZipDirectory(blob: Blob): Promise<ZipDirEntry[]> {
   // reader of untrusted input. Sabotaging this line alone leaves the suite green
   // — that is expected here, and is why the test below asserts the outcome
   // rather than claiming to watch this line.
+  //
+  // HONEST CAVEAT, since the comment above argues against being stricter than
+  // readZip and then this line is: a ZIP laid out [local][EOCD][directory] opens
+  // under readZip and is refused here. No writer produces that layout — the
+  // format puts the directory before the record that describes it — and the
+  // failure is a refusal rather than a misread, so it stands. It is recorded
+  // because an undocumented divergence is how the last three were born.
   if (cdOffset > eocdAbs) bad();
 
   // Read the central directory in one slice.
-  const cdBuf = await blob.slice(cdOffset, eocdAbs).arrayBuffer();
+  const cdBuf = await readRange(blob, cdOffset, eocdAbs);
   const cd = new Uint8Array(cdBuf);
   const cdv = new DataView(cdBuf);
   const cdLen = cd.length;
@@ -283,7 +314,7 @@ export async function readZipDirectory(blob: Blob): Promise<ZipDirEntry[]> {
     // Read the local header to find dataStart — same as readZip, but via a
     // tiny slice of the blob rather than an in-memory Uint8Array.
     if (localOffset < 0 || localOffset + 30 > len) bad();
-    const lhBuf = await blob.slice(localOffset, localOffset + 30).arrayBuffer();
+    const lhBuf = await readRange(blob, localOffset, localOffset + 30);
     const lhv = new DataView(lhBuf);
     if (lhv.getUint32(0, true) !== 0x04034b50) bad();
     const lNameLen = lhv.getUint16(26, true);
@@ -307,7 +338,7 @@ export async function readZipEntry(blob: Blob, entry: ZipDirEntry): Promise<Uint
   const len = blob.size;
   const bad = (): never => { throw new Error('This data file looks damaged or is not a FirearmLog data file.'); };
   if (entry.dataStart < 0 || entry.dataStart + entry.size > len) bad();
-  const buf = await blob.slice(entry.dataStart, entry.dataStart + entry.size).arrayBuffer();
+  const buf = await readRange(blob, entry.dataStart, entry.dataStart + entry.size);
   // A slice's ArrayBuffer is freshly allocated and not shared with the Blob, so
   // the caller may keep it outright — this is why the lazy reader needs no copy
   // where parseFlog makes one. Declaring Uint8Array<ArrayBuffer> is what lets

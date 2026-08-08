@@ -455,3 +455,44 @@ test('new reader: a local-header offset past the end of the file is refused plai
     return true;
   });
 });
+
+test('writeZip refuses an archive whose offsets would pass 4 GB', () => {
+  // The check is on the running offset, the only value that can wrap. Faking a
+  // 4 GB payload with a fake-length object avoids allocating 4 GB, which is the
+  // reason this case had no test at all before.
+  const huge = { length: 0x80000000, buffer: new ArrayBuffer(0), byteOffset: 0,
+    byteLength: 0x80000000 } as unknown as Uint8Array<ArrayBuffer>;
+  const entries = [
+    { name: 'a', data: new Uint8Array(1) as Uint8Array<ArrayBuffer> },
+    { name: 'b', data: huge },
+    { name: 'c', data: huge },
+  ];
+  assert.throws(() => writeZip(entries), /cannot go past 4 GB/);
+});
+
+test('writeZipBlob refuses an archive whose offsets would pass 4 GB', async () => {
+  const huge = { length: 0x80000000, buffer: new ArrayBuffer(0), byteOffset: 0,
+    byteLength: 0x80000000 } as unknown as Uint8Array<ArrayBuffer>;
+  const sources: ZipSource[] = [
+    { name: 'b', open: async () => huge },
+    { name: 'c', open: async () => huge },
+  ];
+  await assert.rejects(writeZipBlob(sources), /cannot go past 4 GB/);
+});
+
+test('a Blob that cannot be read gives the plain-language message, not a DOMException', async () => {
+  // Stand in for a File the user moved or deleted mid-restore, or an iCloud
+  // file that is no longer downloaded: slice() succeeds, the read fails.
+  const bytes = writeZip([{ name: 'a.txt', data: new TextEncoder().encode('hi') }]);
+  const real = new Blob([bytes]);
+  const unreadable = {
+    size: real.size,
+    slice: () => ({ arrayBuffer: async () => { throw new DOMException('NotReadableError'); } }),
+  } as unknown as Blob;
+  await assert.rejects(readZipDirectory(unreadable), (err: unknown) => {
+    assert.ok(err instanceof Error);
+    assert.equal(err.constructor.name, 'Error', 'a DOMException must not reach the restore path');
+    assert.match(err.message, /could not finish reading that file/);
+    return true;
+  });
+});

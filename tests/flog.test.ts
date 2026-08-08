@@ -376,17 +376,43 @@ function zipWithTwoDataJson(): Uint8Array<ArrayBuffer> {
   ]);
 }
 
-test('a .flog with two data.json entries reads the same under both readers', async () => {
+test('a .flog with two data.json entries is refused by both readers', async () => {
   const bytes = zipWithTwoDataJson();
+  // Previously the eager reader took the first (exportedAt 111) and the lazy one
+  // took the last (999, with an injected store), both reporting success. Making
+  // them agree was the first fix; refusing is the better one, because agreement
+  // is a convention and the convention broke twice.
+  assert.throws(() => parseFlog(bytes), /contains the same item twice/);
+  await assert.rejects(parseFlogLazy(new Blob([bytes])), /contains the same item twice/);
+});
+
+test('a .flog with two entries for the same photo is refused by both readers', async () => {
+  // Round 3's finding: round 2's fix covered data.json only, and the media
+  // lookup one line below still resolved last-wins in the eager reader and
+  // first-wins in the lazy one. Same bytes, different photo, no error either
+  // way — and reordering only the central directory flipped which reader saw
+  // which image, so there was no structural tell.
+  const meta = { id: 'md-1', file: 'media/a', kind: 'image', createdAt: 1,
+    updatedAt: 1, ownerType: 'firearm', ownerId: 'fa-1', name: 'Dup',
+    annotations: [], mime: 'image/jpeg' };
+  const json = JSON.stringify({ format: FLOG_FORMAT, version: FLOG_VERSION,
+    exportedAt: 1, lastModified: 1, stores: {}, mediaMeta: [meta] });
+  const bytes = writeZip([
+    { name: 'data.json', data: new TextEncoder().encode(json) },
+    { name: 'media/a', data: new TextEncoder().encode('FIRST-BYTES') },
+    { name: 'media/a', data: new TextEncoder().encode('SECOND-BYTES') },
+  ]);
+  assert.throws(() => parseFlog(bytes), /contains the same item twice/);
+  await assert.rejects(parseFlogLazy(new Blob([bytes])), /contains the same item twice/);
+});
+
+test('a normal .flog with many distinct entries is unaffected by the duplicate check', async () => {
+  const s = sampleSnapshot();
+  const bytes = buildFlog(s);
   const eager = parseFlog(bytes);
   const lazy = await parseFlogLazy(new Blob([bytes]));
-  // Which one wins matters less than that they agree; parseFlog's entries.find()
-  // takes the first, so that is the rule both must follow.
-  assert.equal(eager.exportedAt, 111, 'the eager reader takes the FIRST entry');
-  assert.equal(lazy.exportedAt, eager.exportedAt,
-    'the lazy reader must resolve duplicate names the same way as the eager one');
-  assert.equal(lazy.lastModified, eager.lastModified);
-  assert.deepEqual(Object.keys(lazy.stores), Object.keys(eager.stores));
+  assert.equal(eager.media.length, 1);
+  assert.equal(lazy.mediaCount, 1);
 });
 
 test('a data.json whose mediaMeta is not a list is refused plainly by both readers', async () => {
@@ -415,4 +441,36 @@ test('a data.json with no mediaMeta at all is still fine under both readers', as
   }]);
   assert.deepEqual(parseFlog(bytes).media, []);
   assert.equal((await parseFlogLazy(new Blob([bytes]))).mediaCount, 0);
+});
+
+// ── 12. Round-3 findings ─────────────────────────────────────────────────────
+
+test('a mediaMeta containing null (or any non-object) is refused plainly by both readers', async () => {
+  for (const junk of [null, 42, 'media/a', [], true]) {
+    const bytes = writeZip([{
+      name: 'data.json',
+      data: new TextEncoder().encode(JSON.stringify({
+        format: FLOG_FORMAT, version: FLOG_VERSION, stores: {}, mediaMeta: [junk]
+      }))
+    }]);
+    // null used to reach String(meta.file ?? '') as a raw TypeError in both
+    // readers — consistent, but a crash rather than a message.
+    assert.throws(() => parseFlog(bytes), /photo list inside is unreadable/,
+      `eager reader accepted a ${JSON.stringify(junk)} element`);
+    await assert.rejects(parseFlogLazy(new Blob([bytes])), /photo list inside is unreadable/,
+      `lazy reader accepted a ${JSON.stringify(junk)} element`);
+  }
+});
+
+test('LazyFlog.mediaMeta hands out copies with the internal file key stripped', async () => {
+  const s = sampleSnapshot();
+  const bytes = buildFlog(s);
+  const lazy = await parseFlogLazy(new Blob([bytes]));
+  assert.equal('file' in lazy.mediaMeta[0], false,
+    'file is an archive detail, not part of a Media record — parseFlog strips it too');
+  // Writing to the handed-out copy must not steer readMedia. It used to: the
+  // live object was exposed, so setting .file changed which entry was read.
+  (lazy.mediaMeta[0] as Record<string, unknown>).file = 'media/does-not-exist';
+  const back = await lazy.readMedia(0);
+  assert.deepEqual([...new Uint8Array(back.data)], [...new Uint8Array(s.media[0].data)]);
 });
