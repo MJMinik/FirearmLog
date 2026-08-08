@@ -326,3 +326,32 @@ test('parseFlogLazy: the same sparse file opens with the same defaults', async (
   assert.equal(lazy.exportedAt, 0);
   assert.equal(lazy.lastModified, 0);
 });
+
+// ── 10. A FlogMediaSource written with a method, not a closure ────────────────
+//
+// toMediaSources above builds `open` as an arrow function closing over m, so it
+// never needed a receiver and hid a real defect: buildFlogBlob passed the bare
+// function reference `m.open` through to the zip writer, which detached it. Any
+// source written the other natural way — an object holding its own bytes and a
+// method that reads `this` — returned undefined from open(), and the first sign
+// of it was a TypeError thrown from inside crc32 during a backup. Pass 2 builds
+// these sources from IndexedDB records, so that shape is coming.
+
+test('buildFlogBlob: a media source whose open() uses `this` works', async () => {
+  const bytes = new Uint8Array([9, 8, 7, 6, 5]) as Uint8Array<ArrayBuffer>;
+  const source: FlogMediaSource = {
+    id: 'md-this-1',
+    meta: { id: 'md-this-1', createdAt: 1, updatedAt: 1, ownerType: 'firearm',
+      ownerId: 'fa-1', kind: 'image', name: 'Method form', annotations: [],
+      mime: 'image/jpeg', bytes },
+    async open(): Promise<Uint8Array<ArrayBuffer>> {
+      return (this.meta as { bytes: Uint8Array<ArrayBuffer> }).bytes;
+    }
+  };
+  const blob = await buildFlogBlob({
+    exportedAt: 1, lastModified: 1, stores: {}, media: [source]
+  });
+  const back = parseFlog(new Uint8Array(await blob.arrayBuffer()));
+  assert.equal(back.media.length, 1);
+  assert.deepEqual([...new Uint8Array(back.media[0].data)], [9, 8, 7, 6, 5]);
+});

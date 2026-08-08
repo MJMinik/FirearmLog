@@ -139,7 +139,13 @@ export async function buildFlogBlob(parts: {
   const dataJsonBytes = new TextEncoder().encode(JSON.stringify(dataJson));
   const sources: import('./zip.ts').ZipSource[] = [
     { name: 'data.json', open: async () => dataJsonBytes },
-    ...parts.media.map((m) => ({ name: `media/${m.id}`, open: m.open }))
+    // Call through m rather than passing m.open across: a FlogMediaSource is
+    // free to be written as an object literal with a method that uses `this`
+    // (the natural shape when it closes over a record), and handing the bare
+    // function reference to the zip writer would detach it and call it with the
+    // wrong receiver. The failure is not a type error — open() returns
+    // undefined and the first sign of trouble is a crash inside crc32.
+    ...parts.media.map((m) => ({ name: `media/${m.id}`, open: () => m.open() }))
   ];
   return writeZipBlob(sources, new Date(parts.exportedAt));
 }

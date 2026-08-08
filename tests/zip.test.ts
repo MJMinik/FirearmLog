@@ -244,30 +244,99 @@ test('new reader: non-zero compression method is refused', async () => {
   await assert.rejects(readZipDirectory(blob), /packing method/);
 });
 
-test('new reader: absurd entry count is refused', async () => {
+// The entry count is a uint16, so the "absurd count" this once claimed to test
+// is not expressible: 200000 & 0xFFFF is 3392, which no cap would have caught.
+// What actually protects us is that a count higher than the directory holds runs
+// the walk off the end. That is what this now asserts, at the highest count the
+// format can express.
+test('new reader: an entry count higher than the directory holds is refused', async () => {
   const data = new TextEncoder().encode('hi') as Uint8Array<ArrayBuffer>;
   const bytes = writeZip([{ name: 'a.txt', data }]);
   const v = new DataView(bytes.buffer);
-  const len = bytes.length;
-  let eocdPos = -1;
-  for (let i = len - 22; i >= 0; i--) {
-    if (v.getUint32(i, true) === 0x06054b50) { eocdPos = i; break; }
-  }
-  // Set entry count to 200000 (above the 100000 sanity cap)
-  v.setUint16(eocdPos + 8, 200000 & 0xFFFF, true);
-  v.setUint16(eocdPos + 10, 200000 & 0xFFFF, true);
-  const blob = new Blob([bytes]);
-  await assert.rejects(readZipDirectory(blob), /damaged/);
+  const eocdPos = findEocd(bytes);
+  v.setUint16(eocdPos + 8, 0xFFFF, true);
+  v.setUint16(eocdPos + 10, 0xFFFF, true);
+  await assert.rejects(readZipDirectory(new Blob([bytes])), /damaged/);
 });
 
-// ── 5. Memory-discipline guard ────────────────────────────────────────────────
-// These source-level checks prove that writeZipBlob never allocates a
-// whole-file Uint8Array, and parseFlogLazy never calls .arrayBuffer() on the
-// whole Blob. The approach mirrors mediaLoadDiscipline.test.ts: the behavioural
-// tests above prove correctness; these guards prove the memory property by
-// reading the source.
+// ── 4b. Guards that nothing was watching ─────────────────────────────────────
+// The cold audit of this branch found three checks in the new reader that could
+// be deleted with the whole suite still green. A bounds check on untrusted input
+// that no test watches is one careless refactor from being gone, so each gets a
+// hand-built hostile file here. Each of these was confirmed to go red with its
+// guard removed.
 
-test('memory discipline: writeZipBlob body contains no whole-file Uint8Array allocation', () => {
+function findEocd(bytes: Uint8Array): number {
+  const v = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  for (let i = bytes.length - 22; i >= 0; i--) {
+    if (v.getUint32(i, true) === 0x06054b50) return i;
+  }
+  throw new Error('test fixture has no EOCD');
+}
+
+// Outcome test, not a line test: the refusal here is doubly guarded (an explicit
+// cdOffset > eocdAbs check, and the directory walk running off an empty slice),
+// so removing either one alone leaves this green. What matters is that a file
+// claiming its directory starts after the record that ends it never opens.
+test('new reader: a directory offset pointing past the EOCD is refused', async () => {
+  const data = new TextEncoder().encode('hi') as Uint8Array<ArrayBuffer>;
+  const bytes = writeZip([{ name: 'a.txt', data }]);
+  const v = new DataView(bytes.buffer);
+  const eocdPos = findEocd(bytes);
+  // Claim the directory starts after the record that terminates it.
+  v.setUint32(eocdPos + 16, bytes.length - 4, true);
+  await assert.rejects(readZipDirectory(new Blob([bytes])), /damaged/);
+});
+
+test('new reader: an entry whose payload runs past the end of the file is refused', async () => {
+  const data = new TextEncoder().encode('hi') as Uint8Array<ArrayBuffer>;
+  const bytes = writeZip([{ name: 'a.txt', data }]);
+  const v = new DataView(bytes.buffer);
+  const eocdPos = findEocd(bytes);
+  const cdOffset = v.getUint32(eocdPos + 16, true);
+  // Central-directory compressed size (+20) claims far more than the file holds.
+  v.setUint32(cdOffset + 20, 0x7FFFFFF0, true);
+  await assert.rejects(readZipDirectory(new Blob([bytes])), /damaged/);
+});
+
+// ── 4c. The new reader must not be STRICTER than readZip ─────────────────────
+// readZip never reads the EOCD's cdSize field; it walks from cdOffset and bounds
+// against the file. An earlier version of readZipDirectory sliced exactly cdSize
+// bytes, which meant a .flog with a damaged cdSize field — and everything else
+// intact — opened under the old reader and failed under the new one. Since the
+// new reader is destined to replace the old one on the restore path, that is a
+// file the owner could restore before the change and not after.
+test('new reader: a wrong cdSize field does not stop a good file opening', async () => {
+  const data = new TextEncoder().encode('hi') as Uint8Array<ArrayBuffer>;
+  const bytes = writeZip([{ name: 'a.txt', data }]);
+  const v = new DataView(bytes.buffer);
+  const eocdPos = findEocd(bytes);
+  v.setUint32(eocdPos + 12, 0, true);            // cdSize lies: says empty
+  const viaOld = readZip(bytes);                  // old reader is unbothered
+  assert.equal(viaOld.length, 1);
+  const entries = await readZipDirectory(new Blob([bytes]));
+  assert.equal(entries.length, 1);
+  assert.equal(entries[0].name, 'a.txt');
+});
+
+// ── 5. Memory-discipline guards — SOURCE TEXT, NOT BEHAVIOUR ─────────────────
+// Read the names carefully: these grep the source for two specific regressions
+// (reintroducing `new Uint8Array(total)`, or calling .arrayBuffer() on the whole
+// Blob). They do NOT measure memory, and the cold audit of this branch proved
+// the limit by adding a line that retained every payload — the exact bug the
+// function exists to avoid — with the whole suite still green.
+//
+// Node cannot stand in for the real proof here: its Blob COPIES its inputs and
+// copies again on concatenation, so measuring in Node reports the new path as
+// worse than the old one. The real evidence is a Chromium measurement recorded
+// on the pull request (renderer resident memory over a 200 MB library in 4
+// files: write grew 415 MB -> 94 MB, read grew 603 MB -> 142 MB). WebKit is
+// unproven from CI; the owner's iPhone is the deciding test.
+//
+// So: keep these as cheap tripwires for an obvious edit, and never read a green
+// run here as evidence that the memory property still holds.
+
+test('source guard (not a memory measurement): writeZipBlob body has no whole-file Uint8Array allocation', () => {
   const src = readFileSync('src/lib/zip.ts', 'utf8');
   // Find the body of writeZipBlob.
   const startIdx = src.indexOf('export async function writeZipBlob(');
@@ -301,7 +370,7 @@ test('memory discipline: writeZipBlob body contains no whole-file Uint8Array all
   );
 });
 
-test('memory discipline: parseFlogLazy body does not call .arrayBuffer() on the whole blob', () => {
+test('source guard (not a memory measurement): parseFlogLazy body does not call .arrayBuffer() on the whole blob', () => {
   const src = readFileSync('src/lib/flog.ts', 'utf8');
   const startIdx = src.indexOf('export async function parseFlogLazy(');
   assert.ok(startIdx !== -1, 'parseFlogLazy not found in flog.ts');

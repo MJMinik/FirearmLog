@@ -203,14 +203,32 @@ export async function readZipDirectory(blob: Blob): Promise<ZipDirEntry[]> {
   if (eocdInTail < 0) throw new Error('Not a FirearmLog data file (no zip directory found).');
 
   const eocdAbs = len - tailSize + eocdInTail;
+  // No sanity cap on the entry count: it is a uint16, so it cannot exceed 65535,
+  // and a count that lies high simply runs the walk below off the end of the
+  // directory, where the p + 46 > cdLen check refuses it. (readZip carries a
+  // `count > 100000` line that for the same reason can never fire; left alone
+  // there rather than edited in place, but not copied here.)
   const count = tv.getUint16(eocdInTail + 10, true);
-  if (count > 100000) bad(); // sanity cap — no real .flog has this many entries
-  const cdSize = tv.getUint32(eocdInTail + 12, true);
   const cdOffset = tv.getUint32(eocdInTail + 16, true);
-  if (cdOffset + cdSize > len || cdOffset > eocdAbs) bad();
+  // The directory runs from cdOffset up to the EOCD record. We deliberately do
+  // NOT use the EOCD's own cdSize field (at +12): readZip ignores it as well,
+  // walking from cdOffset and bounding against the file. Trusting it here would
+  // make this reader STRICTER than the one it replaces — a .flog whose cdSize
+  // field alone is damaged opens today and would stop opening — and a restore
+  // path is the wrong place to start refusing files that still hold good data.
+  // Ending at eocdAbs is the true bound in any case: a directory cannot legally
+  // overrun the record that terminates it.
+  // Belt and braces: if this line were removed the walk below would still refuse
+  // the file, because blob.slice() clamps an inverted range to empty and the
+  // p + 46 > cdLen check then fires. Kept anyway so the refusal does not depend
+  // on Blob.slice's clamping behaviour, which is a subtle thing to rest on in a
+  // reader of untrusted input. Sabotaging this line alone leaves the suite green
+  // — that is expected here, and is why the test below asserts the outcome
+  // rather than claiming to watch this line.
+  if (cdOffset > eocdAbs) bad();
 
   // Read the central directory in one slice.
-  const cdBuf = await blob.slice(cdOffset, cdOffset + cdSize).arrayBuffer();
+  const cdBuf = await blob.slice(cdOffset, eocdAbs).arrayBuffer();
   const cd = new Uint8Array(cdBuf);
   const cdv = new DataView(cdBuf);
   const cdLen = cd.length;
