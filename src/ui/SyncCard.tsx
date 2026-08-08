@@ -65,9 +65,9 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
       // allocates `new Uint8Array(total)`), so Blob can use it directly.
       // The previous copy — `new ArrayBuffer(bytes.length); new Uint8Array(ab).set(bytes)` —
       // allocated a second buffer the same size and copied every byte for no reason.
-      // Cast to Uint8Array<ArrayBuffer>: writeZip's `new Uint8Array(total)` always
-      // allocates a plain ArrayBuffer (not SharedArrayBuffer), so this is safe.
-      const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' });
+      // No cast: buildFlog/writeZip declare Uint8Array<ArrayBuffer>, which is what
+      // they allocate, so the compiler checks this rather than being told to trust it.
+      const blob = new Blob([bytes], { type: 'application/octet-stream' });
       const sessions = (snapshot.stores.sessions ?? []).length;
       setStage({
         name: 'save-ready',

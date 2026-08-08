@@ -615,3 +615,103 @@ test('P-8: restoreSnapshot deletes media not in the snapshot and keeps media tha
   assert.ok(!ids.includes('md-restore-old'), 'photo not in snapshot deleted');
   assert.ok(ids.includes('md-restore-new'), 'photo in snapshot kept');
 });
+
+// ---------------------------------------------------------------------------
+// Audit finding 1 (session 114): the stale-media passes must not decide by
+// reading a raw record field. The first version of the P-8 fix read
+// cursor.value.ownerId directly and skipped anything that was not a string —
+// which meant a media record with a missing, null or non-string ownerId, or a
+// non-string id, survived restore FOREVER. Nothing deletes it later: it gets
+// packed into every .flog backup, travels to the other device, and eats space
+// until the free-space preflight starts refusing to load files.
+//
+// Restore decides purely by id, so it now walks primary KEYS (openKeyCursor) and
+// never reads a record field at all — structurally immune to the whole class.
+// These tests are the proof: each one fails on the pre-fix code.
+// ---------------------------------------------------------------------------
+test('audit-1: restore deletes an orphaned photo whose ownerId is missing', async () => {
+  await clearAllData();
+  // A damaged record: no ownerId at all. Reading the field raw would skip it.
+  await putOne('media', { id: 'md-no-owner', ownerType: 'firearm', kind: 'image',
+    name: 'orphan.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 });
+
+  const snap = snapshotWith({ firearms: [], sessions: [], drills: [], ammunition: [],
+    purchases: [], maintenance: [], malfunctions: [], magazines: [], optics: [], parts: [],
+    goals: [], skills: [], skillSets: [], matches: [], classifiers: [], references: [],
+    reminders: [], trash: [], meta: [] });
+  await restoreSnapshot(snap);
+
+  const ids = (await getAllMediaWholeStore()).map((m) => m.id);
+  assert.ok(!ids.includes('md-no-owner'), 'a photo with no ownerId is still cleaned up by restore');
+});
+
+test('audit-1: restore deletes an orphaned photo whose ownerId is null', async () => {
+  await clearAllData();
+  await putOne('media', { id: 'md-null-owner', ownerType: 'firearm', ownerId: null, kind: 'image',
+    name: 'orphan.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 });
+
+  const snap = snapshotWith({ firearms: [], sessions: [], drills: [], ammunition: [],
+    purchases: [], maintenance: [], malfunctions: [], magazines: [], optics: [], parts: [],
+    goals: [], skills: [], skillSets: [], matches: [], classifiers: [], references: [],
+    reminders: [], trash: [], meta: [] });
+  await restoreSnapshot(snap);
+
+  const ids = (await getAllMediaWholeStore()).map((m) => m.id);
+  assert.ok(!ids.includes('md-null-owner'), 'a photo with a null ownerId is still cleaned up by restore');
+});
+
+test('audit-1: restore deletes a photo whose id is not a string', async () => {
+  await clearAllData();
+  // normalizeRecord never coerces id (it is the key, and rewriting a key would
+  // move the record). So the delete must go by the key the store actually holds.
+  await putOne('media', { id: 12345, ownerType: 'firearm', ownerId: 'g1', kind: 'image',
+    name: 'numeric.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 });
+
+  const snap = snapshotWith({ firearms: [], sessions: [], drills: [], ammunition: [],
+    purchases: [], maintenance: [], malfunctions: [], magazines: [], optics: [], parts: [],
+    goals: [], skills: [], skillSets: [], matches: [], classifiers: [], references: [],
+    reminders: [], trash: [], meta: [] });
+  await restoreSnapshot(snap);
+
+  const all = await getAllMediaWholeStore();
+  assert.equal(all.length, 0, 'a photo with a numeric id is deleted by key, not by a string comparison');
+});
+
+test('audit-1: the import commit deletes a superseded photo whose id is not a string', async () => {
+  await clearAllData();
+  await putOne('media', { id: 999, ownerType: 'firearm', ownerId: 'gun-a', kind: 'image',
+    name: 'old.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 });
+
+  const newPhoto = { id: 'md-new', ownerType: 'firearm', ownerId: 'gun-a', kind: 'image',
+    name: 'new.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: 2, createdAt: 0 };
+  await commitDataSet(dataSetWith({ firearms: [{ id: 'gun-a', name: 'A' }], media: [newPhoto] }), undefined);
+
+  const ids = (await getAllMediaWholeStore()).map((m) => m.id);
+  assert.ok(!ids.includes(999 as unknown as string), 'the superseded photo is deleted by its real key');
+  assert.ok(ids.includes('md-new'), 'the replacement photo is kept');
+});
+
+// Observation 10 (session 114): hasOversizedMedia's comparison is `>`, so a photo
+// exactly ON the threshold is NOT oversized. Nothing pinned that boundary, which
+// meant `>` could drift to `>=` unnoticed and the Free Up Space card would start
+// offering to shrink photos it cannot improve. Both sides are now pinned.
+test('P-7: hasOversizedMedia is false for a photo exactly on the threshold', async () => {
+  await clearAllData();
+  await putOne('media', { id: 'md-exact', ownerType: 'firearm', ownerId: 'g1', kind: 'image',
+    name: 'exact.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(1_000), updatedAt: 1, createdAt: 0 });
+  assert.equal(await hasOversizedMedia(1_000), false, 'exactly on the threshold is not oversized');
+});
+
+test('P-7: hasOversizedMedia is true one byte over the threshold', async () => {
+  await clearAllData();
+  await putOne('media', { id: 'md-plus-one', ownerType: 'firearm', ownerId: 'g1', kind: 'image',
+    name: 'plusone.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(1_001), updatedAt: 1, createdAt: 0 });
+  assert.equal(await hasOversizedMedia(1_000), true, 'one byte over the threshold is oversized');
+});

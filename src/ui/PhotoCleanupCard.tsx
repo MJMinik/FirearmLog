@@ -9,11 +9,11 @@
 //    photos not yet reached are simply untouched, and re-running is safe (an
 //    already-small photo is skipped because the re-encode isn't smaller).
 //  - Processed one at a time so a phone never holds many decoded images at once.
+//    The loop itself lives in photoCleanupRun.ts so it can be tested directly.
 //  - The user is told to Save to File (back up) first, and must confirm.
 import { useEffect, useState } from 'react';
-import { hasOversizedMedia, scanMediaImageIds, getOne, putOne, withExclusiveIo } from '../lib/db.ts';
-import type { Media } from '../lib/types.ts';
-import { stampUpdate } from '../lib/stamps.ts';
+import { hasOversizedMedia, withExclusiveIo } from '../lib/db.ts';
+import { runPhotoCleanup } from './photoCleanupRun.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 
@@ -62,26 +62,12 @@ export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean 
     }
   }
 
-  // P-7 run: scan ids first (no blobs loaded), then load and process one record
-  // at a time. A record that disappears between the id scan and the load is
-  // skipped, not a crash. Only one photo lives in memory at any point.
   async function runInner() {
-    const ids = await scanMediaImageIds();
-    let shrunk = 0;
-    let saved = 0;
-    for (let i = 0; i < ids.length; i++) {
-      setStage({ name: 'working', done: i, total: ids.length });
-      const m = await getOne<Media>('media', ids[i]);
-      if (!m) continue; // deleted between the scan and the load — skip safely
-      const blob = new Blob([m.data], { type: m.mime || 'image/jpeg' });
-      const { data, mime } = await prepareUploadBytes(blob);
-      if (data.byteLength < m.data.byteLength) {
-        saved += m.data.byteLength - data.byteLength;
-        await putOne('media', stampUpdate({ ...m, data, mime }, Date.now()));
-        shrunk += 1;
-      }
-    }
-    setStage({ name: 'done', shrunk, savedMB: (saved / (1024 * 1024)).toFixed(1) });
+    const { shrunk, savedBytes } = await runPhotoCleanup(
+      async (data, mime) => prepareUploadBytes(new Blob([data], { type: mime })),
+      (done, total) => setStage({ name: 'working', done, total })
+    );
+    setStage({ name: 'done', shrunk, savedMB: (savedBytes / (1024 * 1024)).toFixed(1) });
   }
 
   // Nothing to free up (and not mid-run / not showing a result). Inline on the

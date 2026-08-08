@@ -39,7 +39,7 @@ export function newestStamp(stores: Record<string, unknown[]>, media: { updatedA
   return newest;
 }
 
-export function buildFlog(snapshot: Snapshot): Uint8Array {
+export function buildFlog(snapshot: Snapshot): Uint8Array<ArrayBuffer> {
   const mediaMeta = snapshot.media.map((m) => {
     const meta = { ...m } as Record<string, unknown>;
     delete meta.data;

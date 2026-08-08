@@ -222,12 +222,19 @@ export async function getAll<T>(store: Exclude<StoreName, 'media'>): Promise<T[]
  * on a large log (see getMediaForOwner for the cursor-based alternative that
  * keeps only one owner's few records in memory at a time).
  *
- * After P-4/P-7/P-8, the only legitimate caller is exportSnapshot, which
- * genuinely needs every media record with its bytes to build the .flog file.
- * The import commit and restore paths (P-8) now use scanMediaOwnerIds (ids only).
+ * After P-4/P-7/P-8 there are exactly TWO callers, both listed below. Everything
+ * else has moved to a cursor.
+ * The import commit path (P-8) uses scanMediaOwnerIds; the restore path uses
+ * scanMediaKeys (primary keys only, no record deserialised at all).
  * localLastModified (P-4) now uses newestMediaStamp (stamp only).
- * PhotoCleanupCard (P-7) now uses hasOversizedMedia + scanMediaImageIds + getOne.
- * reportLaunch.ts loads the whole bundle for multi-record reports (P-1).
+ * PhotoCleanupCard (P-7) now uses hasOversizedMedia + scanMediaImageIds + getOne,
+ * fetching and releasing one photo at a time.
+ * exportSnapshot genuinely needs every media record with its bytes to build the
+ * .flog file. reportLaunch.ts loads the whole bundle for multi-record reports
+ * (P-1): the insurance report loops ALL firearms, so a per-owner cursor would be
+ * quadratic without lowering the peak. Its records are then held in React state
+ * for as long as the Reports screen is open, which is a KNOWN open item, not an
+ * endorsement.
  * Do NOT add callers here without an explicit memory-risk review.
  */
 export async function getAllMediaWholeStore(): Promise<Media[]> {
@@ -268,7 +275,7 @@ export async function hasOversizedMedia(thresholdBytes: number): Promise<boolean
 
 /**
  * P-7 id scan: collect ids (and kind) of every image record, without retaining
- * the data blob. The run pass then fetches each record individually so only one
+ * the data blob. The run pass then reads each record back individually so only one
  * image is in memory at a time.
  */
 export async function scanMediaImageIds(): Promise<string[]> {
@@ -361,30 +368,61 @@ async function scanStore<T>(store: StoreName, visit: (record: T) => void): Promi
 }
 
 /**
- * P-8: collect only {id, ownerId} from every media record. The full record
- * (especially its data ArrayBuffer) is never retained — the visit callback
- * fires once per record and then the cursor moves on. Both delete-stale-media
- * passes need only these two fields to decide which ids to delete.
+ * P-8: visit every media record with a cursor and keep only the two fields the
+ * delete-stale passes need. The full record (its data ArrayBuffer included) is
+ * deserialised one at a time by the cursor and dropped as soon as the visit
+ * returns, so peak memory is one photo rather than the whole library.
+ *
+ * THE READ BOUNDARY IS NOT OPTIONAL HERE (audit finding 1, session 114). The
+ * getAllMediaWholeStore call this replaced ran every record through
+ * normalizeRecord, which fills a missing or non-string ownerId with ''. Reading
+ * cursor.value.ownerId raw and skipping anything that isn't a string silently
+ * dropped those records from the delete pass, so an orphaned photo could never
+ * be cleaned up again. The id comes from cursor.primaryKey, which is the record's
+ * real key whatever its type, so a delete by that key always matches.
  */
-async function scanMediaOwnerIds(): Promise<{ id: string; ownerId: string }[]> {
+async function scanMediaOwnerIds(): Promise<{ key: IDBValidKey; ownerId: string }[]> {
   const db = await openDb();
   const tx = db.transaction('media', 'readonly');
-  const out: { id: string; ownerId: string }[] = [];
+  const out: { key: IDBValidKey; ownerId: string }[] = [];
   await new Promise<void>((resolve, reject) => {
     const req = tx.objectStore('media').openCursor();
     req.onsuccess = () => {
       const cursor = req.result;
       if (!cursor) { resolve(); return; }
-      const m = cursor.value as { id?: unknown; ownerId?: unknown };
-      if (typeof m.id === 'string' && typeof m.ownerId === 'string') {
-        out.push({ id: m.id, ownerId: m.ownerId });
-      }
+      const m = normalizeRecord('media', cursor.value as Media);
+      out.push({ key: cursor.primaryKey, ownerId: m.ownerId });
       cursor.continue();
     };
     req.onerror = () => reject(req.error);
   });
   await txDone(tx);
   return out;
+}
+
+/**
+ * P-8, restore path: the stale-media pass there decides purely by id, so it never
+ * needs a record at all. openKeyCursor walks the primary keys WITHOUT
+ * deserialising a single photo — strictly less work and less memory than a value
+ * cursor, and structurally immune to the read-boundary defect above because there
+ * is no record field to misread. The keys come back exactly as stored.
+ */
+async function scanMediaKeys(): Promise<IDBValidKey[]> {
+  const db = await openDb();
+  const tx = db.transaction('media', 'readonly');
+  const keys: IDBValidKey[] = [];
+  await new Promise<void>((resolve, reject) => {
+    const req = tx.objectStore('media').openKeyCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) { resolve(); return; }
+      keys.push(cursor.primaryKey);
+      cursor.continue();
+    };
+    req.onerror = () => reject(req.error);
+  });
+  await txDone(tx);
+  return keys;
 }
 
 export async function putOne<T>(store: StoreName, record: T): Promise<void> {
@@ -588,7 +626,9 @@ async function commitDataSetInner(
   }
   // …then remove superseded photos for the re-written owners (anything on those
   // owners that isn't in the fresh set). Add-before-delete = never a gap.
-  // P-8: scan only {id, ownerId} — never load the photo bytes into memory.
+  // P-8: walk the store with a cursor, holding one record at a time instead of
+  // the whole library. (It still deserialises each photo to read ownerId; what
+  // changed is that none of them are retained.)
   const newIds = new Set(data.media.map((m) => m.id));
   const ownerIds = new Set<string>();
   for (const f of data.firearms) ownerIds.add(f.id);
@@ -596,9 +636,9 @@ async function commitDataSetInner(
   for (const m of data.matches) ownerIds.add(m.id);
   const existing = await scanMediaOwnerIds();
   for (const m of existing) {
-    if (ownerIds.has(m.ownerId) && !newIds.has(m.id)) {
+    if (ownerIds.has(m.ownerId) && !newIds.has(m.key as string)) {
       const dtx = db.transaction('media', 'readwrite');
-      dtx.objectStore('media').delete(m.id);
+      dtx.objectStore('media').delete(m.key);
       await txDone(dtx);
     }
   }
@@ -837,13 +877,13 @@ async function restoreSnapshotInner(
     await new Promise((r) => setTimeout(r, 0));
   }
   // …then remove anything that isn't in the new set. The store is never empty.
-  // P-8: scan only ids — never load photo bytes into memory just to delete by id.
-  const keepIds = new Set(snapshot.media.map((m) => m.id));
-  const existing = await scanMediaOwnerIds();
-  for (const m of existing) {
-    if (!keepIds.has(m.id)) {
+  // P-8: walk the primary keys only — no photo is deserialised just to delete by id.
+  const keepIds = new Set<unknown>(snapshot.media.map((m) => m.id));
+  const existing = await scanMediaKeys();
+  for (const key of existing) {
+    if (!keepIds.has(key)) {
       const dtx = db.transaction('media', 'readwrite');
-      dtx.objectStore('media').delete(m.id);
+      dtx.objectStore('media').delete(key);
       await txDone(dtx);
     }
   }
