@@ -180,6 +180,13 @@ function parseFlogDataJson(jsonBytes: Uint8Array): {
   if (typeof d.version === 'number' && d.version > FLOG_VERSION) {
     throw new Error('This data file came from a NEWER version of FirearmLog. Update the app on this device, then pull again.');
   }
+  // Absent mediaMeta is fine and always was — it just means no photos. Present
+  // but not an array is a damaged file, and it used to reach the callers as a
+  // raw TypeError (a crash, not a message). Worse, a STRING is iterable, so the
+  // two readers diverged on it. One plain-language refusal for both.
+  if (d.mediaMeta !== undefined && d.mediaMeta !== null && !Array.isArray(d.mediaMeta)) {
+    throw new Error('This data file looks damaged (the photo list inside is unreadable).');
+  }
   return {
     exportedAt: typeof d.exportedAt === 'number' ? d.exportedAt : 0,
     lastModified: typeof d.lastModified === 'number' ? d.lastModified : 0,
@@ -214,7 +221,15 @@ export interface LazyFlog {
 
 export async function parseFlogLazy(blob: Blob): Promise<LazyFlog> {
   const dir = await readZipDirectory(blob);
-  const byName = new Map(dir.map((e) => [e.name, e]));
+  // FIRST match wins, not last. parseFlog resolves names with entries.find(),
+  // so a hostile .flog carrying TWO data.json entries used to be read one way by
+  // the eager reader and the other way by this one — same file, two different
+  // logbooks, no error from either. A Map built with new Map(dir.map(...))
+  // silently keeps the LAST duplicate, which is the opposite rule. Found by the
+  // session-114 cold audit's second pass; single-byte mutation cannot surface it
+  // because it needs a whole extra entry. Building the map in reverse makes the
+  // first entry the one that survives, so both readers now agree.
+  const byName = new Map([...dir].reverse().map((e) => [e.name, e]));
 
   const dataEntry = byName.get('data.json');
   if (!dataEntry) throw new Error("That file isn't a FirearmLog data file (data.json missing inside).");
@@ -222,8 +237,18 @@ export async function parseFlogLazy(blob: Blob): Promise<LazyFlog> {
   const dataBytes = await readZipEntry(blob, dataEntry);
   const { exportedAt, lastModified, stores, mediaMeta } = parseFlogDataJson(dataBytes);
 
-  // Verify every media entry is present before declaring success — early
+  // Verify every media entry is PRESENT before declaring success — early
   // detection is better than a readMedia failure deep in a restore.
+  //
+  // Presence is all that is checked here, and that is a real difference from
+  // parseFlog, which verifies every checksum up front because it has already
+  // read every byte. Confirming checksums here would mean reading every payload,
+  // which is the entire cost this reader exists to avoid. So a .flog with an
+  // intact directory and a CORRUPT photo opens successfully and fails later, at
+  // readMedia. The caller doing a restore must therefore be rollback-safe —
+  // stage the import and commit at the end — rather than assuming a successful
+  // open means a successful restore. (Pass 2 owns that; noted here so it cannot
+  // be discovered by surprise.)
   for (const meta of mediaMeta) {
     const file = String(meta.file ?? '');
     if (!byName.has(file)) throw new Error(`This data file looks damaged (missing ${file}).`);

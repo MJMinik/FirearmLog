@@ -32,7 +32,32 @@ function dosDateTime(d: Date): { time: number; date: number } {
 // ArrayBuffer (never a SharedArrayBuffer). Declaring what is actually allocated
 // lets callers hand these bytes straight to a Blob with no cast — a cast is a
 // promise the compiler cannot check, and this removes the need for one.
+// ─── Format limits ────────────────────────────────────────────────────────────
+// A plain ZIP records entry offsets and sizes in 32 bits and the entry count in
+// 16. Exceed either and the field WRAPS — it does not error. Verified: writing
+// 65,536 entries stores a count of 0, and readZip then reads that file back as
+// an empty archive with no complaint. On a backup file with no server copy, a
+// save that reports success and restores as nothing is the worst failure shape
+// available, so both writers refuse rather than wrap. (ZIP64 lifts these limits
+// and is the real answer if a logbook ever approaches them; refusing loudly is
+// what buys the time to add it.)
+const ZIP_MAX_ENTRIES = 0xFFFF;
+const ZIP_MAX_OFFSET = 0xFFFFFFFF;
+
+function checkZipLimits(entryCount: number, totalBytes: number): void {
+  if (entryCount > ZIP_MAX_ENTRIES) {
+    throw new Error(`This logbook has too many photos and videos to fit in one backup file (${entryCount.toLocaleString()}; the limit is 65,535). Nothing was saved.`);
+  }
+  if (totalBytes > ZIP_MAX_OFFSET) {
+    throw new Error('This logbook is too large to fit in one backup file (over 4 GB). Nothing was saved.');
+  }
+}
+
 export function writeZip(entries: ZipEntry[], when: Date = new Date()): Uint8Array<ArrayBuffer> {
+  // Refuse before writing a single byte — see checkZipLimits above. The name
+  // bytes and headers add to the true total, so this under-counts slightly and
+  // errs toward refusing a hair early rather than wrapping a hair late.
+  checkZipLimits(entries.length, entries.reduce((n, e) => n + e.data.length + 30 + 46 + e.name.length * 4, 0));
   const te = new TextEncoder();
   const { time, date } = dosDateTime(when);
   const parts: Uint8Array[] = [];
@@ -111,6 +136,10 @@ export function writeZip(entries: ZipEntry[], when: Date = new Date()): Uint8Arr
 export interface ZipSource { name: string; open(): Promise<Uint8Array<ArrayBuffer>>; }
 
 export async function writeZipBlob(sources: ZipSource[], when: Date = new Date()): Promise<Blob> {
+  // The count is known now; the byte total is not, because a source's size only
+  // becomes known when it is opened. So the count is checked here and the
+  // running offset is checked inside the loop, before it is written anywhere.
+  checkZipLimits(sources.length, 0);
   const te = new TextEncoder();
   const { time, date } = dosDateTime(when);
   // parts accumulates Blobs (not Uint8Arrays) so the engine can evict each
@@ -122,6 +151,7 @@ export async function writeZipBlob(sources: ZipSource[], when: Date = new Date()
   for (const src of sources) {
     const name = te.encode(src.name);
     const bytes = await src.open();
+    checkZipLimits(0, offset + bytes.length + 30 + 46 + name.length * 2);
     const crc = crc32(bytes);
 
     const local: Uint8Array<ArrayBuffer> = new Uint8Array(30 + name.length);

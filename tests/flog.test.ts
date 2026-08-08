@@ -355,3 +355,64 @@ test('buildFlogBlob: a media source whose open() uses `this` works', async () =>
   assert.equal(back.media.length, 1);
   assert.deepEqual([...new Uint8Array(back.media[0].data)], [9, 8, 7, 6, 5]);
 });
+
+// ── 11. Two readers, one answer, on files our writer would never produce ─────
+//
+// Both of these came from the session-114 cold audit's SECOND pass, and both are
+// the same class of defect: the eager and lazy readers reaching different
+// conclusions about the same untrusted bytes, with neither raising an error. A
+// .flog can be handed to a user by anyone, so "which reader ran" must never
+// decide what the logbook contains.
+
+function zipWithTwoDataJson(): Uint8Array<ArrayBuffer> {
+  const enc = (o: unknown) => new TextEncoder().encode(JSON.stringify(o));
+  const first = { format: FLOG_FORMAT, version: FLOG_VERSION, exportedAt: 111,
+    lastModified: 111, stores: {}, mediaMeta: [] };
+  const second = { format: FLOG_FORMAT, version: FLOG_VERSION, exportedAt: 999,
+    lastModified: 999, stores: { pwn: [] }, mediaMeta: [] };
+  return writeZip([
+    { name: 'data.json', data: enc(first) },
+    { name: 'data.json', data: enc(second) },
+  ]);
+}
+
+test('a .flog with two data.json entries reads the same under both readers', async () => {
+  const bytes = zipWithTwoDataJson();
+  const eager = parseFlog(bytes);
+  const lazy = await parseFlogLazy(new Blob([bytes]));
+  // Which one wins matters less than that they agree; parseFlog's entries.find()
+  // takes the first, so that is the rule both must follow.
+  assert.equal(eager.exportedAt, 111, 'the eager reader takes the FIRST entry');
+  assert.equal(lazy.exportedAt, eager.exportedAt,
+    'the lazy reader must resolve duplicate names the same way as the eager one');
+  assert.equal(lazy.lastModified, eager.lastModified);
+  assert.deepEqual(Object.keys(lazy.stores), Object.keys(eager.stores));
+});
+
+test('a data.json whose mediaMeta is not a list is refused plainly by both readers', async () => {
+  for (const bad of ['a string', 42, true, { nope: 1 }]) {
+    const bytes = writeZip([{
+      name: 'data.json',
+      data: new TextEncoder().encode(JSON.stringify({
+        format: FLOG_FORMAT, version: FLOG_VERSION, stores: {}, mediaMeta: bad
+      }))
+    }]);
+    // A raw TypeError here would be a crash on the restore path, and a STRING is
+    // iterable, which used to make the two readers disagree instead of refuse.
+    assert.throws(() => parseFlog(bytes), /photo list inside is unreadable/,
+      `eager reader accepted mediaMeta: ${JSON.stringify(bad)}`);
+    await assert.rejects(parseFlogLazy(new Blob([bytes])), /photo list inside is unreadable/,
+      `lazy reader accepted mediaMeta: ${JSON.stringify(bad)}`);
+  }
+});
+
+test('a data.json with no mediaMeta at all is still fine under both readers', async () => {
+  const bytes = writeZip([{
+    name: 'data.json',
+    data: new TextEncoder().encode(JSON.stringify({
+      format: FLOG_FORMAT, version: FLOG_VERSION, stores: {}
+    }))
+  }]);
+  assert.deepEqual(parseFlog(bytes).media, []);
+  assert.equal((await parseFlogLazy(new Blob([bytes]))).mediaCount, 0);
+});

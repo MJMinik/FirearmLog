@@ -353,15 +353,19 @@ test('source guard (not a memory measurement): writeZipBlob body has no whole-fi
   }
   assert.ok(bodyEnd > bodyStart, 'could not find writeZipBlob body');
   const body = src.slice(bodyStart, bodyEnd + 1);
-  // The whole-file allocation pattern is: new Uint8Array(total) where `total`
-  // is the accumulated file size. We ban any `new Uint8Array(` that is NOT
-  // an entry header (which is always small: 30+nameLen or 46+nameLen).
-  // Concretely: writeZip uses `const out = new Uint8Array(total)` — that
-  // pattern must NOT appear inside writeZipBlob.
-  assert.equal(
-    /new Uint8Array\(total\)/.test(body),
-    false,
-    'writeZipBlob contains `new Uint8Array(total)` — whole-file allocation not removed',
+  // Ban every allocation in the body except the three small fixed-size ones a
+  // ZIP header needs. An earlier version banned the literal string
+  // `new Uint8Array(total)`, which the second audit pass pointed out is defeated
+  // by renaming the variable to `size`. Allowlisting the arguments instead means
+  // ANY new allocation has to be added here deliberately.
+  const ALLOWED_ALLOCATIONS = ['30 + name.length', '46 + name.length', '22'];
+  const allocations = [...body.matchAll(/new Uint8Array\(([^)]*)\)/g)].map((m) => m[1].trim());
+  const unexpected = allocations.filter((a) => !ALLOWED_ALLOCATIONS.includes(a));
+  assert.deepEqual(
+    unexpected, [],
+    `writeZipBlob allocates a Uint8Array this guard does not recognise: ${unexpected.join(', ')}. ` +
+    'If it is small and per-entry, add it to ALLOWED_ALLOCATIONS. If it is sized by the whole ' +
+    'archive, the streaming property has been lost.',
   );
   // Positive check: entries must be wrapped in Blob before the loop advances.
   assert.ok(
@@ -394,4 +398,60 @@ test('source guard (not a memory measurement): parseFlogLazy body does not call 
     false,
     'parseFlogLazy calls blob.arrayBuffer() — whole-file allocation reintroduced',
   );
+});
+
+// ── 6. Format limits: refuse rather than wrap ────────────────────────────────
+// A plain ZIP holds the entry count in 16 bits. Writing 65,536 entries used to
+// store a count of 0, and readZip read that file back as an empty archive
+// without complaint — a backup that reports success and restores as nothing.
+// Both writers now refuse. The >4 GB case has the same shape and cannot be
+// tested here without allocating 4 GB, so only the count is exercised.
+
+test('writeZip refuses more entries than the format can count', () => {
+  const empty = new Uint8Array(0) as Uint8Array<ArrayBuffer>;
+  const many = Array.from({ length: 65536 }, (_, i) => ({ name: `m/${i}`, data: empty }));
+  assert.throws(() => writeZip(many), /too many photos and videos/);
+});
+
+test('writeZipBlob refuses more entries than the format can count', async () => {
+  const empty = new Uint8Array(0) as Uint8Array<ArrayBuffer>;
+  const many = Array.from({ length: 65536 }, (_, i) => ({
+    name: `m/${i}`, open: async () => empty
+  }));
+  await assert.rejects(writeZipBlob(many), /too many photos and videos/);
+});
+
+test('writeZip still accepts the largest count the format CAN hold', () => {
+  const empty = new Uint8Array(0) as Uint8Array<ArrayBuffer>;
+  const many = Array.from({ length: 65535 }, (_, i) => ({ name: `m/${i}`, data: empty }));
+  const bytes = writeZip(many);
+  assert.equal(readZip(bytes).length, 65535, 'the boundary itself must still work');
+});
+
+// ── 7. Two more guards the second audit pass found unwatched ─────────────────
+
+test('new reader: a directory name length overrunning the directory is refused', async () => {
+  const data = new TextEncoder().encode('hi') as Uint8Array<ArrayBuffer>;
+  const bytes = writeZip([{ name: 'a.txt', data }]);
+  const v = new DataView(bytes.buffer);
+  const eocdPos = findEocd(bytes);
+  const cdOffset = v.getUint32(eocdPos + 16, true);
+  v.setUint16(cdOffset + 28, 0xFFFF, true);   // nameLen claims 65535
+  await assert.rejects(readZipDirectory(new Blob([bytes])), /damaged/);
+});
+
+test('new reader: a local-header offset past the end of the file is refused plainly', async () => {
+  const data = new TextEncoder().encode('hi') as Uint8Array<ArrayBuffer>;
+  const bytes = writeZip([{ name: 'a.txt', data }]);
+  const v = new DataView(bytes.buffer);
+  const eocdPos = findEocd(bytes);
+  const cdOffset = v.getUint32(eocdPos + 16, true);
+  v.setUint32(cdOffset + 42, bytes.length - 2, true);  // local header past the end
+  // Must be the plain-language error, NOT a raw RangeError from a DataView read.
+  await assert.rejects(readZipDirectory(new Blob([bytes])), (err: unknown) => {
+    assert.ok(err instanceof Error);
+    assert.match(err.message, /damaged/);
+    assert.equal(err.constructor.name, 'Error', 'a crash shape must not reach the restore path');
+    return true;
+  });
 });
