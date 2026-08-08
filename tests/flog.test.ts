@@ -250,3 +250,79 @@ test('parseFlogLazy: missing data.json is refused with the existing message', as
   const blob = new Blob([zip]);
   await assert.rejects(parseFlogLazy(blob), /data\.json missing/);
 });
+
+// ── 8. The CR-4 reviver's effect, asserted directly on BOTH readers ───────────
+//
+// The pollution test above only checks that Object.prototype stayed clean. That
+// is something JSON.parse already guarantees on its own, so that test would keep
+// passing even if the reviver were deleted — it watches an outcome nothing can
+// break. These assert the observable thing instead: a dangerous key that IS in
+// the file is ABSENT from the parsed result. And they run it through both
+// readers, because after session 114 both share one validator; if a later change
+// gives either its own copy again, one of these two goes red.
+
+function poisonedFlogZip(): Uint8Array<ArrayBuffer> {
+  const json = '{"format":"FirearmLog","version":' + FLOG_VERSION +
+    ',"exportedAt":1,"lastModified":1,"stores":{' +
+    '"firearms":[{"id":"fa-1","__proto__":{"bad":1},"constructor":"x","prototype":"y"}],' +
+    '"__proto__":[],"constructor":[],"prototype":[]},"mediaMeta":[]}';
+  return writeZip([{ name: 'data.json', data: new TextEncoder().encode(json) }]);
+}
+
+test('parseFlog: dangerous keys are stripped from the parsed result, not merely harmless', () => {
+  const snap = parseFlog(poisonedFlogZip());
+  assert.deepEqual(Object.getOwnPropertyNames(snap.stores), ['firearms'],
+    'the three dangerous store names must not survive parsing');
+  const rec = (snap.stores.firearms as Record<string, unknown>[])[0];
+  assert.deepEqual(Object.getOwnPropertyNames(rec), ['id'],
+    'the three dangerous record keys must not survive parsing');
+  assert.equal((Object.prototype as Record<string, unknown>).bad, undefined);
+});
+
+test('parseFlogLazy: strips the same dangerous keys as parseFlog', async () => {
+  const blob = new Blob([poisonedFlogZip()]);
+  const lazy = await parseFlogLazy(blob);
+  assert.deepEqual(Object.getOwnPropertyNames(lazy.stores), ['firearms'],
+    'the lazy reader must refuse the same keys as the eager one');
+  const rec = (lazy.stores.firearms as Record<string, unknown>[])[0];
+  assert.deepEqual(Object.getOwnPropertyNames(rec), ['id']);
+  assert.equal((Object.prototype as Record<string, unknown>).bad, undefined);
+});
+
+// ── 9. The tolerant defaults survive the session-114 extraction ───────────────
+//
+// parseFlog used to inline its own validation and it forgave three omissions:
+// no mediaMeta, no exportedAt, no lastModified. Session 114 moved that code into
+// parseFlogDataJson so both readers share it, and an extraction is exactly the
+// change that quietly drops a `?? []` — after which an older or hand-made file
+// with no mediaMeta stops opening at all. Nothing else pinned these defaults, so
+// this does.
+
+test('parseFlog: a data.json with no mediaMeta / exportedAt / lastModified still opens', () => {
+  const sparse = writeZip([{
+    name: 'data.json',
+    data: new TextEncoder().encode(JSON.stringify({
+      format: FLOG_FORMAT, version: FLOG_VERSION,
+      stores: { firearms: [{ id: 'fa-sparse' }] }
+    }))
+  }]);
+  const back = parseFlog(sparse);
+  assert.deepEqual(back.media, [], 'missing mediaMeta must mean no media, not a crash');
+  assert.equal(back.exportedAt, 0);
+  assert.equal(back.lastModified, 0);
+  assert.deepEqual(back.stores.firearms, [{ id: 'fa-sparse' }]);
+});
+
+test('parseFlogLazy: the same sparse file opens with the same defaults', async () => {
+  const sparse = writeZip([{
+    name: 'data.json',
+    data: new TextEncoder().encode(JSON.stringify({
+      format: FLOG_FORMAT, version: FLOG_VERSION,
+      stores: { firearms: [{ id: 'fa-sparse' }] }
+    }))
+  }]);
+  const lazy = await parseFlogLazy(new Blob([sparse]));
+  assert.equal(lazy.mediaCount, 0);
+  assert.equal(lazy.exportedAt, 0);
+  assert.equal(lazy.lastModified, 0);
+});

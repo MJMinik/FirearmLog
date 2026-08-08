@@ -255,12 +255,16 @@ export async function readZipDirectory(blob: Blob): Promise<ZipDirEntry[]> {
 // the loop; peak memory at any point is one entry's bytes rather than the whole
 // file (readZip's behaviour).
 
-export async function readZipEntry(blob: Blob, entry: ZipDirEntry): Promise<Uint8Array> {
+export async function readZipEntry(blob: Blob, entry: ZipDirEntry): Promise<Uint8Array<ArrayBuffer>> {
   const len = blob.size;
   const bad = (): never => { throw new Error('This data file looks damaged or is not a FirearmLog data file.'); };
   if (entry.dataStart < 0 || entry.dataStart + entry.size > len) bad();
   const buf = await blob.slice(entry.dataStart, entry.dataStart + entry.size).arrayBuffer();
-  const data = new Uint8Array(buf);
+  // A slice's ArrayBuffer is freshly allocated and not shared with the Blob, so
+  // the caller may keep it outright — this is why the lazy reader needs no copy
+  // where parseFlog makes one. Declaring Uint8Array<ArrayBuffer> is what lets
+  // callers hand .buffer onward without a cast the compiler cannot check.
+  const data: Uint8Array<ArrayBuffer> = new Uint8Array(buf);
   if (crc32(data) !== entry.crc) throw new Error(`This data file looks damaged (checksum failed on ${entry.name}).`);
   return data;
 }

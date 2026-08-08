@@ -74,28 +74,16 @@ export function parseFlog(bytes: Uint8Array): Snapshot {
   const dataEntry = entries.find((e) => e.name === 'data.json');
   if (!dataEntry) throw new Error("That file isn't a FirearmLog data file (data.json missing inside).");
 
-  let parsed: unknown;
-  try {
-    // Audit CR-4: strip dangerous keys from an untrusted file so a malicious
-    // backup can't pollute Object.prototype via __proto__/constructor/prototype.
-    parsed = JSON.parse(new TextDecoder().decode(dataEntry.data), (key, value) =>
-      (key === '__proto__' || key === 'constructor' || key === 'prototype') ? undefined : value);
-  } catch {
-    throw new Error('This data file looks damaged (the records inside are unreadable).');
-  }
-  const d = parsed as {
-    format?: unknown; version?: unknown; exportedAt?: unknown; lastModified?: unknown;
-    stores?: Record<string, unknown[]>; mediaMeta?: Record<string, unknown>[];
-  };
-  if (d.format !== FLOG_FORMAT || typeof d.stores !== 'object' || d.stores === null) {
-    throw new Error("That file isn't a FirearmLog data file.");
-  }
-  if (typeof d.version === 'number' && d.version > FLOG_VERSION) {
-    throw new Error('This data file came from a NEWER version of FirearmLog. Update the app on this device, then pull again.');
-  }
+  // Validated by the SAME helper parseFlogLazy uses. It was inline here until
+  // session 114: the lazy reader was added with its own copy, which meant the
+  // version fence and the CR-4 reviver existed twice and a later change to one
+  // would silently spare the other. Two readers of the same untrusted file must
+  // refuse the same files for the same reasons — that is a property, not a
+  // coincidence, so it gets ONE implementation rather than a convention.
+  const d = parseFlogDataJson(dataEntry.data);
 
   const byName = new Map(entries.map((e) => [e.name, e.data]));
-  const media: Media[] = (d.mediaMeta ?? []).map((meta) => {
+  const media: Media[] = d.mediaMeta.map((meta) => {
     const file = String(meta.file ?? '');
     const bytesFor = byName.get(file);
     if (!bytesFor) throw new Error(`This data file looks damaged (missing ${file}).`);
@@ -108,8 +96,8 @@ export function parseFlog(bytes: Uint8Array): Snapshot {
   });
 
   return {
-    exportedAt: typeof d.exportedAt === 'number' ? d.exportedAt : 0,
-    lastModified: typeof d.lastModified === 'number' ? d.lastModified : 0,
+    exportedAt: d.exportedAt,
+    lastModified: d.lastModified,
     stores: d.stores,
     media
   };
@@ -260,7 +248,7 @@ export async function parseFlogLazy(blob: Blob): Promise<LazyFlog> {
       // No extra copy needed (contrast with parseFlog's owned.set(bytesFor)).
       const m = { ...meta } as Record<string, unknown>;
       delete m.file;
-      return { ...(m as unknown as Omit<Media, 'data'>), data: data.buffer as ArrayBuffer };
+      return { ...(m as unknown as Omit<Media, 'data'>), data: data.buffer };
     }
   };
 }
