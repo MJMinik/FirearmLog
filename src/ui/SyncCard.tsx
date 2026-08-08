@@ -61,9 +61,13 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
     try {
       const snapshot = await exportSnapshot();
       const bytes = buildFlog(snapshot);
-      const ab = new ArrayBuffer(bytes.length);
-      new Uint8Array(ab).set(bytes);
-      const blob = new Blob([ab], { type: 'application/octet-stream' });
+      // P-5: bytes is a Uint8Array that owns its whole backing buffer (writeZip
+      // allocates `new Uint8Array(total)`), so Blob can use it directly.
+      // The previous copy — `new ArrayBuffer(bytes.length); new Uint8Array(ab).set(bytes)` —
+      // allocated a second buffer the same size and copied every byte for no reason.
+      // Cast to Uint8Array<ArrayBuffer>: writeZip's `new Uint8Array(total)` always
+      // allocates a plain ArrayBuffer (not SharedArrayBuffer), so this is safe.
+      const blob = new Blob([bytes as Uint8Array<ArrayBuffer>], { type: 'application/octet-stream' });
       const sessions = (snapshot.stores.sessions ?? []).length;
       setStage({
         name: 'save-ready',
