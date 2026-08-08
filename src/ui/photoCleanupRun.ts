@@ -12,7 +12,8 @@
 //    photo; photos not yet reached are untouched, and re-running is safe.
 //  - Ids are scanned first, then each record is read back, read and released
 //    one at a time, so only one photo is held at any point.
-//  - A photo deleted between the scan and its turn is skipped, not a crash.
+//  - A photo deleted between the scan and its turn, or one with no bytes at all,
+//    is skipped — one damaged record cannot abort the pass for everything after it.
 //  - A re-encode that is not smaller is discarded, so nothing is ever made worse.
 import { getOne, putOne, scanMediaImageIds } from '../lib/db.ts';
 import { stampUpdate } from '../lib/stamps.ts';
@@ -34,7 +35,11 @@ export async function runPhotoCleanup(
   for (let i = 0; i < ids.length; i++) {
     onProgress(i, ids.length);
     const m = await getOne<Media>('media', ids[i]);
-    if (!m) continue; // deleted between the scan and its turn — skip safely
+    // Skip anything the run cannot act on rather than dying on it: a record
+    // deleted between the scan and its turn, or one whose bytes are missing.
+    // A damaged record used to abort the whole pass with raw programmer text on
+    // screen, leaving every later photo untouched (audit observation, session 114).
+    if (!m || !m.data) continue;
     const { data, mime } = await shrink(m.data, m.mime || 'image/jpeg');
     if (data.byteLength < m.data.byteLength) {
       savedBytes += m.data.byteLength - data.byteLength;

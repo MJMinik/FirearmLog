@@ -26,8 +26,9 @@ import { join } from 'node:path';
 // Files legitimately allowed to call getAll('media') or getAllMediaWholeStore.
 // db.ts owns its own internals (exportSnapshot legitimately needs every byte).
 // reportLaunch.ts loads the whole bundle for multi-record reports (P-1).
-// PhotoCleanupCard.tsx was removed (P-7 fix): it now uses hasOversizedMedia,
-// scanMediaImageIds, and getOne — the escape hatch is gone from that file.
+// PhotoCleanupCard.tsx was removed (P-7 fix): it imports hasOversizedMedia for
+// its mount probe and hands the run to runPhotoCleanup — the escape hatch is
+// gone from that file.
 const ALLOWED = new Set([
   'src/lib/db.ts',
   'src/ui/reportLaunch.ts',

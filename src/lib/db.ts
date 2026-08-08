@@ -227,8 +227,10 @@ export async function getAll<T>(store: Exclude<StoreName, 'media'>): Promise<T[]
  * The import commit path (P-8) uses scanMediaOwnerIds; the restore path uses
  * scanMediaKeys (primary keys only, no record deserialised at all).
  * localLastModified (P-4) now uses newestMediaStamp (stamp only).
- * PhotoCleanupCard (P-7) now uses hasOversizedMedia + scanMediaImageIds + getOne,
- * fetching and releasing one photo at a time.
+ * The Free Up Space card (P-7) now uses hasOversizedMedia for its mount probe and
+ * delegates the run to runPhotoCleanup (src/ui/photoCleanupRun.ts), which scans
+ * ids and then reads and releases one photo at a time. Naming the card itself
+ * here would be wrong: hasOversizedMedia is the only one of these it imports.
  * exportSnapshot genuinely needs every media record with its bytes to build the
  * .flog file. reportLaunch.ts loads the whole bundle for multi-record reports
  * (P-1): the insurance report loops ALL firearms, so a per-owner cursor would be
@@ -259,8 +261,13 @@ export async function hasOversizedMedia(thresholdBytes: number): Promise<boolean
     req.onsuccess = () => {
       const cursor = req.result;
       if (!cursor || found) { resolve(); return; }
-      const m = cursor.value as { kind?: unknown; data?: { byteLength?: unknown } };
-      if (m.kind === 'image' && typeof m.data?.byteLength === 'number' && m.data.byteLength > thresholdBytes) {
+      const m = cursor.value as { id?: unknown; kind?: unknown; data?: { byteLength?: unknown } };
+      // The id test looks redundant and is not: scanMediaImageIds (what the RUN
+      // actually walks) requires a string id, so without the same test here the
+      // card could announce space to free and then free none. The probe and the
+      // run must answer the same question. Audit finding D, session 114.
+      if (m.kind === 'image' && typeof m.id === 'string'
+          && typeof m.data?.byteLength === 'number' && m.data.byteLength > thresholdBytes) {
         found = true;
         resolve();
         return;
@@ -375,10 +382,16 @@ async function scanStore<T>(store: StoreName, visit: (record: T) => void): Promi
  *
  * THE READ BOUNDARY IS NOT OPTIONAL HERE (audit finding 1, session 114). The
  * getAllMediaWholeStore call this replaced ran every record through
- * normalizeRecord, which fills a missing or non-string ownerId with ''. Reading
- * cursor.value.ownerId raw and skipping anything that isn't a string silently
- * dropped those records from the delete pass, so an orphaned photo could never
- * be cleaned up again. The id comes from cursor.primaryKey, which is the record's
+ * normalizeRecord, so this one must too. Be precise about what that does, because
+ * the imprecise version of this sentence was itself an audit finding: stringFor in
+ * recordShape.ts turns a missing or null value into '', and a number or boolean
+ * into its text, but it leaves an object ALONE — so a badly damaged record can
+ * still hand back an ownerId that is not a string, and this function's return type
+ * is optimistic about that. It is harmless in the safe direction (an object never
+ * matches an owner in the re-write set, so the photo is RETAINED, never deleted),
+ * and it matches what the pre-fix code did. Reading cursor.value.ownerId raw and
+ * skipping anything that wasn't a string was the defect: it silently dropped those
+ * records from the delete pass, so an orphaned photo could never be cleaned up. The id comes from cursor.primaryKey, which is the record's
  * real key whatever its type, so a delete by that key always matches.
  */
 async function scanMediaOwnerIds(): Promise<{ key: IDBValidKey; ownerId: string }[]> {

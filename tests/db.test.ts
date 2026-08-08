@@ -25,6 +25,7 @@ import {
   scanMediaImageIds,
 } from '../src/lib/db.ts';
 import type { DataSet } from '../src/lib/types.ts';
+import { newestStamp } from '../src/lib/flog.ts';
 import type { Snapshot } from '../src/lib/flog.ts';
 
 // Minimal DataSet with every array commitDataSet reads (empty unless overridden).
@@ -714,4 +715,33 @@ test('P-7: hasOversizedMedia is true one byte over the threshold', async () => {
     name: 'plusone.jpg', annotations: [], mime: 'image/jpeg',
     data: new ArrayBuffer(1_001), updatedAt: 1, createdAt: 0 });
   assert.equal(await hasOversizedMedia(1_000), true, 'one byte over the threshold is oversized');
+});
+
+// Audit finding D (second pass, session 114): the Free Up Space card's mount
+// probe and its run pass must answer the same question. The probe used to ignore
+// the id while the run required a string id, so a photo with a numeric id made
+// the card appear promising space to free — and then the run freed none.
+test('P-7: the probe and the id scan agree — a photo the run cannot touch does not raise the card', async () => {
+  await clearAllData();
+  await putOne('media', { id: 77, ownerType: 'firearm', ownerId: 'g1', kind: 'image',
+    name: 'numeric.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(5_000), updatedAt: 1, createdAt: 0 });
+  assert.equal(await hasOversizedMedia(1_000), false, 'probe does not raise the card');
+  assert.equal((await scanMediaImageIds()).length, 0, 'and the run would touch nothing — the two agree');
+});
+
+// Audit finding E (second pass, session 114): newestStamp compared media
+// timestamps without checking the type, while the cursor path checked. So a
+// timestamp stored as TEXT won the comparison in one path and was ignored in the
+// other, and the two functions answering "when did this last change?" disagreed.
+test('audit-E: a timestamp stored as text is ignored by both the backup path and the device path', async () => {
+  await clearAllData();
+  await putOne('media', { id: 'md-text-stamp', ownerType: 'firearm', ownerId: 'g1', kind: 'image',
+    name: 'x.jpg', annotations: [], mime: 'image/jpeg',
+    data: new ArrayBuffer(4), updatedAt: '9999999999', createdAt: 0 });
+  const device = await localLastModified();
+  assert.equal(device, 0, 'the device stamp ignores a non-number');
+  assert.equal(typeof device, 'number', 'and is still a number, not a string');
+  const viaSnapshot = newestStamp({}, [{ updatedAt: '9999999999' } as unknown as { updatedAt: number }]);
+  assert.equal(viaSnapshot, 0, 'the backup path now applies the same rule');
 });

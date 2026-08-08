@@ -143,3 +143,21 @@ test('P-7 run: an empty library is a clean no-op, not an error', async () => {
   const result = await runPhotoCleanup(shrinkBy(0.5), noProgress);
   assert.deepEqual(result, { shrunk: 0, savedBytes: 0 });
 });
+
+// Second audit, session 114: a damaged record used to abort the entire pass.
+// Seeding three photos where the middle one had no bytes killed the run with raw
+// programmer text on screen — the first photo was shrunk, the third never
+// touched, and the user saw a TypeError. One bad record must not cost the rest.
+test('P-7 run: a photo record with no bytes is skipped, and the run continues past it', async () => {
+  await clearAllData();
+  await putOne('media', photo('md-1', 1_000));
+  await putOne('media', { id: 'md-2', ownerType: 'firearm', ownerId: 'g1', kind: 'image',
+    name: 'broken.jpg', annotations: [], mime: 'image/jpeg', updatedAt: 1, createdAt: 0 } as unknown as Media);
+  await putOne('media', photo('md-3', 1_000));
+
+  const result = await runPhotoCleanup(shrinkBy(0.5), noProgress);
+
+  assert.equal(result.shrunk, 2, 'both healthy photos were processed');
+  const third = await getOne<Media>('media', 'md-3');
+  assert.equal(third?.data.byteLength, 500, 'the photo AFTER the damaged one was still reached');
+});

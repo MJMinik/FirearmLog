@@ -17,7 +17,16 @@
 // getAllMediaWholeStore left every one of these tests passing. So the guards now
 // cover BOTH the call sites AND the bodies of the five cursor helpers those call
 // sites depend on. The helper list is asserted to be complete against db.ts, so
-// a sixth helper added tomorrow fails this file until it is guarded too.
+// a seventh helper added tomorrow fails this file until it is guarded too.
+//
+// THE COMPLETENESS CHECK WAS ITSELF TOO NARROW (second audit, same session). It
+// recognised a helper only if it was spelled `async function name()` and opened
+// its transaction as `transaction('media'`. Three ordinary alternatives walked
+// straight past it — `transaction(['media'], …)` (the list form this same file
+// already uses elsewhere), `export const name = async () => {}`, and a function
+// with a type parameter. All three were planted and the whole suite stayed green.
+// The patterns below are deliberately loose for that reason: a guard that only
+// catches one writing style is a guard that catches nothing in a year's time.
 //
 // WHAT THESE GUARDS STILL CANNOT PROVE. They are text checks. A new whole-store
 // load written somewhere they do not look — a brand-new function in db.ts, or a
@@ -58,8 +67,9 @@ function bodyOf(src: string, decl: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// The five cursor helpers. Each one exists to walk the media store one record at
-// a time. If any of them ever calls getAllMediaWholeStore, the whole point of
+// The cursor helpers — the list is checked for completeness below, so no count is
+// written here (a hand-kept number is a fact with no keeper). Each one exists to
+// walk the media store one record at a time. If any of them ever calls getAllMediaWholeStore, the whole point of
 // the P-series work is undone at the root, and every call site inherits it.
 // ---------------------------------------------------------------------------
 const CURSOR_HELPERS = [
@@ -72,7 +82,7 @@ const CURSOR_HELPERS = [
 ];
 
 for (const decl of CURSOR_HELPERS) {
-  const name = decl.replace('export ', '').replace('async function ', '').replace(/\(.*$/, '');
+  const name = decl.match(/(?:async function|const)\s+(\w+)/)?.[1] ?? decl;
   test(`media discipline: ${name} walks the store with a cursor and never loads it whole`, () => {
     const body = bodyOf(DB, decl);
     assert.equal(
@@ -104,15 +114,22 @@ for (const decl of CURSOR_HELPERS) {
 // which is what stops a sixth helper being added next month with no guard.
 // ---------------------------------------------------------------------------
 test('media discipline: every media-store cursor helper in db.ts is guarded above', () => {
-  const declared = DB.split('\n')
-    .filter((l) => /^(export )?async function \w+\(/.test(l))
-    .map((l) => l.trim());
+  // Any top-level function, however it is spelled: `function name(`,
+  // `async function name<T>(`, or `const name = async (`.
+  const DECL_RE = /^(export )?(async function \w+\s*[<(]|const \w+ = (async )?[(<])/;
+  const declared = DB.split('\n').filter((l) => DECL_RE.test(l)).map((l) => l.trim());
+
+  // Any spelling of opening a transaction that includes the media store:
+  // transaction('media', …), transaction(['media'], …), transaction([...STORES, 'media'], …).
+  const MEDIA_TX_RE = /transaction\(\s*(\[[^\]]*)?'media'/;
   const mediaCursorFns = declared.filter((decl) => {
     const body = bodyOf(DB, decl);
-    return body.includes("transaction('media'") && (body.includes('openCursor()') || body.includes('openKeyCursor()'));
+    return MEDIA_TX_RE.test(body) && (body.includes('openCursor(') || body.includes('openKeyCursor('));
   });
-  const guarded = new Set(CURSOR_HELPERS.map((d) => d.replace(/\(.*$/, '')));
-  const unguarded = mediaCursorFns.filter((d) => !guarded.has(d.replace(/\(.*$/, '')));
+
+  const nameOf = (decl: string) => decl.match(/(?:async function|const)\s+(\w+)/)?.[1] ?? '';
+  const guarded = new Set(CURSOR_HELPERS.map(nameOf));
+  const unguarded = mediaCursorFns.map(nameOf).filter((n) => !guarded.has(n));
   assert.deepEqual(
     unguarded,
     [],
