@@ -86,5 +86,26 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    // ─── The browser floor, stated rather than implied ────────────────────────
+    // This is Vite's own default list with ONE change: safari14 becomes
+    // safari15.4. Michael's decision, 9 August 2026, when `structuredClone`
+    // arrived in the backup reader (see the comment at cloneMeta in
+    // src/lib/flog.ts) — it needs Safari 15.4, March 2022, and it is the first
+    // call anywhere in src/ that needs anything newer than Safari 14.
+    //
+    // Be clear about what this line does and does not do, because it is easy to
+    // read it as a fix. It controls SYNTAX only: which language features esbuild
+    // may leave in the bundle rather than rewriting into older forms. It does
+    // NOT add missing APIs — no target setting makes structuredClone exist on a
+    // browser that lacks it. What it does is stop the build claiming support for
+    // a browser we no longer support, and stop the two targets in this project
+    // disagreeing silently: tsconfig says ES2022, but that pass is --noEmit, so
+    // it never constrained the shipped bundle at all.
+    //
+    // Note that nothing checks APIs against this floor. If a future change
+    // reaches for something newer than Safari 15.4, this line will not catch it;
+    // only a person will. Raise the number here in the same change that raises
+    // the need, and say so out loud.
+    target: ['es2020', 'edge88', 'firefox78', 'chrome87', 'safari15.4'],
   },
 });

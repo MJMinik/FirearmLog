@@ -199,17 +199,24 @@ function indexByUniqueName<T>(items: readonly T[], nameOf: (item: T) => string):
 // readers have to treat identically.
 //
 // BROWSER FLOOR, and it is a real one rather than a footnote. structuredClone
-// needs Safari 15.4 (March 2022). vite.config.ts sets no `build.target`, so the
-// shipped bundle uses Vite's default, which still lists safari14 — and the
-// tsconfig `target: ES2022` does not constrain it, because that pass is
-// --noEmit. This is the FIRST call in src/ that needs anything newer than
-// Safari 14 (checked: no other post-14 API appears anywhere in src/), so it
-// moves the app's real floor. Nothing regresses today, because parseFlogLazy
-// has no callers yet — pass 2 wires it up. Before it does, either set
-// build.target to match this floor deliberately, or replace this with a hand
-// written deep copy and keep Safari 14. That is a decision about who can run
-// the app, so it is Michael's, and it is written here so it cannot be made by
-// accident.
+// needs Safari 15.4 (March 2022), and it is the FIRST call anywhere in src/
+// that needs anything newer than Safari 14 (checked: no other post-14 API
+// appears in src/), so it moves the app's real floor.
+//
+// DECIDED by Michael on 9 August 2026 (session 117), rather than left to
+// happen: the floor moves, and vite.config.ts now says so in `build.target`.
+// Before that it said safari14 by default while the tsconfig said ES2022, and
+// the tsconfig never constrained the bundle at all because that pass is
+// --noEmit. Two targets disagreeing, with neither describing what shipped.
+// The alternative he weighed and turned down was a hand-written deep copy
+// keeping Safari 14; the browser's own implementation won over ten lines we
+// would have to keep correct ourselves.
+//
+// Setting that target does NOT make this call work on an older browser — no
+// target setting adds a missing API. It records the floor so nothing claims
+// support we no longer provide. Nothing checks APIs against it either, so if a
+// future change needs something newer than Safari 15.4, raise the number there
+// in the same change and say so out loud.
 //
 // One honest limit on the sentence above: structuredClone is not total. It
 // throws on functions and on structures nested a few thousand deep, where a
