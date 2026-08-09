@@ -84,6 +84,7 @@ export function parsePractiScore(text: string): PsMatch {
   return best;
 }
 
+
 /**
  * Which of two readings of the same text is the better one.
  *
@@ -129,7 +130,10 @@ function parseWith(text: string, delim: string): PsMatch {
     if (cells.length >= 2 && isHeaderRow(cells)) { headerIdx = i; break; }
   }
   if (headerIdx === -1) {
-    throw new Error("I couldn't find a results table in that. It needs a row of column headings like Place, Name, Div — copy the whole Combined results page from PractiScore and paste it again.");
+    // Names what is actually required rather than three example words: a
+    // placing column is the load-bearing one (see isHeaderRow), and saying so
+    // is what lets a reader tell whether their page can ever satisfy it.
+    throw new Error("I couldn't find a results table in that. It needs a heading row with a placing column (Place, Pos or Finish) next to names and divisions. On PractiScore that is the Combined results page, under Old style results.");
   }
 
   // ---- Metadata block (optional) ----

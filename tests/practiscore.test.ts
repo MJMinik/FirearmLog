@@ -537,3 +537,20 @@ test('AUDIT-16b: the shape test still rejects a row counter and page text', () =
     'a value with no letters, or with too long a prefix, is not believed',
   );
 });
+
+
+// ── The generic refusal names the column that actually decides ───────────────
+// It used to say "column headings like Place, Name, Div", which reads as three
+// equal examples. Only the placing column is load-bearing (see isHeaderRow), and
+// a reader cannot tell whether their page can ever satisfy the requirement
+// unless the message says which one it is. Michael's Steel Challenge page has no
+// placing column and never will; he was told to copy it again.
+test('the generic refusal names the column that is actually load-bearing', () => {
+  assert.throws(() => parsePractiScore('just some words with no table in them'), (err: unknown) => {
+    const msg = String((err as Error).message);
+    assert.match(msg, /placing column/i, 'it does not say WHICH column decides');
+    assert.match(msg, /Pos|Finish/, 'it names only one of the three accepted headings');
+    assert.match(msg, /PractiScore/, 'it no longer says where to find the page');
+    return true;
+  });
+});

@@ -18,7 +18,7 @@ import { findOwnRows, normaliseStoredNames, type NameMatch } from '../lib/shoote
 import {
   parsePractiScore, countInDivision, SAMPLE_PRACTISCORE_CSV, type PsMatch
 } from '../lib/practiscore.ts';
-import { looksLikeNewStyleResults } from '../lib/practiscoreDetect.ts';
+import { looksLikeNewStyleResults, looksLikeSteelChallengeResults } from '../lib/practiscoreDetect.ts';
 import { FormProblem } from './FormProblem.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
@@ -96,7 +96,15 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       setMatchDate(m.date);
     } catch (e) {
       setParsed(null);
-      if (looksLikeNewStyleResults(text)) {
+      // Steel is checked FIRST. A Steel Challenge page trips the new-style
+      // detector's place-hyphen family on its own, so asking second would send a
+      // Steel shooter after the old-style page he is already looking at.
+      // The two messages ask for different things, and only one of them is
+      // possible: the new-style one says "copy a different page", this one says
+      // "you copied the right page and we cannot read it yet."
+      if (looksLikeSteelChallengeResults(text)) {
+        setProblem('This looks like a Steel Challenge results page. Reading those is not built yet, so nothing was imported. You can still log a Steel Challenge match by hand.');
+      } else if (looksLikeNewStyleResults(text)) {
         setProblem("That looks like PractiScore’s new results page, which doesn’t carry the table this import reads. Nothing was imported. On your match page, find Old style results and tap Html Results, then tap Combined at the right-hand end of the top Overall row, and copy that whole page — the numbered steps below walk through it.");
       } else {
         setProblem(e instanceof Error ? e.message : 'Could not read that.');

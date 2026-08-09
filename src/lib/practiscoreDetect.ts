@@ -99,3 +99,83 @@ export function looksLikeNewStyleResults(text: string): boolean {
 
   return signals >= 2;
 }
+
+// ─── Detector for Steel Challenge results pages ───────────────────────────────
+//
+// Michael pasted his own Steel Challenge Combined results on 9 August 2026 and
+// got the parser's generic refusal, which told him to find a heading row "like
+// Place, Name, Div". A Steel Challenge results page has no Place column at all:
+// PractiScore fuses the placing into the name cell ("1-Jarrett z-Williams"), so
+// the parser's header test can never fire. He had done exactly what he was told
+// and there was nothing else to try. An instruction naming something the reader
+// cannot do is worse than saying nothing.
+//
+// Note what this is NOT. The new-style detector above says "you copied the
+// wrong page, here is the right one." This one says "you copied the right page
+// and we cannot read it yet." Two different messages, because they ask the
+// reader to do two different things, and only one of them is possible.
+//
+// WHY IT MUST BE CHECKED FIRST. A Steel Challenge OLD-style page trips family B
+// above on its own (place-hyphen-name is how Steel renders every row), so a
+// Steel paste that happens to trip one more family would otherwise be sent off
+// after an old-style page it is already looking at.
+//
+// SIGNAL TAXONOMY — two independent families, same rule as above: the official
+// stage codes, or two or more stage names. Two names rather than one because a
+// USPSA match may well have a stage called Showdown; it will not have two of
+// these.
+//
+// Family D — SCSA stage codes. The eight official stages carry the codes SC-101
+//   to SC-108 and PractiScore prints them in the column headings
+//   ("1: 5 To Go (SC-101)"). Nothing else in the sport uses that form, so one
+//   hit is enough on its own.
+//
+// Family E — Stage names, two or more. These are PRACTISCORE'S spellings, not
+//   ours, and that is why they are written here rather than derived from
+//   STEEL_STAGES in competition.ts: our stage is "Pendulum" and the results
+//   page says "The Pendulum". Coupling the two would let a cosmetic rename over
+//   there quietly stop this working.
+//
+// FALSE-POSITIVE CONSTRAINT: a USPSA or IDPA results table contains no SC-1xx
+// code and no Steel stage name, so neither family fires. Empty, whitespace-only
+// and prose inputs return false. This runs only after the parser has already
+// refused the text, so it cannot change what a successful import writes.
+
+/** SCSA stage codes as PractiScore prints them in the column headings. */
+const STEEL_STAGE_CODE_RE = /\bSC-10[1-8]\b/i;
+
+/**
+ * Steel Challenge stage names, spelled as the results page spells them. Grouped
+ * one array per STAGE, so alternate spellings of a single stage count once
+ * between them — otherwise a page carrying both spellings of Smoke & Hope would
+ * reach two signals on the strength of one stage.
+ */
+const STEEL_STAGE_NAMES: readonly (readonly string[])[] = [
+  ['5 to go'],
+  ['showdown'],
+  ['smoke & hope', 'smoke and hope'],
+  ['outer limits'],
+  ['accelerator'],
+  ['pendulum'],
+  ['speed option'],
+  ['roundabout'],
+];
+
+/**
+ * Returns true when the text carries the SCSA stage codes, or two or more Steel
+ * Challenge stage names.
+ *
+ * Pure function — reads the string only, imports nothing from the parser.
+ * Safe to call on any input including empty string.
+ */
+export function looksLikeSteelChallengeResults(text: string): boolean {
+  if (!text || !text.trim()) return false;
+  if (STEEL_STAGE_CODE_RE.test(text)) return true;
+  const lower = text.toLowerCase();
+  let named = 0;
+  for (const spellings of STEEL_STAGE_NAMES) {
+    if (spellings.some((s) => lower.includes(s))) named++;
+    if (named >= 2) return true;
+  }
+  return false;
+}
