@@ -48,24 +48,111 @@ export function newestStamp(stores: Record<string, unknown[]>, media: { updatedA
   return newest;
 }
 
-export function buildFlog(snapshot: Snapshot): Uint8Array<ArrayBuffer> {
-  const mediaMeta = snapshot.media.map((m) => {
-    const meta = { ...m } as Record<string, unknown>;
+// ─── One name, computed once, used in both places it is written ───────────────
+// Every photo's name goes into a .flog TWICE: as the ZIP entry name, which
+// travels as raw UTF-8 bytes, and as meta.file inside data.json, which travels
+// as a JSON string. Both writers used to interpolate `media/${id}` separately in
+// each place — one string derived twice — and the two paths do not survive the
+// same input. A lone surrogate (an unpaired half of a two-part character, which
+// JavaScript allows inside a string) passes through JSON untouched but becomes
+// U+FFFD, the replacement character, the moment it is encoded as UTF-8 bytes.
+// The entry name and meta.file then name different things, and the reader can no
+// longer find the photo: the save reports success, and the damage is discovered
+// at restore, possibly months later, when the original is long gone.
+//
+// So the name is computed ONCE, here, through the same encode/decode trip the
+// ZIP writer performs, and the single result is used for both. Whatever that
+// trip does to an id, the two copies now agree by construction rather than by
+// two call sites remembering to do the same thing.
+//
+// The trip is NOT idempotent in general, and the reason it is safe here is worth
+// stating exactly: TextDecoder strips a byte-order mark sitting at position 0, so
+// a string that starts with one loses a character on every pass. The constant
+// `media/` prefix means position 0 is always `m`, so no BOM can ever be stripped
+// and a second pass is a no-op. Verified across all 65,536 single code units
+// with the prefix, all 4.2 million surrogate-range pairs, and 400,000 random ids.
+//
+// It also refuses two records whose names collide, because both readers refuse
+// duplicate entry names (see indexByUniqueName below). Without that check the
+// writer could emit a file its own reader will not open. Note that DISTINCT ids
+// can collide here: two different lone surrogates both encode to U+FFFD.
+function mediaEntryNames(ids: readonly string[]): string[] {
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+  const names: string[] = [];
+  const idForName = new Map<string, string>();
+  for (const id of ids) {
+    const name = decoder.decode(encoder.encode(`media/${id}`));
+    const firstId = idForName.get(name);
+    if (firstId !== undefined) {
+      // Naming the ids is the whole point: there is no screen that lists them,
+      // so without them a library that acquires a collision can never be saved
+      // again and there is nowhere to look for the cause.
+      throw new Error(
+        `Two photos in this library share the same id, so it can't be saved to one file. Nothing was saved. (${JSON.stringify(firstId)} and ${JSON.stringify(id)} are both stored as ${JSON.stringify(name)}.)`
+      );
+    }
+    idForName.set(name, id);
+    names.push(name);
+  }
+  return names;
+}
+
+// ─── One description of the file, used by both writers ────────────────────────
+// buildFlog and buildFlogBlob must produce byte-identical archives: same names,
+// same data.json down to the key order. That was true, but only because two
+// separate implementations happened to agree, and a comment said so. Every
+// audit round on this branch found the same shape of defect — two code paths
+// that have to agree about one thing, and one of them drifting — so the two
+// writers now DERIVE the shared part instead of each building it.
+//
+// Everything that decides what the archive says lives here. What is left in the
+// writers is only how the photo bytes are handed over: all at once for the
+// in-memory writer, one at a time for the streaming one. That difference is the
+// entire reason both exist; nothing else may differ, and now nothing else can.
+interface FlogPlan {
+  /** ZIP entry names for the media, in order — the same strings data.json records. */
+  readonly mediaNames: readonly string[];
+  /** data.json exactly as it goes into the archive. */
+  readonly dataJson: Uint8Array<ArrayBuffer>;
+}
+
+function planFlog(parts: {
+  exportedAt: number;
+  lastModified: number;
+  stores: Record<string, unknown[]>;
+  media: readonly { id: string; meta: Record<string, unknown> }[];
+}): FlogPlan {
+  const mediaNames = mediaEntryNames(parts.media.map((m) => m.id));
+  const mediaMeta = parts.media.map((m, i) => {
+    const meta = { ...m.meta } as Record<string, unknown>;
     delete meta.data;
-    meta.file = `media/${m.id}`;
+    meta.file = mediaNames[i];
     return meta;
   });
   const dataJson = {
     format: FLOG_FORMAT,
     version: FLOG_VERSION,
+    exportedAt: parts.exportedAt,
+    lastModified: parts.lastModified,
+    stores: parts.stores,
+    mediaMeta
+  };
+  return { mediaNames, dataJson: new TextEncoder().encode(JSON.stringify(dataJson)) };
+}
+
+export function buildFlog(snapshot: Snapshot): Uint8Array<ArrayBuffer> {
+  const plan = planFlog({
     exportedAt: snapshot.exportedAt,
     lastModified: snapshot.lastModified,
     stores: snapshot.stores,
-    mediaMeta
-  };
+    // The Media record IS its own metadata here; planFlog copies it and drops
+    // the bytes, exactly as this function used to do inline.
+    media: snapshot.media.map((m) => ({ id: m.id, meta: m as unknown as Record<string, unknown> })),
+  });
   return writeZip([
-    { name: 'data.json', data: new TextEncoder().encode(JSON.stringify(dataJson)) },
-    ...snapshot.media.map((m) => ({ name: `media/${m.id}`, data: new Uint8Array(m.data) }))
+    { name: 'data.json', data: plan.dataJson },
+    ...snapshot.media.map((m, i) => ({ name: String(plan.mediaNames[i]), data: new Uint8Array(m.data) }))
   ], new Date(snapshot.exportedAt));
 }
 
@@ -93,6 +180,46 @@ function indexByUniqueName<T>(items: readonly T[], nameOf: (item: T) => string):
     byName.set(name, item);
   }
   return byName;
+}
+
+// ─── The copy LazyFlog hands out ──────────────────────────────────────────────
+// LazyFlog keeps its parsed mediaMeta alive for the whole restore, because
+// readMedia(i) reads meta.file out of it on every call. Handing callers a
+// shallow { ...meta } meant a caller writing to a NESTED field wrote into the
+// reader's own state, and two readMedia(0) calls came back sharing it.
+//
+// structuredClone, deliberately, and NOT a JSON round trip: JSON cannot
+// represent -0 or ±Infinity, so a data.json holding "rot": -0 would read back as
+// -0 from parseFlog and 0 from parseFlogLazy, and "w": 1e999 as Infinity from one
+// and null from the other, with neither reader raising anything. That is exactly
+// the two-readers-disagree defect rounds 1-3 chased, one layer down and
+// introduced by the fix for it. Our own writer cannot produce either value
+// (JSON.stringify flattens them on the way out), so this only bites on a file
+// crafted or edited outside the app — which is precisely the kind of file both
+// readers have to treat identically.
+//
+// BROWSER FLOOR, and it is a real one rather than a footnote. structuredClone
+// needs Safari 15.4 (March 2022). vite.config.ts sets no `build.target`, so the
+// shipped bundle uses Vite's default, which still lists safari14 — and the
+// tsconfig `target: ES2022` does not constrain it, because that pass is
+// --noEmit. This is the FIRST call in src/ that needs anything newer than
+// Safari 14 (checked: no other post-14 API appears anywhere in src/), so it
+// moves the app's real floor. Nothing regresses today, because parseFlogLazy
+// has no callers yet — pass 2 wires it up. Before it does, either set
+// build.target to match this floor deliberately, or replace this with a hand
+// written deep copy and keep Safari 14. That is a decision about who can run
+// the app, so it is Michael's, and it is written here so it cannot be made by
+// accident.
+//
+// One honest limit on the sentence above: structuredClone is not total. It
+// throws on functions and on structures nested a few thousand deep, where a
+// spread would not. Neither can reach here — the input is always JSON.parse
+// output, and JSON.parse with our reviver overflows on deeply nested input
+// before this function is ever called (measured: both readers refuse together).
+function cloneMeta(meta: Record<string, unknown>): Record<string, unknown> {
+  const copy = structuredClone(meta);
+  delete copy.file;
+  return copy;
 }
 
 export function parseFlog(bytes: Uint8Array): Snapshot {
@@ -148,30 +275,16 @@ export async function buildFlogBlob(parts: {
   stores: Record<string, unknown[]>;
   media: FlogMediaSource[];
 }): Promise<Blob> {
-  const mediaMeta = parts.media.map((m) => {
-    const meta = { ...m.meta } as Record<string, unknown>;
-    delete meta.data;
-    meta.file = `media/${m.id}`;
-    return meta;
-  });
-  const dataJson = {
-    format: FLOG_FORMAT,
-    version: FLOG_VERSION,
-    exportedAt: parts.exportedAt,
-    lastModified: parts.lastModified,
-    stores: parts.stores,
-    mediaMeta
-  };
-  const dataJsonBytes = new TextEncoder().encode(JSON.stringify(dataJson));
+  const plan = planFlog(parts);
   const sources: import('./zip.ts').ZipSource[] = [
-    { name: 'data.json', open: async () => dataJsonBytes },
+    { name: 'data.json', open: async () => plan.dataJson },
     // Call through m rather than passing m.open across: a FlogMediaSource is
     // free to be written as an object literal with a method that uses `this`
     // (the natural shape when it closes over a record), and handing the bare
     // function reference to the zip writer would detach it and call it with the
     // wrong receiver. The failure is not a type error — open() returns
     // undefined and the first sign of trouble is a crash inside crc32.
-    ...parts.media.map((m) => ({ name: `media/${m.id}`, open: () => m.open() }))
+    ...parts.media.map((m, i) => ({ name: String(plan.mediaNames[i]), open: () => m.open() }))
   ];
   return writeZipBlob(sources, new Date(parts.exportedAt));
 }
@@ -297,11 +410,7 @@ export async function parseFlogLazy(blob: Blob): Promise<LazyFlog> {
     stores,
     mediaCount: mediaMeta.length,
     mediaBytes,
-    mediaMeta: mediaMeta.map((meta) => {
-      const copy = { ...meta };
-      delete copy.file;
-      return copy;
-    }),
+    mediaMeta: mediaMeta.map((meta) => cloneMeta(meta)),
     async readMedia(index: number): Promise<Media> {
       const meta = mediaMeta[index];
       if (!meta) throw new Error(`readMedia: index ${index} out of range`);
@@ -312,8 +421,7 @@ export async function parseFlogLazy(blob: Blob): Promise<LazyFlog> {
       // data.buffer is the freshly-sliced ArrayBuffer from readZipEntry —
       // it is not shared with the Blob, so returning it directly is safe.
       // No extra copy needed (contrast with parseFlog's owned.set(bytesFor)).
-      const m = { ...meta } as Record<string, unknown>;
-      delete m.file;
+      const m = cloneMeta(meta);
       return { ...(m as unknown as Omit<Media, 'data'>), data: data.buffer };
     }
   };

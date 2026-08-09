@@ -33,16 +33,37 @@ function dosDateTime(d: Date): { time: number; date: number } {
 // lets callers hand these bytes straight to a Blob with no cast — a cast is a
 // promise the compiler cannot check, and this removes the need for one.
 // ─── Format limits ────────────────────────────────────────────────────────────
-// A plain ZIP records entry offsets and sizes in 32 bits and the entry count in
-// 16. Exceed either and the field WRAPS — it does not error. Verified: writing
-// 65,536 entries stores a count of 0, and readZip then reads that file back as
-// an empty archive with no complaint. On a backup file with no server copy, a
-// save that reports success and restores as nothing is the worst failure shape
-// available, so both writers refuse rather than wrap. (ZIP64 lifts these limits
-// and is the real answer if a logbook ever approaches them; refusing loudly is
-// what buys the time to add it.)
+// A plain ZIP records entry offsets and sizes in 32 bits, and BOTH the entry
+// count and each entry's name length in 16. Exceed any of them and the field
+// WRAPS — it does not error. Verified: writing 65,536 entries stores a count of
+// 0, and readZip then reads that file back as an empty archive with no
+// complaint. On a backup file with no server copy, a save that reports success
+// and restores as nothing is the worst failure shape available, so both writers
+// refuse rather than wrap. (ZIP64 lifts the count and offset limits and is the
+// real answer if a logbook ever approaches them; refusing loudly is what buys
+// the time to add it. The name limit is not a ZIP64 matter — no real name comes
+// near it.)
+//
+// THE NAME CHECK WAS MISSING UNTIL SESSION 117, and this comment claimed all of
+// them were covered while covering two. An entry name over 65,535 BYTES — about
+// 65,500 plain characters, or 16,000 emoji — wrote a header whose name-length
+// field had wrapped, and the archive became unreadable: not that one photo,
+// every session, gun and note in the file. The writer reported success and the
+// owner found out at restore. Names that long do not come from this app, which
+// generates short ids — but parseFlog takes ids VERBATIM from a file the user
+// may have been handed by anyone, and the next backup writes them out again, so
+// one foreign file could silently poison every backup taken after it.
 const ZIP_MAX_ENTRIES = 0xFFFF;
 const ZIP_MAX_OFFSET = 0xFFFFFFFF;
+const ZIP_MAX_NAME_BYTES = 0xFFFF;
+
+// Checked in BYTES, not characters: the header field counts encoded bytes, and
+// a single character can encode to four of them.
+function checkZipEntryName(encodedName: Uint8Array, name: string): void {
+  if (encodedName.length > ZIP_MAX_NAME_BYTES) {
+    throw new Error(`One item in this logbook has a name too long to store in a backup file (${encodedName.length.toLocaleString()} bytes; the limit is 65,535). Nothing was saved. The name starts: ${JSON.stringify(name.slice(0, 60))}`);
+  }
+}
 
 function checkZipEntryCount(entryCount: number): void {
   if (entryCount > ZIP_MAX_ENTRIES) {
@@ -72,6 +93,7 @@ export function writeZip(entries: ZipEntry[], when: Date = new Date()): Uint8Arr
 
   for (const e of entries) {
     const name = te.encode(e.name);
+    checkZipEntryName(name, e.name);
     const crc = crc32(e.data);
 
     const local = new Uint8Array(30 + name.length);
@@ -158,6 +180,7 @@ export async function writeZipBlob(sources: ZipSource[], when: Date = new Date()
 
   for (const src of sources) {
     const name = te.encode(src.name);
+    checkZipEntryName(name, src.name);
     const bytes = await src.open();
     const crc = crc32(bytes);
 

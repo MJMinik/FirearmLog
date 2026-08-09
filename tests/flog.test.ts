@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { buildFlog, newestStamp, parseFlog, FLOG_FORMAT, FLOG_VERSION } from '../src/lib/flog.ts';
 import type { Snapshot } from '../src/lib/flog.ts';
-import { writeZip } from '../src/lib/zip.ts';
+import { writeZip, readZip } from '../src/lib/zip.ts';
 import type { Media } from '../src/lib/types.ts';
 
 function sampleSnapshot(): Snapshot {
@@ -473,4 +473,286 @@ test('LazyFlog.mediaMeta hands out copies with the internal file key stripped', 
   (lazy.mediaMeta[0] as Record<string, unknown>).file = 'media/does-not-exist';
   const back = await lazy.readMedia(0);
   assert.deepEqual([...new Uint8Array(back.data)], [...new Uint8Array(s.media[0].data)]);
+});
+
+// ── 13. One name, computed once — and one deep copy ──────────────────────────
+//
+// Session 114's fourth audit round, rebuilt at session 117. Two writers were
+// each deriving a photo's name TWICE: once for the ZIP entry (raw UTF-8 bytes)
+// and once for meta.file inside data.json (a JSON string). Those two paths do
+// not survive the same input, so the file could name the same photo two
+// different ways and become unreadable — with the save reporting success and the
+// damage surfacing at restore, months later.
+
+const SURROGATE_ID = 'md-\uD800-1';
+
+function snapshotWithMediaIds(ids: string[]): Snapshot {
+  const media: Media[] = ids.map((id, i) => ({
+    id, createdAt: 1000, updatedAt: 2000,
+    ownerType: 'firearm', ownerId: 'fa-1', kind: 'image',
+    name: `Photo ${i}`, annotations: [],
+    mime: 'image/jpeg', data: new Uint8Array([i, i + 1, i + 2]).buffer,
+  }));
+  return { exportedAt: 10000, lastModified: 9000, stores: { firearms: [] }, media };
+}
+
+test('a photo id holding a lone surrogate still produces a READABLE backup (buildFlog)', () => {
+  // A lone surrogate survives JSON intact but becomes U+FFFD once encoded as
+  // UTF-8 bytes. Before the fix the entry was named media/md-<U+FFFD>-1 while
+  // meta.file still said media/md-<D800>-1, so parseFlog refused its own
+  // writer's file with "missing media/md-<D800>-1" — at restore, not at save.
+  const s = snapshotWithMediaIds([SURROGATE_ID]);
+  const bytes = buildFlog(s);
+  const back = parseFlog(bytes);
+  assert.equal(back.media.length, 1);
+  assert.deepEqual([...new Uint8Array(back.media[0].data)], [0, 1, 2]);
+});
+
+test('a photo id holding a lone surrogate still produces a READABLE backup (buildFlogBlob)', async () => {
+  const s = snapshotWithMediaIds([SURROGATE_ID]);
+  const blob = await buildFlogBlob({
+    exportedAt: s.exportedAt, lastModified: s.lastModified,
+    stores: s.stores, media: toMediaSources(s.media),
+  });
+  const lazy = await parseFlogLazy(blob);
+  assert.equal(lazy.mediaCount, 1);
+  assert.deepEqual([...new Uint8Array((await lazy.readMedia(0)).data)], [0, 1, 2]);
+  // And the streaming writer must agree with the eager one byte for byte, which
+  // is the property that stops the two ever naming a photo differently.
+  assert.deepEqual([...new Uint8Array(await blob.arrayBuffer())], [...buildFlog(s)]);
+});
+
+test('neither writer emits two entries with one name — the repeated-id case', async () => {
+  const s = snapshotWithMediaIds(['md-same', 'md-same']);
+  assert.throws(() => buildFlog(s), /share the same id/);
+  await assert.rejects(buildFlogBlob({
+    exportedAt: s.exportedAt, lastModified: s.lastModified,
+    stores: s.stores, media: toMediaSources(s.media),
+  }), /share the same id/);
+});
+
+test('neither writer emits two entries with one name — two ids that ENCODE to one', async () => {
+  // Distinct ids, one resulting name: two different lone surrogates both become
+  // U+FFFD. indexByUniqueName refuses duplicate entry names in both readers, so
+  // without this check a writer could emit a file its own reader will not open.
+  const s = snapshotWithMediaIds(['md-\uD800-x', 'md-\uDC00-x']);
+  assert.throws(() => buildFlog(s), /share the same id/);
+  await assert.rejects(buildFlogBlob({
+    exportedAt: s.exportedAt, lastModified: s.lastModified,
+    stores: s.stores, media: toMediaSources(s.media),
+  }), /share the same id/);
+});
+
+test('the collision message names both ids and the name they collide on', () => {
+  // Round 5, finding 3. There is no screen anywhere that lists media ids, so a
+  // message that says only "two photos share an id" leaves a library that can
+  // never be saved again and nothing to look at. Name them.
+  const s = snapshotWithMediaIds(['md-\uD800-x', 'md-\uDC00-x']);
+  assert.throws(() => buildFlog(s), (err: unknown) => {
+    const msg = String((err as Error).message);
+    assert.match(msg, /md-\\ud800-x/i, 'the first id is not in the message');
+    assert.match(msg, /md-\\udc00-x/i, 'the second id is not in the message');
+    assert.match(msg, /media\/md-\uFFFD-x/, 'the colliding name is not in the message');
+    assert.match(msg, /Nothing was saved/, 'the message must say nothing was written');
+    return true;
+  });
+});
+
+test('ordinary ids round-trip unchanged, and are written to disk verbatim', async () => {
+  const s = snapshotWithMediaIds(['md-fa-1-0', 'md-se-2-1', 'md-fa-1-1']);
+  const back = parseFlog(buildFlog(s));
+  assert.deepEqual(back.media.map((m) => m.id), ['md-fa-1-0', 'md-se-2-1', 'md-fa-1-1']);
+  const lazy = await parseFlogLazy(new Blob([buildFlog(s)]));
+  assert.equal(lazy.mediaCount, 3);
+  assert.deepEqual([...new Uint8Array((await lazy.readMedia(2)).data)], [2, 3, 4]);
+  // Read the names back off the archive rather than asking our own reader what
+  // it thinks they mean: every other assertion here would still pass if the
+  // helper quietly prefixed or mangled every name, because writer and reader
+  // would agree with each other about the wrong thing.
+  assert.deepEqual(readZip(buildFlog(s)).map((e) => e.name),
+    ['data.json', 'media/md-fa-1-0', 'media/md-se-2-1', 'media/md-fa-1-1']);
+});
+
+// ── 14. The copy LazyFlog hands out is DEEP, and it does not edit the numbers ──
+
+function flogWithHandCraftedMeta(metaJson: string): Uint8Array<ArrayBuffer> {
+  const json = `{"format":"${FLOG_FORMAT}","version":${FLOG_VERSION},"exportedAt":1,` +
+    `"lastModified":1,"stores":{},"mediaMeta":[${metaJson}]}`;
+  return writeZip([
+    { name: 'data.json', data: new TextEncoder().encode(json) },
+    { name: 'media/md-1', data: new Uint8Array([7, 7, 7]) },
+  ]);
+}
+
+test('LazyFlog copies are deep — editing a nested field does not reach the reader', async () => {
+  const bytes = flogWithHandCraftedMeta(
+    '{"id":"md-1","file":"media/md-1","kind":"image","createdAt":1,"updatedAt":1,' +
+    '"ownerType":"firearm","ownerId":"fa-1","name":"P","mime":"image/jpeg",' +
+    '"annotations":[],"crop":{"x":1,"y":2}}');
+  const lazy = await parseFlogLazy(new Blob([bytes]));
+  const first = await lazy.readMedia(0);
+  (first as unknown as { crop: { x: number } }).crop.x = 999;
+  const second = await lazy.readMedia(0);
+  assert.equal((second as unknown as { crop: { x: number } }).crop.x, 1,
+    'a caller editing a nested field edited the reader\'s own retained state');
+});
+
+test('the mediaMeta LIST is deep too, not just what readMedia returns', async () => {
+  // These are two separate copies made in two places, and an earlier version of
+  // this section only proved one of them. Writing to the list and then reading
+  // through readMedia is the only path that can tell them apart: a shallow list
+  // copy shares its nested objects with the reader's retained state, so the edit
+  // comes back out of readMedia as if it were what the file said.
+  const bytes = flogWithHandCraftedMeta(
+    '{"id":"md-1","file":"media/md-1","kind":"image","createdAt":1,"updatedAt":1,' +
+    '"ownerType":"firearm","ownerId":"fa-1","name":"P","mime":"image/jpeg",' +
+    '"annotations":[],"crop":{"x":1,"y":2}}');
+  const lazy = await parseFlogLazy(new Blob([bytes]));
+  (lazy.mediaMeta[0] as { crop: { x: number } }).crop.x = 999;
+  const back = await lazy.readMedia(0) as unknown as { crop: { x: number } };
+  assert.equal(back.crop.x, 1,
+    'editing the handed-out list changed what readMedia reports the file contains');
+});
+
+test('the deep copy does not change the numbers — the two readers still agree', async () => {
+  // Round 5, finding 1. The first version of this copy used
+  // JSON.parse(JSON.stringify(x)), which cannot represent -0 or Infinity: the
+  // eager reader returned -0 and Infinity, the lazy one 0 and null, and neither
+  // raised a thing. That is the two-readers-disagree defect the whole branch
+  // exists to close, reintroduced one layer down by the fix for it.
+  const bytes = flogWithHandCraftedMeta(
+    '{"id":"md-1","file":"media/md-1","kind":"image","createdAt":1,"updatedAt":1,' +
+    '"ownerType":"firearm","ownerId":"fa-1","name":"P","mime":"image/jpeg",' +
+    '"annotations":[],"rot":-0,"w":1e999}');
+  const eager = parseFlog(bytes).media[0] as unknown as Record<string, unknown>;
+  const lazy = await parseFlogLazy(new Blob([bytes]));
+  const viaLazy = await lazy.readMedia(0) as unknown as Record<string, unknown>;
+
+  assert.ok(Object.is(eager.rot, -0), 'the eager reader should give back -0');
+  assert.ok(Object.is(viaLazy.rot, -0), 'the lazy reader flattened -0 to 0');
+  assert.equal(eager.w, Infinity);
+  assert.equal(viaLazy.w, Infinity, 'the lazy reader turned Infinity into null');
+  assert.ok(Object.is(lazy.mediaMeta[0].rot, -0));
+  assert.equal(lazy.mediaMeta[0].w, Infinity);
+});
+
+// ── 15. Golden bytes — something outside the code watches the wire format ─────
+//
+// Round 5, finding 4: the auditor appended '!GRATUITOUS' to every media entry
+// name and the entire suite still passed, because the writer and the reader
+// agree with each other. Every test above asks our own reader what our own
+// writer meant, so none of them can see the file's actual shape change.
+//
+// This one pins the bytes themselves. It is the only test here that fails when
+// the .flog wire format changes, and that is its whole job.
+//
+// WHEN IT GOES RED: decide which of the two things happened. If the format
+// changed by ACCIDENT, the test has done its work — fix the writer. If it
+// changed ON PURPOSE, then old files must still open, so bump FLOG_VERSION if
+// readers can no longer be sure (see the fence at the top of flog.ts), confirm
+// a file written by the PREVIOUS version still parses, and only then update
+// GOLDEN_FLOG_B64 to the new bytes. Never update the constant first; updating
+// it is the last step, after the compatibility question has an answer.
+
+function goldenSnapshot(): Snapshot {
+  const media: Media[] = [{
+    id: 'md-golden-1', createdAt: 1000, updatedAt: 2000,
+    ownerType: 'firearm', ownerId: 'fa-1', kind: 'image',
+    name: 'Golden', annotations: ['a'],
+    mime: 'image/jpeg', data: new Uint8Array([9, 8, 7, 6]).buffer,
+  }];
+  return {
+    exportedAt: 1750000000000, lastModified: 1740000000000,
+    stores: { firearms: [{ id: 'fa-1', name: 'G', createdAt: 1, updatedAt: 2 }] },
+    media,
+  };
+}
+
+// A ZIP records its modification time as DOS date and time fields derived from
+// LOCAL time, so the same snapshot written in New York and in UTC differs in
+// exactly those bytes and nowhere else. They are the one part of the file that
+// is not a function of the records, so the comparison blanks them and pins
+// everything else: names, order, sizes, CRCs, and the data.json text.
+function blankZipTimestamps(bytes: Uint8Array): { bytes: Uint8Array; local: number; central: number } {
+  const out = new Uint8Array(bytes);
+  let local = 0;
+  let central = 0;
+  for (let i = 0; i + 16 <= out.length; i++) {
+    if (out[i] !== 0x50 || out[i + 1] !== 0x4b) continue;
+    if (out[i + 2] === 0x03 && out[i + 3] === 0x04) { out.fill(0, i + 10, i + 14); local++; }
+    else if (out[i + 2] === 0x01 && out[i + 3] === 0x02) { out.fill(0, i + 12, i + 16); central++; }
+  }
+  return { bytes: out, local, central };
+}
+
+// Provenance, so this is a pin on the SHIPPED format rather than on whatever
+// this branch happened to produce the day it was written: the same golden
+// snapshot was built with b44283a's writer, the code live on Michael's phone
+// before this branch existed, and the bytes are identical to these.
+const GOLDEN_FLOG_B64 =
+  'UEsDBBQAAAAAAAAAAACEKeT1dgEAAHYBAAAJAAAAZGF0YS5qc29ueyJmb3JtYXQiOiJGaXJlYXJt' +
+  'TG9nIiwidmVyc2lvbiI6MiwiZXhwb3J0ZWRBdCI6MTc1MDAwMDAwMDAwMCwibGFzdE1vZGlmaWVk' +
+  'IjoxNzQwMDAwMDAwMDAwLCJzdG9yZXMiOnsiZmlyZWFybXMiOlt7ImlkIjoiZmEtMSIsIm5hbWUi' +
+  'OiJHIiwiY3JlYXRlZEF0IjoxLCJ1cGRhdGVkQXQiOjJ9XX0sIm1lZGlhTWV0YSI6W3siaWQiOiJt' +
+  'ZC1nb2xkZW4tMSIsImNyZWF0ZWRBdCI6MTAwMCwidXBkYXRlZEF0IjoyMDAwLCJvd25lclR5cGUi' +
+  'OiJmaXJlYXJtIiwib3duZXJJZCI6ImZhLTEiLCJraW5kIjoiaW1hZ2UiLCJuYW1lIjoiR29sZGVu' +
+  'IiwiYW5ub3RhdGlvbnMiOlsiYSJdLCJtaW1lIjoiaW1hZ2UvanBlZyIsImZpbGUiOiJtZWRpYS9t' +
+  'ZC1nb2xkZW4tMSJ9XX1QSwMEFAAAAAAAAAAAANzyffQEAAAABAAAABEAAABtZWRpYS9tZC1nb2xk' +
+  'ZW4tMQkIBwZQSwECFAAUAAAAAAAAAAAAhCnk9XYBAAB2AQAACQAAAAAAAAAAAAAAAAAAAAAAZGF0' +
+  'YS5qc29uUEsBAhQAFAAAAAAAAAAAANzyffQEAAAABAAAABEAAAAAAAAAAAAAAAAAnQEAAG1lZGlh' +
+  'L21kLWdvbGRlbi0xUEsFBgAAAAACAAIAdgAAANABAAAAAA==';
+
+test('golden .flog: the entry names on disk are exactly what we expect', () => {
+  // The direct answer to the '!GRATUITOUS' mutation: names read out of the
+  // written bytes, compared against literals, with no reader interpreting them.
+  const names = readZip(buildFlog(goldenSnapshot())).map((e) => e.name);
+  assert.deepEqual(names, ['data.json', 'media/md-golden-1']);
+});
+
+test('golden .flog: the bytes have not moved', () => {
+  const written = buildFlog(goldenSnapshot());
+  const { bytes, local, central } = blankZipTimestamps(written);
+  // Two entries in, two local headers and two central directory records out. If
+  // this ever fails, the blanking walked the wrong file and the comparison below
+  // would be meaningless rather than merely red.
+  assert.equal(local, 2, 'expected two local file headers');
+  assert.equal(central, 2, 'expected two central directory records');
+  assert.equal(Buffer.from(bytes).toString('base64'), GOLDEN_FLOG_B64,
+    'the .flog wire format changed — read the note above this test before touching the constant');
+});
+
+test('golden .flog: the streaming writer produces the same bytes', async () => {
+  const s = goldenSnapshot();
+  const blob = await buildFlogBlob({
+    exportedAt: s.exportedAt, lastModified: s.lastModified,
+    stores: s.stores, media: toMediaSources(s.media),
+  });
+  const streamed = blankZipTimestamps(new Uint8Array(await blob.arrayBuffer()));
+  assert.equal(streamed.local, 2, 'expected two local file headers');
+  assert.equal(streamed.central, 2, 'expected two central directory records');
+  assert.equal(Buffer.from(streamed.bytes).toString('base64'), GOLDEN_FLOG_B64);
+});
+
+test('the archive timestamp is derived from exportedAt, in both writers', async () => {
+  // The golden comparison BLANKS the ZIP date and time fields, because they are
+  // built from local time and would otherwise differ between a machine in
+  // Florida and one on CI. Nothing else looked at them, so both writers could
+  // have stamped every backup 1980-01-01 with the suite still green — and a
+  // folder of backups that cannot be sorted by date is a real loss on the day
+  // someone needs the right one. This checks the fields RELATIVELY, which needs
+  // no timezone: two different exportedAt values must produce different bytes,
+  // and the same value must produce the same ones.
+  const early = goldenSnapshot();
+  const later = { ...goldenSnapshot(), exportedAt: goldenSnapshot().exportedAt + 86_400_000 };
+  const stamp = (bytes: Uint8Array) => [...bytes.subarray(10, 14)].join(',');
+  assert.notEqual(stamp(buildFlog(early)), stamp(buildFlog(later)),
+    'the ZIP timestamp does not move when exportedAt does');
+  assert.equal(stamp(buildFlog(early)), stamp(buildFlog(goldenSnapshot())));
+
+  const streamed = new Uint8Array(await (await buildFlogBlob({
+    exportedAt: later.exportedAt, lastModified: later.lastModified,
+    stores: later.stores, media: toMediaSources(later.media),
+  })).arrayBuffer());
+  assert.equal(stamp(streamed), stamp(buildFlog(later)),
+    'the two writers stamp the same snapshot differently');
 });

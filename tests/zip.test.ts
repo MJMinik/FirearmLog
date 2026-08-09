@@ -496,3 +496,60 @@ test('a Blob that cannot be read gives the plain-language message, not a DOMExce
     return true;
   });
 });
+
+// ── 7. The third field that wraps: the entry NAME length ─────────────────────
+// Found by the session-117 cold audit, and it had been shipping. The count and
+// offset limits above were checked; the 16-bit name-length field was not. An
+// entry name over 65,535 encoded bytes wrote a wrapped length, and the whole
+// archive then failed to read — every session, gun and note in it, not just the
+// oversized entry — while the save reported success. The app makes short ids of
+// its own, but parseFlog takes ids verbatim out of a file the user may have been
+// handed by anyone, and the next backup writes them straight back out.
+
+const NAME_LIMIT = 65535;
+
+test('writeZip refuses an entry name longer than the format can record', () => {
+  const empty = new Uint8Array(0) as Uint8Array<ArrayBuffer>;
+  const tooLong = 'm/' + 'x'.repeat(NAME_LIMIT - 1); // 65,536 bytes
+  assert.throws(() => writeZip([{ name: tooLong, data: empty }]),
+    /name too long to store in a backup file/);
+});
+
+test('writeZipBlob refuses the same name, with the same message', async () => {
+  const empty = new Uint8Array(0) as Uint8Array<ArrayBuffer>;
+  const tooLong = 'm/' + 'x'.repeat(NAME_LIMIT - 1);
+  await assert.rejects(writeZipBlob([{ name: tooLong, open: async () => empty }]),
+    /name too long to store in a backup file/);
+});
+
+test('the limit is counted in BYTES, not characters', () => {
+  const empty = new Uint8Array(0) as Uint8Array<ArrayBuffer>;
+  // 16,384 emoji is 65,536 UTF-8 bytes but only 32,768 JS characters, so a
+  // length check written against the string would let this through and wrap.
+  const emoji = '🎯'.repeat(16384);
+  assert.equal(new TextEncoder().encode(emoji).length, 65536);
+  assert.ok(emoji.length < NAME_LIMIT, 'the string length alone would pass');
+  assert.throws(() => writeZip([{ name: emoji, data: empty }]),
+    /name too long to store in a backup file/);
+});
+
+test('the longest name the format CAN hold is still written and read back', () => {
+  const empty = new Uint8Array(0) as Uint8Array<ArrayBuffer>;
+  const atLimit = 'm/' + 'x'.repeat(NAME_LIMIT - 2); // exactly 65,535 bytes
+  assert.equal(new TextEncoder().encode(atLimit).length, NAME_LIMIT);
+  const back = readZip(writeZip([{ name: atLimit, data: empty }]));
+  assert.equal(back.length, 1);
+  assert.equal(back[0].name, atLimit,
+    'the boundary case must round-trip, or the guard is one byte too strict');
+});
+
+test('the refusal names the item, so an unsaveable logbook can be diagnosed', () => {
+  const empty = new Uint8Array(0) as Uint8Array<ArrayBuffer>;
+  const tooLong = 'media/md-runaway-' + 'x'.repeat(NAME_LIMIT);
+  assert.throws(() => writeZip([{ name: tooLong, data: empty }]), (err: unknown) => {
+    const msg = String((err as Error).message);
+    assert.match(msg, /media\/md-runaway-/, 'the message does not say which item');
+    assert.match(msg, /Nothing was saved/);
+    return true;
+  });
+});
