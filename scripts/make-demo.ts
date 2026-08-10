@@ -3,7 +3,7 @@
 // Why a script (not a hand-made binary): the demo is the FIRST thing a new user
 // loads, so it must be valid, rich, and reproducible. This builds a realistic
 // ~18-month competitive-pistol-shooter log and packages it with the app's OWN
-// buildFlog(), so the output is guaranteed to round-trip through parseFlog() /
+// buildFlog(), so the output is guaranteed to round-trip through parseFlog()  /* NOTE (pass 3): a real Load now uses parseFlogLazy + restoreFromFile, which do NOT checksum every entry up front. This script exercises the eager path, so it is no longer 'the same path a real Pull uses' */ /
 // restoreSnapshot() (the same validated path a real Pull uses).
 //
 // Run:  node --experimental-strip-types scripts/make-demo.ts

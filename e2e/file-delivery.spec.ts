@@ -12,7 +12,7 @@ import { seedDemo, gotoSection } from './helpers';
 // still fires with the right filename. The iOS branch is proven by the unit
 // tests in tests/deliverFile.test.ts and by Michael's iPhone tap-test.
 
-test('Save to File still downloads FirearmLog.flog on desktop', async ({ page }) => {
+test('Save to File downloads a DATED FirearmLog file on desktop', async ({ page }) => {
   await seedDemo(page);
   await gotoSection(page, 'Sync & Backup');
 
@@ -23,7 +23,11 @@ test('Save to File still downloads FirearmLog.flog on desktop', async ({ page })
     page.waitForEvent('download'),
     page.getByRole('button', { name: 'Save the File Now', exact: true }).click(),
   ]);
-  expect(download.suggestedFilename()).toBe('FirearmLog.flog');
+  // Dated since pass 3 (Michael, 10 August 2026): iOS never replaces a file of
+  // the same name, so one fixed name produced a pile of numbered copies that all
+  // claimed to be the same backup. Matched by shape rather than by today's date,
+  // so this does not go red at midnight.
+  expect(download.suggestedFilename()).toMatch(/^FirearmLog-\d{4}-\d{2}-\d{2}\.flog$/);
   const path = await download.path();
   expect(path).toBeTruthy();
 });

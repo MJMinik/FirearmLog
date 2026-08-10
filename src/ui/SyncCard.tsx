@@ -1,12 +1,12 @@
-// One-tap sync (spec §7.1): Save to File writes FirearmLog.flog; Load from
+// One-tap sync (spec §7.1): Save to File writes a dated .flog; Load from
 // File replaces this device's data with the file — after a plain-language
 // check of which copy is newer. (Renamed from Push/Pull, July 8 2026 — Git
 // words, not range words; Michael's wife supplied the usability test.)
 import { useEffect, useRef, useState } from 'react';
-import { buildFlogBlob, parseFlog } from '../lib/flog.ts';
-import type { Snapshot } from '../lib/flog.ts';
+import { backupFileName, buildFlogBlob, parseFlogLazy } from '../lib/flog.ts';
+import type { LazyFlog } from '../lib/flog.ts';
 import {
-  exportSnapshotSources, getSettings, localLastModified, restoreSnapshot, putSettings, withExclusiveIo,
+  exportSnapshotSources, getSettings, localLastModified, restoreFromFile, putSettings, withExclusiveIo,
 } from '../lib/db.ts';
 import type { AppSettings } from '../lib/types.ts';
 import { fileTooLargeMessage, storageShortfallMessage, MAX_FLOG_BYTES } from '../lib/inputLimits.ts';
@@ -39,7 +39,12 @@ function stampWords(ms: number): string {
 type Stage =
   | { name: 'idle'; message?: string }
   | { name: 'save-ready'; blob: Blob; summary: string }
-  | { name: 'confirm'; snapshot: Snapshot; warning: string; label: string }
+  // The lazy source is held, not a loaded Snapshot — which is the point: this
+  // stage can sit open for minutes while he reads it, and it used to sit there
+  // holding his entire backup in memory. Holding the source also keeps the File
+  // alive, which the reader needs for the whole restore rather than the first
+  // moment of it.
+  | { name: 'confirm'; source: LazyFlog; warning: string; label: string }
   | { name: 'working'; message: string };
 
 export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBackedUp?: () => void }) {
@@ -160,7 +165,7 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
     }
   }
 
-  function afterDelivery(outcome: DeliveryOutcome) {
+  function afterDelivery(outcome: DeliveryOutcome, filename: string) {
     // The user cancelled the Share sheet on iOS — treat as "backed out without
     // saving." The Home reminder stays up (honest); no time stamped.
     if (outcome.kind === 'share' && !outcome.shared) {
@@ -185,11 +190,16 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
       }));
     setStage({
       name: 'idle',
-      message: doneMessage(outcome),
+      message: doneMessage(outcome, filename),
     });
   }
 
-  function doneMessage(outcome: DeliveryOutcome): string {
+  // The name is derived ONCE per save and carried, not recomputed. It used to be
+  // called again inside doneMessage, and on iOS the Share sheet sits between the
+  // two for as long as he takes on it — so a save begun at 23:58 and finished at
+  // 00:01 told him to look for a file that was never written. One string derived
+  // twice is the shape mediaEntryNames exists in this codebase to prevent.
+  function doneMessage(outcome: DeliveryOutcome, filename: string): string {
     if (outcome.kind === 'share') {
       return 'File handed to the iPhone Share sheet — pick Save to Files (or AirDrop, Mail, etc.) to keep it. Load it on your other device and you’re in sync.';
     }
@@ -197,14 +207,22 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
       return 'File opened in a new window — use your browser’s Save to keep it, then put it where your other device can see it.';
     }
     return isIOSDevice()
-      ? 'File saved — FirearmLog.flog is in the spot you picked in Save to Files. Load it on your other device and you’re in sync.'
-      : 'File saved — FirearmLog.flog is in your Downloads folder, unless you chose another spot. Put it where your other device can see it, then load it there.';
+      ? `File saved — ${filename} is in the spot you picked in Save to Files. Load it on your other device and you’re in sync.`
+      : `File saved — ${filename} is in your Downloads folder, unless you chose another spot. Put it where your other device can see it, then load it there.`;
   }
 
   async function handleSaveNow(blob: Blob) {
     try {
-      const outcome = await deliverFile(blob, 'FirearmLog.flog', 'application/octet-stream');
-      afterDelivery(outcome);
+      // DATED NAME (Michael, 10 August 2026, decision 3 of the pass 3 spec).
+      // Every save used to be called FirearmLog.flog, and iOS does not overwrite
+      // — it keeps the old one and adds a number. He finished the day with seven
+      // files and about 2.5 GB in iCloud, all claiming to be the same thing and
+      // only a timestamp telling them apart. A dated name makes every copy say
+      // what it is, sorts the newest last, and makes an old one safe to delete on
+      // sight. Loading is unaffected: he picks the file either way.
+      const filename = backupFileName();
+      const outcome = await deliverFile(blob, filename, 'application/octet-stream');
+      afterDelivery(outcome, filename);
     } catch (e) {
       setStage({
         name: 'idle',
@@ -214,51 +232,77 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
   }
 
   async function filePicked(file: File) {
-    // S-2: refuse an absurdly large file before reading the whole thing into
-    // memory (a multi-gigabyte arrayBuffer read can crash the tab). Generous —
-    // a real .flog never approaches it.
+    // S-2: refuse an absurdly large file up front. The reason has CHANGED and the
+    // old one is no longer true: nothing on this path reads the file whole any
+    // more, so this is not protecting against a multi-gigabyte arrayBuffer read.
+    // What it still does is bound the work — the index walk, and a restore that
+    // would take an unreasonable time — and refuse obvious nonsense early. His
+    // real backup is 524 MB against a 1 GB cap, so the cap is now close enough to
+    // his actual data to be worth revisiting rather than assumed generous.
     const tooBig = fileTooLargeMessage(file.size, MAX_FLOG_BYTES, 'data file');
     if (tooBig) { setStage({ name: 'idle', message: tooBig }); return; }
     setStage({ name: 'working', message: 'Reading the file…' });
     try {
-      const bytes = new Uint8Array(await file.arrayBuffer());
-      const snapshot = parseFlog(bytes);
+      // Pass 3: open by the file's index instead of reading the whole thing.
+      // Opening used to cost about three times the file size and then hold it
+      // for as long as this sheet stayed up — on a 524 MB backup that was the
+      // largest single demand the app made of the phone, larger than the save
+      // that was crashing it. Every figure below comes from the index; not one
+      // of them needs a photo's bytes.
+      const source = await parseFlogLazy(file);
+
+      // THE FREE-SPACE CHECK MOVED HERE, from after he had already confirmed.
+      // The total photo size is in the index, so a restore too large for the
+      // device is now refused having read nothing — which makes the message's
+      // existing promise that nothing was changed literally rather than nearly true.
+      const storage = typeof navigator !== 'undefined' ? navigator.storage : undefined;
+      const estimate = storage && typeof storage.estimate === 'function'
+        ? await storage.estimate().catch(() => null)
+        : null;
+      const spaceMsg = storageShortfallMessage(source.mediaBytes, estimate);
+      if (spaceMsg) { setStage({ name: 'idle', message: spaceMsg }); return; }
+
       const localStamp = await localLastModified();
-      const sessions = (snapshot.stores.sessions ?? []).length;
-      const guns = (snapshot.stores.firearms ?? []).length;
-      const summary = `The file holds ${guns} guns, ${sessions} sessions, and ${snapshot.media.length} photos/videos (last changed ${stampWords(snapshot.lastModified)}; this device last changed ${stampWords(localStamp)}).`;
-      const warning = snapshot.lastModified < localStamp
+      const sessions = (source.stores.sessions ?? []).length;
+      const guns = (source.stores.firearms ?? []).length;
+      const summary = `The file holds ${guns} guns, ${sessions} sessions, and ${source.mediaCount} photos/videos (last changed ${stampWords(source.lastModified)}; this device last changed ${stampWords(localStamp)}).`;
+      const warning = source.lastModified < localStamp
         ? `Heads up — this device has NEWER work than the file. Loading it replaces everything on this device with the older file. ${summary}`
         : `Loading the file replaces everything on this device with it. ${summary}`;
-      setStage({ name: 'confirm', snapshot, warning, label: snapshot.lastModified < localStamp ? 'Load the Older File Anyway' : 'Load from File' });
+      setStage({ name: 'confirm', source, warning, label: source.lastModified < localStamp ? 'Load the Older File Anyway' : 'Load from File' });
     } catch (e) {
       setStage({ name: 'idle', message: e instanceof Error ? e.message : 'That file could not be read.' });
     }
   }
 
-  async function reallyLoad(snapshot: Snapshot) {
-    // S-3: preflight free space before a whole-log restore. Media is written
-    // add-before-delete (never loses photos), so peak storage briefly holds BOTH
-    // the old and new photos — if the device can't fit that, say so up front in
-    // plain words instead of dying on a raw QuotaExceededError mid-write. An
-    // unknown estimate never blocks (storageShortfallMessage returns null).
-    const mediaBytes = snapshot.media.reduce(
-      (n, m) => n + ((m as { data?: ArrayBuffer }).data?.byteLength ?? 0), 0);
-    const storage = typeof navigator !== 'undefined' ? navigator.storage : undefined;
-    const estimate = storage && typeof storage.estimate === 'function'
-      ? await storage.estimate().catch(() => null)
-      : null;
-    const spaceMsg = storageShortfallMessage(mediaBytes, estimate);
-    if (spaceMsg) { setStage({ name: 'idle', message: spaceMsg }); return; }
+  // S-3's free-space preflight used to live here, AFTER he had confirmed and
+  // after the whole file was in memory. It now runs at open time (see
+  // filePicked), because the photo total is in the file's index and can be known
+  // before anything is read. Media is still written add-before-delete, so peak
+  // storage briefly holds both the old photos and the new ones — that is what
+  // the check is sizing, and it has not changed.
+  async function reallyLoad(source: LazyFlog) {
     setStage({ name: 'working', message: 'Bringing the file in…' });
     try {
-      await restoreSnapshot(snapshot, (done, total) => {
+      await restoreFromFile(source, (done, total) => {
         if (total > 0) setStage({ name: 'working', message: `Saving photos: ${done} of ${total}…` });
       });
       setStage({ name: 'idle', message: 'Done — this device now matches the file.' });
       onPulled();
     } catch (e) {
-      setStage({ name: 'idle', message: e instanceof Error ? e.message : 'The load did not finish.' });
+      // SAY WHAT THE DEVICE STILL HOLDS. Every refusal before pass 3 ended
+      // "Nothing on this device was changed", because nothing could be — the file
+      // was checked before anything was written. A failure can now happen mid
+      // -restore, and he would otherwise watch a photo counter stop, read a
+      // sentence about a checksum, and have no way to learn whether his log
+      // survived. It did: the records are replaced last. Photos the backup also
+      // named have reverted to the backup's copy of them, and that is said too
+      // rather than glossed.
+      const why = e instanceof Error ? e.message : 'The load did not finish.';
+      setStage({
+        name: 'idle',
+        message: `${why} Your guns, sessions and matches were NOT replaced — they are exactly as they were. Some photos may have been brought in already, and any the backup also holds are now the backup's copy.`,
+      });
     }
   }
 
@@ -266,7 +310,8 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
     <div className="card">
       <h2>Phone ↔ Desktop Sync</h2>
       <p className="report-note" style={{ marginBottom: 12 }}>
-        Save to File writes everything — your whole log — to one data file (FirearmLog.flog).
+        Save to File writes everything — your whole log — to one data file, named for today's
+        date ({backupFileName()}).
         That file is your backup. Keep it anywhere both devices can see — iCloud Drive,
         Google Drive, any folder — then Load it on the other device so both match.
       </p>
@@ -307,10 +352,10 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
                 <li>Tap <strong>Save to Files</strong>.</li>
                 <li>Pick where to keep it — <strong>iCloud Drive</strong> works well, and Google Drive
                   or any folder works too. Then tap <strong>Save</strong>.</li>
-                <li>If it offers to <strong>Replace</strong> the one already there, take it. Often it
-                  does not ask: it keeps the old file and adds a number, so you end up with
-                  FirearmLog 2, FirearmLog 3 and so on. The newest is your backup — delete the older
-                  ones when they start taking up room.</li>
+                <li>Each backup is named for today's date, so yesterday's is a different file and
+                  both are kept. Save twice in one day and iPhone adds a number to the second one
+                  rather than asking — the newest is your backup, and older ones are safe to delete
+                  once you have one you trust.</li>
               </ol>
               <p className="report-note" style={{ marginBottom: 12 }}>
                 From the Share sheet you can also AirDrop the file straight to your Mac or another
@@ -328,10 +373,10 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
                 <li>In the menu that slides up, tap <strong>Save to Files</strong>.</li>
                 <li>Pick where to keep it — <strong>iCloud Drive</strong> works well, and Google Drive or
                   any folder works too. Then tap <strong>Save</strong>.</li>
-                <li>If it offers to <strong>Replace</strong> the one already there, take it. Often it
-                  does not ask: it keeps the old file and adds a number, so you end up with
-                  FirearmLog 2, FirearmLog 3 and so on. The newest is your backup — delete the older
-                  ones when they start taking up room.</li>
+                <li>Each backup is named for today's date, so yesterday's is a different file and
+                  both are kept. Save twice in one day and iPhone adds a number to the second one
+                  rather than asking — the newest is your backup, and older ones are safe to delete
+                  once you have one you trust.</li>
               </ol>
               <p className="report-note" style={{ marginBottom: 12 }}>
                 Whatever spot you pick, that's where your backup lives — you can also save it on this
@@ -359,7 +404,7 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
           title="Replace this device's data?"
           message={stage.warning}
           confirmLabel={stage.label}
-          onConfirm={() => void reallyLoad(stage.snapshot)}
+          onConfirm={() => void reallyLoad(stage.source)}
           onClose={() => setStage({ name: 'idle' })}
         />
       )}

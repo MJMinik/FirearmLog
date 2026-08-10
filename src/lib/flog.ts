@@ -18,6 +18,25 @@ export const FLOG_FORMAT = 'FirearmLog';
 // imports exactly as before; only a NEWER file into an OLDER app now refuses.
 export const FLOG_VERSION = 2;
 
+/**
+ * The name a backup is saved under: dated, because iOS never REPLACES a file of
+ * the same name — it keeps the old one and adds a number. A single fixed name
+ * therefore produced a pile of copies that all claimed to be the same backup
+ * (seven of them, about 2.5 GB, in one day). Dated, the newest sorts last and an
+ * older one is safe to delete on sight.
+ *
+ * It lives here rather than in the screen for two reasons: this module owns the
+ * .flog file, and a helper inside a .tsx cannot be reached by a unit test at all,
+ * so the date would have had nothing pinning it. Local date, matching every other
+ * date the app keys on — a save at 11pm belongs to the day he took it.
+ */
+export function backupFileName(now: Date = new Date()): string {
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `FirearmLog-${y}-${m}-${d}.flog`;
+}
+
 /** Everything in the app, ready to travel. */
 export interface Snapshot {
   exportedAt: number;

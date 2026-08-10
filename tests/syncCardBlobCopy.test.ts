@@ -83,9 +83,7 @@ function bodyFrom(code: string, opener: string): string | null {
  */
 function noExtraCopy(src: string): boolean {
   const code = codeOf(src);
-  const restore = bodyFrom(code, 'async function filePicked(');
-  const rest = restore ? code.replace(restore, '') : code;
-  return !/new Blob\(/.test(rest) && !/new ArrayBuffer\(/.test(rest) && !/\.arrayBuffer\(\)/.test(rest);
+  return !/new Blob\(/.test(code) && !/new ArrayBuffer\(/.test(code) && !/\.arrayBuffer\(\)/.test(code);
 }
 
 /**
@@ -125,16 +123,14 @@ const CHECKS: { name: string; why: string; holds: (src: string) => boolean }[] =
     // module-level helper, and the ban no longer saw it. Extracting a helper is
     // the most ordinary refactor there is.
     //
-    // ONE SITE IS EXCLUDED AND IT IS EXCLUDED BY NAME, not by a loose pattern:
-    // filePicked, on the RESTORE side, reads the whole chosen file into memory
-    // with `file.arrayBuffer()`. That is the read-side twin of the defect this
-    // pass fixed on the write side, it costs about three times the file size,
-    // and it is deliberately out of scope here (the signed spec is the save side
-    // only). Excluding it by name means the guard still catches a new copy
-    // anywhere else in the file, including in a helper, while recording the
-    // known one instead of pretending it is not there.
+    // THE EXCLUSION IS GONE, AND ITS TRIPWIRE IS WHAT REMOVED IT. Pass 2 had to
+    // permit one site — filePicked's `file.arrayBuffer()` on the restore side —
+    // and rather than describe it in a comment, a test asserted the site was
+    // still there, so the day it became obsolete the suite would say so. Pass 3
+    // made the restore lazy, that test went red, and the exclusion came out.
+    // That is the good kind of red: a guard reporting that it is no longer needed.
     name: 'builds no second copy of the archive anywhere in the file',
-    why: 'buildFlogBlob already returns a Blob; constructing another, or reading the archive back into an ArrayBuffer, is a full extra copy of the library. (The one permitted site is filePicked, on the restore side, which pass 3 removes.)',
+    why: 'buildFlogBlob already returns a Blob; constructing another, or reading a file back into an ArrayBuffer, is a full extra copy. Neither side of this screen needs one now.',
     holds: (s) => noExtraCopy(s),
   },
   {
@@ -166,17 +162,6 @@ for (const check of CHECKS) {
     assert.ok(check.holds(CURRENT), `${SYNC_CARD} — ${check.why}`);
   });
 }
-
-// The excluded site is recorded rather than forgotten: if the restore side ever
-// stops reading the whole file, this goes red and the exclusion above can be
-// deleted. That is the good kind of red — a guard telling you it is obsolete.
-test('save path: the restore side still holds the one permitted whole-file read', () => {
-  const restore = bodyFrom(codeOf(CURRENT), 'async function filePicked(');
-  assert.ok(restore, 'filePicked is gone — the exclusion in the copy ban is now unexplained and must be removed');
-  const copies = (restore.match(/\.arrayBuffer\(\)/g) ?? []).length;
-  assert.equal(copies, 1,
-    `filePicked makes ${copies} whole-file reads. One is the known restore-side copy that pass 3 removes; anything else is new.`);
-});
 
 // The one behavioural check here: the lock really does refuse a second holder,
 // and it refuses in words that are true whichever job is holding it.
