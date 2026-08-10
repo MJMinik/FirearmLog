@@ -6,7 +6,7 @@ import type {
   DrillDef, Firearm, Goal, Magazine, MaintenanceEntry, MalfunctionEntry, Match, Media, Optic,
   Part, Purchase, Reference, Reminder, Session, SkillAssessment, SkillSet, TrashItem,
 } from './types.ts';
-import type { Snapshot } from './flog.ts';
+import type { FlogMediaSource, Snapshot } from './flog.ts';
 import { newestStamp } from './flog.ts';
 import {
   deductUsageFromStock, restoreDeductedStock, usageThatMovedStock,
@@ -157,7 +157,14 @@ function txDone(tx: IDBTransaction): Promise<void> {
 // Always reset in `finally` so a failure can never leave writes permanently blocked.
 let ioBusy = false;
 function ioBusyError(what: string): Error {
-  return new Error(`Another import or restore is still finishing — please wait a moment, then try ${what} again.`);
+  // The sentence does not name which job is running, on purpose. It used to say
+  // "Another import or restore", which was true while those were the only two
+  // things that took this lock. Pass 2 put the BACKUP behind it as well, and a
+  // backup on a large library is by far the longest-running holder — so the one
+  // job the reader is most likely to have started was the one job the sentence
+  // said was impossible. Naming the actual holder would be better still and is
+  // not free: nothing here knows what it is. Saying less is at least true.
+  return new Error(`Another change to your data is still finishing — please wait a moment, then try ${what} again.`);
 }
 async function withIoGuard<T>(what: string, fn: () => Promise<T>): Promise<T> {
   if (ioBusy) throw ioBusyError(what);
@@ -222,8 +229,18 @@ export async function getAll<T>(store: Exclude<StoreName, 'media'>): Promise<T[]
  * on a large log (see getMediaForOwner for the cursor-based alternative that
  * keeps only one owner's few records in memory at a time).
  *
- * After P-4/P-7/P-8 there are exactly TWO callers, both listed below. Everything
- * else has moved to a cursor.
+ * AFTER PASS 2 (session 118) THERE ARE TWO CALLERS IN src/, AND ONLY ONE OF THEM
+ * IS REACHABLE FROM A SCREEN: reportLaunch.ts. The other is exportSnapshot below,
+ * which no longer sits on any user-facing path — Save to File moved to
+ * exportSnapshotSources, which walks the store with a cursor. Everything else had
+ * already moved. (This said "exactly ONE caller" for one audit round, which was
+ * wrong in a comment whose whole subject is a miscounted caller list; before that
+ * it said "exactly TWO callers"
+ * and, four lines down, that "exportSnapshot genuinely needs every media record
+ * with its bytes to build the .flog file". Both were true when written and both
+ * are now false: the .flog is built one photo at a time. Corrected on contact,
+ * because a comment asserting a whole-store load is JUSTIFIED is exactly what
+ * stops the next session questioning it.)
  * The import commit path (P-8) uses scanMediaOwnerIds; the restore path uses
  * scanMediaKeys (primary keys only, no record deserialised at all).
  * localLastModified (P-4) now uses newestMediaStamp (stamp only).
@@ -231,8 +248,9 @@ export async function getAll<T>(store: Exclude<StoreName, 'media'>): Promise<T[]
  * delegates the run to runPhotoCleanup (src/ui/photoCleanupRun.ts), which scans
  * ids and then reads and releases one photo at a time. Naming the card itself
  * here would be wrong: hasOversizedMedia is the only one of these it imports.
- * exportSnapshot genuinely needs every media record with its bytes to build the
- * .flog file. reportLaunch.ts loads the whole bundle for multi-record reports
+ * exportSnapshot is retained only as the reference the streaming writer is proved
+ * against, and as the way tests and the demo generator get a whole Snapshot; it is
+ * not on a user-facing path. reportLaunch.ts loads the whole bundle for multi-record reports
  * (P-1): the insurance report loops ALL firearms, so a per-owner cursor would be
  * quadratic without lowering the peak. Its records are then held in React state
  * for as long as the Reports screen is open, which is a KNOWN open item, not an
@@ -766,7 +784,22 @@ export async function seedDrillsWithSettings<T extends object>(
  *  derived from the canonical STORE_NAMES so it can never drift (B4/M-4). */
 const SNAPSHOT_STORES: Exclude<StoreName, 'media'>[] = STORE_NAMES.filter((n): n is Exclude<StoreName, 'media'> => n !== 'media');
 
-/** Everything in the database, packaged to travel (spec §7.1). */
+/**
+ * Everything in the database, packaged to travel (spec §7.1) — WITH EVERY PHOTO
+ * AND VIDEO IN MEMORY AT ONCE.
+ *
+ * NO LONGER ON THE SAVE PATH (pass 2, session 118). Save to File now uses
+ * exportSnapshotSources below, which hands the writer one photo at a time; this
+ * function is what made an iPhone backup die at "Packing your data…" once a
+ * minute of video had been added to the log. It is retained deliberately, not by
+ * oversight: `buildFlog` (the in-memory writer) is the reference the streaming
+ * writer's byte-for-byte equivalence is proved against, and this is how a test
+ * or the demo generator gets a Snapshot to feed it. Its remaining callers are
+ * tests and scripts.
+ *
+ * DO NOT PUT IT BACK ON A USER-FACING PATH. If a screen needs the whole log,
+ * it needs a streaming source instead.
+ */
 export async function exportSnapshot(): Promise<Snapshot> {
   const stores: Record<string, unknown[]> = {};
   for (const name of SNAPSHOT_STORES) stores[name] = await getAll(name);
@@ -776,6 +809,199 @@ export async function exportSnapshot(): Promise<Snapshot> {
     lastModified: newestStamp(stores, media),
     stores,
     media
+  };
+}
+
+/**
+ * What the streaming writer needs: the records, and a way to read each photo on
+ * demand. (Deliberately not using the word f-e-t-c-h in these comments: the
+ * network-call keeper in scripts/check-imports.mjs greps every line including
+ * comments, and it is right to. A blunt guard that occasionally makes me pick a
+ * different word beats one that can be talked around.)
+ */
+export interface SnapshotSources {
+  exportedAt: number;
+  lastModified: number;
+  stores: Record<string, unknown[]>;
+  media: FlogMediaSource[];
+}
+
+/** Plain words for where a photo hangs, for a message the reader has to act on. */
+const OWNER_WORDS: Record<string, string> = {
+  firearm: 'gun', session: 'session', match: 'match',
+  drill: 'drill', maintenance: 'maintenance record', classifier: 'classifier',
+};
+
+/**
+ * Read one media record's bytes, by its primary key, in its own transaction.
+ *
+ * It takes the key and nothing else. It used to take the record's id too, purely
+ * so the error messages could quote it — and quoting an internal id at a reader
+ * who has no screen to find it on was the defect, not the fix. The messages name
+ * the item now, from the record they already have in hand.
+ *
+ * ITS OWN TRANSACTION IS NOT A STYLE CHOICE. An IndexedDB transaction commits as
+ * soon as control returns to the event loop with nothing pending, so a
+ * transaction opened by the scan below cannot survive the awaits the ZIP writer
+ * performs between entries. One transaction per photo is the only shape that
+ * works, and it is the shape restoreSnapshot already uses for the same reason.
+ *
+ * THE WINDOW THIS OPENS, STATED HONESTLY, BECAUSE THE FIRST VERSION OF THIS
+ * COMMENT OVERSTATED THE LOCK AND A COLD AUDIT CAUGHT IT. Reading one photo at a
+ * time means the library can change between the scan and this read. The
+ * exclusive lock the save takes covers imports, restores, Free Up Space and
+ * erase. It does not cover everything, and the full list is at the bottom of
+ * this comment rather than here — an earlier version summarised it in one line
+ * and the summary was wrong twice, so the enumeration now lives in exactly one
+ * place. The window is real, not theoretical.
+ *
+ * The two cases inside it are NOT equally bad and are deliberately handled
+ * differently:
+ *  - A photo CHANGED mid-pack contributes whatever its bytes are at read time
+ *    under the description read at scan time. That is a point-in-time backup,
+ *    which is what a backup is; it is not corruption and it does not fail the
+ *    save. Be precise about which direction is actually reachable, because the
+ *    first version of this said the opposite: no unlocked path rewrites an
+ *    existing record's BYTES (PhotoSheet writes the record back carrying the
+ *    same buffer, and the only byte-rewriter, Free Up Space, holds the lock).
+ *    What an unlocked edit changes is the DESCRIPTION, and the archive keeps the
+ *    scan-time one. The test that backs this changes both, so it witnesses the
+ *    behaviour rather than a comment about it.
+ *  - A photo DELETED mid-pack cannot be supplied at all, and data.json has
+ *    already promised it. Writing the archive anyway would produce a file whose
+ *    index names a photo it does not contain — fine-looking until the day it is
+ *    restored. So the whole save fails, in words, and tapping Save again works
+ *    because the scan runs again.
+ *
+ * WHICH PATHS ARE ACTUALLY UNLOCKED, third revision of this list and each
+ * revision was a correction: PhotoSheet, MediaField and MatchScreens delete
+ * media with no lock; purgeExpiredSessions does too, and the session list runs
+ * it on mount, so merely LEAVING the sync screen can delete a photo out from
+ * under a running pack; and "Delete Forever" in the trash calls the same purge
+ * directly. GunDetail is NOT on this list — it only adds media, and the delete a
+ * user performs from a gun screen happens in the PhotoSheet it renders.
+ *
+ * A record present but carrying NO BYTES is a third case and gets its own
+ * message, because "try again" would be advice that fails every time: the record
+ * is not going to fix itself. Note the deliberate divergence from buildFlog here
+ * — `new Uint8Array(undefined)` is a zero-length array, so the in-memory writer
+ * silently wrote an EMPTY photo and reported success. Refusing loudly is the
+ * behaviour this project already chose for colliding ids, and an empty photo in a
+ * backup is discovered at restore, when the original is gone.
+ */
+async function openMediaBytes(key: IDBValidKey): Promise<Uint8Array<ArrayBuffer>> {
+  const db = await openDb();
+  const tx = db.transaction('media', 'readonly');
+  const req = tx.objectStore('media').get(key);
+  await txDone(tx);
+  const row = req.result as Media | undefined;
+  if (row === undefined) {
+    // No id in this one. The reader does not need it: the scan runs again on the
+    // next tap and picks the change up. An internal id here would be noise in a
+    // sentence whose whole job is "tap the button again".
+    throw new Error(
+      'A photo or video was deleted while the backup was being written, so nothing was saved. Tap Save to File and it will pick up the change.'
+    );
+  }
+  const data = row.data;
+  if (data === undefined || data === null) {
+    // NAME THE ITEM, NOT THE ID. This message used to end with an internal id
+    // like "md-0007", which appears on no screen in the app, next to the
+    // instruction "delete that item" — an action the reader could not perform,
+    // in a dead end where no backup can ever be written. Rule 44's gate. The
+    // record is in hand, so it can say which photo and where it hangs.
+    const item = normalizeRecord('media', row);
+    const what = item.kind === 'video' ? 'video' : 'photo';
+    const named = item.name ? `named "${item.name}"` : 'with no name';
+    throw new Error(
+      `A ${what} in your log ${named} has no picture stored against it, so a backup cannot be written. Nothing was saved. Delete it from the ${OWNER_WORDS[item.ownerType] ?? 'record'} it is attached to, then save your backup.`
+    );
+  }
+  return new Uint8Array(data);
+}
+
+/**
+ * Walk the media store once, keeping each record's DESCRIPTION and dropping its
+ * bytes, and hand back one reader per photo. Peak memory FOR THIS SCAN is one
+ * record rather than the whole library.
+ *
+ * SCOPE THAT CLAIM HONESTLY — it is about the scan, not about a whole save, and
+ * quote the right metric, because two earlier versions of this comment did not.
+ * Measured in Chromium on a 264 MB library: PEAK growth during a save (kernel
+ * high-water mark) fell from 810-850 MB to 510-570 MB, and the part above the
+ * 264 MB archive — which is what this function controls — fell from about
+ * 550 MB to about 280 MB. Roughly halved, not eliminated. (An earlier version
+ * said "554 MB to 18 MB"; that pair came from an end-of-run reading, which by
+ * construction cannot see a transient.) Run scripts/measure-backup-memory.mjs
+ * and read its header before quoting anything: two instruments have now been
+ * wrong here, both in the direction that flattered whoever was writing.
+ *
+ * THE ORDER MUST MATCH getAllMediaWholeStore'S. Both a getAll and an openCursor
+ * walk the store in ascending primary-key order, so the two writers see the same
+ * photos in the same sequence and produce the same archive. The round-trip
+ * equivalence test is what holds that, not this sentence.
+ *
+ * THE READ BOUNDARY IS NOT OPTIONAL HERE, for the same reason it is not optional
+ * in scanMediaOwnerIds: the whole-store load this replaces ran every record
+ * through normalizeRecord, so the descriptions written into data.json would
+ * otherwise differ between the two writers. `meta` is the normalised record with
+ * `data` removed — removed HERE rather than left to planFlog, because leaving it
+ * on would retain every photo's bytes and undo the entire point.
+ *
+ * The newest stamp is collected on the same pass. Calling newestMediaStamp
+ * instead would be correct and would walk the whole library a third time.
+ */
+async function scanMediaExportSources(): Promise<{ sources: FlogMediaSource[]; newestUpdatedAt: number }> {
+  const db = await openDb();
+  const tx = db.transaction('media', 'readonly');
+  const sources: FlogMediaSource[] = [];
+  let newestUpdatedAt = 0;
+  await new Promise<void>((resolve, reject) => {
+    const req = tx.objectStore('media').openCursor();
+    req.onsuccess = () => {
+      const cursor = req.result;
+      if (!cursor) { resolve(); return; }
+      const key = cursor.primaryKey;
+      const record = normalizeRecord('media', cursor.value as Media);
+      const meta = { ...record } as Record<string, unknown>;
+      delete meta.data;
+      // Same typeof rule as newestStamp and newestMediaStamp. Three functions
+      // answering one question; session 114 found two of them disagreeing.
+      const u = (record as { updatedAt?: unknown }).updatedAt;
+      if (typeof u === 'number' && u > newestUpdatedAt) newestUpdatedAt = u;
+      const id = record.id;
+      // The closure captures the KEY and nothing else — never `record`, never
+      // `cursor`, and no longer the id either, which used to be carried purely so
+      // an error could quote it. That is the whole memory property, and it is why open() has to
+      // re-read from the database rather than hand back something captured here.
+      // Tested behaviourally: change a photo's bytes after the scan and open()
+      // returns the new ones, which it could not do if it had kept the old.
+      sources.push({ id, meta, open: () => openMediaBytes(key) });
+      cursor.continue();
+    };
+    req.onerror = () => reject(req.error);
+  });
+  await txDone(tx);
+  return { sources, newestUpdatedAt };
+}
+
+/**
+ * The streaming counterpart of exportSnapshot: the same archive, described the
+ * same way, without every photo in memory at once. This is what Save to File
+ * uses.
+ */
+export async function exportSnapshotSources(): Promise<SnapshotSources> {
+  const stores: Record<string, unknown[]> = {};
+  for (const name of SNAPSHOT_STORES) stores[name] = await getAll(name);
+  const { sources, newestUpdatedAt } = await scanMediaExportSources();
+  return {
+    exportedAt: Date.now(),
+    // Identical to newestStamp(stores, media) by construction: the media half
+    // applies the same typeof filter over the same updatedAt values, one record
+    // at a time. Asserted against exportSnapshot in the round-trip test.
+    lastModified: Math.max(newestStamp(stores, []), newestUpdatedAt),
+    stores,
+    media: sources,
   };
 }
 

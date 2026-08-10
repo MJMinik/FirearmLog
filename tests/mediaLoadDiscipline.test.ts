@@ -91,6 +91,7 @@ const CURSOR_HELPERS = [
   'async function newestMediaStamp()',
   'async function scanMediaOwnerIds()',
   'async function scanMediaKeys()',
+  'async function scanMediaExportSources()',
   'export async function scanMediaImageIds()',
   'export async function hasOversizedMedia(',
   'export async function getMediaForOwner(',
@@ -160,6 +161,58 @@ test('media discipline: every media-store cursor helper in db.ts is guarded abov
     [],
     `these db.ts functions open a media cursor but are not in CURSOR_HELPERS: ${unguarded.join(', ')}`,
   );
+});
+
+// ---------------------------------------------------------------------------
+// THE BLIND SPOT THE SWEEP ABOVE HAD, AND WHY IT MATTERED (session 118).
+// The completeness sweep only ever looked at functions that open a CURSOR, on
+// the reasoning that those are the helpers being guarded. A cold auditor walked
+// straight through it: he added a brand-new whole-store loader to db.ts —
+// `tx.objectStore('media').getAll()` — called it from the save path, and all
+// the whole suite stayed green. mediaGetAllFence.test.ts allow-lists the whole of
+// db.ts by name, and this sweep could not see a function with no cursor in it.
+// Two guards, one shared blind spot, and the save path had just moved into it.
+//
+// So the net is widened: ANY function in db.ts that opens a media transaction
+// and calls .getAll( must be named here. There is exactly one legitimate one,
+// and it carries a docblock explaining why.
+// ---------------------------------------------------------------------------
+const WHOLE_STORE_LOADERS = ['getAllMediaWholeStore'];
+
+test('media discipline: db.ts has no unnamed whole-media-store loader', () => {
+  const DECL_RE = /^(export )?(default )?(async )?(function \w+\s*[<(]|const \w+\s*=\s*(async\s+)?(function\b|[(<]))/;
+  const declared = DB.split('\n').filter((l) => DECL_RE.test(l)).map((l) => l.trim());
+  const MEDIA_TX_RE = /transaction\(\s*(\[[^\]]*)?['"]media['"]/;
+  const nameOf = (decl: string) => decl.match(/(?:function|const)\s+(\w+)/)?.[1] ?? '';
+
+  const loaders = declared.filter((decl) => {
+    const body = bodyOrNull(DB, decl);
+    if (body === null) return false;
+    return MEDIA_TX_RE.test(body) && /\.getAll\(/.test(body);
+  }).map(nameOf);
+
+  const unexpected = loaders.filter((n) => !WHOLE_STORE_LOADERS.includes(n));
+  assert.deepEqual(
+    unexpected,
+    [],
+    `these db.ts functions load the whole media store with getAll and are not on the known list: ${unexpected.join(', ')}. Every photo and video would be in memory at once. Use a cursor.`,
+  );
+  // And the known one must still exist, or this guard is checking an empty set.
+  assert.ok(loaders.includes('getAllMediaWholeStore'),
+    'getAllMediaWholeStore is gone or no longer uses getAll — this guard is now vacuous and needs rewriting');
+});
+
+// ---------------------------------------------------------------------------
+// The save path specifically: it must read the library through the cursor-based
+// source, not the whole-store loader. This is the call-site pin for pass 2, in
+// the same shape as the P-4 and P-7 pins below.
+// ---------------------------------------------------------------------------
+test('pass 2: exportSnapshotSources reads media through the cursor helper', () => {
+  const body = bodyOf(DB, 'export async function exportSnapshotSources()');
+  assert.equal(body.includes('getAllMediaWholeStore'), false,
+    'exportSnapshotSources loads the whole media store — the save path is exactly where that must not happen');
+  assert.equal(body.includes('scanMediaExportSources'), true,
+    'exportSnapshotSources must walk the store through scanMediaExportSources');
 });
 
 // ---------------------------------------------------------------------------

@@ -165,11 +165,43 @@ export function writeZip(entries: ZipEntry[], when: Date = new Date()): Uint8Arr
 
 export interface ZipSource { name: string; open(): Promise<Uint8Array<ArrayBuffer>>; }
 
-export async function writeZipBlob(sources: ZipSource[], when: Date = new Date()): Promise<Blob> {
+/**
+ * Progress reporting for the streaming writer. Reports entries FINISHED out of
+ * the total, and reports (0, total) once before the first one.
+ *
+ * It exists because streaming is SLOWER than the in-memory writer, not faster —
+ * the library is walked twice — so a save with no visible counter is
+ * indistinguishable from a hung one. That is exactly the pair the owner could
+ * not tell apart on 10 August 2026, when a save died silently mid-pack.
+ *
+ * IT MUST NOT AFFECT A SINGLE BYTE OF THE ARCHIVE. It is called after an entry
+ * has already been appended and it reads nothing the writer writes. What proves
+ * that is a test building the SAME library twice, once with a callback attached
+ * and once without, and comparing the two archives — NOT the golden-file test,
+ * which this comment used to cite and which never attaches a callback at all.
+ * (Caught by a cold audit. Naming the wrong keeper is worse than naming none,
+ * because the next reader stops at the name.)
+ *
+ * It is also invoked defensively: a caller whose callback throws would otherwise
+ * abort the write, so a rendering bug in a counter could cost the user a backup.
+ */
+export type ZipProgress = (done: number, total: number) => void;
+
+function reportProgress(onProgress: ZipProgress | undefined, done: number, total: number): void {
+  if (!onProgress) return;
+  try { onProgress(done, total); } catch { /* a progress callback must never fail a save */ }
+}
+
+export async function writeZipBlob(
+  sources: ZipSource[],
+  when: Date = new Date(),
+  onProgress?: ZipProgress,
+): Promise<Blob> {
   // The count is known now; the byte total is not, because a source's size only
   // becomes known when it is opened. So the count is checked here and the
   // running offset is checked inside the loop, before it is written anywhere.
   checkZipEntryCount(sources.length);
+  reportProgress(onProgress, 0, sources.length);
   const te = new TextEncoder();
   const { time, date } = dosDateTime(when);
   // parts accumulates Blobs (not Uint8Arrays) so the engine can evict each
@@ -177,6 +209,7 @@ export async function writeZipBlob(sources: ZipSource[], when: Date = new Date()
   const parts: Blob[] = [];
   const central: Uint8Array<ArrayBuffer>[] = [];
   let offset = 0;
+  let done = 0;
 
   for (const src of sources) {
     const name = te.encode(src.name);
@@ -223,6 +256,8 @@ export async function writeZipBlob(sources: ZipSource[], when: Date = new Date()
     central.push(cen);
     offset += local.length + bytes.length;
     checkZipOffset(offset);
+    done += 1;
+    reportProgress(onProgress, done, sources.length);
   }
 
   const cdSize = central.reduce((s, c) => s + c.length, 0);
