@@ -281,6 +281,19 @@ export async function buildFlogBlob(parts: {
   lastModified: number;
   stores: Record<string, unknown[]>;
   media: FlogMediaSource[];
+  /**
+   * Reports PHOTOS finished, out of the photo count — not ZIP entries. The
+   * archive's first entry is data.json, which is not a photo and is not the
+   * caller's business; translating here rather than in the screen keeps the
+   * off-by-one in one place instead of in every caller that shows a counter.
+   *
+   * It reports (0, count) TWICE before the first photo: once when the writer
+   * starts, and again when data.json finishes and maps back to zero. Written
+   * down because the first version of this line said "once" while the test
+   * pinning the sequence said twice, and a caller was filtering against the
+   * wrong one of the two.
+   */
+  onProgress?: (done: number, total: number) => void;
 }): Promise<Blob> {
   const plan = planFlog(parts);
   const sources: import('./zip.ts').ZipSource[] = [
@@ -293,7 +306,13 @@ export async function buildFlogBlob(parts: {
     // undefined and the first sign of trouble is a crash inside crc32.
     ...parts.media.map((m, i) => ({ name: String(plan.mediaNames[i]), open: () => m.open() }))
   ];
-  return writeZipBlob(sources, new Date(parts.exportedAt));
+  const photos = parts.media.length;
+  const onProgress = parts.onProgress;
+  // done counts ZIP entries, and entry 0 is data.json. Math.max keeps that first
+  // report at 0 rather than -1; the total is the photo count, so the counter
+  // finishes at exactly N of N when the last photo lands.
+  const relay = onProgress ? (done: number) => onProgress(Math.max(0, done - 1), photos) : undefined;
+  return writeZipBlob(sources, new Date(parts.exportedAt), relay);
 }
 
 // ─── Shared validation helper ─────────────────────────────────────────────────

@@ -3,9 +3,11 @@
 // check of which copy is newer. (Renamed from Push/Pull, July 8 2026 — Git
 // words, not range words; Michael's wife supplied the usability test.)
 import { useEffect, useRef, useState } from 'react';
-import { buildFlog, parseFlog } from '../lib/flog.ts';
+import { buildFlogBlob, parseFlog } from '../lib/flog.ts';
 import type { Snapshot } from '../lib/flog.ts';
-import { exportSnapshot, getSettings, localLastModified, restoreSnapshot, putSettings } from '../lib/db.ts';
+import {
+  exportSnapshotSources, getSettings, localLastModified, restoreSnapshot, putSettings, withExclusiveIo,
+} from '../lib/db.ts';
 import type { AppSettings } from '../lib/types.ts';
 import { fileTooLargeMessage, storageShortfallMessage, MAX_FLOG_BYTES } from '../lib/inputLimits.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
@@ -56,23 +58,102 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
   }, []);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Backup memory pass 2, session 118. This used to load every photo and video
+  // into memory, build the whole archive as a second block the same size, and
+  // wrap that in a third — roughly three copies of the library at once, against
+  // an iPhone allowance in the low hundreds of megabytes. One minute of iPhone
+  // video was enough to have the page killed mid-pack, twice, with no file saved.
+  // buildFlogBlob holds one photo at a time and hands each finished piece to the
+  // browser, which is free to spill it to disk. It also returns the Blob itself,
+  // so the third copy (`new Blob([bytes])`) is gone rather than merely smaller.
+  //
+  // MEASURED — AND READ THE METRIC NAMES, BECAUSE THE FIRST TWO ATTEMPTS AT THIS
+  // COMMENT BOTH QUOTED THE WRONG ONE. Chromium, eight runs across two machines,
+  // on a library shaped like his: three ~57 MB clips plus 31 photos, 264 MB in
+  // total. Both paths were hashed and proved to produce the identical archive
+  // before any number was believed.
+  //
+  //   PEAK growth during a save (kernel high-water mark — the figure that
+  //   decides whether a page gets killed):
+  //                                   810-850 MB  ->  510-570 MB
+  //   Above the 264 MB archive, which has to exist:
+  //                                   ~550 MB     ->  ~280 MB
+  //   What is still resident when the save FINISHES (proportional set size):
+  //                                    818 MB     ->   282 MB
+  //
+  // SO THE PEAK IS ROUGHLY HALVED, NOT ELIMINATED. An earlier version of this
+  // comment quoted the last row as the peak and concluded "the transient waste is
+  // essentially gone". It is not: the end-state figure cannot see a transient at
+  // all, which is precisely the blindness the previous instrument was rebuilt to
+  // remove, reintroduced in a different metric. The transient above the archive
+  // is about 280 MB, not 18 MB.
+  //
+  // WHAT THAT MEANS, STATED WITHOUT HOPE ATTACHED. A 264 MB library still peaks
+  // somewhere around half a gigabyte. That is a great deal better than 850 MB and
+  // it is not obviously under an iPhone's ceiling. The floor is set by what is IN
+  // the log — a minute of 4K video is 170 MB and no writer makes it smaller — so
+  // the next real lever is the size of what gets stored, not the way it is
+  // written. His phone is the deciding test; no machine here can stand in for it.
+  // scripts/measure-backup-memory.mjs reproduces all of this and carries the
+  // post-mortem of two wrong instruments. Trust it over this comment.
+  //
+  // THE LOCK IS PART OF THE FIX, not housekeeping — but be exact about what it
+  // covers, because the first version of this comment was not and a cold audit
+  // caught it. Reading the library one photo at a time opens a window the old
+  // single-transaction read did not have. withExclusiveIo is the same exclusion
+  // restore, import, erase and Free Up Space take, and it holds ACROSS TABS. It
+  // does NOT stop several ordinary things, and the enumeration matters because
+  // the first version of it sent the reader to the wrong files. Unlocked media
+  // deletes live in PhotoSheet, MediaField, MatchScreens (removing a match's
+  // videos) and GunDetail — AND, the one nobody would guess, in the automatic
+  // trash purge: opening the session list runs purgeExpiredSessions, which
+  // deletes the media attached to any session past its 30-day window, and by
+  // "Delete Forever" in the trash, which calls the same purge directly. So simply
+  // LEAVING this screen can delete photos out from under a running pack.
+  // (GunDetail was named here for one round and does not belong: it only ADDS
+  // media. Deleting from a gun screen happens in the PhotoSheet it renders,
+  // which is already on the list. Third correction to one sentence.)
+  // db.ts openMediaBytes handles the rest of that window: an edited photo yields
+  // a point-in-time backup, a deleted one fails the save and says so.
+  //
+  // KNOWN AND NOT FIXED HERE, recorded so it is a decision rather than a
+  // discovery: leaving this screen mid-pack lets the save finish into nothing.
+  // The finished file is dropped and no message is shown, because this
+  // component's state went with the screen. AND — the half that turns a silent
+  // no-op into a dead end — the orphaned pack still holds the lock while it
+  // runs, so coming back and tapping Save is refused with "Another change to
+  // your data is still finishing" against a card that shows nothing happening.
+  // Fixing it means owning the save above the screen, which is more than this
+  // pass signed up for.
+  //
+  // TWO PHASES, TWO MESSAGES. The library is walked twice — once for the
+  // descriptions, once for the bytes — so a single frozen "Packing your data…"
+  // would sit unchanged through the whole first half, which is the exact
+  // cannot-tell-it-from-hung problem the counter exists to remove.
   async function saveToFile() {
-    setStage({ name: 'working', message: 'Packing your data…' });
+    setStage({ name: 'working', message: 'Reading your photos…' });
     try {
-      const snapshot = await exportSnapshot();
-      const bytes = buildFlog(snapshot);
-      // P-5: bytes is a Uint8Array that owns its whole backing buffer (writeZip
-      // allocates `new Uint8Array(total)`), so Blob can use it directly.
-      // The previous copy — `new ArrayBuffer(bytes.length); new Uint8Array(ab).set(bytes)` —
-      // allocated a second buffer the same size and copied every byte for no reason.
-      // No cast: buildFlog/writeZip declare Uint8Array<ArrayBuffer>, which is what
-      // they allocate, so the compiler checks this rather than being told to trust it.
-      const blob = new Blob([bytes], { type: 'application/octet-stream' });
-      const sessions = (snapshot.stores.sessions ?? []).length;
+      const packed = await withExclusiveIo('the backup', async () => {
+        const parts = await exportSnapshotSources();
+        const photos = parts.media.length;
+        setStage({ name: 'working', message: 'Packing your data…' });
+        const blob = await buildFlogBlob({
+          ...parts,
+          onProgress: (done, total) => {
+            // Only once photos start: data.json is entry zero and reports (0, N)
+            // twice, and "Packing photos: 0 of 31" reads like a failure rather
+            // than a start.
+            if (total > 0 && done > 0) {
+              setStage({ name: 'working', message: `Packing photos: ${done} of ${total}…` });
+            }
+          },
+        });
+        return { blob, sessions: (parts.stores.sessions ?? []).length, photos };
+      });
       setStage({
         name: 'save-ready',
-        blob,
-        summary: `${sessions} sessions and ${snapshot.media.length} photos/videos, packed and ready.`
+        blob: packed.blob,
+        summary: `${packed.sessions} sessions and ${packed.photos} photos/videos, packed and ready.`
       });
     } catch (e) {
       setStage({ name: 'idle', message: e instanceof Error ? e.message : 'The save did not finish.' });
