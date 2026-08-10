@@ -823,15 +823,34 @@ export interface SteelStringScore {
 }
 export interface SteelStageScore {
   strings: SteelStringScore[];
-  stringsExpected: 4 | 5;
+  stringsExpected: number;
   droppedIndex: number | null; // index of the single dropped (slowest) string; null when none dropped
   stageTime: number | null;    // sum of the counted strings; null if nothing entered
 }
 
 const round2 = (x: number): number => Math.round(x * 100) / 100;
 
-/** Number of strings SHOT: Outer Limits is 4 (scored best 3 of 4); every other stage is 5 (best 4 of 5). */
-export function steelStringsExpected(steelStage?: string): 4 | 5 {
+/** Number of strings SHOT. Outer Limits is 4 (scored best 3 of 4); every other
+ *  OFFICIAL stage is 5 (best 4 of 5).
+ *
+ *  `declared` overrides the name, and exists because THE NAME IS NOT ENOUGH: a
+ *  club ran a genuine four-string stage called "Plate Rack Plus" (GCF&G, 8 Aug
+ *  2026, seen in a real PractiScore download file). Without the override this
+ *  returns 5 for it, scoreSteelStage then treats a complete stage as unfinished,
+ *  drops nothing, and the stage total comes out as the sum of all four strings
+ *  instead of the best three -- too high, silently, with no error anywhere.
+ *
+ *  Bounded deliberately. Below 2 there would be nothing left after dropping the
+ *  worst, which is exactly the degenerate shape the importer refuses; above 7
+ *  cannot occur, because a download-file score row has room for seven strings
+ *  and no more. Anything outside that falls back to the name, so a damaged or
+ *  hostile value can never widen what gets scored.
+ *
+ *  Hand entry passes no `declared` and is unaffected: same answer as before. */
+export function steelStringsExpected(steelStage?: string, declared?: number | null): number {
+  if (typeof declared === 'number' && Number.isInteger(declared) && declared >= 2 && declared <= 7) {
+    return declared;
+  }
   return steelStage === 'Outer Limits' ? 4 : 5;
 }
 
@@ -840,6 +859,8 @@ export interface SteelStageInput {
   stringMisses?: (number | null)[];
   stringStopMissed?: boolean[];
   steelStage?: string;
+  /** Optional; see steelStringsExpected. Absent on every hand-entered stage. */
+  steelStringsDeclared?: number | null;
 }
 
 /**
@@ -852,7 +873,7 @@ export function scoreSteelStage(stage: SteelStageInput): SteelStageScore {
   const raws = stage.strings ?? [];
   const missesArr = stage.stringMisses ?? [];
   const stopArr = stage.stringStopMissed ?? [];
-  const expected = steelStringsExpected(stage.steelStage);
+  const expected = steelStringsExpected(stage.steelStage, stage.steelStringsDeclared);
   const scored: SteelStringScore[] = raws.map((raw, i) => {
     const misses = nonNeg(missesArr[i]);
     const stopMissed = stopArr[i] === true;
