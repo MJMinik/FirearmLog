@@ -296,6 +296,17 @@ export interface MatchStage {
   stringMisses?: (number | null)[];
   stringStopMissed?: boolean[];
   steelStage?: string; // which SCSA stage (drives 4- vs 5-string); '' = generic 5-string
+  // Added 10 Aug 2026 for the PractiScore download-file importer, both optional
+  // and both absent on every existing stage, so nothing already stored changes.
+  //   steelStringsDeclared -- how many strings this stage is ACTUALLY shot over,
+  //     when that cannot be worked out from steelStage. A club ran a genuine
+  //     four-string stage called "Plate Rack Plus"; without this the scorer
+  //     would expect five, treat the stage as unfinished, drop nothing, and
+  //     report a stage total that is too high with no error shown.
+  //   steelStageName -- the club's own name for a stage outside the official
+  //     eight, so an invented stage can be shown as the club named it.
+  steelStringsDeclared?: number | null;
+  steelStageName?: string | null;
   // IDPA (time-plus): the `time` above is the raw timer time. These are the hit
   // breakdown (points-down zones) + penalties. Points down: -1 = 1, -3 = 3, miss = 5;
   // each point down = 1s. Non-threat hit = 5s, PE = 3s, flagrant = 10s, FTDR = 20s.
