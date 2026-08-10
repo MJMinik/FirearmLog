@@ -1047,8 +1047,21 @@ export function validateSnapshotShape(snapshot: Snapshot): void {
   if (!snapshot || typeof snapshot !== 'object' || typeof snapshot.stores !== 'object' || snapshot.stores === null) {
     throw new Error('This data file is unreadable. Nothing on this device was changed.');
   }
+  validateStoresShape(snapshot.stores);
+  validateMediaIds(snapshot.media);
+}
+
+/**
+ * The record half of the check. Split out at pass 3 so the same rules apply
+ * whether the photos are already in memory or are still in the file — the media
+ * half used to walk a loaded array, which a lazily-read backup does not have.
+ * If that had not moved with the rest, a record with a bad id would have reached
+ * the database mid-restore and landed in exactly the half-written state pass 3
+ * exists to prevent.
+ */
+function validateStoresShape(stores: Record<string, unknown[]>): void {
   for (const name of SNAPSHOT_STORES) {
-    const arr = snapshot.stores[name];
+    const arr = stores[name];
     if (arr === undefined) continue; // a missing store is treated as empty
     if (!Array.isArray(arr)) {
       throw new Error(`This data file is damaged (its "${name}" section is malformed). Nothing on this device was changed.`);
@@ -1060,10 +1073,14 @@ export function validateSnapshotShape(snapshot: Snapshot): void {
       }
     }
   }
-  if (!Array.isArray(snapshot.media)) {
+}
+
+/** The photo half: every entry must carry a string id, loaded or not. */
+function validateMediaIds(list: unknown): void {
+  if (!Array.isArray(list)) {
     throw new Error('This data file is damaged (its photo list is malformed). Nothing on this device was changed.');
   }
-  for (const m of snapshot.media) {
+  for (const m of list) {
     if (!m || typeof (m as { id?: unknown }).id !== 'string') {
       throw new Error('This data file is damaged (a photo is missing its id). Nothing on this device was changed.');
     }
@@ -1083,42 +1100,144 @@ export async function restoreSnapshot(
   snapshot: Snapshot,
   onProgress?: (done: number, total: number) => void
 ): Promise<void> {
-  return withIoGuard('the restore', () => restoreSnapshotInner(snapshot, onProgress));
+  return withIoGuard('the restore', () => {
+    validateSnapshotShape(snapshot);
+    return restoreInner(sourceFromSnapshot(snapshot), onProgress);
+  });
 }
 
-async function restoreSnapshotInner(
-  snapshot: Snapshot,
+/**
+ * What a restore reads from. A whole Snapshot satisfies it, and so does a
+ * `LazyFlog` — a backup opened by its index, which hands over one photo at a
+ * time instead of holding all of them.
+ *
+ * WHY THE SHAPE RATHER THAN AN OVERLOAD: restoreSnapshot has call sites across
+ * the test suite plus the setup wizard, all passing a whole Snapshot. Widening
+ * the parameter would have made a large mechanical diff in the one file where a
+ * mechanical diff hides a real change. (No count here: the first version of this
+ * sentence said "fifteen callers ... plus the demo generator", and it was twenty
+ * and the demo generator does not call it at all — a hand-kept number, one pass
+ * after this project finished removing them.)
+ */
+export interface RestoreSource {
+  stores: Record<string, unknown[]>;
+  mediaCount: number;
+  /** Descriptions only — enough to validate ids and decide what to keep. */
+  mediaMeta: Record<string, unknown>[];
+  readMedia(index: number): Promise<Media>;
+}
+
+function sourceFromSnapshot(snapshot: Snapshot): RestoreSource {
+  return {
+    stores: snapshot.stores,
+    mediaCount: snapshot.media.length,
+    mediaMeta: snapshot.media as unknown as Record<string, unknown>[],
+    readMedia: async (i) => snapshot.media[i],
+  };
+}
+
+/**
+ * Restore from a backup that is still on disk, pulling each photo out as it is
+ * needed. This is what Load from File uses; the whole-Snapshot form above is for
+ * the setup wizard, the demo generator and the tests.
+ */
+export async function restoreFromFile(
+  source: RestoreSource,
   onProgress?: (done: number, total: number) => void
 ): Promise<void> {
-  validateSnapshotShape(snapshot);
+  return withIoGuard('the restore', () => {
+    validateStoresShape(source.stores);
+    validateMediaIds(source.mediaMeta);
+    return restoreInner(source, onProgress);
+  });
+}
+
+/**
+ * THE ORDER OF THESE THREE PHASES IS THE WHOLE SAFETY PROPERTY (pass 3,
+ * Michael's decision, 10 August 2026). Photos are added FIRST, the records are
+ * replaced SECOND, and stale photos are deleted LAST.
+ *
+ * It used to be records first. That was safe while the whole file was read and
+ * checksum-verified before the confirmation sheet appeared: a damaged backup was
+ * refused with the device untouched. Reading photos out one at a time gives that
+ * up — a photo can now fail its checksum in the middle of the restore — and with
+ * records first the failure left him holding the file's guns and sessions, a
+ * photo library half his and half the file's, and no way back.
+ *
+ * WHAT THIS ORDER ACTUALLY BUYS, STATED EXACTLY. Two independent cold audits
+ * caught the first version of this paragraph claiming a failure "destroys
+ * NOTHING", and it is not true. Phase 1 writes with `put`, and the media store's
+ * key is the record's own id — so where the backup names a photo the device
+ * already has, `put` REPLACES it. A backup is normally of his own library, so on
+ * every sync after the first, most ids collide. A failure part-way therefore
+ * leaves any photo the loop already reached holding the BACKUP's version of its
+ * bytes, caption, notes and markup, losing anything he changed since that backup
+ * was taken. Both auditors reproduced it.
+ *
+ * So the honest statement is narrower than "nothing", and it is still worth
+ * having:
+ *   - His RECORDS — guns, sessions, matches, costs, everything but the photos —
+ *     are untouched by a failure before phase 2. That is the bulk of the log and
+ *     it is what the old order destroyed.
+ *   - Photos the loop reached revert to the backup's version. That is a partial
+ *     application of an operation whose whole purpose is to overwrite them, not
+ *     the arrival of data from nowhere — but it IS a loss of anything edited
+ *     since, and it is not what "non-destructive" means.
+ *   - Photos the file does not name survive; the delete pass has not run.
+ *
+ * THE REMAINING FIX, NOT BUILT HERE: phase 1 should write a colliding id only
+ * AFTER the records are committed, so the genuinely additive photos land first
+ * and the overwrites happen on the far side of the point of no return. That is a
+ * second redesign of the most destructive function in the app and it wants its
+ * own spec and its own audit rather than an extra hour at the end of a long day.
+ *
+ * The alternative considered and declined at spec time was verifying the whole
+ * file up front, which restores the old guarantee exactly and doubles the time of
+ * every restore — minutes, on a 524 MB backup, against a case neither of us has
+ * ever seen.
+ *
+ * What is unchanged: the record phase is still one atomic transaction, so it is
+ * all-or-nothing on its own; and media is still one transaction per photo, which
+ * is what lets the reads happen between them (an IndexedDB transaction cannot
+ * survive an await that is not one of its own requests).
+ */
+async function restoreInner(
+  source: RestoreSource,
+  onProgress?: (done: number, total: number) => void
+): Promise<void> {
   const db = await openDb();
 
-  // Regular stores: clear + rewrite atomically (all-or-nothing; rolls back on error).
-  const tx = db.transaction([...SNAPSHOT_STORES], 'readwrite');
-  queueOrAbort(tx, () => {
-    for (const name of SNAPSHOT_STORES) {
-      const os = tx.objectStore(name);
-      os.clear();
-      for (const r of snapshot.stores[name] ?? []) os.put(r as object);
-    }
-  });
-  await txDone(tx);
-
-  // Media: add the new set first (one per transaction — iPhone Safari friendly)…
-  const total = snapshot.media.length;
+  // PHASE 1 — add every photo. Nothing of his is touched by this.
+  const total = source.mediaCount;
   let done = 0;
   onProgress?.(done, total);
-  for (const m of snapshot.media) {
+  for (let i = 0; i < total; i++) {
+    // Read OUTSIDE any transaction: this may go to disk, and a transaction
+    // opened before it would have committed by the time it resolved.
+    const record = await source.readMedia(i);
     const mtx = db.transaction('media', 'readwrite');
-    mtx.objectStore('media').put(m);
+    mtx.objectStore('media').put(record);
     await txDone(mtx);
     done += 1;
     onProgress?.(done, total);
     await new Promise((r) => setTimeout(r, 0));
   }
-  // …then remove anything that isn't in the new set. The store is never empty.
-  // P-8: walk the primary keys only — no photo is deserialised just to delete by id.
-  const keepIds = new Set<unknown>(snapshot.media.map((m) => m.id));
+
+  // PHASE 2 — replace the records, atomically. The first destructive step, and
+  // by now every photo the file names is already safely on disk.
+  const tx = db.transaction([...SNAPSHOT_STORES], 'readwrite');
+  queueOrAbort(tx, () => {
+    for (const name of SNAPSHOT_STORES) {
+      const os = tx.objectStore(name);
+      os.clear();
+      for (const r of source.stores[name] ?? []) os.put(r as object);
+    }
+  });
+  await txDone(tx);
+
+  // PHASE 3 — remove photos the new set does not name. The store is never empty.
+  // P-8: walk the primary keys only — no photo is deserialised just to delete it.
+  const keepIds = new Set<unknown>(source.mediaMeta.map((m) => (m as { id?: unknown }).id));
   const existing = await scanMediaKeys();
   for (const key of existing) {
     if (!keepIds.has(key)) {

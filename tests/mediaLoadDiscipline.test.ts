@@ -261,12 +261,12 @@ test('P-8: the import commit delete-stale path reads ids, not blobs', () => {
 });
 
 test('P-8: the restore delete-stale path reads keys only', () => {
-  const marker = "// …then remove anything that isn't in the new set. The store is never empty.";
-  const start = DB.indexOf(marker);
-  assert.ok(start !== -1, 'restore delete-stale comment not found in db.ts');
-  const end = DB.indexOf('\n/**', start);
-  assert.ok(end !== -1, 'could not bound the restore delete block');
-  const block = DB.slice(start, end);
+  // Scoped by FUNCTION rather than by a pair of comment strings. The previous
+  // version bounded the block between a comment and the next `/**`, and pass 3
+  // reworded that comment — so the guard failed for a reason that had nothing to
+  // do with what it guards. A guard whose scope depends on prose is a guard that
+  // goes red on an edit to prose.
+  const block = bodyOf(DB, 'async function restoreInner(');
   assert.equal(block.includes('getAllMediaWholeStore'), false, 'restore still loads the whole media store');
   assert.equal(
     block.includes('scanMediaKeys'),

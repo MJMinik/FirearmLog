@@ -231,9 +231,12 @@ test('B7: a restore interrupted in the media phase never LOSES existing photos',
   await clearAllData();
   const oldMedia = { id: 'md-old', ownerType: 'session', ownerId: 's1', kind: 'image', data: new ArrayBuffer(4) };
   await restoreSnapshot({ ...snapshotWith({ sessions: [{ id: 's1' }] }), media: [oldMedia] } as Snapshot);
-  // New snapshot: first media record is unstorable → the media phase dies on
-  // record 1, AFTER the regular stores committed. Add-before-delete means the
-  // old photo must still be there (worst case is extras, never loss).
+  // New snapshot: the first media record is unstorable, so the media phase dies
+  // on record 1. Since pass 3 that phase runs FIRST, so nothing has been replaced
+  // when it fails — the assertion below was "the old photo survives" and is now
+  // widened to the stronger property the reorder actually buys: his RECORDS
+  // survive too. Before pass 3 the stores had already committed by this point
+  // and s1 would be gone.
   const poisoned = {
     ...snapshotWith({ sessions: [{ id: 's2' }] }),
     media: [{ id: 'md-bad', oops: () => {} }, { id: 'md-new', ownerType: 'session', ownerId: 's2', kind: 'image', data: new ArrayBuffer(4) }],
@@ -241,6 +244,11 @@ test('B7: a restore interrupted in the media phase never LOSES existing photos',
   await assert.rejects(restoreSnapshot(poisoned));
   const media = await getAllMediaWholeStore();
   assert.ok(has(media, 'md-old'), 'existing photo survived the interrupted restore');
+  // Pass 3: the records must be untouched as well, because the media phase now
+  // runs before them. This assertion fails on the pre-pass-3 ordering.
+  const sessions = await getAll<{ id: string }>('sessions');
+  assert.ok(has(sessions, 's1'), 'his session was replaced by a restore that failed in the media phase');
+  assert.ok(!has(sessions, 's2'), 'the file\'s records landed even though the restore failed');
 });
 
 test('S-5: getMediaForOwner returns only that owner\'s media (not the whole store)', async () => {

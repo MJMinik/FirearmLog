@@ -20,8 +20,17 @@ export const MAX_PASTE_CHARS = 5_000_000; // ~5 MB of text
  *  Pistol Tracker backup is ~80 MB (photos as base64), so the ceiling is high. */
 export const MAX_IMPORT_FILE_BYTES = 300 * MB;
 
-/** A .flog data file (the whole log, incl. photos/videos) read whole via
- *  file.arrayBuffer(). Legitimately large — this only catches the absurd. */
+/** A .flog data file (the whole log, incl. photos/videos). Legitimately large —
+ *  this only catches the absurd.
+ *
+ *  CORRECTED at pass 3: this said "read whole via file.arrayBuffer()", which was
+ *  the reason for the cap and stopped being true when the restore went lazy. It
+ *  now bounds the work rather than a single allocation.
+ *
+ *  WORTH A LOOK RATHER THAN A GUESS: the owner's real backup was 326 MB in the
+ *  morning and 524 MB by the afternoon, after one minute of 4K video. A 1 GB cap
+ *  was "the absurd" when a log was photos; it is now roughly two more videos
+ *  away from refusing his actual data. */
 export const MAX_FLOG_BYTES = GB; // 1 GB
 
 /** One attached photo/video. Full-resolution insurance photos run ~30 MB and a
