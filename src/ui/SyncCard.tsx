@@ -307,7 +307,10 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
                 <li>Tap <strong>Save to Files</strong>.</li>
                 <li>Pick where to keep it — <strong>iCloud Drive</strong> works well, and Google Drive
                   or any folder works too. Then tap <strong>Save</strong>.</li>
-                <li>If it asks about an existing FirearmLog.flog, choose <strong>Replace</strong>.</li>
+                <li>If it offers to <strong>Replace</strong> the one already there, take it. Often it
+                  does not ask: it keeps the old file and adds a number, so you end up with
+                  FirearmLog 2, FirearmLog 3 and so on. The newest is your backup — delete the older
+                  ones when they start taking up room.</li>
               </ol>
               <p className="report-note" style={{ marginBottom: 12 }}>
                 From the Share sheet you can also AirDrop the file straight to your Mac or another
@@ -325,7 +328,10 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
                 <li>In the menu that slides up, tap <strong>Save to Files</strong>.</li>
                 <li>Pick where to keep it — <strong>iCloud Drive</strong> works well, and Google Drive or
                   any folder works too. Then tap <strong>Save</strong>.</li>
-                <li>If it asks about an existing FirearmLog.flog, choose <strong>Replace</strong>.</li>
+                <li>If it offers to <strong>Replace</strong> the one already there, take it. Often it
+                  does not ask: it keeps the old file and adds a number, so you end up with
+                  FirearmLog 2, FirearmLog 3 and so on. The newest is your backup — delete the older
+                  ones when they start taking up room.</li>
               </ol>
               <p className="report-note" style={{ marginBottom: 12 }}>
                 Whatever spot you pick, that's where your backup lives — you can also save it on this
