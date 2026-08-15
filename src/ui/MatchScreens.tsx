@@ -363,7 +363,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
           {steelRows.map(({ st, score }, i) => (
             <div className="row" key={i}>
               <span className="label">
-                Stage {st.number}{st.steelStage ? ` -- ${st.steelStage}` : ''}
+                Stage {st.number}{st.steelStage ? ` -- ${st.steelStage}` : st.steelStageName ? ` -- ${st.steelStageName}` : ''}
                 {st.notes && <div className="row-sub">{st.notes}</div>}
                 {score.stageTime != null && score.droppedIndex != null && (
                   <div className="row-sub">Dropped the slowest string (String {score.droppedIndex + 1})</div>
@@ -514,6 +514,12 @@ interface StageRow {
   // Arrays are always length STEEL_STRINGS_MAX; only the first `expected` (4 or 5)
   // are rendered and saved, so switching to/from Outer Limits never loses entries.
   steelStage: string;
+  // Carried through the editor UNTOUCHED (written only by the download-file
+  // importer; nothing here edits them). Dropping them on save would silently
+  // re-score a genuine four-string club stage as best-4-of-4 -- the exact
+  // failure steelStringsDeclared exists to prevent.
+  steelStringsDeclared: number | null;
+  steelStageName: string | null;
   strings: string[];
   stringMisses: string[];
   stringStopMissed: boolean[];
@@ -531,7 +537,12 @@ const BREAK_FIELDS = [
   ['misses', 'Misses (M)'], ['noShoots', 'No-shoots'], ['procedurals', 'Procedurals'],
 ] as const;
 
-const STEEL_STRINGS_MAX = 5;
+// 7, not 5: a PractiScore download-file score row has room for seven strings,
+// and steelStringsDeclared is bounded 2..7 to match. Hand entry still renders
+// and saves only `expected` strings (4 or 5 from the stage name), so nothing
+// about a typed match changes; the extra slots exist so editing an imported
+// stage can never truncate strings the file recorded.
+const STEEL_STRINGS_MAX = 7;
 
 /** Grow/trim an array to exactly `len`, filling new slots with `fill`. */
 function padArr<T>(arr: T[], len: number, fill: T): T[] {
@@ -546,6 +557,8 @@ function emptyStageRow(): StageRow {
     points: '', time: '', percent: '', notes: '', showBreak: false,
     alphas: '', charlies: '', deltas: '', misses: '', noShoots: '', procedurals: '',
     steelStage: '',
+    steelStringsDeclared: null,
+    steelStageName: null,
     strings: Array(STEEL_STRINGS_MAX).fill(''),
     stringMisses: Array(STEEL_STRINGS_MAX).fill(''),
     stringStopMissed: Array(STEEL_STRINGS_MAX).fill(false),
@@ -674,6 +687,8 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
             noShoots: st.noShoots == null ? '' : String(st.noShoots),
             procedurals: st.procedurals == null ? '' : String(st.procedurals),
             steelStage: st.steelStage ?? '',
+            steelStringsDeclared: st.steelStringsDeclared ?? null,
+            steelStageName: st.steelStageName ?? null,
             strings, stringMisses, stringStopMissed,
             stringShowPenalty: stringStopMissed.map((stop, n) => stop || (stringMisses[n] !== '' && Number(stringMisses[n]) > 0)),
             idpaShowDetail: [st.idpaDown0, st.idpaDown1, st.idpaDown3, st.idpaMisses, st.idpaNonThreatHits,
@@ -783,11 +798,16 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
       // Steel: source of truth is the raw strings; points/HF don't apply. Only the
       // first `expected` strings count (4 on Outer Limits, 5 elsewhere) so a stage
       // switched to Outer Limits never carries a phantom 5th string into scoring.
-      const expected = steelStringsExpected(st.steelStage);
+      const expected = steelStringsExpected(st.steelStage, st.steelStringsDeclared);
       return {
         number: i + 1,
         points: null, time: null, percent: null, notes: st.notes.trim(),
         steelStage: st.steelStage || '',
+        // Imported stages carry these two; hand-entered stages never gain the
+        // keys, so an edited hand-typed match stores exactly the shape it
+        // always did (ADD, never replace).
+        ...(st.steelStringsDeclared != null ? { steelStringsDeclared: st.steelStringsDeclared } : {}),
+        ...(st.steelStageName ? { steelStageName: st.steelStageName } : {}),
         strings: st.strings.slice(0, expected).map(num),
         stringMisses: st.stringMisses.slice(0, expected).map(num),
         stringStopMissed: st.stringStopMissed.slice(0, expected),
@@ -1122,14 +1142,15 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
 
       <div className="card">
         <h2>{scoringType === 'steel' ? 'Stages & strings' : 'Stages'} <InfoTip title="How the numbers work">{scoringType === 'steel'
-          ? <>Steel is scored on time -- lowest wins. Enter each string's raw time; if a plate was missed or the stop plate was never hit, tap "+ miss / penalty" on that string. Each miss adds 3 seconds, a string is capped at 30 seconds, and a missed stop plate scores the full 30. A stage keeps your best 4 of 5 strings (the slowest is dropped) -- and Outer Limits keeps your best 3 of 4 (the slowest is still dropped). Full math and sources are in "How the numbers work."</>
+          ? <>Steel is scored on time -- lowest wins. Enter each string's raw time; if a plate was missed or the stop plate was never hit, tap "+ miss / penalty" on that string. Each miss adds 3 seconds, a string is capped at 30 seconds, and a missed stop plate scores the full 30. A stage keeps your best 4 of 5 strings (the slowest is dropped) -- and Outer Limits keeps your best 3 of 4 (the slowest is still dropped). A stage imported from a PractiScore file keeps the string count the file declared for it. Full math and sources are in "How the numbers work."</>
           : scoringType === 'idpa'
           ? <>IDPA is time-plus -- lowest total wins. Enter each stage's raw time; tap "+ points down / penalties" to record accuracy (down-1, down-3, misses) and any penalties. Each point down adds 1 second (a -1 is 1, a -3 is 3, a miss is 5); a non-threat hit (hitting a target you weren't meant to shoot) is 5s, a procedural (a rule/procedure penalty) 3s, a flagrant 10s, and failure to do right 20s. Full math and sources are in "How the numbers work."</>
           : <>Hit factor = points / time. Add a stage's A/C/D/miss breakdown and the points are computed from your hits -- A is 5; C is 4 major / 3 minor; D is 2 major / 1 minor -- minus 10 for each miss, no-shoot (a penalty target you weren't meant to hit), and procedural (a rule/procedure penalty), and never below zero (the Points field then becomes read-only). The full math and sources are in "How the numbers work," under More or from a saved match's debrief.</>}</InfoTip></h2>
         {scoringType === 'steel' ? stages.map((st, i) => {
-          const expected = steelStringsExpected(st.steelStage);
+          const expected = steelStringsExpected(st.steelStage, st.steelStringsDeclared);
           const ss = scoreSteelStage({
             steelStage: st.steelStage,
+            steelStringsDeclared: st.steelStringsDeclared,
             strings: st.strings.slice(0, expected).map(num),
             stringMisses: st.stringMisses.slice(0, expected).map(num),
             stringStopMissed: st.stringStopMissed.slice(0, expected),
@@ -1137,13 +1158,19 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
           return (
             <div className="drill-edit" key={i}>
               <div className="drill-edit-head">
-                <strong>Stage {i + 1}{ss.stageTime !== null ? ` -- ${ss.stageTime}s` : ''}</strong>
+                <strong>Stage {i + 1}{st.steelStageName ? ` -- ${st.steelStageName}` : ''}{ss.stageTime !== null ? ` -- ${ss.stageTime}s` : ''}</strong>
                 <button className="icon-btn" aria-label={`Remove stage ${i + 1}`}
                   onClick={() => { setTouched(true); setStages((p) => p.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
               </div>
               <label className="field">Which Steel stage
                 <select value={st.steelStage}
-                  onChange={(e) => setStages((p) => p.map((x, n) => n === i ? { ...x, steelStage: e.target.value } : x))}>
+                  onChange={(e) => setStages((p) => p.map((x, n) => n === i
+                    // Reassigning the stage's identity clears BOTH carried import
+                    // fields: the club name no longer describes it, and a stale
+                    // declared count would silently override the chosen stage's own
+                    // string rule (measured: declared beats the name in the scorer),
+                    // making it score unlike an identical hand-typed stage.
+                    ? { ...x, steelStage: e.target.value, steelStageName: null, steelStringsDeclared: null } : x))}>
                   <option value="">Generic (5 strings)</option>
                   {STEEL_STAGES.map((s) => <option key={s.name} value={s.name}>{s.name}{s.strings === 4 ? ' (4 strings)' : ''}</option>)}
                 </select>

@@ -5,13 +5,26 @@
 // Nothing is written until the final "Save match" — it creates one ordinary
 // Match record (editable/deletable like any other). The parser is pure + tested
 // in src/lib/practiscore.ts; this file is just the screen around it.
+//
+// STEEL CHALLENGE (build spec 10 Aug 2026, decision 3: ONE screen that works
+// out what it has been given). A PractiScore SCSA download file announces
+// itself — its first line starts `AA,` — so whether it arrives through the
+// file chooser or pasted into the box, it is routed to the Steel flow before
+// the USPSA parser ever sees it (refusal 4: the wrong door refuses, or here,
+// redirects — the USPSA reader can never misread a download file). The Steel
+// flow: confirm which match the file is (name + date shot, read from the file
+// before anything else) -> pick your entry or entries from the whole field ->
+// per-entry gun + division -> save. Each selected entry becomes its own Match
+// record (decision 2: a multi-gun shooter is two entries and two records).
+// ALL selected entries are verified before ANY is written: a refusal writes
+// nothing, never half.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppSettings, Firearm } from '../lib/types.ts';
-import { getAll, getSettings, putOne } from '../lib/db.ts';
+import { getAll, getSettings, putOne, putSettings } from '../lib/db.ts';
 import { stampNew } from '../lib/stamps.ts';
 import { newId } from '../lib/id.ts';
 import { todayKey } from '../lib/dates.ts';
-import { MATCH_TYPES, DIVISIONS, POWER_FACTORS, suggestDivision, divisionMismatchKind } from '../lib/competition.ts';
+import { MATCH_TYPES, DIVISIONS, STEEL_DIVISIONS, POWER_FACTORS, suggestDivision, divisionMismatchKind } from '../lib/competition.ts';
 import { divisionActuallyChanged } from '../lib/divisionNormalise.ts';
 import { fieldOptions } from '../lib/selectOptions.ts';
 import { findOwnRows, normaliseStoredNames, type NameMatch } from '../lib/shooterMatch.ts';
@@ -19,6 +32,10 @@ import {
   parsePractiScore, countInDivision, SAMPLE_PRACTISCORE_CSV, type PsMatch
 } from '../lib/practiscore.ts';
 import { looksLikeNewStyleResults, looksLikeSteelChallengeResults } from '../lib/practiscoreDetect.ts';
+import {
+  parseScsaForm, looksLikeScsaForm, groupEntriesByPerson, type ScsaEntry, type ScsaForm
+} from '../lib/scsaForm.ts';
+import { buildSteelMatchFields, scsaDateKey } from '../lib/scsaImport.ts';
 import { FormProblem } from './FormProblem.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
@@ -56,12 +73,30 @@ export function PractiScoreImport({ onCancel, onSaved }: {
   const [ownNames, setOwnNames] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null); // audit #19 — styled file picker
 
+  // ── Steel Challenge download-file flow ──────────────────────────────────────
+  const [steelForm, setSteelForm] = useState<ScsaForm | null>(null);
+  const [steelConfirmed, setSteelConfirmed] = useState(false);
+  /** Competitor numbers picked in the picker, in tap order. */
+  const [steelPicked, setSteelPicked] = useState<number[]>([]);
+  /** Per-entry editable details, keyed by competitor number. */
+  const [steelDetails, setSteelDetails] = useState<Record<number, { division: string; firearmId: string; entryFee: string }>>({});
+  const [steelName, setSteelName] = useState('');
+  const [steelDate, setSteelDate] = useState('');
+  const [steelQuery, setSteelQuery] = useState('');
+  /** Decision 4: the member number remembered from the last Steel import, used
+   *  only to lift this shooter's entries to the top. Nothing is ever selected
+   *  on their behalf. */
+  const [rememberedNumber, setRememberedNumber] = useState('');
+
   useEffect(() => {
     let alive = true;
     void (async () => {
       const st = await getSettings<AppSettings>();
       // ownerName is deliberately not read — see its note in AppSettings.
-      if (alive) setOwnNames(normaliseStoredNames(st?.shooterNames));
+      if (alive) {
+        setOwnNames(normaliseStoredNames(st?.shooterNames));
+        setRememberedNumber((st?.scsaMemberNumber ?? '').trim());
+      }
     })();
     return () => { alive = false; };
   }, []);
@@ -74,16 +109,45 @@ export function PractiScoreImport({ onCancel, onSaved }: {
   // screen changes already snap to the top (App.tsx scrollTop); these in-screen
   // step changes are the same movement, so they get the same snap. rAF so it runs
   // after the new step has rendered.
-  const step = parsed == null ? 1 : chosenIdx == null ? 2 : 3;
+  const [steelFinishing, setSteelFinishing] = useState(false);
+  const step = steelForm != null
+    ? (!steelConfirmed ? 4 : !steelFinishing ? 5 : 6)
+    : parsed == null ? 1 : chosenIdx == null ? 2 : 3;
   useEffect(() => {
     requestAnimationFrame(() => window.scrollTo(0, 0));
   }, [step]);
+
+  /** Route a Steel Challenge download file into the Steel flow. Returns false
+   *  when the text is not a download file at all (caller continues as USPSA). */
+  function tryStartSteel(t: string): boolean {
+    if (!looksLikeScsaForm(t)) return false;
+    const r = parseScsaForm(t);
+    if (!r.ok) {
+      setProblem(r.message);
+      return true; // it WAS a download file — a damaged one. Never fall through to USPSA.
+    }
+    setSteelForm(r.form);
+    setSteelConfirmed(false);
+    setSteelFinishing(false);
+    setSteelPicked([]);
+    setSteelDetails({});
+    setSteelName(r.form.matchName);
+    // The date the match was SHOT, never the download date. '' when the file's
+    // date is malformed — the save guard then asks for it, same as USPSA.
+    setSteelDate(scsaDateKey(r.form.matchDate));
+    setSteelQuery('');
+    setProblem('');
+    return true;
+  }
 
   function readResults() {
     setProblem('');
     // S-2: cap the pasted text before the parser walks it (guard at the boundary).
     const tooLong = textTooLongMessage(text.length);
     if (tooLong) { setProblem(tooLong); return; }
+    // A download file pasted into the text box is still a download file
+    // (refusal 4 / decision 3: the screen works out what it has been given).
+    if (tryStartSteel(text)) return;
     try {
       const m = parsePractiScore(text);
       setParsed(m);
@@ -119,6 +183,94 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     // switched off the suggestions — with the search box itself hidden, because
     // it only appears above eight shooters. An empty card with no way forward.
     setParsed(null); setChosenIdx(null); setProblem(''); setPsQuery('');
+    // The Steel flow resets with it — same button, same promise: back to step 1.
+    setSteelForm(null); setSteelConfirmed(false); setSteelFinishing(false);
+    setSteelPicked([]); setSteelDetails({}); setSteelQuery('');
+  }
+
+  function toggleSteelEntry(entry: ScsaEntry) {
+    if (!entry.importable) return;
+    setSteelPicked((prev) => {
+      if (prev.includes(entry.competitorNumber)) {
+        return prev.filter((n) => n !== entry.competitorNumber);
+      }
+      return [...prev, entry.competitorNumber];
+    });
+    setSteelDetails((prev) => {
+      if (prev[entry.competitorNumber]) return prev;
+      return {
+        ...prev,
+        [entry.competitorNumber]: {
+          // Seeded from the file, editable before saving. An unrecognised
+          // division code starts on the club's own name for it — shown, never
+          // guessed at (spec §12).
+          division: entry.storedDivision ?? (entry.divisionName || entry.divisionCode),
+          firearmId: '',
+          entryFee: '',
+        },
+      };
+    });
+  }
+
+  async function saveSteel() {
+    if (saving || steelForm == null || steelPicked.length === 0) return;
+    if (!steelDate) { setProblem('Pick the match date.'); return; }
+    const entriesByNumber = new Map(steelForm.entries.map((e) => [e.competitorNumber, e]));
+    // Validate EVERYTHING before writing ANYTHING: a refusal writes nothing,
+    // and a half-imported multi-gun pair would be worse than a refusal.
+    const toWrite: { fields: Record<string, unknown>; entry: ScsaEntry }[] = [];
+    for (const n of steelPicked) {
+      const entry = entriesByNumber.get(n);
+      const d = steelDetails[n];
+      if (!entry || !d) continue;
+      if (!d.firearmId) {
+        setProblem(steelPicked.length > 1
+          ? `Pick which gun you shot for ${entry.firstName} ${entry.lastName} (${d?.division || 'entry'}).`
+          : 'Pick which gun you shot.');
+        return;
+      }
+      const built = buildSteelMatchFields(entry, {
+        firearmId: d.firearmId,
+        division: d.division,
+        matchName: steelName,
+        date: steelDate,
+        entryFee: looseNum(d.entryFee),
+      });
+      if (!built.ok) { setProblem(built.message); return; }
+      toWrite.push({ fields: built.fields, entry });
+    }
+    if (toWrite.length === 0) { setProblem('Nothing is selected. Go back and tap your entry first.'); return; }
+    setSaving(true);
+    // `written` lives OUTSIDE the try so the catch can tell the truth: each
+    // putOne is its own transaction, so a failure part-way leaves the earlier
+    // records saved, and claiming "nothing was written" would invite a retry
+    // that duplicates them. (A single all-or-nothing transaction needs a db.ts
+    // change — danger zone, queued for sign-off rather than slipped in here.)
+    let written = 0;
+    let firstId = '';
+    try {
+      const now = Date.now();
+      for (const w of toWrite) {
+        const mid = newId('mt');
+        await putOne('matches', stampNew(w.fields, mid, now));
+        if (!firstId) firstId = mid;
+        written++;
+      }
+      // Decision 4: remember the member number so the next file opens with this
+      // shooter's entries lifted to the top. Only a number the shooter just
+      // imported as their own — never one guessed from the field.
+      const mem = toWrite.map((w) => w.entry.membership).find((m) => m !== '');
+      if (mem) {
+        try { await putSettings<AppSettings>({ scsaMemberNumber: mem }); } catch { /* best-effort; the import already saved */ }
+      }
+      onSaved(firstId);
+    } catch {
+      setProblem(written === 0
+        ? "That match couldn't be saved. Nothing was written — try again."
+        : `The save failed part-way: ${written} of ${toWrite.length} matches ${written === 1 ? 'was' : 'were'} saved and ${written === 1 ? 'is' : 'are'} in your log. Check the match list before saving again, or the ones already saved will be duplicated.`);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function save() {
@@ -227,12 +379,188 @@ export function PractiScoreImport({ onCancel, onSaved }: {
 
       <FormProblem problem={problem} />
 
+      {/* Steel step A — confirm which match this file is, before any picking.
+          A folder of identically-shaped, meaninglessly-named files is no
+          problem: the app says which match was grabbed before anything else. */}
+      {steelForm && !steelConfirmed && (
+        <div className="card">
+          <h2>{steelForm.matchName || 'Steel Challenge match'}</h2>
+          <p className="report-note">
+            {steelDate ? `Shot ${steelDate} · ` : ''}
+            {steelForm.entries.length} {steelForm.entries.length === 1 ? 'entry' : 'entries'}
+            {steelForm.matches.size > 1 ? ` across ${steelForm.matches.size} side-by-side matches` : ''}.
+            Is this the match you meant to load?
+          </p>
+          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+            <button className="button" style={{ flex: 1 }} onClick={() => setSteelConfirmed(true)}>Yes — find my entry</button>
+            <button className="button secondary" style={{ flex: 1 }} onClick={startOver}>Not this one — start over</button>
+          </div>
+        </div>
+      )}
+
+      {/* Steel step B — the picker. One row per ENTRY, not per person: a
+          shooter who ran two guns is two entries, tied together only by the
+          membership number, and each one imports as its own match. */}
+      {steelForm && steelConfirmed && !steelFinishing && (
+        <div className="card">
+          <h2>{steelForm.matchName || 'Steel Challenge match'}</h2>
+          <p className="report-note">
+            Tap your entry. Shot more than one gun? Tap each of your entries — every
+            one you pick is saved as its own match.
+          </p>
+          {steelForm.entries.length > 8 && (
+            <ListSearch value={steelQuery} onChange={setSteelQuery} placeholder="Search shooters by name" />
+          )}
+          {(() => {
+            const groups = groupEntriesByPerson(steelForm.entries);
+            const ownSet = new Set(ownNames.map((n) => n.toLowerCase()));
+            const isMine = (g: ScsaEntry[]): boolean => {
+              const remembered = rememberedNumber.toUpperCase();
+              if (remembered && g.some((e) => e.groupKey === remembered)) return true;
+              return g.some((e) => ownSet.has(`${e.firstName} ${e.lastName}`.trim().toLowerCase()));
+            };
+            const fullNameOf = (e: ScsaEntry) => `${e.firstName} ${e.lastName}`.trim();
+            const entryRow = (e: ScsaEntry, suggested: boolean) => {
+              const picked = steelPicked.includes(e.competitorNumber);
+              const sub = [
+                e.storedDivision ?? (e.divisionName || e.divisionCode || null),
+                steelForm.matches.size > 1 ? (e.matchName || null) : null,
+                e.importable ? null : e.blockedReason,
+              ].filter(Boolean).join(' · ');
+              return (
+                <button className="row-tap" key={`${suggested ? 'sug' : 'all'}-${e.competitorNumber}`}
+                  aria-pressed={picked}
+                  aria-disabled={!e.importable}
+                  aria-label={suggested ? `${e.firstName} ${e.lastName} — suggested, this looks like you` : undefined}
+                  style={e.importable ? undefined : { opacity: 0.5 }}
+                  onClick={() => toggleSteelEntry(e)}>
+                  <span className="label">{`${e.firstName} ${e.lastName}`.trim() || '(no name)'}
+                    {sub && <div className="row-sub">{sub}</div>}
+                  </span>
+                  <span className="value">
+                    {picked ? '✓ ' : ''}
+                    {[e.place != null ? `#${e.place}` : null, e.fileTotal != null ? `${e.fileTotal.toFixed(2)}s` : null]
+                      .filter(Boolean).join(' · ')} ›
+                  </span>
+                </button>
+              );
+            };
+            const mine = steelQuery.trim() === '' ? groups.filter(isMine) : [];
+            const matchesSteelQuery = (e: ScsaEntry) => matchesQuery(steelQuery, `${e.firstName} ${e.lastName}`);
+            return (
+              <>
+                {mine.length > 0 && (
+                  <>
+                    <div className="suggest-block">
+                      <h3 className="suggest-label">
+                        {mine.reduce((n, g) => n + g.length, 0) === 1 ? 'This looks like you' : 'These look like you'}
+                      </h3>
+                      {mine.flatMap((g) => g.map((e) => entryRow(e, true)))}
+                    </div>
+                    <h3 className="field-label">Everyone who shot the match</h3>
+                  </>
+                )}
+                {/* The full field, grouped: a person's entries sit under one
+                    header (spec §6) so a multi-gun shooter reads as one person
+                    with two entries, not two strangers sharing a name. */}
+                {groups.map((g, gi) => {
+                  const visible = g.filter(matchesSteelQuery);
+                  if (visible.length === 0) return null;
+                  return (
+                    <div key={`grp-${gi}`}>
+                      {g.length > 1 && (
+                        <h3 className="field-label">
+                          {fullNameOf(g[0]) || '(no name)'} — {g.length} entries, one per gun
+                        </h3>
+                      )}
+                      {visible.map((e) => entryRow(e, false))}
+                    </div>
+                  );
+                })}
+              </>
+            );
+          })()}
+          <button className="button" style={{ marginTop: 10 }} disabled={steelPicked.length === 0}
+            onClick={() => setSteelFinishing(true)}>
+            {steelPicked.length <= 1 ? 'Continue' : `Continue with ${steelPicked.length} entries`}
+          </button>
+          <button className="button secondary" style={{ marginTop: 8 }} onClick={startOver}>Start over</button>
+        </div>
+      )}
+
+      {/* Steel step C — finish the details and save. Every field is visible and
+          editable before anything is written; nothing is saved until the button. */}
+      {steelForm && steelConfirmed && steelFinishing && (
+        <div className="card">
+          <h2>Finish the details</h2>
+          <label className="field">What this match is called
+            <input value={steelName} onChange={(e) => setSteelName(e.target.value)}
+              {...noAutofillProps} name="match-title" />
+          </label>
+          <label className="field">Date
+            <input type="date" value={steelDate} onChange={(e) => setSteelDate(e.target.value)} />
+            {steelDate === '' && (
+              <span className="report-note">This file didn't carry a readable date. Pick the day you shot it.</span>
+            )}
+          </label>
+          {steelPicked.map((n) => {
+            const entry = steelForm.entries.find((e) => e.competitorNumber === n);
+            const d = steelDetails[n];
+            if (!entry || !d) return null;
+            const patch = (p: Partial<typeof d>) => setSteelDetails((prev) => ({ ...prev, [n]: { ...prev[n], ...p } }));
+            const rawDivision = entry.storedDivision ?? (entry.divisionName || entry.divisionCode);
+            return (
+              <div key={n} style={{ marginTop: steelPicked.length > 1 ? 14 : 0 }}>
+                {steelPicked.length > 1 && (
+                  <h3 className="field-label">
+                    {`${entry.firstName} ${entry.lastName}`.trim()}
+                    {steelForm.matches.size > 1 && entry.matchName ? ` — ${entry.matchName}` : ''}
+                  </h3>
+                )}
+                <label className="field">Division
+                  <select value={d.division} onChange={(e) => patch({ division: e.target.value })}>
+                    {fieldOptions(STEEL_DIVISIONS, rawDivision, d.division).map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                  {entry.storedDivision === null && entry.divisionCode !== '' && (
+                    <span className="report-note">
+                      The file calls this division &quot;{entry.divisionName || entry.divisionCode}&quot;, which
+                      isn&apos;t one this app recognises — it is kept as written. Change it if that is wrong.
+                    </span>
+                  )}
+                </label>
+                <label className="field">Which gun did you shoot?
+                  <select value={d.firearmId} onChange={(e) => patch({ firearmId: e.target.value })}>
+                    <option value="">Pick one…</option>
+                    {firearms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                  </select>
+                </label>
+                <label className="field">Entry fee (optional)
+                  <input inputMode="decimal" value={d.entryFee} onChange={(e) => patch({ entryFee: e.target.value })} placeholder="e.g. 35" />
+                </label>
+              </div>
+            );
+          })}
+          <button className="button" disabled={saving} onClick={() => void saveSteel()}>
+            {steelPicked.length <= 1 ? 'Save match' : `Save ${steelPicked.length} matches`}
+          </button>
+          <button className="button secondary" style={{ marginTop: 8 }} onClick={() => setSteelFinishing(false)}>‹ Back to the shooter list</button>
+        </div>
+      )}
+
       {/* Step 1 — paste or load the export */}
-      {!parsed && (
+      {!parsed && !steelForm && (
         <div className="card">
           <p className="report-note">
-            PractiScore has no download button. Copying the results page is the only
-            way to get your scores out, so here is the whole path:
+            <b>Shot a Steel Challenge match?</b> Load the match's download file with
+            the button below — the app recognises it and walks you through. You can
+            get the file from PractiScore in a few taps; it lands in your Downloads
+            folder with a long name and no file ending, and that is the right file.
+          </p>
+          <p className="report-note">
+            For a USPSA match, copying the results page is the way to get your
+            scores out, so here is the whole path:
           </p>
           <ol className="report-note" style={{ paddingLeft: 20, margin: '6px 0 12px' }}>
             <li>Open your match on practiscore.com. PractiScore opens its new results view first. Scroll down the match page to find "Old style results".</li>
@@ -263,26 +591,37 @@ export function PractiScoreImport({ onCancel, onSaved }: {
             is read from them.
           </p>
           <p className="report-note">
-            You pick your own row next. If someone has sent you a results file instead,
-            load it here: .csv or .txt. To see how it all works first, tap "Try the sample".
+            You pick your own row next. If you have a results file — a Steel Challenge
+            download file, or a .csv or .txt someone sent you — load it with the button
+            below. To see how it all works first, tap "Try the sample".
           </p>
           <label className="field">Results text
             <textarea rows={8} value={text} placeholder="Paste PractiScore results here…"
               onChange={(e) => setText(e.target.value)} />
           </label>
-          <input ref={fileRef} type="file" accept=".csv,.txt,text/csv" style={{ display: 'none' }}
+          {/* NO extension filter (spec §10, hazard 12): the Steel Challenge
+              download file has no extension at all, and a filter would show
+              the shooter an empty Downloads folder. What the file IS is decided
+              from its contents, never its name. */}
+          <input ref={fileRef} type="file" style={{ display: 'none' }}
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) {
                 const tooBig = fileTooLargeMessage(f.size, MAX_IMPORT_FILE_BYTES, 'file');
                 if (tooBig) setProblem(tooBig);
-                else void f.text().then((t) => { setText(t); setProblem(''); }).catch(() => setProblem('That file could not be read. Try loading it again.'));
+                else {
+                  void f.text().then((t) => {
+                    // A download file goes straight into the Steel flow; anything
+                    // else lands in the paste box exactly as before.
+                    if (!tryStartSteel(t)) { setText(t); setProblem(''); }
+                  }).catch(() => setProblem('That file could not be read. Try loading it again.'));
+                }
               }
               e.target.value = '';
             }} />
           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
             <button className="button" style={{ flex: 1 }} disabled={!text.trim()} onClick={readResults}>Read results</button>
-            <button className="button secondary" style={{ flex: 1 }} onClick={() => fileRef.current?.click()}>Load a file (.csv, .txt)</button>
+            <button className="button secondary" style={{ flex: 1 }} onClick={() => fileRef.current?.click()}>Load a file</button>
             <button className="button secondary" style={{ flex: 1 }} onClick={() => { setText(SAMPLE_PRACTISCORE_CSV); setProblem(''); }}>Try the sample</button>
           </div>
         </div>
