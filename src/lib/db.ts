@@ -464,6 +464,24 @@ export async function putOne<T>(store: StoreName, record: T): Promise<void> {
   await txDone(tx);
 }
 
+/**
+ * Write a batch of records to ONE store in ONE transaction (all-or-nothing).
+ * Mirrors commitClassifiers/applyAmmoMerge: queueOrAbort + txDone, so a
+ * failure on any record aborts the whole batch and zero records land.
+ * Replaces the per-row putOne loop in the Steel import screen (see
+ * PractiScoreImport.tsx saveSteel) — a mid-batch failure there used to leave
+ * earlier records committed. An empty array is a no-op and never opens a
+ * transaction — there is nothing to make atomic.
+ */
+export async function putMany<T>(store: StoreName, records: T[]): Promise<void> {
+  if (records.length === 0) return;
+  const db = await openDb();
+  const tx = db.transaction(store, 'readwrite');
+  const os = tx.objectStore(store);
+  queueOrAbort(tx, () => { for (const r of records) os.put(r as unknown as object); });
+  await txDone(tx);
+}
+
 export async function deleteOne(store: StoreName, id: string): Promise<void> {
   const db = await openDb();
   const tx = db.transaction(store, 'readwrite');

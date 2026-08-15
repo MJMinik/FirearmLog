@@ -20,6 +20,7 @@ import {
   putSettings,
   validateSnapshotShape,
   putOne,
+  putMany,
   localLastModified,
   hasOversizedMedia,
   scanMediaImageIds,
@@ -752,4 +753,68 @@ test('audit-E: a timestamp stored as text is ignored by both the backup path and
   assert.equal(typeof device, 'number', 'and is still a number, not a string');
   const viaSnapshot = newestStamp({}, [{ updatedAt: '9999999999' } as unknown as { updatedAt: number }]);
   assert.equal(viaSnapshot, 0, 'the backup path now applies the same rule');
+});
+
+// ---- putMany: all-or-nothing batch write (build spec 2026-08-15) ----
+
+test('putMany writes every record in the batch', async () => {
+  await clearAllData();
+  await putMany('matches', [
+    { id: 'mt-pm-a' }, { id: 'mt-pm-b' }, { id: 'mt-pm-c' },
+  ]);
+  const rows = await getAll<{ id: string }>('matches');
+  assert.ok(has(rows, 'mt-pm-a') && has(rows, 'mt-pm-b') && has(rows, 'mt-pm-c'));
+});
+
+test('putMany is all-or-nothing: a poisoned record mid-batch rolls the WHOLE batch back', async () => {
+  await clearAllData();
+  // IndexedDB cannot clone a function, so the middle put throws mid-transaction
+  // and queueOrAbort aborts the whole batch — none of the three should land.
+  await assert.rejects(putMany('matches', [
+    { id: 'mt-pm-good1' },
+    { id: 'mt-pm-poison', oops: () => {} },
+    { id: 'mt-pm-good2' },
+  ]));
+  const rows = await getAll<{ id: string }>('matches');
+  assert.ok(!has(rows, 'mt-pm-good1'), 'no partial write from the failed batch');
+  assert.ok(!has(rows, 'mt-pm-poison'), 'the poisoned record itself never landed');
+  assert.ok(!has(rows, 'mt-pm-good2'), 'no partial write from the failed batch');
+});
+
+test('putMany with an empty array is a safe no-op', async () => {
+  await clearAllData();
+  await putMany('matches', []);
+  const rows = await getAll<{ id: string }>('matches');
+  assert.equal(rows.length, 0, 'empty array leaves the store unchanged');
+});
+
+test('putMany writes to the store it was asked for, not a hardcoded one', async () => {
+  await clearAllData();
+  await putMany('drills', [{ id: 'dr-pm-a' }]);
+  const drills = await getAll<{ id: string }>('drills');
+  assert.ok(has(drills, 'dr-pm-a'), 'the record landed in the requested store');
+  const matches = await getAll<{ id: string }>('matches');
+  assert.ok(!has(matches, 'dr-pm-a'), 'nothing leaked into a different store');
+});
+
+test('putMany opens ONE transaction for the whole batch (structural atomicity)', async () => {
+  await clearAllData();
+  // An implementation that pre-validates records and then loops per-record
+  // writes would pass the poison test above without being atomic under a
+  // genuine mid-batch failure (quota, constraint) that no test can fake.
+  // Counting transactions pins the structure itself: one batch, one envelope.
+  const orig = IDBDatabase.prototype.transaction;
+  let calls = 0;
+  IDBDatabase.prototype.transaction = function (this: IDBDatabase, ...args: Parameters<typeof orig>) {
+    calls++;
+    return orig.apply(this, args);
+  } as typeof orig;
+  try {
+    await putMany('matches', [{ id: 'mt-tx-a' }, { id: 'mt-tx-b' }, { id: 'mt-tx-c' }]);
+  } finally {
+    IDBDatabase.prototype.transaction = orig;
+  }
+  assert.equal(calls, 1, 'a three-record batch opened exactly one transaction');
+  const rows = await getAll<{ id: string }>('matches');
+  assert.ok(has(rows, 'mt-tx-a') && has(rows, 'mt-tx-b') && has(rows, 'mt-tx-c'));
 });
