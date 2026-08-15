@@ -20,7 +20,7 @@
 // nothing, never half.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppSettings, Firearm } from '../lib/types.ts';
-import { getAll, getSettings, putOne, putSettings } from '../lib/db.ts';
+import { getAll, getSettings, putMany, putOne, putSettings } from '../lib/db.ts';
 import { stampNew } from '../lib/stamps.ts';
 import { newId } from '../lib/id.ts';
 import { todayKey } from '../lib/dates.ts';
@@ -241,21 +241,21 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     }
     if (toWrite.length === 0) { setProblem('Nothing is selected. Go back and tap your entry first.'); return; }
     setSaving(true);
-    // `written` lives OUTSIDE the try so the catch can tell the truth: each
-    // putOne is its own transaction, so a failure part-way leaves the earlier
-    // records saved, and claiming "nothing was written" would invite a retry
-    // that duplicates them. (A single all-or-nothing transaction needs a db.ts
-    // change — danger zone, queued for sign-off rather than slipped in here.)
-    let written = 0;
+    // ONE putMany call makes the whole save atomic: every entry's record is
+    // built first, then all of them land in a single transaction. A failure
+    // now writes nothing, ever — the earlier per-row putOne loop could leave
+    // earlier matches saved while later ones failed; that state can't happen
+    // anymore, so the catch below has only one truth to tell.
     let firstId = '';
     try {
       const now = Date.now();
+      const records: unknown[] = [];
       for (const w of toWrite) {
         const mid = newId('mt');
-        await putOne('matches', stampNew(w.fields, mid, now));
         if (!firstId) firstId = mid;
-        written++;
+        records.push(stampNew(w.fields, mid, now));
       }
+      await putMany('matches', records);
       // Decision 4: remember the member number so the next file opens with this
       // shooter's entries lifted to the top. Only a number the shooter just
       // imported as their own — never one guessed from the field.
@@ -265,9 +265,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       }
       onSaved(firstId);
     } catch {
-      setProblem(written === 0
-        ? "That match couldn't be saved. Nothing was written — try again."
-        : `The save failed part-way: ${written} of ${toWrite.length} matches ${written === 1 ? 'was' : 'were'} saved and ${written === 1 ? 'is' : 'are'} in your log. Check the match list before saving again, or the ones already saved will be duplicated.`);
+      setProblem("That match couldn't be saved. Nothing was written — try again.");
     } finally {
       setSaving(false);
     }
