@@ -201,7 +201,11 @@ test.describe('PractiScore import', () => {
     // word must not come back: an instruction naming an action the reader
     // cannot perform is the defect this whole change is about.
     await expect(main.getByText('Html Results')).toBeVisible();
-    await expect(main.getByRole('button', { name: /Load a file \(\.csv, \.txt\)/ })).toBeVisible();
+    // 'Load a file', no extension list: the Steel Challenge download file has
+    // NO extension, so naming .csv/.txt would promise a filter that hides the
+    // very file the button exists to load (hazard 12) — the same class of
+    // defect this test guards against, from the other direction.
+    await expect(main.getByRole('button', { name: 'Load a file', exact: true })).toBeVisible();
     await expect(main.getByText(/export or copy the results/i)).toHaveCount(0);
   });
 

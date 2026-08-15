@@ -521,6 +521,12 @@ export interface AppSettings {
    *  attend a match". Nothing is ever selected on the shooter's behalf.
    *  Undefined or empty means the import behaves exactly as it always has. */
   shooterNames?: string[];
+  /** Decision 4 (Michael, 10 Aug 2026): the SCSA/USPSA member number remembered
+   *  from the last Steel Challenge download-file import, used ONLY to lift this
+   *  shooter's entries to the top of the picker when a new file opens. Written
+   *  when an import saves an entry carrying a number; never guessed from the
+   *  field. Undefined means no Steel file has been imported yet. */
+  scsaMemberNumber?: string;
   theme: string;
   checklistCustomItems: ChecklistCustomItems;
   /** When the user last saved a backup file (Save to File). Drives the Home
