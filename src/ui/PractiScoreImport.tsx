@@ -551,10 +551,28 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       {!parsed && !steelForm && (
         <div className="card">
           <p className="report-note">
-            <b>Shot a Steel Challenge match?</b> Load the match's download file with
-            the button below — the app recognises it and walks you through. You can
-            get the file from PractiScore in a few taps; it lands in your Downloads
-            folder with a long name and no file ending, and that is the right file.
+            <b>Shot a Steel Challenge match?</b> Load the match's results file with
+            the button below, and the app recognises it and walks you through.
+            Here is how to get the file from PractiScore:
+          </p>
+          <ol className="report-note" style={{ paddingLeft: 20, margin: '6px 0 12px' }}>
+            <li>On practiscore.com, tap <b>Scores</b>, then the <b>Steel Challenge</b> box.</li>
+            <li>Search for your club, then tap your match.</li>
+            <li>
+              Scroll to the bottom of the results table. Under <b>Report for SCSA</b>,
+              tap <b>SCSA Upload</b>.
+            </li>
+            <li>
+              A Club Info form opens. If Club Name or Club Code is empty, fill it
+              in. Sometimes both are already filled, and sometimes a list offers
+              them to pick from.
+            </li>
+            <li>Tap <b>Make The File</b>, then save the download.</li>
+          </ol>
+          <p className="report-note">
+            Those steps name the download <b>SCSA_EventResults.csv</b>. Reached
+            another way it can instead arrive as a long jumble of letters with no
+            file ending. Either one is the right file, and the app reads both.
           </p>
           <p className="report-note">
             For a USPSA match, copying the results page is the way to get your
@@ -598,9 +616,12 @@ export function PractiScoreImport({ onCancel, onSaved }: {
               onChange={(e) => setText(e.target.value)} />
           </label>
           {/* NO extension filter (spec §10, hazard 12): the Steel Challenge
-              download file has no extension at all, and a filter would show
-              the shooter an empty Downloads folder. What the file IS is decided
-              from its contents, never its name. */}
+              download arrives under two names — SCSA_EventResults.csv from the
+              site's SCSA Upload button, or a bare hex name with no extension
+              when the report address is fetched directly (both observed on
+              Michael's own matches, 14 Aug 2026). A filter keyed to either
+              shape would hide the other. What the file IS is decided from its
+              contents, never its name. */}
           <input ref={fileRef} type="file" style={{ display: 'none' }}
             onChange={(e) => {
               const f = e.target.files?.[0];

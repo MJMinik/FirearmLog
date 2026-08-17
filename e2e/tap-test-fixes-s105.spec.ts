@@ -13,7 +13,9 @@ test.describe('the import instructions name what is actually on the PractiScore 
       await main.getByRole('button', { name: 'Import…' }).click();
       await page.getByRole('dialog', { name: 'Import' }).getByRole('button', { name: 'Import from PractiScore' }).click();
 
-      const steps = main.locator('ol');
+      // Step 1 carries two numbered lists since session 124 (Steel file steps +
+      // USPSA copy steps); these assertions are about the USPSA one.
+      const steps = main.locator('ol').filter({ hasText: 'Open your match on' });
       // He could not find "Overall" because it is a row label and every row has
       // a "Combined". The copy has to say both of those things.
       await expect(steps).toContainText("Overall is the row's name, not a button");
@@ -24,8 +26,11 @@ test.describe('the import instructions name what is actually on the PractiScore 
       await expect(steps).toContainText('Command-A');
       // The short-selection trap produces a confident wrong answer, so it is named.
       await expect(main.getByText(/out of a smaller number than actually shot/)).toBeVisible();
-      // Nothing here talks about the app; rule 44's show-don't-tell.
-      await expect(main.locator('ol')).not.toContainText(/accurate|careful|rigorous|honest|expert/i);
+      // Nothing here talks about the app; rule 44's show-don't-tell — checked on
+      // every numbered list on the step (Steel and USPSA both, session 124).
+      for (const list of await main.locator('ol').all()) {
+        await expect(list).not.toContainText(/accurate|careful|rigorous|honest|expert/i);
+      }
     });
   }
 });
