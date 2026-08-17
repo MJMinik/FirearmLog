@@ -172,6 +172,9 @@ export interface MaintenanceEntry extends BaseRecord, Imported {
 
 export interface MalfunctionEntry extends BaseRecord, Imported {
   sessionId: string | null;
+  /** Sibling of sessionId: ties a malfunction to a match instead of a session
+   *  (decision 4a rider, "Magazines in competitions" spec, 17 Aug 2026). */
+  matchId?: string | null;
   date: string;
   firearmId: string;
   type: string;       // plain language, e.g. "Failure to feed"
@@ -332,6 +335,27 @@ export interface Match extends BaseRecord, Imported {
   scoringType?: 'uspsa' | 'idpa' | 'steel';
   firearmId: string;
   totalRounds: number | null;
+  /**
+   * Match magazine tracking (Aug 2026, spec: vault "Magazines in
+   * competitions"). `magIds` = the mags that ran this match — the same
+   * collapsed disclosure pattern as SessionGun.magIds, but per match (one gun)
+   * rather than per gun. `magOverrides` exists only when the shooter overrode
+   * the default even split, and its counts must sum to `totalRounds` — which
+   * means overrides can never exist while `totalRounds` is null (there is
+   * nothing to sum to yet; the UI never offers them in that state, though a
+   * hand-edited file could carry them anyway — lib/mags.ts honors them
+   * verbatim rather than inventing a rule). `magConditions` is the optional
+   * "needs cleaning" tag (sand / mud / rain / dropped / issue) per match-mag,
+   * independent of round count — a tagged mag needs attention regardless of
+   * what its odometer says. All three optional + additive — older matches
+   * simply lack them, and the data-file validator imposes no per-field
+   * allow-list, so sync/import are unaffected. A mag's lifetime count is
+   * DERIVED from these in lib/mags.ts; match saves never write to Magazine
+   * records — same single-source-of-truth pattern as SessionGun.
+   */
+  magIds?: string[];
+  magOverrides?: { magId: string; rounds: number }[];
+  magConditions?: { magId: string; tag: string }[];
   overallPlace: number | null;
   overallOf: number | null;
   divisionPlace: number | null;
@@ -341,6 +365,18 @@ export interface Match extends BaseRecord, Imported {
   entryFee: number | null; // first-class cost source (spec §12.2)
   practiScoreUrl: string;
   notes: string;
+  /**
+   * Soft-delete tombstone, added for the match-mags derivation (Aug 2026):
+   * magLifetimeRounds needs a way to skip a trashed match's rounds without
+   * reattributing them to a surviving mag. NOTE: matches are still
+   * HARD-deleted by MatchScreens.tsx today (`deleteOne('matches', id)`) —
+   * nothing in the app sets this field yet, so it is a no-op on every match
+   * that exists now. It exists so (a) the derivation has a real field to
+   * check instead of a TODO, and (b) a future match Trash — mirroring
+   * Session's below — needs no migration when it ships. Optional + additive;
+   * absent means live, same contract as Session.deletedAt.
+   */
+  deletedAt?: number | null;
 }
 
 export interface Classifier extends BaseRecord, Imported {
