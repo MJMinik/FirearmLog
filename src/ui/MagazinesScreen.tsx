@@ -2,7 +2,7 @@
 // here are DERIVED (starting count + logged-session attributions — lib/mags.ts);
 // the form edits only the starting count.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Firearm, Magazine, Session } from '../lib/types.ts';
+import type { Firearm, Magazine, Match, Session } from '../lib/types.ts';
 import { magLifetimeRounds } from '../lib/mags.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
@@ -21,6 +21,7 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
   const [mags, setMags] = useState<Magazine[]>([]);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [matches, setMatches] = useState<Match[]>([]);
   const [q, setQ] = useState('');
   const [error, setError] = useState(false);
   const [nonce, setNonce] = useState(0);
@@ -29,13 +30,15 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
     setError(false);
     void (async () => {
       try {
-        const [m, f, s] = await Promise.all([
-          getAll<Magazine>('magazines'), getAll<Firearm>('firearms'), getAll<Session>('sessions')
+        const [m, f, s, matchList] = await Promise.all([
+          getAll<Magazine>('magazines'), getAll<Firearm>('firearms'), getAll<Session>('sessions'),
+          getAll<Match>('matches')
         ]);
         if (!alive) return;
         setMags(m.sort((a, b) => a.label.localeCompare(b.label, undefined, { numeric: true })));
         setFirearms(f);
         setSessions(s);
+        setMatches(matchList);
       } catch (e) {
         console.error('Magazines load failed', e);
         if (alive) setError(true);
@@ -69,7 +72,7 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
               {m.label}{m.active ? '' : ' (retired)'}
               <div className="row-sub">{gunNames(m.firearmIds) || 'No gun assigned'}</div>
             </span>
-            <span className="value">{magLifetimeRounds(m, sessions).toLocaleString()} rds ›</span>
+            <span className="value">{magLifetimeRounds(m, sessions, matches).toLocaleString()} rds ›</span>
           </button>
         ))}
       </div>
@@ -86,6 +89,7 @@ export function MagazineForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
   const [original, setOriginal] = useState<Magazine | null>(null);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [matches, setMatches] = useState<Match[]>([]);
   const [label, setLabel] = useState('');
   const [gunIds, setGunIds] = useState<string[]>([]);
   const [active, setActive] = useState(true);
@@ -109,6 +113,7 @@ export function MagazineForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
       if (alive) setFirearms(f.sort((a, b) => a.name.localeCompare(b.name)));
     });
     void getAll<Session>('sessions').then((s) => { if (alive) setSessions(s); });
+    void getAll<Match>('matches').then((ms) => { if (alive) setMatches(ms); });
     if (id !== undefined) {
       void getOne<Magazine>('magazines', id).then((m) => {
         if (!alive || !m) return;
@@ -207,7 +212,7 @@ export function MagazineForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
           // Derived lifetime, live as the starting count is typed: sessions
           // that logged this mag add on top of the number above.
           const logged = original
-            ? magLifetimeRounds({ id: original.id, totalRounds: 0 }, sessions) : 0;
+            ? magLifetimeRounds({ id: original.id, totalRounds: 0 }, sessions, matches) : 0;
           if (!logged) return (
             <p className="report-note">New rounds add on automatically — pick this mag when logging a session.</p>
           );

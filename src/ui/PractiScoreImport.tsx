@@ -38,6 +38,7 @@ import {
 import { buildSteelMatchFields, scsaDateKey } from '../lib/scsaImport.ts';
 import { FormProblem } from './FormProblem.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
+import { MatchMagPicker } from './MatchMagPicker.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { looseNum } from '../lib/csv.ts';
 import { textTooLongMessage, fileTooLargeMessage, MAX_IMPORT_FILE_BYTES } from '../lib/inputLimits.ts';
@@ -65,6 +66,14 @@ export function PractiScoreImport({ onCancel, onSaved }: {
   const [powerFactor, setPowerFactor] = useState('');
   const [firearmId, setFirearmId] = useState('');
   const [entryFee, setEntryFee] = useState('');
+  // Match magazine tracking (decision 3a): the same collapsed picker rides
+  // this confirm screen, optional, pre-ticked with the usual mags for the
+  // gun once it's picked below. USPSA results never carry a round count, so
+  // `totalRounds` is always null here -- the picker renders its "pending"
+  // state; the picks themselves still save with the match.
+  const [matchMagIds, setMatchMagIds] = useState<string[]>([]);
+  const [matchMagOverrides, setMatchMagOverrides] = useState<{ magId: string; rounds: number }[]>([]);
+  const [matchMagConditions, setMatchMagConditions] = useState<{ magId: string; tag: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [psQuery, setPsQuery] = useState(''); // audit #18 — find yourself in a big field
   // The names the shooter told us are theirs (Settings -> Who you are). Used
@@ -79,7 +88,12 @@ export function PractiScoreImport({ onCancel, onSaved }: {
   /** Competitor numbers picked in the picker, in tap order. */
   const [steelPicked, setSteelPicked] = useState<number[]>([]);
   /** Per-entry editable details, keyed by competitor number. */
-  const [steelDetails, setSteelDetails] = useState<Record<number, { division: string; firearmId: string; entryFee: string }>>({});
+  const [steelDetails, setSteelDetails] = useState<Record<number, {
+    division: string; firearmId: string; entryFee: string;
+    // Match magazine tracking (decision 3a), per entry -- each entry becomes
+    // its own match record with its own gun, so each gets its own picks.
+    magIds: string[]; magOverrides: { magId: string; rounds: number }[]; magConditions: { magId: string; tag: string }[];
+  }>>({});
   const [steelName, setSteelName] = useState('');
   const [steelDate, setSteelDate] = useState('');
   const [steelQuery, setSteelQuery] = useState('');
@@ -207,6 +221,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
           division: entry.storedDivision ?? (entry.divisionName || entry.divisionCode),
           firearmId: '',
           entryFee: '',
+          magIds: [], magOverrides: [], magConditions: [],
         },
       };
     });
@@ -237,7 +252,15 @@ export function PractiScoreImport({ onCancel, onSaved }: {
         entryFee: looseNum(d.entryFee),
       });
       if (!built.ok) { setProblem(built.message); return; }
-      toWrite.push({ fields: built.fields, entry });
+      // Match magazine tracking (decision 3a), additive: written only when
+      // something is picked for this entry, the same no-migration pattern
+      // every other optional match field follows. buildSteelMatchFields is
+      // left untouched -- this only adds keys onto its plain-object result.
+      const fields = { ...built.fields };
+      if (d.magIds.length) fields.magIds = d.magIds;
+      if (d.magOverrides.length) fields.magOverrides = d.magOverrides;
+      if (d.magConditions.length) fields.magConditions = d.magConditions;
+      toWrite.push({ fields, entry });
     }
     if (toWrite.length === 0) { setProblem('Nothing is selected. Go back and tap your entry first.'); return; }
     setSaving(true);
@@ -312,6 +335,11 @@ export function PractiScoreImport({ onCancel, onSaved }: {
         practiScoreUrl: '',
         notes: me.memberNumber ? `Imported from PractiScore (USPSA# ${me.memberNumber}).` : 'Imported from PractiScore.',
         legacy: { source: 'practiscore', memberNumber: me.memberNumber, classLetter: me.classLetter, matchPoints: me.matchPoints },
+        // Match magazine tracking (decision 3a), additive: written only when
+        // something is picked on the confirm screen above.
+        ...(matchMagIds.length ? { magIds: matchMagIds } : {}),
+        ...(matchMagOverrides.length ? { magOverrides: matchMagOverrides } : {}),
+        ...(matchMagConditions.length ? { magConditions: matchMagConditions } : {}),
       };
       await putOne('matches', stampNew(fields, mid, Date.now()));
       onSaved(mid);
@@ -534,6 +562,17 @@ export function PractiScoreImport({ onCancel, onSaved }: {
                     {firearms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                   </select>
                 </label>
+                {d.firearmId && (
+                  <MatchMagPicker
+                    key={d.firearmId}
+                    firearmId={d.firearmId}
+                    totalRounds={null}
+                    initialMagIds={d.magIds}
+                    initialMagOverrides={d.magOverrides}
+                    initialMagConditions={d.magConditions}
+                    sticky
+                    onChange={(next) => patch({ magIds: next.magIds, magOverrides: next.magOverrides, magConditions: next.magConditions })} />
+                )}
                 <label className="field">Entry fee (optional)
                   <input inputMode="decimal" value={d.entryFee} onChange={(e) => patch({ entryFee: e.target.value })} placeholder="e.g. 35" />
                 </label>
@@ -784,6 +823,21 @@ export function PractiScoreImport({ onCancel, onSaved }: {
                 {firearms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
               </select>
             </label>
+            {firearmId && (
+              <MatchMagPicker
+                key={firearmId}
+                firearmId={firearmId}
+                totalRounds={null}
+                initialMagIds={matchMagIds}
+                initialMagOverrides={matchMagOverrides}
+                initialMagConditions={matchMagConditions}
+                sticky
+                onChange={(next) => {
+                  setMatchMagIds(next.magIds);
+                  setMatchMagOverrides(next.magOverrides);
+                  setMatchMagConditions(next.magConditions);
+                }} />
+            )}
             <label className="field">Entry fee (optional)
               <input inputMode="decimal" value={entryFee} onChange={(e) => setEntryFee(e.target.value)} placeholder="e.g. 35" />
             </label>

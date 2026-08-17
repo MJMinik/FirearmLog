@@ -4,7 +4,7 @@
 // session. Read-only: it only displays existing records, never writes.
 import { useEffect, useMemo, useState } from 'react';
 import { ScreenLoading } from './ScreenState.tsx';
-import type { Ammunition, Firearm, Magazine, MalfunctionEntry, Session } from '../lib/types.ts';
+import type { Ammunition, Firearm, Magazine, MalfunctionEntry, Match, Session } from '../lib/types.ts';
 import { getAll } from '../lib/db.ts';
 import { activeMalfunctions, trashedIdSet } from '../lib/softDelete.ts';
 import { formatDayKey } from '../lib/dates.ts';
@@ -26,6 +26,12 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [ammo, setAmmo] = useState<Ammunition[]>([]);
   const [magazines, setMagazines] = useState<Magazine[]>([]);
+  // Decision 4a rider: the optional match context on MalfunctionEntry
+  // (matchId) so "A01 jammed at the 16 Aug match" is visible here, mirroring
+  // how ammoId and magazineId already surface on this read-only screen. See
+  // NOTES.md for why this stops at display -- there is no creation-time path
+  // to set matchId anywhere in the app yet.
+  const [matches, setMatches] = useState<Match[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
@@ -37,9 +43,10 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
     setError(false);
     void (async () => {
       try {
-        const [mf, sessions, f, am, mags] = await Promise.all([
+        const [mf, sessions, f, am, mags, mt] = await Promise.all([
           getAll<MalfunctionEntry>('malfunctions'), getAll<Session>('sessions'),
-          getAll<Firearm>('firearms'), getAll<Ammunition>('ammunition'), getAll<Magazine>('magazines')
+          getAll<Firearm>('firearms'), getAll<Ammunition>('ammunition'), getAll<Magazine>('magazines'),
+          getAll<Match>('matches')
         ]);
         if (!alive) return;
         // App 7: a malfunction filed against a trashed session is hidden too.
@@ -47,6 +54,7 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
         setFirearms(f);
         setAmmo(am.sort((a, b) => ammoLabel(a).localeCompare(ammoLabel(b))));
         setMagazines(mags);
+        setMatches(mt);
       } catch { if (alive) setError(true); } finally {
         if (alive) setLoaded(true);
       }
@@ -63,6 +71,7 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
   const gunName = (id: string) => firearms.find((g) => g.id === id)?.name ?? '—';
   const ammoName = (id?: string | null) => labelOrRemoved(ammo, id, ammoLabel);
   const magName = (id?: string | null) => labelOrRemoved(magazines, id, (m) => m.label);
+  const matchName = (id?: string | null) => labelOrRemoved(matches, id, (m) => m.name || formatDayKey(m.date));
 
   function setField<K extends keyof MalfFilter>(key: K, v: MalfFilter[K]) {
     setFilter((prev) => ({ ...prev, [key]: v }));
@@ -101,7 +110,7 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
       ) : (
         <div className="card" style={{ marginTop: 12 }}>
           {filtered.map((m) => {
-            const sub = [ammoName(m.ammoId), magName(m.magazineId), m.roundCount != null ? `round ${m.roundCount}` : '']
+            const sub = [ammoName(m.ammoId), magName(m.magazineId), matchName(m.matchId), m.roundCount != null ? `round ${m.roundCount}` : '']
               .filter(Boolean).join(' · ');
             const canOpen = !!m.sessionId;
             return (

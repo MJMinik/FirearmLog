@@ -264,7 +264,12 @@ const RECORD_SHAPE_LITERAL = {
   matches: {
     strings: ['date', 'name', 'matchType', 'division', 'powerFactor', 'firearmId',
       'practiScoreUrl', 'notes'],
-    nested: { stages: ['notes'] },
+    // magOverrides/magConditions added Aug 2026 (match-mags): both are nested
+    // array-of-object fields, so NestedArrayField requires them here or the
+    // `satisfies ExpectedRecordShape` clause fails to compile. magIds is a
+    // plain string[] and is correctly excluded — same precedent as
+    // SessionGun.magIds under `sessions.nested` above.
+    nested: { stages: ['notes'], magOverrides: ['magId'], magConditions: ['magId', 'tag'] },
   },
   classifiers: { strings: ['date', 'code', 'name', 'division', 'notes'] },
   // `links` is inline-typed too -- the same shape as sessions.ammoUsage above.

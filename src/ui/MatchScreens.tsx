@@ -1,7 +1,7 @@
 // Match logging (spec §11): the full match record with stage-by-stage entry,
 // auto hit factors, stage videos, entry fee, and PractiScore link.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AppSettings, Firearm, Match, MatchStage, Media } from '../lib/types.ts';
+import type { AppSettings, Firearm, Magazine, Match, MatchStage, Media } from '../lib/types.ts';
 import { deleteOne, getAll, getMediaForOwner, getOne, getSettings, putOne, putSettings } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
@@ -27,6 +27,7 @@ import { NotFound } from './NotFound.tsx';
 import { ScreenError, ScreenLoading } from './ScreenState.tsx';
 import { Icon } from './Icon.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
+import { MatchMagPicker } from './MatchMagPicker.tsx';
 
 /** Format a stage's ranking metric for the debrief read-out. */
 function fmtMetric(s: { percent: number | null; hitFactor: number | null }, by: 'percent' | 'hitFactor' | 'none'): string {
@@ -167,6 +168,10 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
 }) {
   const [match, setMatch] = useState<Match | null>(null);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
+  // Match magazine tracking (Aug 2026): loaded so the read-only Mags /
+  // Needs-cleaning rows below can resolve labels — mirrors how `firearms`
+  // is loaded for the same purpose.
+  const [magazines, setMagazines] = useState<Magazine[]>([]);
   const [videos, setVideos] = useState<Media[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [viewing, setViewing] = useState<Media | null>(null);
@@ -182,14 +187,15 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
     setError(false);
     void (async () => {
       try {
-        const [m, f, media, settings] = await Promise.all([
-          getOne<Match>('matches', id), getAll<Firearm>('firearms'), getMediaForOwner('match', id),
-          getSettings<AppSettings>()
+        const [m, f, mags, media, settings] = await Promise.all([
+          getOne<Match>('matches', id), getAll<Firearm>('firearms'), getAll<Magazine>('magazines'),
+          getMediaForOwner('match', id), getSettings<AppSettings>()
         ]);
         if (!alive) return;
         if (!m) { setNotFound(true); return; }
         setMatch(m);
         setFirearms(f);
+        setMagazines(mags);
         setVideos(media);
         setCoachingRemarks(settings?.coachingRemarks !== false);
       } catch (e) {
@@ -290,6 +296,29 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
         <div className="row"><span className="label">Division</span><span className="value">{match.division}{!isSteel && !isIdpa && match.powerFactor ? ` · ${match.powerFactor}` : ''}</span></div>
         <div className="row"><span className="label">Gun</span><span className="value">{gunName}</span></div>
         {match.totalRounds != null && <div className="row"><span className="label">Rounds fired</span><span className="value">{match.totalRounds.toLocaleString()}</span></div>}
+        {/* Match magazine tracking (Aug 2026): a modest read-only row, same
+            label/value shape as everything else in this card. Shows the
+            pending state rather than a number when totalRounds is still
+            empty (spec decision 2a: never a silent zero). */}
+        {Array.isArray(match.magIds) && match.magIds.length > 0 && (
+          <div className="row">
+            <span className="label">Mags</span>
+            <span className="value">
+              {match.magIds.map((mid) => magazines.find((mg) => mg.id === mid)?.label ?? '—').join(', ')}
+              {match.totalRounds == null ? ' — pending a round count' : ''}
+            </span>
+          </div>
+        )}
+        {/* Decision 4a: a tagged mag needs attention regardless of its round
+            count, so this shows independently of the row above. */}
+        {Array.isArray(match.magConditions) && match.magConditions.length > 0 && (
+          <div className="row">
+            <span className="label">Needs cleaning</span>
+            <span className="value">
+              {match.magConditions.map((c) => `${magazines.find((mg) => mg.id === c.magId)?.label ?? '—'} (${c.tag})`).join(', ')}
+            </span>
+          </div>
+        )}
         {match.matchPercent != null && <div className="row"><span className="label">Match percent</span><span className="value">{match.matchPercent}%</span></div>}
         {match.divisionPlace != null && (
           <div className="row"><span className="label">Division finish</span>
@@ -587,6 +616,12 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
   const [powerFactor, setPowerFactor] = useState('Minor');
   const [firearmId, setFirearmId] = useState('');
   const [totalRounds, setTotalRounds] = useState('');
+  // Match magazine tracking (Aug 2026, spec: vault "Magazines in
+  // competitions"). One gun per match, so there's no per-gun keying to do —
+  // see MatchMagPicker.tsx, which owns the disclosure UI itself.
+  const [magIds, setMagIds] = useState<string[]>([]);
+  const [magOverrides, setMagOverrides] = useState<{ magId: string; rounds: number }[]>([]);
+  const [magConditions, setMagConditions] = useState<{ magId: string; tag: string }[]>([]);
   const [matchPercent, setMatchPercent] = useState('');
   const [divPlace, setDivPlace] = useState('');
   const [divOf, setDivOf] = useState('');
@@ -659,6 +694,13 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         setDivision(m.division ?? ''); setPowerFactor(m.powerFactor || 'Minor');
         setFirearmId(m.firearmId);
         setTotalRounds(m.totalRounds == null ? '' : String(m.totalRounds));
+        // Loads exactly what is stored -- sticky preselection only offers on
+        // a NEW match (MatchMagPicker's `sticky` prop below is `!editing`).
+        // Array.isArray, not ?? — a corrupt shape from a hand-edited file
+        // loads as empty (visible, fixable) rather than crashing the form.
+        setMagIds(Array.isArray(m.magIds) ? m.magIds : []);
+        setMagOverrides(Array.isArray(m.magOverrides) ? m.magOverrides : []);
+        setMagConditions(Array.isArray(m.magConditions) ? m.magConditions : []);
         setMatchPercent(m.matchPercent == null ? '' : String(m.matchPercent));
         setDivPlace(m.divisionPlace == null ? '' : String(m.divisionPlace));
         setDivOf(m.divisionOf == null ? '' : String(m.divisionOf));
@@ -873,6 +915,26 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         return { field: 'numbers', message: `Stage ${si + 1} has a value that isn't a plain number.` };
       }
     }
+    // Match magazine tracking: a custom mag split must sum to the rounds fired
+    // (spec §4 — overrides "must sum to totalRounds when both exist"). The
+    // picker's banner says "match them to save"; this is the gate that makes
+    // that sentence true — the same inherit-the-session-pattern rule that put
+    // override validation in SessionForm.saveProblem. Also covers the state
+    // the picker itself can't see: overrides typed while a total existed, then
+    // the total cleared — never silently drop or silently keep them.
+    if (magOverrides.length > 0) {
+      const tr = num(totalRounds);
+      if (tr === null) {
+        return { field: 'numbers', message: 'You set a custom mag split, but the rounds fired box is empty — enter the total, or open Mags and reset the split.' };
+      }
+      if (magOverrides.some((o) => !Number.isInteger(o.rounds) || o.rounds < 0)) {
+        return { field: 'numbers', message: 'Each mag needs a whole number of rounds (no minus signs).' };
+      }
+      const magSum = magOverrides.reduce((t, o) => t + o.rounds, 0);
+      if (magSum !== tr) {
+        return { field: 'numbers', message: `Your mag rounds total ${magSum.toLocaleString()}, but the match logged ${tr.toLocaleString()} — match them, or reset to the even split.` };
+      }
+    }
     return null;
   }
 
@@ -904,10 +966,28 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         stages: stageObjs, entryFee: num(entryFee),
         practiScoreUrl: psUrl.trim(), notes: notes.trim()
       };
+      // Match magazine tracking: optional + additive, written ONLY when
+      // something is picked -- absent means absent, matching the
+      // no-migration pattern (spec §4), never an empty array on every match.
+      // On an EDIT, a field the shooter just un-picked is explicitly cleared
+      // rather than left at `original`'s stale value -- ADD-NEVER-REPLACE
+      // governs what's already on disk, not a field the form was just told
+      // to drop (must-test: match edit round-trips picks, both adding and
+      // removing them).
       if (original) {
-        await putOne('matches', stampUpdate({ ...original, ...fields }, now));
+        const merged: Match = { ...original, ...fields };
+        if (magIds.length) merged.magIds = magIds; else delete merged.magIds;
+        if (magOverrides.length) merged.magOverrides = magOverrides; else delete merged.magOverrides;
+        if (magConditions.length) merged.magConditions = magConditions; else delete merged.magConditions;
+        await putOne('matches', stampUpdate(merged, now));
       } else {
-        await putOne('matches', stampNew(fields, mid, now));
+        const newFields: typeof fields & {
+          magIds?: string[]; magOverrides?: { magId: string; rounds: number }[]; magConditions?: { magId: string; tag: string }[];
+        } = { ...fields };
+        if (magIds.length) newFields.magIds = magIds;
+        if (magOverrides.length) newFields.magOverrides = magOverrides;
+        if (magConditions.length) newFields.magConditions = magConditions;
+        await putOne('matches', stampNew(newFields, mid, now));
       }
       await commitMedia('match', mid, newFiles, removedMedia, existingMedia.length);
       // F3 parity: the edits are saved -- nothing left to guard. Clear the dirty
@@ -1097,7 +1177,14 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
             ref={gunFieldRef}
             id="match-gun-select"
             value={firearmId}
-            onChange={(e) => { setFirearmId(e.target.value); if (problem?.field === 'gun') setProblem(null); }}
+            onChange={(e) => {
+              setFirearmId(e.target.value);
+              if (problem?.field === 'gun') setProblem(null);
+              // Changing the gun invalidates any mag picks -- they belonged
+              // to the OLD gun's magazines (mirrors SessionForm's
+              // syncGun-off behavior when a gun leaves a session).
+              setMagIds([]); setMagOverrides([]); setMagConditions([]);
+            }}
             aria-invalid={problem?.field === 'gun' || undefined}
             aria-describedby={problem?.field === 'gun' ? 'match-gun-err' : undefined}>
             {firearms.length === 0 && <option value="">No guns yet</option>}
@@ -1109,6 +1196,26 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
           <input type="number" inputMode="numeric" min="0" value={totalRounds}
             onChange={(e) => { setTotalRounds(e.target.value); if (problem?.field === 'matchGroup') setProblem(null); }} />
         </label>
+        {/* Match magazine tracking (decision 2a): collapsed until tapped,
+            never nags, never blocks saving -- keyed by firearmId so picking a
+            different gun starts the picker fresh (its magazines are
+            meaningless carried over). */}
+        {firearmId && (
+          <MatchMagPicker
+            key={firearmId}
+            firearmId={firearmId}
+            totalRounds={num(totalRounds)}
+            initialMagIds={magIds}
+            initialMagOverrides={magOverrides}
+            initialMagConditions={magConditions}
+            sticky={!editing}
+            onChange={(next) => {
+              setTouched(true);
+              setMagIds(next.magIds);
+              setMagOverrides(next.magOverrides);
+              setMagConditions(next.magConditions);
+            }} />
+        )}
         <FieldProblem id="match-numbers-err" problem={problem} field="numbers" />
       </div>
 
