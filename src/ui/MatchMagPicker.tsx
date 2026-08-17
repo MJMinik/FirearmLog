@@ -224,6 +224,25 @@ export function MatchMagPicker({
         <>
           {/* Decision 5, verbatim, both forms. */}
           <p className="report-note">Updates round counts for maintenance tracking.</p>
+          {/* State notes sit at the TOP of the section, not under the mag
+              list — with a long mag list they were rendering off-screen and
+              a shooter never saw the mismatch warning (Michael's tap test,
+              17 Aug 2026). */}
+          {picked.length > 0 && totalRounds == null && (
+            // Never a silent zero (spec decision 2a): a plain, visible
+            // "pending" state — no split arithmetic renders until a total
+            // exists to divide.
+            <p className="report-note">Pending a round count — the split happens once you enter (or import) the total.</p>
+          )}
+          {picked.length > 0 && totalRounds != null && mismatch && (
+            <>
+              <p className="report-note warn">
+                These mag rounds total {sum.toLocaleString()}, but the match logged{' '}
+                {totalRounds.toLocaleString()} — match them to save.
+              </p>
+              <button className="button secondary" onClick={resetSplit}>Reset to even split</button>
+            </>
+          )}
           {lastMags.length > 0 && (
             <div className="mag-suggest-wrap">
               <button className="mag-suggest" aria-describedby={suggestListId} onClick={applySuggestion}>
@@ -287,21 +306,7 @@ export function MatchMagPicker({
               </Fragment>
             );
           })}
-          {picked.length > 0 && totalRounds == null && (
-            // Never a silent zero (spec decision 2a): a plain, visible
-            // "pending" state — no split arithmetic renders until a total
-            // exists to divide.
-            <p className="report-note">Pending a round count — the split happens once you enter (or import) the total.</p>
-          )}
-          {picked.length > 0 && totalRounds != null && (mismatch ? (
-            <>
-              <p className="report-note warn">
-                These mag rounds total {sum.toLocaleString()}, but the match logged{' '}
-                {totalRounds.toLocaleString()} — match them to save.
-              </p>
-              <button className="button secondary" onClick={resetSplit}>Reset to even split</button>
-            </>
-          ) : customSplit ? (
+          {picked.length > 0 && totalRounds != null && !mismatch && (customSplit ? (
             <p className="report-note">Custom split — each mag&rsquo;s lifetime count uses these numbers.</p>
           ) : (
             <p className="report-note">Rounds split evenly across the mags you pick — tap a number to adjust.</p>

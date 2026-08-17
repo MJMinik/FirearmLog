@@ -622,6 +622,10 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
   const [magIds, setMagIds] = useState<string[]>([]);
   const [magOverrides, setMagOverrides] = useState<{ magId: string; rounds: number }[]>([]);
   const [magConditions, setMagConditions] = useState<{ magId: string; tag: string }[]>([]);
+  // Anchors the save-refusal message and scroll for mag problems — the picker
+  // list can be long, so the error must land ABOVE it, in view (tap test,
+  // 17 Aug 2026).
+  const magsRef = useRef<HTMLDivElement | null>(null);
   const [matchPercent, setMatchPercent] = useState('');
   const [divPlace, setDivPlace] = useState('');
   const [divOf, setDivOf] = useState('');
@@ -925,14 +929,14 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
     if (magOverrides.length > 0) {
       const tr = num(totalRounds);
       if (tr === null) {
-        return { field: 'numbers', message: 'You set a custom mag split, but the rounds fired box is empty — enter the total, or open Mags and reset the split.' };
+        return { field: 'mags', message: 'You set a custom mag split, but the rounds fired box is empty — enter the total, or open Mags and reset the split.' };
       }
       if (magOverrides.some((o) => !Number.isInteger(o.rounds) || o.rounds < 0)) {
-        return { field: 'numbers', message: 'Each mag needs a whole number of rounds (no minus signs).' };
+        return { field: 'mags', message: 'Each mag needs a whole number of rounds (no minus signs).' };
       }
       const magSum = magOverrides.reduce((t, o) => t + o.rounds, 0);
       if (magSum !== tr) {
-        return { field: 'numbers', message: `Your mag rounds total ${magSum.toLocaleString()}, but the match logged ${tr.toLocaleString()} — match them, or reset to the even split.` };
+        return { field: 'mags', message: `Your mag rounds total ${magSum.toLocaleString()}, but the match logged ${tr.toLocaleString()} — match them, or reset to the even split.` };
       }
     }
     return null;
@@ -947,6 +951,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         const target =
           p.field === 'date' ? dateFieldRef.current :
           p.field === 'gun' ? gunFieldRef.current :
+          p.field === 'mags' ? magsRef.current :
           matchGroupRef.current;
         target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         if (p.field === 'date') dateFieldRef.current?.focus();
@@ -1201,6 +1206,8 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
             different gun starts the picker fresh (its magazines are
             meaningless carried over). */}
         {firearmId && (
+          <div ref={magsRef}>
+          <FieldProblem id="match-mags-err" problem={problem} field="mags" />
           <MatchMagPicker
             key={firearmId}
             firearmId={firearmId}
@@ -1215,6 +1222,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
               setMagOverrides(next.magOverrides);
               setMagConditions(next.magConditions);
             }} />
+          </div>
         )}
         <FieldProblem id="match-numbers-err" problem={problem} field="numbers" />
       </div>

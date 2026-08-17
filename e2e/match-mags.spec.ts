@@ -188,7 +188,7 @@ test.describe('Magazines in competitions: the match form', () => {
     // Saving anyway is refused with the field-level problem, and the form
     // never navigates away.
     await clickSave(page);
-    await expect(page.locator('#match-numbers-err')).toContainText(
+    await expect(page.locator('#match-mags-err')).toContainText(
       'Your mag rounds total 55, but the match logged 50');
     await expect(page.getByRole('heading', { name: 'Log Match' })).toBeVisible();
 
@@ -198,7 +198,7 @@ test.describe('Magazines in competitions: the match form', () => {
     await page.getByLabel('Rounds through DR9-1').fill('-5');
     await page.getByLabel('Rounds through DR9-2').fill('55');
     await clickSave(page);
-    await expect(page.locator('#match-numbers-err')).toContainText('whole number');
+    await expect(page.locator('#match-mags-err')).toContainText('whole number');
     await page.getByLabel('Rounds through DR9-1').fill('30');
 
     // Fix the second mag so 30 + 20 = 50; the warning yields to the
@@ -224,7 +224,7 @@ test.describe('Magazines in competitions: the match form', () => {
     await expect(page.getByText('These mag rounds total 50, but the match logged 60', { exact: false })).toBeVisible();
 
     await clickSave(page);
-    await expect(page.locator('#match-numbers-err')).toContainText(
+    await expect(page.locator('#match-mags-err')).toContainText(
       'Your mag rounds total 50, but the match logged 60');
 
     // "Reset to even split" clears the custom numbers, the banner clears, and
