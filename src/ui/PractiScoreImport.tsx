@@ -27,7 +27,7 @@ import { todayKey } from '../lib/dates.ts';
 import { MATCH_TYPES, DIVISIONS, STEEL_DIVISIONS, POWER_FACTORS, suggestDivision, divisionMismatchKind } from '../lib/competition.ts';
 import { divisionActuallyChanged } from '../lib/divisionNormalise.ts';
 import { fieldOptions } from '../lib/selectOptions.ts';
-import { findOwnRows, normaliseStoredNames, type NameMatch } from '../lib/shooterMatch.ts';
+import { findOwnRows, isOwnName, normaliseStoredNames, type NameMatch } from '../lib/shooterMatch.ts';
 import {
   parsePractiScore, countInDivision, SAMPLE_PRACTISCORE_CSV, type PsMatch
 } from '../lib/practiscore.ts';
@@ -439,11 +439,15 @@ export function PractiScoreImport({ onCancel, onSaved }: {
           )}
           {(() => {
             const groups = groupEntriesByPerson(steelForm.entries);
-            const ownSet = new Set(ownNames.map((n) => n.toLowerCase()));
             const isMine = (g: ScsaEntry[]): boolean => {
               const remembered = rememberedNumber.toUpperCase();
               if (remembered && g.some((e) => e.groupKey === remembered)) return true;
-              return g.some((e) => ownSet.has(`${e.firstName} ${e.lastName}`.trim().toLowerCase()));
+              // isOwnName, not a raw compare: Settings stores "Minik, Michael" but a
+              // download file writes first/last in separate fields as "Michael
+              // Minik" — same person, two conventions. This replaces an inline
+              // `.toLowerCase()` compare that missed exactly that case (Michael's
+              // Hansen file, 12 Aug 2026). The member-number branch above is untouched.
+              return g.some((e) => isOwnName(`${e.firstName} ${e.lastName}`, ownNames));
             };
             const fullNameOf = (e: ScsaEntry) => `${e.firstName} ${e.lastName}`.trim();
             const entryRow = (e: ScsaEntry, suggested: boolean) => {

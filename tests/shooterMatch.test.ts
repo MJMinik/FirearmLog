@@ -4,7 +4,7 @@
 // have missed four of the seventy-eight on the first page he tried.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normaliseName, normaliseMemberNumber, normaliseStoredNames, findOwnRows } from '../src/lib/shooterMatch.ts';
+import { normaliseName, normaliseMemberNumber, normaliseStoredNames, findOwnRows, isOwnName } from '../src/lib/shooterMatch.ts';
 
 const row = (name: string, memberNumber = '') => ({ name, memberNumber });
 
@@ -162,4 +162,47 @@ test('findOwnRows survives a competitor whose name is not a string', () => {
   const rough = [{ name: undefined as unknown as string, memberNumber: '' }, row('Minik, Michael')];
   const m = findOwnRows(rough, ['Michael Minik']);
   assert.deepEqual(m.map((x) => x.index), [1]);
+});
+
+// --- isOwnName: the Steel Challenge screen's single-name version of
+// --- findOwnRows, added after the screen's own inline `.toLowerCase()`
+// --- compare missed Michael's Hansen file of 12 Aug 2026 (fixed 18 Aug 2026).
+
+test('isOwnName: the Hansen case — first/last fields written separately still match "Last, First" stored in Settings', () => {
+  // Michael's Hansen Steel Challenge file of 12 Aug 2026 wrote his name across
+  // separate first/last fields as "Michael Minik"; Settings held "Minik,
+  // Michael". The Steel screen's own inline compare missed it — this is the
+  // fix, and the shape it was written against.
+  assert.equal(isOwnName('Michael Minik', ['Minik, Michael']), true);
+  assert.equal(isOwnName('Michael Minik', ['MINIK, MICHAEL']), true);
+  assert.equal(isOwnName('Michael Minik', ['Michael Minik']), true);
+});
+
+test('isOwnName: other shapes really present in the Hansen file', () => {
+  // A trailing-space first-name field wrote "Elizabeth  Gross" with a double
+  // space; the file also carried an accented "Alexandria Morón" against a
+  // Settings entry typed without the accent.
+  assert.equal(isOwnName('Elizabeth  Gross', ['Gross, Elizabeth']), true);
+  assert.equal(isOwnName('Alexandria Morón', ['Moron, Alexandria']), true);
+});
+
+test('isOwnName: surname order carries meaning — "Martin, Lee" never matches "Martin Lee"', () => {
+  // Lee is the family name here; a person whose FIRST name is Martin and last
+  // name Lee is a different person entirely. The comma is what tells the two
+  // conventions apart, and it must keep telling them apart here too.
+  assert.equal(isOwnName('Martin Lee', ['Martin, Lee']), false);
+});
+
+test('isOwnName: first name still has to match — same surname is not the same person', () => {
+  // The household case, pointed at isOwnName itself: findOwnRows is tested
+  // against it, and a surname-only compare would pass every test above while
+  // suggesting Ann's row to David. Found by the tests-constrain audit.
+  assert.equal(isOwnName('Ann Blosser', ['Blosser, David']), false);
+  assert.equal(isOwnName('David Blosser', ['Blosser, Ann']), false);
+});
+
+test('isOwnName: empties never match', () => {
+  assert.equal(isOwnName('', ['Minik, Michael']), false);
+  assert.equal(isOwnName('Michael Minik', []), false);
+  assert.equal(isOwnName('Michael Minik', ['  ,, ']), false);
 });
