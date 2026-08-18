@@ -138,6 +138,28 @@ export function findOwnRows(
   return out;
 }
 
+/**
+ * Whether a single name is one of the shooter's own — the Steel Challenge
+ * screen's version of findOwnRows, for the one place it needs a single
+ * yes/no rather than a list of rows to lift.
+ *
+ * Written after the Steel screen shipped its own inline `.toLowerCase()`
+ * compare instead of reusing normaliseName, and it paid for that: Michael's
+ * Settings held "Minik, Michael" but his Hansen Steel Challenge file of
+ * 12 Aug 2026 wrote his name across separate first/last fields as "Michael
+ * Minik", and the raw compare never saw they were the same person — the
+ * suggestion stayed silent (diagnosed session 126, fixed 18 Aug 2026).
+ *
+ * Same contract as findOwnRows: this SUGGESTS and never decides, and it is
+ * EXACT on the normalised form — no fuzzy distance, because a near miss that
+ * lifts a stranger makes the wrong-person tap MORE likely, not less.
+ */
+export function isOwnName(fullName: string, storedNames: readonly string[]): boolean {
+  const key = normaliseName(fullName);
+  if (!key) return false;
+  return storedNames.some((n) => normaliseName(n) === key);
+}
+
 // A member-number confirmation was specified alongside this and is deliberately
 // NOT here. It would have had nothing to compare against: the settings card asks
 // for names and only names, so the check could only ever return "no

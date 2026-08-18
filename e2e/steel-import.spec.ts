@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
-import { seedDemo, gotoTab } from './helpers';
+import { seedDemo, gotoTab, gotoSection } from './helpers';
 import { parseScsaForm, groupEntriesByPerson, type ScsaForm, type ScsaEntry } from '../src/lib/scsaForm.ts';
 import { Guncraft8stage } from '../tests/fixtures/scsa-guncraft-8stage.ts';
 import { RedbrushMultigun } from '../tests/fixtures/scsa-redbrush-multigun.ts';
@@ -37,6 +37,19 @@ async function loadSteelFile(page: Page, text: string, name = '80f0b53b-08b5-460
   const chooser = page.waitForEvent('filechooser');
   await main.getByRole('button', { name: 'Load a file' }).click();
   await (await chooser).setFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(text, 'utf-8') });
+}
+
+/** Store a name under Settings -> Who you are, the way a shooter does
+ *  (mirrors e2e/who-you-are.spec.ts addNames). */
+async function addNames(page: Page, names: string[]) {
+  await gotoSection(page, 'Settings');
+  const main = page.getByRole('main');
+  await expect(main.getByRole('heading', { name: 'Who you are' })).toBeVisible();
+  for (const n of names) {
+    await main.getByLabel('Name as it appears in results').fill(n);
+    await main.getByRole('button', { name: 'Add name', exact: true }).click();
+    await expect(main.getByText(n, { exact: true })).toBeVisible();
+  }
 }
 
 test.describe('Steel Challenge download-file import', () => {
@@ -100,6 +113,41 @@ test.describe('Steel Challenge download-file import', () => {
     const suggest = main.locator('.suggest-block');
     await expect(suggest).toBeVisible();
     await expect(suggest.getByRole('button', { name: new RegExp(fullName(me)) }).first()).toBeVisible();
+  });
+
+  test('a stored "Last, First" name lifts the shooter\'s entry — no member number remembered', async ({ page }) => {
+    // The Hansen finding (session 125, diagnosed session 126, 18 Aug 2026):
+    // decision 4's member-number path above already lifts a RETURNING
+    // shooter, but a shooter's FIRST file from a new club carries no
+    // remembered number at all — the name is all there is. This proves the
+    // name path alone works across the two writing conventions: Settings
+    // holds "Last, First", the download file writes separate first/last
+    // fields. Proved to fail on the pre-fix code (the main session runs
+    // that proof).
+    const form = formOf(Guncraft8stage);
+    const me = form.entries.find((e) => e.importable && e.firstName && e.lastName) as ScsaEntry;
+    expect(me).toBeTruthy();
+
+    await seedDemo(page);
+    await addNames(page, [`${me.lastName}, ${me.firstName}`]);
+    await gotoTab(page, 'Compete');
+    const main = page.getByRole('main');
+    await loadSteelFile(page, Guncraft8stage);
+    await main.getByRole('button', { name: 'Yes — find my entry' }).click();
+
+    const suggest = main.locator('.suggest-block');
+    await expect(suggest).toBeVisible();
+    // Escaped, because the fixture keeps real decorations on surnames — this
+    // entry's is a parenthetical, which a bare RegExp reads as a group. The
+    // decoration is welcome: the suggestion matching THROUGH it proves the
+    // normalisation end to end.
+    const suggestedButton = suggest.getByRole('button',
+      { name: new RegExp(fullName(me).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')) }).first();
+    await expect(suggestedButton).toBeVisible();
+    // Suggested, not selected — nothing was picked on the shooter's behalf,
+    // the same "not chosen" expression the no-scores test below uses.
+    await expect(suggestedButton).toHaveAttribute('aria-pressed', 'false');
+    await expect(main.getByRole('button', { name: 'Continue', exact: true })).toBeDisabled();
   });
 
   test('a no-scores entry is shown greyed and cannot be picked', async ({ page }) => {
