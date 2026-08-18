@@ -1,7 +1,7 @@
 // Match logging (spec §11): the full match record with stage-by-stage entry,
 // auto hit factors, stage videos, entry fee, and PractiScore link.
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { AppSettings, Firearm, Magazine, Match, MatchStage, Media } from '../lib/types.ts';
+import type { Ammunition, AppSettings, Firearm, Magazine, MalfunctionEntry, Match, MatchStage, Media } from '../lib/types.ts';
 import { deleteOne, getAll, getMediaForOwner, getOne, getSettings, putOne, putSettings } from '../lib/db.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
@@ -28,6 +28,11 @@ import { ScreenError, ScreenLoading } from './ScreenState.tsx';
 import { Icon } from './Icon.tsx';
 import { pickableGuns } from '../lib/gunStatus.ts';
 import { MatchMagPicker } from './MatchMagPicker.tsx';
+import {
+  MALF_TYPES, CLEAR_METHODS, mergeOptions, magazinesForFirearm, magsPickedFirst, malfTypeSummary,
+  parseRoundCount, malfHasContent, type MalfRow
+} from '../lib/malfunctions.ts';
+import { ammoLabel } from './AmmoScreens.tsx';
 
 /** Format a stage's ranking metric for the debrief read-out. */
 function fmtMetric(s: { percent: number | null; hitFactor: number | null }, by: 'percent' | 'hitFactor' | 'none'): string {
@@ -172,6 +177,10 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
   // Needs-cleaning rows below can resolve labels — mirrors how `firearms`
   // is loaded for the same purpose.
   const [magazines, setMagazines] = useState<Magazine[]>([]);
+  // Session 126: this match's own malfunction rows, for the read-only
+  // "Malfunctions" row below — the same load-and-filter shape as
+  // MalfunctionsScreen's matchId display, scoped to just this match.
+  const [matchMalfs, setMatchMalfs] = useState<MalfunctionEntry[]>([]);
   const [videos, setVideos] = useState<Media[]>([]);
   const [confirming, setConfirming] = useState(false);
   const [viewing, setViewing] = useState<Media | null>(null);
@@ -187,9 +196,9 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
     setError(false);
     void (async () => {
       try {
-        const [m, f, mags, media, settings] = await Promise.all([
+        const [m, f, mags, media, settings, malf] = await Promise.all([
           getOne<Match>('matches', id), getAll<Firearm>('firearms'), getAll<Magazine>('magazines'),
-          getMediaForOwner('match', id), getSettings<AppSettings>()
+          getMediaForOwner('match', id), getSettings<AppSettings>(), getAll<MalfunctionEntry>('malfunctions')
         ]);
         if (!alive) return;
         if (!m) { setNotFound(true); return; }
@@ -198,6 +207,8 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
         setMagazines(mags);
         setVideos(media);
         setCoachingRemarks(settings?.coachingRemarks !== false);
+        // Session 126: this match's own rows, freshly filtered on every load.
+        setMatchMalfs(malf.filter((mf) => mf.matchId === id));
       } catch (e) {
         console.error('Match detail load failed', e);
         if (alive) setError(true);
@@ -238,6 +249,17 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
   const totalReconcile = ourTotal != null && officialTotal != null ? reconcileTime(ourTotal, officialTotal) : null;
 
   async function reallyDelete() {
+    // Session 126 (cold-audit F1): a match's malfunction rows go with it.
+    // Match deletion is PERMANENT (there is no Recently Deleted for matches,
+    // unlike sessions with their purgeSession machinery), so an orphaned
+    // matchId row would inflate the malfunction-rate trend forever while its
+    // tap pointed at a match that no longer exists. Freshly queried rather
+    // than trusting matchMalfs state, so a row logged after this screen
+    // loaded still gets cleaned up.
+    const allMalf = await getAll<MalfunctionEntry>('malfunctions');
+    for (const mf of allMalf) {
+      if (mf.matchId === id) await deleteOne('malfunctions', mf.id);
+    }
     for (const v of videos) await deleteOne('media', v.id);
     await deleteOne('matches', id);
     onDeleted();
@@ -316,6 +338,20 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
             <span className="label">Needs cleaning</span>
             <span className="value">
               {match.magConditions.map((c) => `${magazines.find((mg) => mg.id === c.magId)?.label ?? '—'} (${c.tag})`).join(', ')}
+            </span>
+          </div>
+        )}
+        {/* Session 126: a plain info row, not a link -- the Malfunctions
+            screen (App 3b) stays the record home. Distinct types, comma-
+            joined; a blank type renders as "Malfunction", the SAME word the
+            Malfunctions screen uses for it (cold-audit F3 -- the first
+            draft said "Other", which would have been a fourth convention
+            for the same blank while claiming to mirror an existing one). */}
+        {matchMalfs.length > 0 && (
+          <div className="row">
+            <span className="label">Malfunctions</span>
+            <span className="value">
+              {matchMalfs.length} · {malfTypeSummary(matchMalfs.map((mf) => mf.type))}
             </span>
           </div>
         )}
@@ -616,6 +652,23 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
   const [powerFactor, setPowerFactor] = useState('Minor');
   const [firearmId, setFirearmId] = useState('');
   const [totalRounds, setTotalRounds] = useState('');
+  // Session 126: mags and ammo, loaded here so the new malfunction section's
+  // Magazine/Ammo dropdowns have something to offer without a second getAll
+  // of the same store (MatchMagPicker keeps its own copy for its own UI).
+  const [magazines, setMagazines] = useState<Magazine[]>([]);
+  const [ammoLib, setAmmoLib] = useState<Ammunition[]>([]);
+  // Malfunctions: the session form's "Log a malfunction" section, shared
+  // here (session 126) — a match has exactly one gun (this form's
+  // firearmId), so the row omits SessionForm's "Which gun" picker and save
+  // stamps the match's gun directly. Same rewrite-the-whole-set pattern as
+  // SessionForm's malfs/oldMalfIds.
+  const [malfs, setMalfs] = useState<MalfRow[]>([]);
+  const [oldMalfIds, setOldMalfIds] = useState<string[]>([]);
+  // App 2: custom malfunction types/methods used before, across ALL
+  // malfunctions (session- and match-linked alike) — same computation
+  // SessionForm makes, reused rather than reinvented.
+  const [savedMalfTypes, setSavedMalfTypes] = useState<string[]>([]);
+  const [savedClearMethods, setSavedClearMethods] = useState<string[]>([]);
   // Match magazine tracking (Aug 2026, spec: vault "Magazines in
   // competitions"). One gun per match, so there's no per-gun keying to do —
   // see MatchMagPicker.tsx, which owns the disclosure UI itself.
@@ -671,10 +724,19 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
   useEffect(() => {
     let alive = true;
     void (async () => {
-      const f = await getAll<Firearm>('firearms');
+      const [f, mags, am, allMalf] = await Promise.all([
+        getAll<Firearm>('firearms'), getAll<Magazine>('magazines'),
+        getAll<Ammunition>('ammunition'), getAll<MalfunctionEntry>('malfunctions')
+      ]);
       if (!alive) return;
       const sorted = f.sort((a, b) => a.name.localeCompare(b.name));
       setFirearms(sorted);
+      setMagazines(mags);
+      setAmmoLib(am.sort((a, b) => ammoLabel(a).localeCompare(ammoLabel(b))));
+      // App 2: dropdown options = built-ins + custom values already saved —
+      // the same store SessionForm draws its merged lists from.
+      setSavedMalfTypes([...new Set(allMalf.map((mf) => mf.type).filter(Boolean))]);
+      setSavedClearMethods([...new Set(allMalf.map((mf) => mf.resolution).filter(Boolean))]);
       const firstPick = pickableGuns(sorted);
       if (!editing && firstPick.length > 0) setFirearmId(firstPick[0].id);
       if (id !== undefined) {
@@ -765,6 +827,17 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         // Defaulting here rather than at each .trim() closes the class: form state is
         // string, so every consumer downstream is safe by construction rather than by
         // three call sites remembering.
+        // Session 126: this match's own malfunction rows — same
+        // load-and-map shape as SessionForm's session-scoped load, filtered
+        // on matchId instead of sessionId.
+        const mine = allMalf.filter((mf) => mf.matchId === id);
+        setOldMalfIds(mine.map((mf) => mf.id));
+        setMalfs(mine.map((mf) => ({
+          firearmId: mf.firearmId, type: mf.type, resolution: mf.resolution, notes: mf.notes,
+          ammoId: mf.ammoId ?? '', magazineId: mf.magazineId ?? '',
+          roundCount: mf.roundCount != null ? String(mf.roundCount) : '',
+          otherType: false, otherRes: false
+        })));
         setPsUrl(m.practiScoreUrl ?? ''); setNotes(m.notes ?? '');
       }
     })();
@@ -893,6 +966,23 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
     () => scoringType === 'idpa' ? idpaMatchTotal(stageObjs) : null,
     [stageObjs, scoringType]);
 
+  // App 2 pattern (session 126): dropdown options = built-ins + custom values
+  // already saved (and any committed in this form), so a typed-in "Other"
+  // value sticks in the dropdown next time — the same computation
+  // SessionForm makes, reused rather than reinvented.
+  const mergedMalfTypes = useMemo(
+    () => mergeOptions(MALF_TYPES, [...savedMalfTypes, ...malfs.filter((m) => !m.otherType && m.type).map((m) => m.type)]),
+    [savedMalfTypes, malfs]
+  );
+  const mergedClearMethods = useMemo(
+    () => mergeOptions(CLEAR_METHODS, [...savedClearMethods, ...malfs.filter((m) => !m.otherRes && m.resolution).map((m) => m.resolution)]),
+    [savedClearMethods, malfs]
+  );
+
+  // Patch one malfunction row by index — same helper SessionForm uses.
+  const updateMalf = (i: number, patch: Partial<MalfRow>) =>
+    setMalfs((p) => p.map((x, n) => (n === i ? { ...x, ...patch } : x)));
+
 
   // ONE source of validation truth for both Save button and nav-guard Save.
   function saveProblem(): SaveProblem {
@@ -995,6 +1085,22 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         await putOne('matches', stampNew(newFields, mid, now));
       }
       await commitMedia('match', mid, newFiles, removedMedia, existingMedia.length);
+
+      // Malfunctions: rewrite this match's set (session 126) — same
+      // rewrite-the-whole-set pattern and field discipline as SessionForm's
+      // malfunctions persist loop. A blank type reads as "Other" downstream.
+      for (const oid of oldMalfIds) await deleteOne('malfunctions', oid);
+      for (const m of malfs) {
+        if (!malfHasContent(m)) continue;
+        await putOne('malfunctions', stampNew({
+          sessionId: null, matchId: mid, date, firearmId,
+          type: m.type, resolution: m.resolution.trim(), notes: m.notes.trim(),
+          ammoId: m.ammoId || null,
+          magazineId: m.magazineId || null,
+          roundCount: parseRoundCount(m.roundCount)
+        }, newId('mf'), now));
+      }
+
       // F3 parity: the edits are saved -- nothing left to guard. Clear the dirty
       // flag before onSaved navigates (its replace/back would otherwise hit App's guard).
       onDirtyChange?.(false);
@@ -1189,6 +1295,12 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
               // to the OLD gun's magazines (mirrors SessionForm's
               // syncGun-off behavior when a gun leaves a session).
               setMagIds([]); setMagOverrides([]); setMagConditions([]);
+              // Session 126 (cold-audit F2): same rule for each malfunction
+              // row's magazine -- it belonged to the OLD gun, and leaving it
+              // would silently save a gun-B record blaming a gun-A mag. The
+              // rest of the row (type, clear method, notes) survives the
+              // switch; only the mag reference is gun-specific.
+              setMalfs((prev) => prev.map((m) => (m.magazineId ? { ...m, magazineId: '' } : m)));
             }}
             aria-invalid={problem?.field === 'gun' || undefined}
             aria-describedby={problem?.field === 'gun' ? 'match-gun-err' : undefined}>
@@ -1225,6 +1337,99 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
           </div>
         )}
         <FieldProblem id="match-numbers-err" problem={problem} field="numbers" />
+      </div>
+
+      {/* Session 126: the session form's "Log a malfunction" section, shared
+          here — placed directly after the card holding MatchMagPicker so a
+          malfunction the shooter is about to describe can reference the mag
+          he just picked (magsPickedFirst below sorts it to the top of the
+          dropdown). No "Which gun" picker: a match has exactly one gun (this
+          form's firearmId), stamped onto every saved row at persist time. */}
+      <div className="card" data-testid="match-malfs-card">
+        <h2>Malfunctions</h2>
+        <p className="report-note">
+          {(() => {
+            // Cold-audit fix (session 78) / same rule SessionForm uses: count
+            // only rows persistForm() will actually write (malfHasContent).
+            const n = malfs.filter(malfHasContent).length;
+            return n > 0 ? `${n} malfunction${n === 1 ? '' : 's'} added` : 'No malfunctions yet.';
+          })()}
+        </p>
+        <Reveal label="Log a malfunction" defaultOpen={editing && malfs.length > 0}>
+          {malfs.map((m, i) => (
+            <div className="drill-edit" key={i}>
+              <div className="drill-edit-head">
+                <strong>{m.type || 'New malfunction'}</strong>
+                <button className="icon-btn" aria-label="Remove malfunction"
+                  onClick={() => { setTouched(true); setMalfs((prev) => prev.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
+              </div>
+              <label className="field">What happened
+                <select value={m.otherType ? 'Other' : m.type}
+                  onChange={(e) => { const v = e.target.value; updateMalf(i, { otherType: v === 'Other', type: v === 'Other' ? '' : v }); }}>
+                  <option value="">Pick one…</option>
+                  {mergedMalfTypes.map((t) => <option key={t} value={t}>{t}</option>)}
+                  <option value="Other">Other…</option>
+                </select>
+              </label>
+              {m.otherType && (
+                <label className="field">Describe it
+                  <input value={m.type} placeholder="e.g. Brass over bolt" name="malfunction-desc" {...noAutofillProps}
+                    onChange={(e) => updateMalf(i, { type: e.target.value })} />
+                </label>
+              )}
+              <label className="field">How you cleared it
+                <select value={m.otherRes ? 'Other' : m.resolution}
+                  onChange={(e) => { const v = e.target.value; updateMalf(i, { otherRes: v === 'Other', resolution: v === 'Other' ? '' : v }); }}>
+                  <option value="">Pick one…</option>
+                  {mergedClearMethods.map((c) => <option key={c} value={c}>{c}</option>)}
+                  <option value="Other">Other…</option>
+                </select>
+              </label>
+              {m.otherRes && (
+                <label className="field">How did you clear it?
+                  <input value={m.resolution} placeholder="e.g. Stripped the mag and racked" name="malfunction-clear" {...noAutofillProps}
+                    onChange={(e) => updateMalf(i, { resolution: e.target.value })} />
+                </label>
+              )}
+              {ammoLib.length > 0 && (
+                <label className="field">Ammo <span className="field-optional">(optional)</span>
+                  <select value={m.ammoId}
+                    onChange={(e) => updateMalf(i, { ammoId: e.target.value })}>
+                    <option value="">— Not sure —</option>
+                    {ammoLib.map((a) => <option key={a.id} value={a.id}>{ammoLabel(a)}</option>)}
+                  </select>
+                </label>
+              )}
+              {magazines.length > 0 && (
+                <label className="field">Magazine <span className="field-optional">(optional)</span>
+                  <select value={m.magazineId}
+                    onChange={(e) => updateMalf(i, { magazineId: e.target.value })}>
+                    <option value="">— Not sure —</option>
+                    {/* The mag that choked is almost always one the shooter
+                        just told the form he used -- the currently-picked
+                        match mags sort first, the rest after (magsPickedFirst,
+                        session 126). */}
+                    {magsPickedFirst(magazinesForFirearm(magazines, firearmId), magIds).map((mag) =>
+                      <option key={mag.id} value={mag.id}>{mag.label}{mag.active === false ? ' (retired)' : ''}</option>)}
+                  </select>
+                </label>
+              )}
+              <label className="field">Round number <span className="field-optional">(optional)</span>
+                <input type="number" inputMode="numeric" min="0" value={m.roundCount} placeholder="e.g. 47"
+                  autoComplete="off"
+                  onChange={(e) => updateMalf(i, { roundCount: e.target.value })} />
+              </label>
+              <label className="field">Notes
+                <input value={m.notes}
+                  onChange={(e) => updateMalf(i, { notes: e.target.value })} />
+              </label>
+            </div>
+          ))}
+          <button className="button secondary" onClick={() => { setTouched(true); setMalfs((prev) => [
+            ...prev,
+            { firearmId, type: '', resolution: '', notes: '', ammoId: '', magazineId: '', roundCount: '' }
+          ]); }}>+ Add Malfunction</button>
+        </Reveal>
       </div>
 
       <div className="card">

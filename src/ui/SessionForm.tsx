@@ -13,7 +13,10 @@ import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { drillsForContext } from '../lib/drillFilter.ts';
 import { inventoryAfterUsageChange } from '../lib/costing.ts';
-import { MALF_TYPES, CLEAR_METHODS, mergeOptions, magazinesForFirearm, parseRoundCount } from '../lib/malfunctions.ts';
+import {
+  MALF_TYPES, CLEAR_METHODS, mergeOptions, magazinesForFirearm, parseRoundCount,
+  malfHasContent, type MalfRow
+} from '../lib/malfunctions.ts';
 import { recentValues } from '../lib/suggest.ts';
 import { filterHidden } from '../lib/listEdits.ts';
 import { suggestAmmoRow, sharedCaliber } from '../lib/ammoSuggest.ts';
@@ -51,24 +54,10 @@ const KINDS = [
 interface DrillRow {
   name: string; distance: string; time: string; score: string; maxScore: string; notes: string;
 }
-interface MalfRow {
-  firearmId: string; type: string; resolution: string; notes: string;
-  // App 3a: optional context. Held as strings in the form; '' means "not set".
-  ammoId: string; magazineId: string; roundCount: string;
-  // App 2: transient (not saved) — true while typing a custom "Other" value.
-  otherType?: boolean; otherRes?: boolean;
-}
-
-// Cold-audit fix (session 78): the ONE predicate for "this row is worth
-// keeping" — a row counts (and saves) if the shooter filled in ANYTHING:
-// type, how-cleared, notes, ammo, magazine, or round number. A completely
-// blank row (the state right after tapping "+ Add Malfunction") does not.
-// Shared by the save path and the summary count, so the count on screen can
-// never claim more rows than doPersist() actually writes.
-function malfHasContent(m: MalfRow): boolean {
-  return !!(m.type || m.resolution.trim() || m.notes.trim()
-    || m.ammoId || m.magazineId || m.roundCount.trim());
-}
+// Session 126: MalfRow and malfHasContent moved to lib/malfunctions.ts — the
+// match form now shares this row shape too, so the "blank row is skipped /
+// partly-filled context is never dropped" rule lives in ONE place instead of
+// being copy-pasted into a second form. Imported above.
 interface AmmoRow { ammoId: string; rounds: string; }
 
 // T3-1: one timed-skill SET per row — held as strings in the form, same
