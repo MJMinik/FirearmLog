@@ -2,7 +2,10 @@
 // App 3a — the magazine picker filter and round-number parser.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeOptions, MALF_TYPES, magazinesForFirearm, parseRoundCount } from '../src/lib/malfunctions.ts';
+import {
+  mergeOptions, MALF_TYPES, magazinesForFirearm, parseRoundCount, malfHasContent, magsPickedFirst,
+  malfTypeSummary, type MalfRow
+} from '../src/lib/malfunctions.ts';
 
 test('built-ins come first, then custom values sorted', () => {
   const out = mergeOptions(MALF_TYPES, ['Squib', 'Brass over bolt']);
@@ -53,4 +56,70 @@ test('empty / non-numeric / negative / fractional all become null', () => {
   for (const bad of ['', '   ', 'abc', '-5', '3.5', 'NaN', '1e3x']) {
     assert.equal(parseRoundCount(bad), null, `expected null for ${JSON.stringify(bad)}`);
   }
+});
+
+// --- Session 126: malfHasContent, moved here from SessionForm.tsx ---
+
+function blankMalfRow(): MalfRow {
+  return { firearmId: 'g1', type: '', resolution: '', notes: '', ammoId: '', magazineId: '', roundCount: '' };
+}
+
+test('malfHasContent: a fully blank row is false', () => {
+  assert.equal(malfHasContent(blankMalfRow()), false);
+});
+
+test('malfHasContent: each single field alone makes the row true', () => {
+  assert.equal(malfHasContent({ ...blankMalfRow(), type: 'Stovepipe' }), true);
+  assert.equal(malfHasContent({ ...blankMalfRow(), resolution: 'Tap-Rack-Bang' }), true);
+  assert.equal(malfHasContent({ ...blankMalfRow(), notes: 'happened at the buzzer' }), true);
+  assert.equal(malfHasContent({ ...blankMalfRow(), ammoId: 'am1' }), true);
+  assert.equal(malfHasContent({ ...blankMalfRow(), magazineId: 'mg1' }), true);
+  assert.equal(malfHasContent({ ...blankMalfRow(), roundCount: '12' }), true);
+});
+
+test('malfHasContent: whitespace-only text fields still count as blank', () => {
+  assert.equal(malfHasContent({ ...blankMalfRow(), resolution: '   ' }), false);
+  assert.equal(malfHasContent({ ...blankMalfRow(), notes: '   ' }), false);
+  assert.equal(malfHasContent({ ...blankMalfRow(), roundCount: '  ' }), false);
+});
+
+// --- Session 126: magsPickedFirst (match form's magazine-dropdown ordering) ---
+
+const orderedMags = [
+  { id: 'm1', label: 'Mag A' },
+  { id: 'm2', label: 'Mag B' },
+  { id: 'm3', label: 'Mag C' },
+];
+
+test('magsPickedFirst: picked mags sort first, in picked order', () => {
+  const out = magsPickedFirst(orderedMags, ['m3', 'm1']).map((m) => m.id);
+  assert.deepEqual(out, ['m3', 'm1', 'm2']);
+});
+
+test('magsPickedFirst: the rest keep their original order after the picked ones', () => {
+  const out = magsPickedFirst(orderedMags, ['m2']).map((m) => m.id);
+  assert.deepEqual(out, ['m2', 'm1', 'm3']);
+});
+
+test('magsPickedFirst: unknown picked ids are ignored, not injected', () => {
+  const out = magsPickedFirst(orderedMags, ['does-not-exist', 'm2']).map((m) => m.id);
+  assert.deepEqual(out, ['m2', 'm1', 'm3']);
+});
+
+test('magsPickedFirst: no picks returns the original order unchanged', () => {
+  const out = magsPickedFirst(orderedMags, []).map((m) => m.id);
+  assert.deepEqual(out, ['m1', 'm2', 'm3']);
+});
+
+// --- Session 126: malfTypeSummary (the match detail card's one-liner) ---
+
+test('malfTypeSummary: distinct types in first-seen order', () => {
+  assert.equal(malfTypeSummary(['Failure to feed', 'Stovepipe', 'Failure to feed']), 'Failure to feed, Stovepipe');
+});
+
+test('malfTypeSummary: a blank type is the word the Malfunctions screen uses, not a new one', () => {
+  // Cold-audit F3: the first draft said "Other", which would have been a
+  // FOURTH convention for the same blank across the app's surfaces.
+  assert.equal(malfTypeSummary(['']), 'Malfunction');
+  assert.equal(malfTypeSummary(['', 'Squib', '']), 'Malfunction, Squib');
 });

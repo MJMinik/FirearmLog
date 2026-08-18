@@ -17,10 +17,11 @@ import {
 import { labelOrRemoved } from '../lib/lookup.ts';
 import { ScreenError } from './ScreenState.tsx';
 
-export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
+export function MalfunctionsScreen({ refreshKey, onBack, openSession, openMatch }: {
   refreshKey: number;
   onBack: () => void;
   openSession: (sessionId: string) => void;
+  openMatch: (matchId: string) => void;
 }) {
   const [malfs, setMalfs] = useState<MalfunctionEntry[]>([]);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
@@ -28,9 +29,10 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
   const [magazines, setMagazines] = useState<Magazine[]>([]);
   // Decision 4a rider: the optional match context on MalfunctionEntry
   // (matchId) so "A01 jammed at the 16 Aug match" is visible here, mirroring
-  // how ammoId and magazineId already surface on this read-only screen. See
-  // NOTES.md for why this stops at display -- there is no creation-time path
-  // to set matchId anywhere in the app yet.
+  // how ammoId and magazineId already surface on this read-only screen.
+  // Session 126: the match form now has its own "Log a malfunction" section
+  // (mirroring SessionForm's), so matchId is no longer display-only -- a
+  // match-linked row here is tappable too, same as a session-linked one.
   const [matches, setMatches] = useState<Match[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
@@ -112,10 +114,13 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession }: {
           {filtered.map((m) => {
             const sub = [ammoName(m.ammoId), magName(m.magazineId), matchName(m.matchId), m.roundCount != null ? `round ${m.roundCount}` : '']
               .filter(Boolean).join(' · ');
-            const canOpen = !!m.sessionId;
+            const canOpen = !!m.sessionId || !!m.matchId;
             return (
               <button className="row-tap" key={m.id} disabled={!canOpen}
-                onClick={() => { if (m.sessionId) openSession(m.sessionId); }}>
+                onClick={() => {
+                  if (m.sessionId) openSession(m.sessionId);
+                  else if (m.matchId) openMatch(m.matchId);
+                }}>
                 <span className="label">
                   {m.type || 'Malfunction'}
                   <div className="row-sub">

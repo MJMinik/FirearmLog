@@ -370,7 +370,9 @@ export function App() {
   } else if (view?.kind === 'malfunctions') {
     content = <MalfunctionsScreen refreshKey={refreshKey}
       onBack={back}
-      openSession={(sid) => push({ kind: 'session-form', id: sid })} />;
+      openSession={(sid) => push({ kind: 'session-form', id: sid })}
+      // Session 126: same navigation the Compete tab uses to open a match.
+      openMatch={(mid) => push({ kind: 'match-detail', id: mid })} />;
   } else if (view?.kind === 'match-detail') {
     const v = view;
     content = <MatchDetail id={v.id} refreshKey={refreshKey} open={push}
