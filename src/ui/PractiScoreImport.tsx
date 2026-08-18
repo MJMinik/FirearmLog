@@ -27,7 +27,9 @@ import { todayKey } from '../lib/dates.ts';
 import { MATCH_TYPES, DIVISIONS, STEEL_DIVISIONS, POWER_FACTORS, suggestDivision, divisionMismatchKind } from '../lib/competition.ts';
 import { divisionActuallyChanged } from '../lib/divisionNormalise.ts';
 import { fieldOptions } from '../lib/selectOptions.ts';
-import { findOwnRows, isOwnName, normaliseStoredNames, type NameMatch } from '../lib/shooterMatch.ts';
+import {
+  findOwnRows, isOwnName, memberNumberVerdict, normaliseStoredNames, shouldRememberScsaNumber, type NameMatch
+} from '../lib/shooterMatch.ts';
 import {
   parsePractiScore, countInDivision, SAMPLE_PRACTISCORE_CSV, type PsMatch
 } from '../lib/practiscore.ts';
@@ -101,6 +103,10 @@ export function PractiScoreImport({ onCancel, onSaved }: {
    *  only to lift this shooter's entries to the top. Nothing is ever selected
    *  on their behalf. */
   const [rememberedNumber, setRememberedNumber] = useState('');
+  /** The USPSA # the shooter typed in Settings -> Who you are
+   *  (MEMBER_NUMBER_SPEC.md §4) — a confirmation beside a name match on
+   *  suggested rows, never a key. */
+  const [storedUspsaNumber, setStoredUspsaNumber] = useState('');
 
   useEffect(() => {
     let alive = true;
@@ -110,6 +116,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       if (alive) {
         setOwnNames(normaliseStoredNames(st?.shooterNames));
         setRememberedNumber((st?.scsaMemberNumber ?? '').trim());
+        setStoredUspsaNumber((st?.uspsaMemberNumber ?? '').trim());
       }
     })();
     return () => { alive = false; };
@@ -279,12 +286,21 @@ export function PractiScoreImport({ onCancel, onSaved }: {
         records.push(stampNew(w.fields, mid, now));
       }
       await putMany('matches', records);
-      // Decision 4: remember the member number so the next file opens with this
-      // shooter's entries lifted to the top. Only a number the shooter just
-      // imported as their own — never one guessed from the field.
+      // Decision 4, extended by MEMBER_NUMBER_SPEC.md §3: remember the member
+      // number so the next file opens with this shooter's entries lifted to
+      // the top — but only when nothing is stored yet. The field is visible
+      // and editable in Settings now, so whatever's there is the shooter's to
+      // keep or correct; an import fills a blank, never overwrites a value
+      // they can see.
       const mem = toWrite.map((w) => w.entry.membership).find((m) => m !== '');
-      if (mem) {
-        try { await putSettings<AppSettings>({ scsaMemberNumber: mem }); } catch { /* best-effort; the import already saved */ }
+      if (mem && shouldRememberScsaNumber(rememberedNumber, mem)) {
+        try {
+          await putSettings<AppSettings>({ scsaMemberNumber: mem });
+          // Keep the in-memory copy in step, or a SECOND import in the same
+          // sitting would still see '' and overwrite the number this one just
+          // filled — the exact thing the fill-only-when-empty contract forbids.
+          setRememberedNumber(mem);
+        } catch { /* best-effort; the import already saved */ }
       }
       onSaved(firstId);
     } catch {
@@ -369,6 +385,10 @@ export function PractiScoreImport({ onCancel, onSaved }: {
    *  different kind of control. */
   function shooterRow(i: number, isSuggestion: boolean) {
     const c = parsed!.competitors[i];
+    // A confirmation beside the name match, never a key — computed only for a
+    // suggested row, and only when there is something to say (spec §5): null
+    // means silence, not "no number".
+    const numberVerdict = isSuggestion ? memberNumberVerdict(storedUspsaNumber, c.memberNumber) : null;
     return (
       <button className="row-tap" key={`${isSuggestion ? 'sug' : 'all'}-${i}`}
         aria-label={isSuggestion ? `${c.name || 'Unnamed shooter'} — suggested, this looks like you` : undefined}
@@ -389,6 +409,9 @@ export function PractiScoreImport({ onCancel, onSaved }: {
             {[c.division, c.classLetter && `Class ${c.classLetter}`, c.matchPercent != null ? `${c.matchPercent.toFixed(2)}%` : null]
               .filter(Boolean).join(' · ')}
           </div>
+          {numberVerdict && (
+            <div className="row-sub">{numberVerdict === 'match' ? 'USPSA # matches' : 'Member # differs'}</div>
+          )}
         </span>
         <span className="value">{c.overallPlace != null ? `#${c.overallPlace}` : ''} ›</span>
       </button>
@@ -457,6 +480,10 @@ export function PractiScoreImport({ onCancel, onSaved }: {
                 steelForm.matches.size > 1 ? (e.matchName || null) : null,
                 e.importable ? null : e.blockedReason,
               ].filter(Boolean).join(' · ');
+              // Same confirmation as the USPSA side, against the stored SCSA #
+              // (rememberedNumber) rather than a number typed here. Only for a
+              // suggested row, and only when there is something to say.
+              const numberVerdict = suggested ? memberNumberVerdict(rememberedNumber, e.membership) : null;
               return (
                 <button className="row-tap" key={`${suggested ? 'sug' : 'all'}-${e.competitorNumber}`}
                   aria-pressed={picked}
@@ -466,6 +493,9 @@ export function PractiScoreImport({ onCancel, onSaved }: {
                   onClick={() => toggleSteelEntry(e)}>
                   <span className="label">{`${e.firstName} ${e.lastName}`.trim() || '(no name)'}
                     {sub && <div className="row-sub">{sub}</div>}
+                    {numberVerdict && (
+                      <div className="row-sub">{numberVerdict === 'match' ? 'SCSA # matches' : 'Member # differs'}</div>
+                    )}
                   </span>
                   <span className="value">
                     {picked ? '✓ ' : ''}
