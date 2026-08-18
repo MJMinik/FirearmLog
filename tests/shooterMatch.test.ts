@@ -4,7 +4,10 @@
 // have missed four of the seventy-eight on the first page he tried.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { normaliseName, normaliseMemberNumber, normaliseStoredNames, findOwnRows, isOwnName } from '../src/lib/shooterMatch.ts';
+import {
+  normaliseName, normaliseMemberNumber, normaliseStoredNames, findOwnRows, isOwnName,
+  memberNumberVerdict, shouldRememberScsaNumber,
+} from '../src/lib/shooterMatch.ts';
 
 const row = (name: string, memberNumber = '') => ({ name, memberNumber });
 
@@ -205,4 +208,69 @@ test('isOwnName: empties never match', () => {
   assert.equal(isOwnName('', ['Minik, Michael']), false);
   assert.equal(isOwnName('Michael Minik', []), false);
   assert.equal(isOwnName('Michael Minik', ['  ,, ']), false);
+});
+
+// --- memberNumberVerdict: MEMBER_NUMBER_SPEC.md §6 — the number is a
+// --- CONFIRMATION beside a name match, never a key. null means no verdict is
+// --- possible (nothing to say), not "no match".
+
+test('memberNumberVerdict: an exact match reads as a match', () => {
+  assert.equal(memberNumberVerdict('A185231', 'A185231'), 'match');
+});
+
+test('memberNumberVerdict: case, spaces and hyphens are not identity', () => {
+  assert.equal(memberNumberVerdict('a 185-231', 'A185231'), 'match');
+});
+
+test('memberNumberVerdict: a renewed prefix still reads as a match — the digits are the person', () => {
+  // USPSA prefixes change with membership type as a member renews (A -> TY ->
+  // L); the digits stay theirs. Without this a renewed shooter would see
+  // "Member # differs" on every import forever, on a number that is genuinely
+  // theirs.
+  assert.equal(memberNumberVerdict('TY185231', 'A185231'), 'match');
+});
+
+test('memberNumberVerdict: the real transposition pair still differs', () => {
+  // Michael's own Gun Craft registration, the case that started this build:
+  // the club typed A185321 where A185231 is correct.
+  assert.equal(memberNumberVerdict('A185321', 'A185231'), 'differs');
+});
+
+test('memberNumberVerdict: a blank side means no verdict, not "no match"', () => {
+  assert.equal(memberNumberVerdict('', 'A185231'), null);
+  assert.equal(memberNumberVerdict('A185231', ''), null);
+  assert.equal(memberNumberVerdict(undefined, undefined), null);
+  assert.equal(memberNumberVerdict('', ''), null);
+});
+
+test('memberNumberVerdict: punctuation-only normalises to nothing, same as blank', () => {
+  assert.equal(memberNumberVerdict('--', 'A185231'), null);
+  assert.equal(memberNumberVerdict('A185231', '  ,, '), null);
+});
+
+test('memberNumberVerdict: digits alone still match a prefixed number', () => {
+  assert.equal(memberNumberVerdict('185231', 'A185231'), 'match');
+});
+
+// --- shouldRememberScsaNumber: the fill-only-when-empty contract (Decision 4,
+// --- extended by MEMBER_NUMBER_SPEC.md §3) — an import may fill a blank field
+// --- and must never overwrite one the shooter can see.
+
+test('shouldRememberScsaNumber: fills a genuinely empty field', () => {
+  assert.equal(shouldRememberScsaNumber('', 'A185231'), true);
+  assert.equal(shouldRememberScsaNumber(undefined, 'A185231'), true);
+});
+
+test('shouldRememberScsaNumber: never overwrites a value already there', () => {
+  assert.equal(shouldRememberScsaNumber('A185231', 'A999999'), false);
+});
+
+test('shouldRememberScsaNumber: a blank incoming value never fills anything', () => {
+  assert.equal(shouldRememberScsaNumber('', ''), false);
+  assert.equal(shouldRememberScsaNumber('', undefined), false);
+});
+
+test('shouldRememberScsaNumber: whitespace counts as blank on either side', () => {
+  assert.equal(shouldRememberScsaNumber('   ', 'A185231'), true);
+  assert.equal(shouldRememberScsaNumber('A185231', '   '), false);
 });

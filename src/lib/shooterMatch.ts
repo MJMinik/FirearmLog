@@ -160,16 +160,52 @@ export function isOwnName(fullName: string, storedNames: readonly string[]): boo
   return storedNames.some((n) => normaliseName(n) === key);
 }
 
-// A member-number confirmation was specified alongside this and is deliberately
-// NOT here. It would have had nothing to compare against: the settings card asks
-// for names and only names, so the check could only ever return "no
-// confirmation", and a function that cannot say yes is decoration with a
-// comment on it. If the card ever gains an optional member number, the whole of
-// it is: normalise both sides, compare, and mark the match — a few lines, added
-// when there is an input for them.
-//
-// Worth recording either way, because it is why the number is not the key: on
-// PractiScore a member number lives on each match REGISTRATION rather than on an
-// account, so it does not carry over and is regularly wrong or missing.
-// Michael's own Gun Craft row reads A185321 where A185231 is correct, and six of
-// that match's seventy-eight rows carry no number at all.
+// The member-number confirmation sketched above finally has an input to
+// compare against (MEMBER_NUMBER_SPEC.md, 18 Aug 2026 — Settings gained a
+// USPSA # field, and the existing SCSA # became visible and editable). It is
+// why the number is not the key: on PractiScore a member number lives on each
+// match REGISTRATION rather than on an account, so it does not carry over and
+// is regularly wrong or missing. Michael's own Gun Craft row reads A185321
+// where A185231 is correct, and six of that match's seventy-eight rows carry
+// no number at all.
+
+/**
+ * Whether a stored member number and an imported row's member number describe
+ * the same shooter — a CONFIRMATION beside a name match, never a key (spec
+ * §6). `null` means no verdict is possible: nothing to say, not "no match".
+ *
+ * Not equal after normalising can still be a `match` when the DIGITS alone
+ * agree: USPSA prefixes change with membership type as a member renews
+ * (A -> TY -> L) while the digits stay theirs. Without this a renewed shooter
+ * would see "Member # differs" on every import forever, on a number that is
+ * genuinely theirs. The real defect this exists to catch stays caught:
+ * A185321 vs A185231 (the transposed Gun Craft registration) differ in
+ * digits too, so they still read as `differs`.
+ */
+export function memberNumberVerdict(
+  stored: string | undefined,
+  rowValue: string | undefined
+): 'match' | 'differs' | null {
+  const a = normaliseMemberNumber(stored ?? '');
+  const b = normaliseMemberNumber(rowValue ?? '');
+  if (!a || !b) return null;
+  if (a === b) return 'match';
+  const digitsA = a.replace(/\D+/g, '');
+  const digitsB = b.replace(/\D+/g, '');
+  if (digitsA && digitsB && digitsA === digitsB) return 'match';
+  return 'differs';
+}
+
+/**
+ * The fill-only-when-empty contract for a remembered member number (Decision
+ * 4, extended by MEMBER_NUMBER_SPEC.md §3): an import may FILL a blank field,
+ * and must never overwrite one the shooter can see — typed or previously
+ * filled, it is theirs to keep or correct. Pure so the contract can be
+ * mutation-tested on its own, apart from the screen that calls it.
+ */
+export function shouldRememberScsaNumber(
+  existing: string | undefined,
+  incoming: string | undefined
+): boolean {
+  return (incoming ?? '').trim() !== '' && (existing ?? '').trim() === '';
+}

@@ -563,6 +563,14 @@ export interface AppSettings {
    *  when an import saves an entry carrying a number; never guessed from the
    *  field. Undefined means no Steel file has been imported yet. */
   scsaMemberNumber?: string;
+  /** The USPSA member number the shooter typed in Settings -> Who you are. A
+   *  confirmation beside their stored names, never a key — a name match is
+   *  required first, and this only annotates it (MEMBER_NUMBER_SPEC.md §5).
+   *  Never auto-filled from an import: club-entered numbers are regularly
+   *  wrong (Michael's own Gun Craft registration read A185321 where A185231
+   *  is correct), so the shooter types the one they hold. Undefined means
+   *  they haven't entered one. */
+  uspsaMemberNumber?: string;
   theme: string;
   checklistCustomItems: ChecklistCustomItems;
   /** When the user last saved a backup file (Save to File). Drives the Home
