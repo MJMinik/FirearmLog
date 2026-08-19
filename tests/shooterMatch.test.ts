@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import {
   normaliseName, normaliseMemberNumber, normaliseStoredNames, findOwnRows, isOwnName,
   memberNumberVerdict, shouldRememberScsaNumber, numberMayLift, scsaAdoptionCandidate, scsaNumberPatch,
+  scsaCorrectedNumber,
 } from '../src/lib/shooterMatch.ts';
 
 const row = (name: string, memberNumber = '') => ({ name, memberNumber });
@@ -367,4 +368,63 @@ test('scsaNumberPatch: the changed-check is EXACT -- a case-only edit is a real 
   // shooter Decision 4's number-alone lift on a number they just corrected.
   assert.deepEqual(scsaNumberPatch('SC-42', 'sc-42'), { scsaMemberNumber: 'SC-42', scsaMemberNumberSource: 'typed' });
   assert.deepEqual(scsaNumberPatch('SC-42', ' SC-42 '), { scsaMemberNumber: 'SC-42', scsaMemberNumberSource: 'typed' });
+});
+
+// --- scsaCorrectedNumber: IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.md §2.8 (19
+// Aug 2026) -- what "Not mine" now offers, instead of nothing, once tapped.
+// Every guard here is mutation-tested alone: each test names the wrong
+// implementation it would catch.
+
+test('scsaCorrectedNumber: a typed, trimmed correction over a blank stored number is kept', () => {
+  // Catches: a mutant that forgets to trim before returning.
+  assert.equal(scsaCorrectedNumber('no', ' SC-99 ', ''), 'SC-99');
+});
+
+test('scsaCorrectedNumber: blank or whitespace-only never stores anything', () => {
+  // Catches: a mutant that accepts blank or whitespace as a real answer.
+  assert.equal(scsaCorrectedNumber('no', '', ''), null);
+  assert.equal(scsaCorrectedNumber('no', '   ', ''), null);
+});
+
+test('scsaCorrectedNumber: selection "yes" never stores the typed draft, however it reads', () => {
+  // Catches: a mutant that ignores the selection and stores on ANY answer --
+  // this is the case where "Yes -- it's mine" was tapped, and the file's own
+  // number is what must be honoured, never the draft.
+  assert.equal(scsaCorrectedNumber('yes', 'SC-99', ''), null);
+});
+
+test('scsaCorrectedNumber: an unanswered question (null) never stores anything', () => {
+  // Catches the other half of the same mutant: ignoring the selection would
+  // also fire on the unanswered, "neither tapped" default -- the honest
+  // default, and the outcome most likely to regress unnoticed because
+  // nothing on screen changes when it does.
+  assert.equal(scsaCorrectedNumber(null, 'SC-99', ''), null);
+});
+
+test('scsaCorrectedNumber: never overwrites a number already stored, even on "no"', () => {
+  // Catches: a mutant that drops the shouldRememberScsaNumber call entirely
+  // -- the ONE guard that keeps this box from ever overwriting a value the
+  // shooter can see.
+  assert.equal(scsaCorrectedNumber('no', 'SC-99', 'SC-1'), null);
+});
+
+test('scsaCorrectedNumber: the typed value is capped at 24 characters, same as Settings', () => {
+  // Catches: a mutant that drops the 24-char cap -- the box has to match the
+  // Settings field it feeds exactly.
+  const long = 'A'.repeat(30);
+  assert.equal(scsaCorrectedNumber('no', long, ''), 'A'.repeat(24));
+});
+
+test('scsaCorrectedNumber: an absent stored value reads as blank, same as an empty string', () => {
+  // Catches: a mutant that treats `undefined` stored as "already has a
+  // value" and refuses to fill it -- shouldRememberScsaNumber already treats
+  // undefined as blank; this proves the call site inherited that correctly.
+  assert.equal(scsaCorrectedNumber('no', 'SC-99', undefined), 'SC-99');
+});
+
+test('scsaCorrectedNumber: punctuation-only is still a real answer -- no format validation here, on purpose', () => {
+  // Catches: a mutant that adds format validation this box was deliberately
+  // never given -- clubs' number formats vary, and a strict pattern would
+  // reject a real one.
+  assert.equal(scsaCorrectedNumber('no', '--', ''), '--');
 });

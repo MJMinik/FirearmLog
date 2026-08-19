@@ -29,7 +29,7 @@ import { divisionActuallyChanged } from '../lib/divisionNormalise.ts';
 import { fieldOptions } from '../lib/selectOptions.ts';
 import {
   findOwnRows, isOwnName, memberNumberVerdict, normaliseStoredNames, numberMayLift, scsaAdoptionCandidate,
-  type NameMatch
+  scsaCorrectedNumber, scsaNumberPatch, type NameMatch
 } from '../lib/shooterMatch.ts';
 import {
   parsePractiScore, countInDivision, SAMPLE_PRACTISCORE_CSV, type PsMatch
@@ -121,6 +121,13 @@ export function PractiScoreImport({ onCancel, onSaved }: {
    *  compared again at save time so a changed pick set can never smuggle a
    *  different number through an old answer (spec §4, last bullet). */
   const [steelAdoptedCandidate, setSteelAdoptedCandidate] = useState<string | null>(null);
+  /** IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.md §2 (19 Aug 2026): what the
+   *  shooter typed in the "Not mine" correction box, if anything. Optional
+   *  and never pre-filled — typing is an offer, not a demand. Kept across a
+   *  Yes/Not-mine switch (a stray tap must never cost work, spec §2.3), and
+   *  reset at exactly the three places steelAdoptSelection resets: a fresh
+   *  file, "Start over", and "‹ Back to the shooter list". */
+  const [steelCorrectionDraft, setSteelCorrectionDraft] = useState('');
   /** The USPSA # the shooter typed in Settings -> Who you are
    *  (MEMBER_NUMBER_SPEC.md §4) — a confirmation beside a name match on
    *  suggested rows, never a key. */
@@ -175,6 +182,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     // must never survive to be honoured against this one's picks.
     setSteelAdoptSelection(null);
     setSteelAdoptedCandidate(null);
+    setSteelCorrectionDraft('');
     setSteelName(r.form.matchName);
     // The date the match was SHOT, never the download date. '' when the file's
     // date is malformed — the save guard then asks for it, same as USPSA.
@@ -232,7 +240,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     setSteelPicked([]); setSteelDetails({}); setSteelQuery('');
     // The adoption question's own answer resets too (spec §4): a shooter who
     // starts over is picking a possibly different match entirely.
-    setSteelAdoptSelection(null); setSteelAdoptedCandidate(null);
+    setSteelAdoptSelection(null); setSteelAdoptedCandidate(null); setSteelCorrectionDraft('');
   }
 
   function toggleSteelEntry(entry: ScsaEntry) {
@@ -342,6 +350,27 @@ export function PractiScoreImport({ onCancel, onSaved }: {
             setRememberedNumber(freshCandidate);
             setRememberedSource('imported');
           } catch { /* best-effort; the import already saved */ }
+        }
+      } else {
+        // (B) The correction (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.md §2, 19
+        // Aug 2026): "Not mine" no longer stores nothing and offers nothing —
+        // Michael's own transposition error (Gun Craft filed A185321 where
+        // A185231 is his) is the case this exists for. Every guard lives in
+        // scsaCorrectedNumber, CALLED rather than restated here: the
+        // selection really is 'no', the typed value is non-empty, and the
+        // fill-only-when-empty contract still holds. This call site trusts
+        // it completely rather than re-checking any of the three.
+        const corrected = scsaCorrectedNumber(steelAdoptSelection, steelCorrectionDraft, rememberedNumber);
+        if (corrected) {
+          try {
+            await putSettings<AppSettings>(scsaNumberPatch(corrected, rememberedNumber));
+            // Mirrors the Yes branch's own staleness guard just above (spec
+            // §5, extended by spec §2.8): keep the in-memory copies in step,
+            // or a second import in the same sitting would see the field as
+            // empty and askable again.
+            setRememberedNumber(corrected);
+            setRememberedSource('typed');
+          } catch { /* best-effort; the import already saved, same shape as Yes */ }
         }
       }
       onSaved(firstId);
@@ -509,7 +538,8 @@ export function PractiScoreImport({ onCancel, onSaved }: {
           shooter who ran two guns is two entries, tied together only by the
           membership number, and each one imports as its own match. */}
       {steelForm && steelConfirmed && !steelFinishing && (
-        <div className="card">
+        <>
+        <div className="card steel-picker-card">
           <h2>{steelForm.matchName || 'Steel Challenge match'}</h2>
           <p className="report-note">
             Tap your entry. Shot more than one gun? Tap each of your entries — every
@@ -566,6 +596,16 @@ export function PractiScoreImport({ onCancel, onSaved }: {
                   aria-label={suggested ? `${e.firstName} ${e.lastName} — suggested, this looks like you` : undefined}
                   style={e.importable ? undefined : { opacity: 0.5 }}
                   onClick={() => toggleSteelEntry(e)}>
+                  {/* IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.md §3.2 (19 Aug
+                      2026): a SIBLING of .label, never inside it. A picked
+                      row used to carry its only feedback as a trailing dim
+                      check character inside .value (Michael: "the check mark
+                      appears — but you really have to be aware of this
+                      change"). who-you-are.spec.ts's rowOrder helper reads
+                      .label's first child, so the check lives before it, not
+                      in it. aria-hidden: the state is already spoken through
+                      aria-pressed on the row's own button. */}
+                  {picked && <span aria-hidden="true" className="row-check">✓</span>}
                   <span className="label">{`${e.firstName} ${e.lastName}`.trim() || '(no name)'}
                     {sub && <div className="row-sub">{sub}</div>}
                     {numberVerdict && (
@@ -573,7 +613,6 @@ export function PractiScoreImport({ onCancel, onSaved }: {
                     )}
                   </span>
                   <span className="value">
-                    {picked ? '✓ ' : ''}
                     {[e.place != null ? `#${e.place}` : null, e.fileTotal != null ? `${e.fileTotal.toFixed(2)}s` : null]
                       .filter(Boolean).join(' · ')} ›
                   </span>
@@ -615,12 +654,33 @@ export function PractiScoreImport({ onCancel, onSaved }: {
               </>
             );
           })()}
-          <button className="button" style={{ marginTop: 10 }} disabled={steelPicked.length === 0}
-            onClick={() => setSteelFinishing(true)}>
-            {steelPicked.length <= 1 ? 'Continue' : `Continue with ${steelPicked.length} entries`}
-          </button>
-          <button className="button secondary" style={{ marginTop: 8 }} onClick={startOver}>Start over</button>
+          <button className="button secondary" style={{ marginTop: 10 }} onClick={startOver}>Start over</button>
         </div>
+        {/* IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.md §3.1 (19 Aug 2026): the
+            pinned pick bar replaces the in-card Continue, which used to sit
+            below the WHOLE field — 78 entries stood between the suggestion
+            block and the button on Michael's own Gun Craft file (spec §0.3).
+            Always on screen for as long as the picker step is: the
+            not-yet-picked state is precisely the one that needs explaining.
+            The count is of PICKED entries, never the filtered view —
+            steelPicked itself is never touched by the search box, so this is
+            already the honest count whatever the filter currently shows. */}
+        <div className="pick-bar">
+          <div className="pick-bar-inner">
+            <p className="pick-bar-status" aria-live="polite">
+              {steelPicked.length === 0
+                ? 'Nothing picked yet. Tap your entry to continue.'
+                : steelPicked.length === 1
+                  ? '1 entry picked.'
+                  : `${steelPicked.length} entries picked.`}
+            </p>
+            <button className="button" disabled={steelPicked.length === 0}
+              onClick={() => setSteelFinishing(true)}>
+              {steelPicked.length <= 1 ? 'Continue' : `Continue with ${steelPicked.length} entries`}
+            </button>
+          </div>
+        </div>
+        </>
       )}
 
       {/* Steel step C — finish the details and save. Every field is visible and
@@ -706,22 +766,49 @@ export function PractiScoreImport({ onCancel, onSaved }: {
                   (cold audit, 19 Aug 2026, session 128). */}
               <div role="group" aria-labelledby="scsa-adopt-question"
                 style={{ display: 'flex', gap: 8, marginTop: 10, marginBottom: 10, flexWrap: 'wrap' }}>
-                <button className="button" style={{ flex: 1 }} aria-pressed={steelAdoptSelection === 'yes'}
+                <button className="button choice" style={{ flex: 1 }} aria-pressed={steelAdoptSelection === 'yes'}
                   onClick={() => { setSteelAdoptSelection('yes'); setSteelAdoptedCandidate(steelAdoptionCandidate); }}>
                   Yes — it's mine
                 </button>
-                <button className="button secondary" style={{ flex: 1 }} aria-pressed={steelAdoptSelection === 'no'}
+                <button className="button choice" style={{ flex: 1 }} aria-pressed={steelAdoptSelection === 'no'}
                   onClick={() => { setSteelAdoptSelection('no'); setSteelAdoptedCandidate(null); }}>
                   Not mine
                 </button>
               </div>
+              {/* IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.md §2.2 (19 Aug 2026):
+                  progressive disclosure — the box appears only after "Not
+                  mine" is pressed, and never grabs the keyboard (no
+                  autoFocus): typing is an offer, not a demand, and a
+                  popped-up keyboard would cover the Save button the shooter
+                  is about to reach for. Never pre-filled: the file's number
+                  is the very one he just rejected, and anything else would
+                  be a guess (spec §2.2). No format validation, on purpose,
+                  same as Settings (spec §0.8) — clubs' number formats vary. */}
+              {steelAdoptSelection === 'no' && (
+                <>
+                  <p className="report-note"><b>What is your SCSA #?</b></p>
+                  {/* aria-describedby, not a paragraph floating loose beside the
+                      field: a screen-reader user who tabs straight to the input
+                      would otherwise hear only "Your SCSA #" and none of what
+                      typing there actually does (cold audit, 19 Aug 2026). Same
+                      wiring the Settings field already uses for its own note. */}
+                  <p className="report-note" id="scsa-correction-note">
+                    Type it and it is kept in Settings when you save this match. Next time you load a Steel Challenge file, entries with this number go to the top of the list. Leave it blank and nothing is kept. Either way the entry you picked is what saves.
+                  </p>
+                  <label className="field">Your SCSA #
+                    <input value={steelCorrectionDraft} onChange={(e) => setSteelCorrectionDraft(e.target.value)}
+                      aria-describedby="scsa-correction-note"
+                      placeholder="SC-12345" maxLength={24} />
+                  </label>
+                </>
+              )}
             </>
           )}
           <button className="button" disabled={saving} onClick={() => void saveSteel()}>
             {steelPicked.length <= 1 ? 'Save match' : `Save ${steelPicked.length} matches`}
           </button>
           <button className="button secondary" style={{ marginTop: 8 }}
-            onClick={() => { setSteelFinishing(false); setSteelAdoptSelection(null); setSteelAdoptedCandidate(null); }}>‹ Back to the shooter list</button>
+            onClick={() => { setSteelFinishing(false); setSteelAdoptSelection(null); setSteelAdoptedCandidate(null); setSteelCorrectionDraft(''); }}>‹ Back to the shooter list</button>
         </div>
       )}
 
