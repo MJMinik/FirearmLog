@@ -563,6 +563,18 @@ export interface AppSettings {
    *  when an import saves an entry carrying a number; never guessed from the
    *  field. Undefined means no Steel file has been imported yet. */
   scsaMemberNumber?: string;
+  /** MEMBER_NUMBER_PROVENANCE_SPEC.md §3 (19 Aug 2026, session 128): WHERE the
+   *  scsaMemberNumber above came from. 'typed' = the shooter entered it in
+   *  Settings -> Who you are, the deliberate act that earns Decision 4's
+   *  number-alone lift. 'imported' = the app adopted it from a Steel Challenge
+   *  file after the shooter confirmed it, which may CONFIRM a suggested row but
+   *  never lift one. UNDEFINED means unknown -- the shape of every settings
+   *  record written before this build, and of every restore of an older .flog
+   *  backup -- and unknown is treated exactly like 'imported' at the reader
+   *  (numberMayLift, shooterMatch.ts). There is deliberately NO migration:
+   *  nobody recorded how the existing numbers arrived, so stamping one would
+   *  invent a fact. Every direction of version-skew degrades toward safety. */
+  scsaMemberNumberSource?: 'typed' | 'imported';
   /** The USPSA member number the shooter typed in Settings -> Who you are. A
    *  confirmation beside their stored names, never a key — a name match is
    *  required first, and this only annotates it (MEMBER_NUMBER_SPEC.md §5).

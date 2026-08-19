@@ -209,3 +209,80 @@ export function shouldRememberScsaNumber(
 ): boolean {
   return (incoming ?? '').trim() !== '' && (existing ?? '').trim() === '';
 }
+
+// --- Member-number PROVENANCE (MEMBER_NUMBER_PROVENANCE_SPEC.md, 19 Aug 2026,
+// --- session 128). Michael's own tap-test screenshot: a Steel import showed
+// --- Don Webster, a stranger, under "These look like you" — an earlier test
+// --- import, a match Michael never attended, had silently written Don's
+// --- number into Michael's settings, and a stored-number match alone lifted
+// --- a Steel row with no name check at all. The fix keeps Decision 4's net
+// --- for a number the shooter TYPED and takes it away from a number the app
+// --- brought home on its own.
+
+/**
+ * The read rule for whether a stored SCSA number may LIFT a Steel Challenge
+ * group on its own (spec §3, §6). True only when the trimmed number is
+ * non-empty AND its source is EXACTLY the literal 'typed' — a number the
+ * shooter typed in Settings, the deliberate act that earns Decision 4's net.
+ * Strict equality on purpose: absent (every record before this build, and
+ * every old .flog restore), 'imported' (even a confirmed Yes), and any
+ * corrupt value (a hand-edited backup) all fail closed, to confirm-only.
+ * Defence is at the reader, not the writer.
+ */
+export function numberMayLift(stored: string | undefined, source: unknown): boolean {
+  return (stored ?? '').trim() !== '' && source === 'typed';
+}
+
+/**
+ * Whether a Steel save has exactly one number to ask about, and what it is
+ * (spec §4, §6). Null means don't ask:
+ *  - the stored number is already non-empty — the app never asks to overwrite
+ *    a value the shooter can see, only to fill a blank one;
+ *  - or the picked entries carry no non-empty membership at all;
+ *  - or they carry two DIFFERENT ones (uppercased, mirroring groupKey's own
+ *    compare) — the household case, two shooters picked in one sitting, where
+ *    asking would be a guess. Silence, not a guess.
+ * Otherwise the first membership AS WRITTEN in the file, trimmed — never
+ * uppercased for storage, only for the disagreement check.
+ */
+export function scsaAdoptionCandidate(
+  memberships: readonly string[],
+  stored: string | undefined
+): string | null {
+  const trimmed = memberships.map((m) => m.trim()).filter((m) => m !== '');
+  if (trimmed.length === 0) return null;
+  const first = trimmed[0];
+  const disagree = trimmed.some((m) => m.toUpperCase() !== first.toUpperCase());
+  if (disagree) return null;
+  // The fill-only-when-empty contract, CALLED rather than restated. An earlier
+  // draft inlined the same `stored is non-empty -> null` check here, which was
+  // behaviourally identical and left shouldRememberScsaNumber dead in
+  // production — two copies of one rule, free to drift apart, which is exactly
+  // what §3's "the read rule, stated once and used everywhere" forbids (cold
+  // audit, 19 Aug 2026, session 128).
+  return shouldRememberScsaNumber(stored, first) ? first : null;
+}
+
+/**
+ * The Settings SCSA # write rule (spec §3), as a function so it can be
+ * mutation-tested apart from the screen: the two keys are always written
+ * together, in the same patch, so number and source can never drift apart.
+ *  - Changed and non-empty: the shooter just typed this — both keys, source
+ *    'typed'.
+ *  - Changed to empty: clearing the field also clears its provenance — the
+ *    number key empties and the source key becomes undefined (which the
+ *    merge stores as absent, and a .flog backup drops entirely — same
+ *    meaning either way).
+ *  - Unchanged (a blur with no edit): the number key only, with NO source
+ *    key in the patch at all. A blur is not an affirmation — leaving the
+ *    field without editing it must never upgrade an inherited number to
+ *    typed (the exact defect this build exists to close).
+ */
+export function scsaNumberPatch(
+  next: string,
+  committed: string
+): { scsaMemberNumber: string; scsaMemberNumberSource?: 'typed' | undefined } {
+  if (next === committed) return { scsaMemberNumber: next };
+  if (next === '') return { scsaMemberNumber: '', scsaMemberNumberSource: undefined };
+  return { scsaMemberNumber: next, scsaMemberNumberSource: 'typed' };
+}
