@@ -285,7 +285,14 @@ test.describe('member-number provenance (MEMBER_NUMBER_PROVENANCE_SPEC.md, sessi
 
     // And the question is not asked again: the field is no longer empty, so
     // the fill-only-when-empty contract has nothing to offer.
-    await main.getByPlaceholder('Search shooters by name').fill(ME.lastName);
+    //
+    // Tap the row INSIDE the suggestion block rather than searching for it:
+    // `mine` is computed as `steelQuery.trim() === '' ? groups.filter(isMine) : []`
+    // (PractiScoreImport.tsx), so typing anything into the search box empties
+    // the block by design — the sibling of who-you-are.spec.ts's "searching
+    // hides the suggestions rather than showing a row twice". A first draft of
+    // this test searched first and would have gone red for that reason alone,
+    // proving nothing about the adoption question.
     await suggest.getByRole('button', { name: nameRe(ME) }).first().click();
     await main.getByRole('button', { name: 'Continue', exact: true }).click();
     await main.getByLabel('Which gun did you shoot?').selectOption({ index: 1 });

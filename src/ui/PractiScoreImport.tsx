@@ -526,11 +526,19 @@ export function PractiScoreImport({ onCancel, onSaved }: {
               // 2026, session 128 — Michael's own tap-test screenshot: a
               // stranger's number, silently remembered from a match he never
               // attended, lifted the stranger's row here with no name check of
-              // any kind). A number the shooter TYPED in Settings may still lift
-              // a group on its own (Decision 4's net, preserved). A number the
-              // app only INHERITED — from an import, confirmed or not, or from a
-              // record older than this build with no source at all — may confirm
-              // a suggested row but never lift one.
+              // any kind). A number the shooter TYPED in Settings, and one they
+              // CONFIRMED with "Yes — it's mine", may each lift a group on their
+              // own — both are the shooter claiming the number, and that claim is
+              // exactly what the stranger's number never had. What may confirm a
+              // suggested row but never lift one is a number of UNKNOWN origin:
+              // no recorded source, which is every settings record written before
+              // this build and every restore of an older backup.
+              //
+              // The first cut of this build allowed only 'typed' to lift. It was
+              // reversed the same day, by Michael, after CI went red: it retired
+              // Decision 4 for anyone who adopts from an import, and it made the
+              // adoption question's own promise ("entries with this number go to
+              // the top of the list") false.
               if (numberMayLift(rememberedNumber, rememberedSource) && g.some((e) => e.groupKey === remembered)) return true;
               // isOwnName, not a raw compare: Settings stores "Minik, Michael" but a
               // download file writes first/last in separate fields as "Michael
