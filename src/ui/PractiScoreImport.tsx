@@ -28,7 +28,8 @@ import { MATCH_TYPES, DIVISIONS, STEEL_DIVISIONS, POWER_FACTORS, suggestDivision
 import { divisionActuallyChanged } from '../lib/divisionNormalise.ts';
 import { fieldOptions } from '../lib/selectOptions.ts';
 import {
-  findOwnRows, isOwnName, memberNumberVerdict, normaliseStoredNames, shouldRememberScsaNumber, type NameMatch
+  findOwnRows, isOwnName, memberNumberVerdict, normaliseStoredNames, numberMayLift, scsaAdoptionCandidate,
+  type NameMatch
 } from '../lib/shooterMatch.ts';
 import {
   parsePractiScore, countInDivision, SAMPLE_PRACTISCORE_CSV, type PsMatch
@@ -103,6 +104,23 @@ export function PractiScoreImport({ onCancel, onSaved }: {
    *  only to lift this shooter's entries to the top. Nothing is ever selected
    *  on their behalf. */
   const [rememberedNumber, setRememberedNumber] = useState('');
+  /** MEMBER_NUMBER_PROVENANCE_SPEC.md §3, §6 (19 Aug 2026, session 128):
+   *  where rememberedNumber came from. Read ONLY alongside rememberedNumber,
+   *  via numberMayLift — a number the shooter TYPED in Settings may still
+   *  lift a group on its own; a number the app only INHERITED, or one from a
+   *  record older than this build (undefined), may confirm a suggested row
+   *  but never lift one. */
+  const [rememberedSource, setRememberedSource] = useState<AppSettings['scsaMemberNumberSource']>(undefined);
+  /** The adoption question's own selection (spec §4): which button, if any,
+   *  the shooter has tapped for THIS save. Neither is selected by default,
+   *  Save works in every state, and it resets whenever the shooter leaves
+   *  the finishing step — going back to the shooter list or starting over —
+   *  so an old answer can never survive a changed pick set. */
+  const [steelAdoptSelection, setSteelAdoptSelection] = useState<'yes' | 'no' | null>(null);
+  /** The candidate the question was actually showing when "Yes" was tapped —
+   *  compared again at save time so a changed pick set can never smuggle a
+   *  different number through an old answer (spec §4, last bullet). */
+  const [steelAdoptedCandidate, setSteelAdoptedCandidate] = useState<string | null>(null);
   /** The USPSA # the shooter typed in Settings -> Who you are
    *  (MEMBER_NUMBER_SPEC.md §4) — a confirmation beside a name match on
    *  suggested rows, never a key. */
@@ -116,6 +134,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       if (alive) {
         setOwnNames(normaliseStoredNames(st?.shooterNames));
         setRememberedNumber((st?.scsaMemberNumber ?? '').trim());
+        setRememberedSource(st?.scsaMemberNumberSource);
         setStoredUspsaNumber((st?.uspsaMemberNumber ?? '').trim());
       }
     })();
@@ -152,6 +171,10 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     setSteelFinishing(false);
     setSteelPicked([]);
     setSteelDetails({});
+    // A fresh file is a fresh question — an answer from a previous import
+    // must never survive to be honoured against this one's picks.
+    setSteelAdoptSelection(null);
+    setSteelAdoptedCandidate(null);
     setSteelName(r.form.matchName);
     // The date the match was SHOT, never the download date. '' when the file's
     // date is malformed — the save guard then asks for it, same as USPSA.
@@ -207,6 +230,9 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     // The Steel flow resets with it — same button, same promise: back to step 1.
     setSteelForm(null); setSteelConfirmed(false); setSteelFinishing(false);
     setSteelPicked([]); setSteelDetails({}); setSteelQuery('');
+    // The adoption question's own answer resets too (spec §4): a shooter who
+    // starts over is picking a possibly different match entirely.
+    setSteelAdoptSelection(null); setSteelAdoptedCandidate(null);
   }
 
   function toggleSteelEntry(entry: ScsaEntry) {
@@ -292,15 +318,31 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       // and editable in Settings now, so whatever's there is the shooter's to
       // keep or correct; an import fills a blank, never overwrites a value
       // they can see.
-      const mem = toWrite.map((w) => w.entry.membership).find((m) => m !== '');
-      if (mem && shouldRememberScsaNumber(rememberedNumber, mem)) {
-        try {
-          await putSettings<AppSettings>({ scsaMemberNumber: mem });
-          // Keep the in-memory copy in step, or a SECOND import in the same
-          // sitting would still see '' and overwrite the number this one just
-          // filled — the exact thing the fill-only-when-empty contract forbids.
-          setRememberedNumber(mem);
-        } catch { /* best-effort; the import already saved */ }
+      // (A) Confirmed adoption (MEMBER_NUMBER_PROVENANCE_SPEC.md §4, 19 Aug
+      // 2026, session 128): a Steel save may no longer store a member number
+      // silently — that silent write is exactly how a stranger's number
+      // (Don Webster's, in Michael's own tap-test screenshot) got into
+      // Settings and stayed there. Written only when the shooter tapped
+      // "Yes — it's mine", and only when the candidate recomputed HERE from
+      // what actually got written still equals the one the question was
+      // showing when Yes was tapped — a changed pick set can never smuggle a
+      // different number through an old answer (spec §4, last bullet).
+      if (steelAdoptSelection === 'yes' && steelAdoptedCandidate) {
+        const freshCandidate = scsaAdoptionCandidate(
+          toWrite.map((w) => w.entry.membership),
+          rememberedNumber
+        );
+        if (freshCandidate && freshCandidate === steelAdoptedCandidate) {
+          try {
+            await putSettings<AppSettings>({ scsaMemberNumber: freshCandidate, scsaMemberNumberSource: 'imported' });
+            // Keep the in-memory copies in step, or a SECOND import in the
+            // same sitting would still see the field as empty and askable —
+            // the same staleness the original setRememberedNumber comment
+            // guarded against, extended to the source (spec §5).
+            setRememberedNumber(freshCandidate);
+            setRememberedSource('imported');
+          } catch { /* best-effort; the import already saved */ }
+        }
       }
       onSaved(firstId);
     } catch {
@@ -379,6 +421,22 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     () => (parsed ? findOwnRows(parsed.competitors, ownNames) : []),
     [parsed, ownNames]
   );
+
+  /** MEMBER_NUMBER_PROVENANCE_SPEC.md §4: the adoption question is asked only
+   *  on the finishing step, only when there is something to fill — the same
+   *  fill-only-when-empty contract that used to guard the old silent write —
+   *  and only when the picked entries carry exactly one distinct membership
+   *  number between them (scsaAdoptionCandidate, spec §6): two different ones
+   *  is the household case, and asking would be a guess, so it is not asked
+   *  and nothing is stored. Recomputed on every render, so a changed pick set
+   *  never leaves a stale question on screen. */
+  const steelAdoptionCandidate: string | null = useMemo(() => {
+    if (!steelForm || !steelFinishing) return null;
+    const memberships = steelPicked.map(
+      (n) => steelForm.entries.find((e) => e.competitorNumber === n)?.membership ?? ''
+    );
+    return scsaAdoptionCandidate(memberships, rememberedNumber);
+  }, [steelForm, steelFinishing, steelPicked, rememberedNumber]);
 
   /** One shooter row. Shared so a suggested row and a row in the full field are
    *  the same button doing the same thing — a suggestion is a position, not a
@@ -464,7 +522,24 @@ export function PractiScoreImport({ onCancel, onSaved }: {
             const groups = groupEntriesByPerson(steelForm.entries);
             const isMine = (g: ScsaEntry[]): boolean => {
               const remembered = rememberedNumber.toUpperCase();
-              if (remembered && g.some((e) => e.groupKey === remembered)) return true;
+              // Gated by SOURCE (MEMBER_NUMBER_PROVENANCE_SPEC.md §3, §5, 19 Aug
+              // 2026, session 128 — Michael's own tap-test screenshot: a
+              // stranger's number, silently remembered from a match he never
+              // attended, lifted the stranger's row here with no name check of
+              // any kind). A number the shooter TYPED in Settings, and one they
+              // CONFIRMED with "Yes — it's mine", may each lift a group on their
+              // own — both are the shooter claiming the number, and that claim is
+              // exactly what the stranger's number never had. What may confirm a
+              // suggested row but never lift one is a number of UNKNOWN origin:
+              // no recorded source, which is every settings record written before
+              // this build and every restore of an older backup.
+              //
+              // The first cut of this build allowed only 'typed' to lift. It was
+              // reversed the same day, by Michael, after CI went red: it retired
+              // Decision 4 for anyone who adopts from an import, and it made the
+              // adoption question's own promise ("entries with this number go to
+              // the top of the list") false.
+              if (numberMayLift(rememberedNumber, rememberedSource) && g.some((e) => e.groupKey === remembered)) return true;
               // isOwnName, not a raw compare: Settings stores "Minik, Michael" but a
               // download file writes first/last in separate fields as "Michael
               // Minik" — same person, two conventions. This replaces an inline
@@ -613,10 +688,40 @@ export function PractiScoreImport({ onCancel, onSaved }: {
               </div>
             );
           })}
+          {/* The adoption question (spec §4): not a modal, not a sheet — an
+              inline block on the screen the shooter is already reading,
+              immediately above the button it modifies. Tapping selects (shown
+              pressed); neither is selected by default; Save works in every
+              state, and ignoring it stores nothing. */}
+          {steelAdoptionCandidate && (
+            <>
+              <p className="report-note" id="scsa-adopt-question"><b>Remember {steelAdoptionCandidate} as your SCSA #?</b></p>
+              <p className="report-note">
+                Next time you load a Steel Challenge file, entries with this number go to the top of the list. Skipping this changes nothing about the match you're saving.
+              </p>
+              {/* role="group" + aria-labelledby so a screen reader hears the two
+                  buttons as the two answers to ONE question. They stay toggle
+                  buttons (aria-pressed) rather than radios: a real radiogroup
+                  owes arrow-key navigation, and neither answer is preselected
+                  (cold audit, 19 Aug 2026, session 128). */}
+              <div role="group" aria-labelledby="scsa-adopt-question"
+                style={{ display: 'flex', gap: 8, marginTop: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+                <button className="button" style={{ flex: 1 }} aria-pressed={steelAdoptSelection === 'yes'}
+                  onClick={() => { setSteelAdoptSelection('yes'); setSteelAdoptedCandidate(steelAdoptionCandidate); }}>
+                  Yes — it's mine
+                </button>
+                <button className="button secondary" style={{ flex: 1 }} aria-pressed={steelAdoptSelection === 'no'}
+                  onClick={() => { setSteelAdoptSelection('no'); setSteelAdoptedCandidate(null); }}>
+                  Not mine
+                </button>
+              </div>
+            </>
+          )}
           <button className="button" disabled={saving} onClick={() => void saveSteel()}>
             {steelPicked.length <= 1 ? 'Save match' : `Save ${steelPicked.length} matches`}
           </button>
-          <button className="button secondary" style={{ marginTop: 8 }} onClick={() => setSteelFinishing(false)}>‹ Back to the shooter list</button>
+          <button className="button secondary" style={{ marginTop: 8 }}
+            onClick={() => { setSteelFinishing(false); setSteelAdoptSelection(null); setSteelAdoptedCandidate(null); }}>‹ Back to the shooter list</button>
         </div>
       )}
 

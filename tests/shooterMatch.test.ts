@@ -6,7 +6,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normaliseName, normaliseMemberNumber, normaliseStoredNames, findOwnRows, isOwnName,
-  memberNumberVerdict, shouldRememberScsaNumber,
+  memberNumberVerdict, shouldRememberScsaNumber, numberMayLift, scsaAdoptionCandidate, scsaNumberPatch,
 } from '../src/lib/shooterMatch.ts';
 
 const row = (name: string, memberNumber = '') => ({ name, memberNumber });
@@ -273,4 +273,98 @@ test('shouldRememberScsaNumber: a blank incoming value never fills anything', ()
 test('shouldRememberScsaNumber: whitespace counts as blank on either side', () => {
   assert.equal(shouldRememberScsaNumber('   ', 'A185231'), true);
   assert.equal(shouldRememberScsaNumber('A185231', '   '), false);
+});
+
+// --- numberMayLift, scsaAdoptionCandidate, scsaNumberPatch:
+// MEMBER_NUMBER_PROVENANCE_SPEC.md, 19 Aug 2026, session 128 -- Michael's own
+// tap-test screenshot showed a stranger's number, silently remembered from a
+// match he never attended, lifting the stranger's row forever. These three
+// pure helpers are the fix: a number a shooter TYPED may still lift a row on
+// its own; a number the app only INHERITED may confirm, never lift.
+
+test('numberMayLift: a typed, non-empty number may lift', () => {
+  assert.equal(numberMayLift('SC-12345', 'typed'), true);
+});
+
+test('numberMayLift: a CONFIRMED imported number may lift -- the shooter said it was theirs', () => {
+  // Michael, 19 Aug 2026: the tap that answers "Yes -- it's mine" is the
+  // shooter claiming the number, and it is what Don Webster's number never
+  // had. Requiring a Settings visit on top of it bought no protection and
+  // made the adoption question's own promise false.
+  assert.equal(numberMayLift('SC-12345', 'imported'), true);
+});
+
+test('numberMayLift: an UNKNOWN source -- every record older than this build -- may never lift', () => {
+  // The actual Don Webster shape: a number sitting in settings with no record
+  // of how it arrived. This single line is what fixes Michael's own device.
+  assert.equal(numberMayLift('SC-12345', undefined), false);
+});
+
+test('numberMayLift: a corrupt or unexpected source fails closed, not open', () => {
+  assert.equal(numberMayLift('SC-12345', 'TYPED'), false);
+  assert.equal(numberMayLift('SC-12345', 'IMPORTED'), false);
+  assert.equal(numberMayLift('SC-12345', 1), false);
+  assert.equal(numberMayLift('SC-12345', {}), false);
+  assert.equal(numberMayLift('SC-12345', null), false);
+  assert.equal(numberMayLift('SC-12345', ''), false);
+});
+
+test('numberMayLift: an empty or whitespace-only number may never lift, whatever its source', () => {
+  assert.equal(numberMayLift('', 'typed'), false);
+  assert.equal(numberMayLift('   ', 'typed'), false);
+  assert.equal(numberMayLift(undefined, 'typed'), false);
+  assert.equal(numberMayLift('', 'imported'), false);
+  assert.equal(numberMayLift('   ', 'imported'), false);
+});
+
+test('scsaAdoptionCandidate: never asks to overwrite a number already stored, even when the picks agree', () => {
+  assert.equal(scsaAdoptionCandidate(['SC-1', 'SC-1'], 'SC-999'), null);
+});
+
+test('scsaAdoptionCandidate: one entry with a number is the candidate', () => {
+  assert.equal(scsaAdoptionCandidate(['SC-42'], ''), 'SC-42');
+  assert.equal(scsaAdoptionCandidate(['SC-42'], undefined), 'SC-42');
+});
+
+test('scsaAdoptionCandidate: the same number in different case is one number, kept as first written', () => {
+  assert.equal(scsaAdoptionCandidate(['sc-42', 'SC-42'], ''), 'sc-42');
+});
+
+test('scsaAdoptionCandidate: two distinct numbers is the household case -- asks nothing', () => {
+  assert.equal(scsaAdoptionCandidate(['SC-1', 'SC-2'], ''), null);
+});
+
+test('scsaAdoptionCandidate: every picked membership blank means nothing to ask', () => {
+  assert.equal(scsaAdoptionCandidate(['', '  '], ''), null);
+});
+
+test('scsaAdoptionCandidate: blanks among agreeing values still yield the value', () => {
+  assert.equal(scsaAdoptionCandidate(['', 'SC-42', '  '], ''), 'SC-42');
+});
+
+test('scsaNumberPatch: changed and non-empty writes both keys, source typed', () => {
+  assert.deepEqual(scsaNumberPatch('SC-42', ''), { scsaMemberNumber: 'SC-42', scsaMemberNumberSource: 'typed' });
+  assert.deepEqual(scsaNumberPatch('SC-42', 'SC-1'), { scsaMemberNumber: 'SC-42', scsaMemberNumberSource: 'typed' });
+});
+
+test('scsaNumberPatch: changed to empty clears both the number and its provenance', () => {
+  const patch = scsaNumberPatch('', 'SC-42');
+  assert.equal(patch.scsaMemberNumber, '');
+  assert.equal('scsaMemberNumberSource' in patch, true);
+  assert.equal(patch.scsaMemberNumberSource, undefined);
+});
+
+test('scsaNumberPatch: unchanged (a blur with no edit) writes the number alone -- no source key at all, so a blur can never upgrade an inherited number to typed', () => {
+  const patch = scsaNumberPatch('SC-42', 'SC-42');
+  assert.deepEqual(patch, { scsaMemberNumber: 'SC-42' });
+  assert.equal('scsaMemberNumberSource' in patch, false);
+});
+
+test('scsaNumberPatch: the changed-check is EXACT -- a case-only edit is a real edit, not a blur', () => {
+  // Kills the impostor a cold audit found surviving (19 Aug 2026): comparing
+  // the two values case-insensitively (or after trimming) would read this as
+  // "unchanged" and refuse to stamp the number as typed, quietly denying the
+  // shooter Decision 4's number-alone lift on a number they just corrected.
+  assert.deepEqual(scsaNumberPatch('SC-42', 'sc-42'), { scsaMemberNumber: 'SC-42', scsaMemberNumberSource: 'typed' });
+  assert.deepEqual(scsaNumberPatch('SC-42', ' SC-42 '), { scsaMemberNumber: 'SC-42', scsaMemberNumberSource: 'typed' });
 });

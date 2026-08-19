@@ -209,3 +209,97 @@ export function shouldRememberScsaNumber(
 ): boolean {
   return (incoming ?? '').trim() !== '' && (existing ?? '').trim() === '';
 }
+
+// --- Member-number PROVENANCE (MEMBER_NUMBER_PROVENANCE_SPEC.md, 19 Aug 2026,
+// --- session 128). Michael's own tap-test screenshot: a Steel import showed
+// --- Don Webster, a stranger, under "These look like you" — an earlier test
+// --- import, a match Michael never attended, had silently written Don's
+// --- number into Michael's settings, and a stored-number match alone lifted
+// --- a Steel row with no name check at all. The fix keeps Decision 4's net
+// --- for a number the shooter TYPED and takes it away from a number the app
+// --- brought home on its own.
+
+/**
+ * The read rule for whether a stored SCSA number may LIFT a Steel Challenge
+ * group on its own (spec §3, §6). True when the trimmed number is non-empty
+ * AND the app KNOWS where it came from — either the shooter typed it in
+ * Settings ('typed') or they answered "Yes — it's mine" to the adoption
+ * question ('imported'). Both are the shooter saying the number is theirs,
+ * which is the thing that was missing when Don Webster's number arrived.
+ *
+ * What fails closed is the UNKNOWN: a source that is absent (every settings
+ * record written before this build, and every restore of an older .flog
+ * backup) or corrupt (a hand-edited file). Nobody recorded how those numbers
+ * arrived, and the one we know about was a stranger's. They may confirm a
+ * suggested row, never lift one.
+ *
+ * REVISED 19 Aug 2026 (session 128), by Michael, after CI went red. The first
+ * cut allowed only 'typed' to lift — which silently retired Decision 4's whole
+ * purpose for anyone who adopts from an import, and made the adoption
+ * question's own promise ("entries with this number go to the top of the
+ * list") FALSE. A passing E2E round-trip test caught what the spec, two cold
+ * audits and the implementer all missed, because the spec contradicted itself:
+ * §4's copy promised the lift and §2 forbade it. The confirmation tap is what
+ * earns the lift; requiring the Settings visit as well bought no protection
+ * the tap had not already bought.
+ *
+ * Defence is at the reader, not the writer.
+ */
+export function numberMayLift(stored: string | undefined, source: unknown): boolean {
+  if ((stored ?? '').trim() === '') return false;
+  return source === 'typed' || source === 'imported';
+}
+
+/**
+ * Whether a Steel save has exactly one number to ask about, and what it is
+ * (spec §4, §6). Null means don't ask:
+ *  - the stored number is already non-empty — the app never asks to overwrite
+ *    a value the shooter can see, only to fill a blank one;
+ *  - or the picked entries carry no non-empty membership at all;
+ *  - or they carry two DIFFERENT ones (uppercased, mirroring groupKey's own
+ *    compare) — the household case, two shooters picked in one sitting, where
+ *    asking would be a guess. Silence, not a guess.
+ * Otherwise the first membership AS WRITTEN in the file, trimmed — never
+ * uppercased for storage, only for the disagreement check.
+ */
+export function scsaAdoptionCandidate(
+  memberships: readonly string[],
+  stored: string | undefined
+): string | null {
+  const trimmed = memberships.map((m) => m.trim()).filter((m) => m !== '');
+  if (trimmed.length === 0) return null;
+  const first = trimmed[0];
+  const disagree = trimmed.some((m) => m.toUpperCase() !== first.toUpperCase());
+  if (disagree) return null;
+  // The fill-only-when-empty contract, CALLED rather than restated. An earlier
+  // draft inlined the same `stored is non-empty -> null` check here, which was
+  // behaviourally identical and left shouldRememberScsaNumber dead in
+  // production — two copies of one rule, free to drift apart, which is exactly
+  // what §3's "the read rule, stated once and used everywhere" forbids (cold
+  // audit, 19 Aug 2026, session 128).
+  return shouldRememberScsaNumber(stored, first) ? first : null;
+}
+
+/**
+ * The Settings SCSA # write rule (spec §3), as a function so it can be
+ * mutation-tested apart from the screen: the two keys are always written
+ * together, in the same patch, so number and source can never drift apart.
+ *  - Changed and non-empty: the shooter just typed this — both keys, source
+ *    'typed'.
+ *  - Changed to empty: clearing the field also clears its provenance — the
+ *    number key empties and the source key becomes undefined (which the
+ *    merge stores as absent, and a .flog backup drops entirely — same
+ *    meaning either way).
+ *  - Unchanged (a blur with no edit): the number key only, with NO source
+ *    key in the patch at all. A blur is not an affirmation — leaving the
+ *    field without editing it must never upgrade an inherited number to
+ *    typed (the exact defect this build exists to close).
+ */
+export function scsaNumberPatch(
+  next: string,
+  committed: string
+): { scsaMemberNumber: string; scsaMemberNumberSource?: 'typed' | undefined } {
+  if (next === committed) return { scsaMemberNumber: next };
+  if (next === '') return { scsaMemberNumber: '', scsaMemberNumberSource: undefined };
+  return { scsaMemberNumber: next, scsaMemberNumberSource: 'typed' };
+}

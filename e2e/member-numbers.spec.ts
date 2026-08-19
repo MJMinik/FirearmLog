@@ -70,8 +70,12 @@ async function loadSteelFile(page: Page, text: string, name = '80f0b53b-08b5-460
   await (await chooser).setFiles({ name, mimeType: 'text/plain', buffer: Buffer.from(text, 'utf-8') });
 }
 
-/** Pick one entry in the Steel picker by name and save it with the first gun. */
-async function saveSteelEntry(page: Page, entry: ScsaEntry) {
+/** Pick one entry in the Steel picker by name and save it with the first gun.
+ *  `adopt` taps "Yes — it's mine" on the adoption question first: since
+ *  MEMBER_NUMBER_PROVENANCE_SPEC.md (19 Aug 2026, session 128) a Steel save
+ *  NEVER stores a member number on its own, so a caller that wants the number
+ *  remembered has to say so, exactly as a shooter does. */
+async function saveSteelEntry(page: Page, entry: ScsaEntry, opts: { adopt?: boolean } = {}) {
   const main = page.getByRole('main');
   await main.getByPlaceholder('Search shooters by name').fill(entry.lastName);
   const row = main.getByRole('button', { name: nameRe(entry) }).first();
@@ -79,6 +83,11 @@ async function saveSteelEntry(page: Page, entry: ScsaEntry) {
   await expect(row).toHaveAttribute('aria-pressed', 'true');
   await main.getByRole('button', { name: 'Continue', exact: true }).click();
   await main.getByLabel('Which gun did you shoot?').selectOption({ index: 1 });
+  if (opts.adopt) {
+    const yes = main.getByRole('button', { name: "Yes — it's mine" });
+    await expect(yes).toBeVisible();
+    await yes.click();
+  }
   await main.getByRole('button', { name: 'Save match' }).click();
   // The new match's own detail screen is the proof the write landed.
   await expect(main.getByRole('button', { name: '‹ Back' })).toBeVisible();
@@ -154,13 +163,22 @@ test.describe('member numbers in Who you are', () => {
     await expect(suggestBlock.getByText('Member # differs')).toHaveCount(0);
   });
 
-  test('a Steel import fills an empty SCSA # and a second import never overwrites it', async ({ page }) => {
+  test('a CONFIRMED Steel import fills an empty SCSA # and a second import never overwrites it', async ({ page }) => {
     // Closes the tests-constrain finding of 18 Aug 2026: the fill-only-when-
     // empty guard (spec §3, promised as a test in §8.3) had no test that
     // exercised its real call site — deleting the guard passed the suite.
     // This drives the whole Steel save path twice: the first import fills the
     // blank field with the picked entry's own number; the second, picking a
     // DIFFERENT shooter, must leave it untouched.
+    //
+    // UPDATED 19 Aug 2026 (session 128, MEMBER_NUMBER_PROVENANCE_SPEC.md): the
+    // first save now has to ANSWER the adoption question — a Steel import no
+    // longer stores a number silently, which is the whole point of that build.
+    // Before this edit the test asserted the old silent write and would have
+    // gone red. The second save deliberately does NOT pass adopt: with a value
+    // now stored, the question must not even be asked, and the `adopt: true`
+    // path asserts the button is visible, so passing it there would fail —
+    // which is itself the fill-only-when-empty contract being checked.
     const form = formOf(Guncraft8stage);
     const me = form.entries.find((e) => e.membership.toUpperCase() === 'A185231') as ScsaEntry;
     const other = form.entries.find((e) =>
@@ -182,7 +200,7 @@ test.describe('member numbers in Who you are', () => {
     await expect(suggest).toBeVisible();
     await expect(suggest.getByText('SCSA # matches')).toHaveCount(0);
     await expect(suggest.getByText('Member # differs')).toHaveCount(0);
-    await saveSteelEntry(page, me);
+    await saveSteelEntry(page, me, { adopt: true });
 
     await gotoSection(page, 'Settings');
     await expect(main.getByLabel('SCSA #')).toHaveValue(me.membership);

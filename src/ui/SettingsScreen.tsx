@@ -5,7 +5,7 @@
 // storage mechanism.
 import { useEffect, useRef, useState } from 'react';
 import { getSettings, putSettings } from '../lib/db.ts';
-import { normaliseName, normaliseStoredNames } from '../lib/shooterMatch.ts';
+import { normaliseName, normaliseStoredNames, scsaNumberPatch } from '../lib/shooterMatch.ts';
 import type { AppSettings } from '../lib/types.ts';
 import { ClearAllSheet } from './ClearAllSheet.tsx';
 import type { View } from './nav.ts';
@@ -19,7 +19,15 @@ export function SettingsScreen({ onBack, open }: { onBack: () => void; open?: (v
   const [nameProblem, setNameProblem] = useState('');
   const [uspsaNumber, setUspsaNumber] = useState('');
   const [scsaNumber, setScsaNumber] = useState('');
-  const [scsaPrefilled, setScsaPrefilled] = useState(false);
+  /** MEMBER_NUMBER_PROVENANCE_SPEC.md §3, §4 (19 Aug 2026, session 128):
+   *  where the loaded/committed scsaNumber came from. Drives the note below,
+   *  which is source-aware now that the app finally knows, and — through
+   *  numberMayLift in shooterMatch.ts — whether the number may lift a Steel
+   *  row on its own. Undefined = every settings record older than this build,
+   *  and every restore of an older backup. Replaces the old scsaPrefilled
+   *  boolean, which was recomputed at load as "number is non-empty" and so
+   *  could say nothing about provenance at all. */
+  const [scsaSource, setScsaSource] = useState<AppSettings['scsaMemberNumberSource']>(undefined);
   const [numberProblem, setNumberProblem] = useState('');
   // The SCSA value as last COMMITTED (loaded or successfully saved). A ref,
   // not state: by the time onBlur fires, the controlled input's state already
@@ -39,7 +47,7 @@ export function SettingsScreen({ onBack, open }: { onBack: () => void; open?: (v
         setUspsaNumber((s?.uspsaMemberNumber ?? '').trim());
         const scsa = (s?.scsaMemberNumber ?? '').trim();
         setScsaNumber(scsa);
-        setScsaPrefilled(scsa !== '');
+        setScsaSource(s?.scsaMemberNumberSource);
         committedScsa.current = scsa;
         setLoaded(true);
       }
@@ -104,20 +112,33 @@ export function SettingsScreen({ onBack, open }: { onBack: () => void; open?: (v
     const next = scsaNumber.trim().slice(0, 24);
     setScsaNumber(next); // optimistic
     setNumberProblem('');
+    // MEMBER_NUMBER_PROVENANCE_SPEC.md §3, as the pure helper: the number and
+    // its source are always written TOGETHER, in one patch, so they can never
+    // drift apart. Compared against the last COMMITTED value, never against
+    // state — see the committedScsa note above. A blur with no edit sends the
+    // number key alone, with NO source key at all: a blur is not an
+    // affirmation, and leaving the field untouched must never upgrade an
+    // inherited number to typed.
+    const patch = scsaNumberPatch(next, committedScsa.current);
     try {
-      await putSettings<AppSettings>({ scsaMemberNumber: next });
-      // The shooter just changed this value themselves, so the check-it's-yours
-      // note has done its job — a note about provenance under a number they
-      // typed is stale the moment they type it (cold audit, 18 Aug 2026).
-      // Compared against the last COMMITTED value, never against state — see
-      // the committedScsa note above.
-      if (next !== committedScsa.current) setScsaPrefilled(false);
+      await putSettings<AppSettings>(patch);
+      if ('scsaMemberNumberSource' in patch) setScsaSource(patch.scsaMemberNumberSource);
       committedScsa.current = next;
     } catch {
       setScsaNumber(before);
       setNumberProblem('That could not be saved. Try again.');
     }
   }
+
+  // Source-aware now that the app finally knows (spec §4): an 'imported'
+  // number gets a definite sentence, an unknown one (source absent — every
+  // settings record older than this build) keeps the old conditional wording,
+  // and a 'typed' one gets no note at all, because the shooter just typed it.
+  // Null renders nothing, exactly as the old scsaPrefilled gate did.
+  const scsaNote = scsaNumber.trim() === '' ? null
+    : scsaSource === 'imported' ? "Remembered from a Steel Challenge import — check it's yours."
+    : scsaSource === undefined ? "If this came from a past Steel Challenge import, check it's yours."
+    : null;
 
   return (
     <div className="screen">
@@ -174,11 +195,11 @@ export function SettingsScreen({ onBack, open }: { onBack: () => void; open?: (v
         </label>
         <label className="field">SCSA #
           <input value={scsaNumber} disabled={!loaded} placeholder="SC-12345" maxLength={24}
-            aria-describedby={scsaPrefilled && scsaNumber.trim() !== '' ? 'scsa-import-note' : undefined}
+            aria-describedby={scsaNote ? 'scsa-import-note' : undefined}
             onChange={(e) => setScsaNumber(e.target.value)}
             onBlur={() => void saveScsaNumber()} />
         </label>
-        {scsaPrefilled && scsaNumber.trim() !== '' && (
+        {scsaNote && (
           // A SIBLING of the label, not a child — text inside the label folds
           // into the input's accessible name, so a screen reader would read
           // this whole sentence as the field's NAME (cold audit, 18 Aug 2026);
@@ -188,7 +209,7 @@ export function SettingsScreen({ onBack, open }: { onBack: () => void; open?: (v
           // so this can render for a number the shooter typed on an earlier
           // visit. Phrased as a conditional it stays true either way — the
           // spec's original wording would have been false there (charter §1).
-          <p id="scsa-import-note" className="report-note">If this came from a past Steel Challenge import, check it's yours.</p>
+          <p id="scsa-import-note" className="report-note">{scsaNote}</p>
         )}
         <p className="report-note" style={{ marginTop: 8 }}>
           Optional. Confirms it's you when a match is imported — a row is never picked by number alone.
