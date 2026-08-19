@@ -221,16 +221,33 @@ export function shouldRememberScsaNumber(
 
 /**
  * The read rule for whether a stored SCSA number may LIFT a Steel Challenge
- * group on its own (spec §3, §6). True only when the trimmed number is
- * non-empty AND its source is EXACTLY the literal 'typed' — a number the
- * shooter typed in Settings, the deliberate act that earns Decision 4's net.
- * Strict equality on purpose: absent (every record before this build, and
- * every old .flog restore), 'imported' (even a confirmed Yes), and any
- * corrupt value (a hand-edited backup) all fail closed, to confirm-only.
+ * group on its own (spec §3, §6). True when the trimmed number is non-empty
+ * AND the app KNOWS where it came from — either the shooter typed it in
+ * Settings ('typed') or they answered "Yes — it's mine" to the adoption
+ * question ('imported'). Both are the shooter saying the number is theirs,
+ * which is the thing that was missing when Don Webster's number arrived.
+ *
+ * What fails closed is the UNKNOWN: a source that is absent (every settings
+ * record written before this build, and every restore of an older .flog
+ * backup) or corrupt (a hand-edited file). Nobody recorded how those numbers
+ * arrived, and the one we know about was a stranger's. They may confirm a
+ * suggested row, never lift one.
+ *
+ * REVISED 19 Aug 2026 (session 128), by Michael, after CI went red. The first
+ * cut allowed only 'typed' to lift — which silently retired Decision 4's whole
+ * purpose for anyone who adopts from an import, and made the adoption
+ * question's own promise ("entries with this number go to the top of the
+ * list") FALSE. A passing E2E round-trip test caught what the spec, two cold
+ * audits and the implementer all missed, because the spec contradicted itself:
+ * §4's copy promised the lift and §2 forbade it. The confirmation tap is what
+ * earns the lift; requiring the Settings visit as well bought no protection
+ * the tap had not already bought.
+ *
  * Defence is at the reader, not the writer.
  */
 export function numberMayLift(stored: string | undefined, source: unknown): boolean {
-  return (stored ?? '').trim() !== '' && source === 'typed';
+  if ((stored ?? '').trim() === '') return false;
+  return source === 'typed' || source === 'imported';
 }
 
 /**

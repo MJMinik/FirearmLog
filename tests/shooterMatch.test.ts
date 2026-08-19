@@ -286,25 +286,35 @@ test('numberMayLift: a typed, non-empty number may lift', () => {
   assert.equal(numberMayLift('SC-12345', 'typed'), true);
 });
 
-test('numberMayLift: an imported number may never lift, even though it is real', () => {
-  assert.equal(numberMayLift('SC-12345', 'imported'), false);
+test('numberMayLift: a CONFIRMED imported number may lift -- the shooter said it was theirs', () => {
+  // Michael, 19 Aug 2026: the tap that answers "Yes -- it's mine" is the
+  // shooter claiming the number, and it is what Don Webster's number never
+  // had. Requiring a Settings visit on top of it bought no protection and
+  // made the adoption question's own promise false.
+  assert.equal(numberMayLift('SC-12345', 'imported'), true);
 });
 
-test('numberMayLift: an absent source -- every record older than this build -- may never lift', () => {
+test('numberMayLift: an UNKNOWN source -- every record older than this build -- may never lift', () => {
+  // The actual Don Webster shape: a number sitting in settings with no record
+  // of how it arrived. This single line is what fixes Michael's own device.
   assert.equal(numberMayLift('SC-12345', undefined), false);
 });
 
 test('numberMayLift: a corrupt or unexpected source fails closed, not open', () => {
   assert.equal(numberMayLift('SC-12345', 'TYPED'), false);
+  assert.equal(numberMayLift('SC-12345', 'IMPORTED'), false);
   assert.equal(numberMayLift('SC-12345', 1), false);
   assert.equal(numberMayLift('SC-12345', {}), false);
   assert.equal(numberMayLift('SC-12345', null), false);
+  assert.equal(numberMayLift('SC-12345', ''), false);
 });
 
-test('numberMayLift: a typed but empty or whitespace-only number may never lift', () => {
+test('numberMayLift: an empty or whitespace-only number may never lift, whatever its source', () => {
   assert.equal(numberMayLift('', 'typed'), false);
   assert.equal(numberMayLift('   ', 'typed'), false);
   assert.equal(numberMayLift(undefined, 'typed'), false);
+  assert.equal(numberMayLift('', 'imported'), false);
+  assert.equal(numberMayLift('   ', 'imported'), false);
 });
 
 test('scsaAdoptionCandidate: never asks to overwrite a number already stored, even when the picks agree', () => {

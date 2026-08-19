@@ -248,12 +248,14 @@ test.describe('member-number provenance (MEMBER_NUMBER_PROVENANCE_SPEC.md, sessi
     await expect(suggest.getByText('SCSA # matches').first()).toBeVisible();
   });
 
-  test('(f) an ADOPTED number never lifts by itself, but still confirms a row suggested by name', async ({ page }) => {
-    // Reaches the 'imported' state through the app's OWN adoption flow rather
-    // than a raw seed, so it also catches an adoption that wrongly stamps
-    // 'typed'. Phase 3 separately catches a confirmation sub-line wired to the
-    // SOURCE instead of to the stored number, which would go silent on a
-    // number that is genuinely the shooter's.
+  test('(f) an ADOPTED number lifts too — the promise the question makes is kept', async ({ page }) => {
+    // The question says "entries with this number go to the top of the list".
+    // This is the test that the sentence is TRUE. The first cut of this build
+    // let only a typed number lift, which made that promise false and quietly
+    // retired Decision 4 for anyone who adopts from an import; CI caught it and
+    // Michael reversed it on 19 Aug 2026. Reaches the 'imported' state through
+    // the app's OWN adoption flow rather than a raw seed, so it also catches an
+    // adoption that wrongly stamps 'typed' (the note in phase 1 is the tell).
     await seedDemo(page);
     const main = page.getByRole('main');
     await gotoTab(page, 'Compete');
@@ -270,16 +272,9 @@ test.describe('member-number provenance (MEMBER_NUMBER_PROVENANCE_SPEC.md, sessi
     // The source-aware note proves it landed as 'imported', not 'typed'.
     await expect(main.getByText("Remembered from a Steel Challenge import — check it's yours.")).toBeVisible();
 
-    // Phase 2 — a second import, still with no name stored. An adopted number
-    // must not lift on its own (spec §2: "does not let an adopted number lift").
-    await gotoTab(page, 'Compete');
-    await loadSteelFile(page, Guncraft8stage);
-    await main.getByRole('button', { name: 'Yes — find my entry' }).click();
-    await expect(main.locator('.suggest-block')).toHaveCount(0);
-
-    // Phase 3 — store the name too. Now suggested BY NAME, and the
-    // confirmation sub-line (which is source-independent) still shows.
-    await addNames(page, [`${ME.lastName}, ${ME.firstName}`]);
+    // Phase 2 — a second import with NO name stored. The confirmed number must
+    // lift the group all by itself: no name exists to do it, so a suggestion
+    // here can only have come from the number.
     await gotoTab(page, 'Compete');
     await loadSteelFile(page, Guncraft8stage);
     await main.getByRole('button', { name: 'Yes — find my entry' }).click();
@@ -287,6 +282,14 @@ test.describe('member-number provenance (MEMBER_NUMBER_PROVENANCE_SPEC.md, sessi
     await expect(suggest).toBeVisible();
     await expect(suggest.getByRole('button', { name: nameRe(ME) }).first()).toBeVisible();
     await expect(suggest.getByText('SCSA # matches').first()).toBeVisible();
+
+    // And the question is not asked again: the field is no longer empty, so
+    // the fill-only-when-empty contract has nothing to offer.
+    await main.getByPlaceholder('Search shooters by name').fill(ME.lastName);
+    await suggest.getByRole('button', { name: nameRe(ME) }).first().click();
+    await main.getByRole('button', { name: 'Continue', exact: true }).click();
+    await main.getByLabel('Which gun did you shoot?').selectOption({ index: 1 });
+    await expect(main.getByText('as your SCSA #?', { exact: false })).toHaveCount(0);
   });
 
   test('(g) the source survives a reload — typed stays typed, imported stays imported', async ({ page }) => {
@@ -307,14 +310,15 @@ test.describe('member-number provenance (MEMBER_NUMBER_PROVENANCE_SPEC.md, sessi
     await expect(main.getByText('check it\'s yours', { exact: false })).toHaveCount(0);
   });
 
-  test('(h) blurring the SCSA field without editing it never upgrades an imported number to typed', async ({ page }) => {
+  test('(h) blurring the SCSA field without editing it never rewrites where the number came from', async ({ page }) => {
     // The caller-level impostor a cold audit found (19 Aug 2026): the
     // "unchanged blur" branch of scsaNumberPatch was unit-tested but its real
     // call site was not, so a hand-rolled patch in SettingsScreen that stamped
-    // 'typed' on every save would pass the whole suite. Here the shooter blurs
-    // the field without touching it — the exact gesture — and the number must
-    // still refuse to lift afterwards. No name is stored, so a lift can only
-    // come from the number.
+    // 'typed' on every save would pass the whole suite. The shooter blurs the
+    // field without touching it — the exact gesture — and the record must still
+    // say the number came from an import. The note is the observable: a typed
+    // number shows none, an imported one names where it came from. It survives
+    // a reload, so this is the stored value talking, not React state.
     await seedDemo(page);
     const main = page.getByRole('main');
     await gotoTab(page, 'Compete');
@@ -337,11 +341,10 @@ test.describe('member-number provenance (MEMBER_NUMBER_PROVENANCE_SPEC.md, sessi
 
     await page.reload();
     await expect(page.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible({ timeout: 20_000 });
-    await gotoTab(page, 'Compete');
-    await loadSteelFile(page, Guncraft8stage);
-    await main.getByRole('button', { name: 'Yes — find my entry' }).click();
-    // Still may not lift. If the blur had upgraded it to 'typed', the block
-    // would be here.
-    await expect(main.locator('.suggest-block')).toHaveCount(0);
+    await gotoSection(page, 'Settings');
+    await expect(main.getByLabel('SCSA #')).toHaveValue(ME.membership);
+    // Still described as imported after a reload. Had the blur stamped it
+    // 'typed', this note would be gone — that is the whole assertion.
+    await expect(main.getByText("Remembered from a Steel Challenge import — check it's yours.")).toBeVisible();
   });
 });

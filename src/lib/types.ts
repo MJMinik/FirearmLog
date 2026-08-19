@@ -567,11 +567,14 @@ export interface AppSettings {
    *  scsaMemberNumber above came from. 'typed' = the shooter entered it in
    *  Settings -> Who you are, the deliberate act that earns Decision 4's
    *  number-alone lift. 'imported' = the app adopted it from a Steel Challenge
-   *  file after the shooter confirmed it, which may CONFIRM a suggested row but
-   *  never lift one. UNDEFINED means unknown -- the shape of every settings
-   *  record written before this build, and of every restore of an older .flog
-   *  backup -- and unknown is treated exactly like 'imported' at the reader
-   *  (numberMayLift, shooterMatch.ts). There is deliberately NO migration:
+   *  file after the shooter answered "Yes -- it's mine". BOTH may lift a Steel
+   *  row, because both are the shooter saying the number is theirs (Michael,
+   *  19 Aug 2026, after CI caught that a typed-only rule retired Decision 4 and
+   *  made the adoption question's own promise false). UNDEFINED means unknown --
+   *  the shape of every settings record written before this build, and of every
+   *  restore of an older .flog backup -- and unknown may CONFIRM a suggested row
+   *  but never lift one, because nobody recorded how those numbers arrived and
+   *  the one we know about was a stranger's. There is deliberately NO migration:
    *  nobody recorded how the existing numbers arrived, so stamping one would
    *  invent a fact. Every direction of version-skew degrades toward safety. */
   scsaMemberNumberSource?: 'typed' | 'imported';

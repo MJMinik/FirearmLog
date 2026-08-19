@@ -82,9 +82,10 @@ test.describe('Steel Challenge download-file import', () => {
     await expect(myRow).toHaveAttribute('aria-pressed', 'true');
     await main.getByRole('button', { name: 'Continue', exact: true }).click();
 
-    // Step C — per-entry details, then save.
+    // Step C — per-entry details, answer the adoption question, then save.
     const gunSelect = main.getByLabel('Which gun did you shoot?');
     await gunSelect.selectOption({ index: 1 });
+    await main.getByRole('button', { name: "Yes — it's mine" }).click();
     await main.getByRole('button', { name: 'Save match' }).click();
 
     // Lands on the new match's own detail screen: the strongest proof a real
@@ -106,8 +107,15 @@ test.describe('Steel Challenge download-file import', () => {
     await main.getByRole('button', { name: '‹ Back' }).click();
     await expect(matchesCard.locator('.row-tap')).toHaveCount(totalBefore + 1);
 
-    // Decision 4, round trip: the import stored his member number, so loading
-    // the same file again lifts his entries to the top unprompted.
+    // Decision 4, round trip: the import remembered his member number, so
+    // loading the same file again lifts his entries to the top unprompted.
+    //
+    // UPDATED 19 Aug 2026 (session 128, MEMBER_NUMBER_PROVENANCE_SPEC.md): the
+    // number is no longer remembered SILENTLY — the save above now answers
+    // "Yes — it's mine" on the adoption question, which is what a shooter does.
+    // A confirmed number still lifts, so this round trip is unchanged in
+    // meaning; only the consent step is new. This test going red is what
+    // caught the first cut of that spec retiring the round trip altogether.
     await loadSteelFile(page, Guncraft8stage);
     await main.getByRole('button', { name: 'Yes — find my entry' }).click();
     const suggest = main.locator('.suggest-block');
