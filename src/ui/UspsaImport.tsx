@@ -82,10 +82,12 @@ export function UspsaImport({ onCancel, onDone }: {
 
       {!parsed && (
         <div className="card">
+          {/* One-line lead, field immediately (Michael, 21 Aug 2026, session 129:
+              the import screens must open on the DOING part, not an explanation). */}
           <p className="report-note">
-            Open your classifier record on USPSA, export or copy it, and paste it below. You'll see a
-            preview and only the scores you don't already have will be added. No export handy? Tap
-            "Try the sample."
+            <b>Paste your classifier record from USPSA below, or load a file</b> — you'll see a
+            preview, and only the scores you don't already have will be added. No export handy?
+            Tap "Try the sample."
           </p>
           <label className="field">Classifier export
             <textarea rows={8} value={text} placeholder="Paste USPSA classifier scores here…"

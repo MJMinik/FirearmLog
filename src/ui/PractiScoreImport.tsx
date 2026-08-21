@@ -91,6 +91,11 @@ export function PractiScoreImport({ onCancel, onSaved }: {
      'nearest') the moment it appears. Scrolling only: the spec's §2.2
      no-keyboard-grab rule stands, so this never focuses the input. */
   const correctionBoxRef = useRef<HTMLDivElement>(null);
+  /* The USPSA how-to <details> is stateful for ONE reason: when the new-style
+     refusal fires, its message says "the numbered steps below walk through it",
+     so those steps must actually be open on the screen the message points at
+     (21 Aug 2026, session 129 — the rearrangement put them behind a disclosure). */
+  const [uspsaHowtoOpen, setUspsaHowtoOpen] = useState(false);
 
   // ── Steel Challenge download-file flow ──────────────────────────────────────
   const [steelForm, setSteelForm] = useState<ScsaForm | null>(null);
@@ -234,6 +239,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
         setProblem('This looks like a Steel Challenge results page. Reading those is not built yet, so nothing was imported. You can still log a Steel Challenge match by hand.');
       } else if (looksLikeNewStyleResults(text)) {
         setProblem("That looks like PractiScore’s new results page, which doesn’t carry the table this import reads. Nothing was imported. On your match page, find Old style results and tap Html Results, then tap Combined at the right-hand end of the top Overall row, and copy that whole page — the numbered steps below walk through it.");
+        setUspsaHowtoOpen(true); // the message points at steps that must be visible
       } else {
         setProblem(e instanceof Error ? e.message : 'Could not read that.');
       }
@@ -827,66 +833,15 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       {/* Step 1 — paste or load the export */}
       {!parsed && !steelForm && (
         <div className="card">
+          {/* Actions FIRST, instructions on demand (Michael, 21 Aug 2026, session
+              129, from the PR #65 tap test: "when you come to a page it just looks
+              like an explanation rather than the place you are doing the import").
+              The two how-to walkthroughs kept verbatim below, each behind a native
+              <details> so the doing part is on screen the moment the page opens. */}
           <p className="report-note">
-            <b>Shot a Steel Challenge match?</b> Load the match's results file with
-            the button below, and the app recognises it and walks you through.
-            Here is how to get the file from PractiScore:
-          </p>
-          <ol className="report-note" style={{ paddingLeft: 20, margin: '6px 0 12px' }}>
-            <li>On practiscore.com, tap <b>Scores</b>, then the <b>Steel Challenge</b> box.</li>
-            <li>Search for your club, then tap your match.</li>
-            <li>
-              Scroll to the bottom of the results table. Under <b>Report for SCSA</b>,
-              tap <b>SCSA Upload</b>.
-            </li>
-            <li>
-              A Club Info form opens. If Club Name or Club Code is empty, fill it
-              in. Sometimes both are already filled, and sometimes a list offers
-              them to pick from.
-            </li>
-            <li>Tap <b>Make The File</b>, then save the download.</li>
-          </ol>
-          <p className="report-note">
-            Those steps name the download <b>SCSA_EventResults.csv</b>. Reached
-            another way it can instead arrive as a long jumble of letters with no
-            file ending. Either one is the right file, and the app reads both.
-          </p>
-          <p className="report-note">
-            For a USPSA match, copying the results page is the way to get your
-            scores out, so here is the whole path:
-          </p>
-          <ol className="report-note" style={{ paddingLeft: 20, margin: '6px 0 12px' }}>
-            <li>Open your match on practiscore.com. PractiScore opens its new results view first. Scroll down the match page to find "Old style results".</li>
-            <li>Under "Old style results", tap <b>Html Results</b>.</li>
-            <li>
-              A table opens with one row per stage and a row at the very top reading{' '}
-              <b>Overall</b>. Tap <b>Combined</b> at the right-hand end of that top row.{' '}
-              <b>Overall</b> is the row's name, not a button, and every row has a{' '}
-              <b>Combined</b> — you want the one on the top row.
-            </li>
-            <li>
-              On a phone: press and hold on the match name just above the table until a
-              blue highlight appears, then drag the round handle at its lower end down
-              the page. It scrolls on its own while you hold. On a computer: click
-              anywhere in the page, then Command-A and Command-C.
-            </li>
-            <li>
-              Keep dragging until the highlight covers the last shooter, let go, and tap{' '}
-              <b>Copy</b>.
-            </li>
-            <li>Paste it in the box below.</li>
-          </ol>
-          <p className="report-note">
-            Reach the last shooter before you let go. Stop part-way and the field arrives
-            short, and your finish then reads out of a smaller number than actually shot
-            the match — the places still run 1, 2, 3 with no gap, so nothing here can tell
-            it happened. The menus and adverts at the top of the page do no harm; nothing
-            is read from them.
-          </p>
-          <p className="report-note">
-            You pick your own row next. If you have a results file — a Steel Challenge
-            download file, or a .csv or .txt someone sent you — load it with the button
-            below. To see how it all works first, tap "Try the sample".
+            <b>Paste your match results below, or load a results file</b> — a Steel
+            Challenge download file, or a .csv or .txt someone sent you. To see how
+            it all works first, tap "Try the sample". You pick your own row next.
           </p>
           <label className="field">Results text
             <textarea rows={8} value={text} placeholder="Paste PractiScore results here…"
@@ -920,6 +875,69 @@ export function PractiScoreImport({ onCancel, onSaved }: {
             <button className="button secondary" style={{ flex: 1 }} onClick={() => fileRef.current?.click()}>Load a file</button>
             <button className="button secondary" style={{ flex: 1 }} onClick={() => { setText(SAMPLE_PRACTISCORE_CSV); setProblem(''); }}>Try the sample</button>
           </div>
+          <details className="import-howto">
+            <summary>How to get a Steel Challenge file from PractiScore</summary>
+          <p className="report-note">
+            <b>Shot a Steel Challenge match?</b> Load the match's results file with
+            the Load a file button above, and the app recognises it and walks you through.
+            Here is how to get the file from PractiScore:
+          </p>
+          <ol className="report-note" style={{ paddingLeft: 20, margin: '6px 0 12px' }}>
+            <li>On practiscore.com, tap <b>Scores</b>, then the <b>Steel Challenge</b> box.</li>
+            <li>Search for your club, then tap your match.</li>
+            <li>
+              Scroll to the bottom of the results table. Under <b>Report for SCSA</b>,
+              tap <b>SCSA Upload</b>.
+            </li>
+            <li>
+              A Club Info form opens. If Club Name or Club Code is empty, fill it
+              in. Sometimes both are already filled, and sometimes a list offers
+              them to pick from.
+            </li>
+            <li>Tap <b>Make The File</b>, then save the download.</li>
+          </ol>
+          <p className="report-note">
+            Those steps name the download <b>SCSA_EventResults.csv</b>. Reached
+            another way it can instead arrive as a long jumble of letters with no
+            file ending. Either one is the right file, and the app reads both.
+          </p>
+          </details>
+          <details className="import-howto" open={uspsaHowtoOpen}
+            onToggle={(e) => setUspsaHowtoOpen(e.currentTarget.open)}>
+            <summary>How to copy USPSA results from PractiScore</summary>
+          <p className="report-note">
+            For a USPSA match, copying the results page is the way to get your
+            scores out, so here is the whole path:
+          </p>
+          <ol className="report-note" style={{ paddingLeft: 20, margin: '6px 0 12px' }}>
+            <li>Open your match on practiscore.com. PractiScore opens its new results view first. Scroll down the match page to find "Old style results".</li>
+            <li>Under "Old style results", tap <b>Html Results</b>.</li>
+            <li>
+              A table opens with one row per stage and a row at the very top reading{' '}
+              <b>Overall</b>. Tap <b>Combined</b> at the right-hand end of that top row.{' '}
+              <b>Overall</b> is the row's name, not a button, and every row has a{' '}
+              <b>Combined</b> — you want the one on the top row.
+            </li>
+            <li>
+              On a phone: press and hold on the match name just above the table until a
+              blue highlight appears, then drag the round handle at its lower end down
+              the page. It scrolls on its own while you hold. On a computer: click
+              anywhere in the page, then Command-A and Command-C.
+            </li>
+            <li>
+              Keep dragging until the highlight covers the last shooter, let go, and tap{' '}
+              <b>Copy</b>.
+            </li>
+            <li>Paste it in the box above.</li>
+          </ol>
+          <p className="report-note">
+            Reach the last shooter before you let go. Stop part-way and the field arrives
+            short, and your finish then reads out of a smaller number than actually shot
+            the match — the places still run 1, 2, 3 with no gap, so nothing here can tell
+            it happened. The menus and adverts at the top of the page do no harm; nothing
+            is read from them.
+          </p>
+          </details>
         </div>
       )}
 

@@ -45,10 +45,11 @@ test.describe('PractiScore new-style guide', () => {
     await expect(main.getByText("new results page", { exact: false })).toBeVisible();
     await expect(main.getByText("Nothing was imported", { exact: false })).toBeVisible();
 
-    // The numbered instructions must still be visible — step 1 now carries TWO
-    // numbered lists (the Steel file steps and the USPSA copy steps, session 124),
-    // so pin the USPSA one by its own first line; this confirms the screen did
-    // not advance.
+    // The numbered instructions must still be visible — and since the 21 Aug
+    // 2026 rearrangement they live behind the USPSA disclosure, which the
+    // refusal AUTO-OPENS, because this very message says "the numbered steps
+    // below walk through it". Asserting the steps are visible therefore also
+    // proves the auto-open fired; it doubles as proof the screen did not advance.
     await expect(main.locator('ol').filter({ hasText: 'Open your match on' })).toBeVisible();
 
     // The step-1 field must still be on screen (paste box, not the shooter picker).

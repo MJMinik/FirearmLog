@@ -14,6 +14,36 @@ import { seedDemo, gotoTab } from './helpers';
 // coverage anywhere.
 
 test.describe('PractiScore import', () => {
+  test('the doing controls open the screen; the how-tos wait behind disclosures (21 Aug 2026 rearrangement)', async ({ page }) => {
+    // Michael, 21 Aug 2026 (session 129): "when you come to a page it just looks
+    // like an explanation rather than the place you are doing the import." The
+    // paste box and its three buttons now lead the screen; the two how-to
+    // walkthroughs sit behind <details>. This asserts the ORDER in pixels (the
+    // box inside the first viewport, phone included) and that the instructions
+    // are still one tap away, not gone.
+    await seedDemo(page);
+    await gotoTab(page, 'Compete');
+    const main = page.getByRole('main');
+    await main.getByRole('button', { name: 'Import…' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Import' });
+    await sheet.getByRole('button', { name: 'Import from PractiScore' }).click();
+    await expect(main.getByRole('heading', { name: 'Import from PractiScore' })).toBeVisible();
+
+    // The doing part is on screen the moment the page opens — no scrolling.
+    await expect(main.getByRole('textbox', { name: 'Results text' })).toBeInViewport();
+    await expect(main.getByRole('button', { name: 'Load a file' })).toBeInViewport();
+    await expect(main.getByRole('button', { name: 'Try the sample' })).toBeInViewport();
+
+    // Both walkthroughs exist, closed, below the actions — and still open.
+    const howtos = main.locator('details.import-howto');
+    await expect(howtos).toHaveCount(2);
+    await expect(main.getByText('On practiscore.com, tap Scores')).not.toBeVisible();
+    await howtos.first().locator('summary').click();
+    await expect(main.getByText('On practiscore.com, tap Scores')).toBeVisible();
+    await howtos.nth(1).locator('summary').click();
+    await expect(main.getByText('Old style results', { exact: false }).first()).toBeVisible();
+  });
+
   test('happy path: sample export -> pick a specific shooter -> save -> the match record lands with the right data', async ({ page }) => {
     await seedDemo(page);
     await gotoTab(page, 'Compete');
@@ -199,7 +229,10 @@ test.describe('PractiScore import', () => {
 
     // The old copy said "export or copy the results". No export exists, so the
     // word must not come back: an instruction naming an action the reader
-    // cannot perform is the defect this whole change is about.
+    // cannot perform is the defect this whole change is about. Since the 21 Aug
+    // 2026 rearrangement the steps live behind the USPSA disclosure — open it
+    // first; the claim under test is what the steps SAY, not where they sit.
+    await main.locator('details.import-howto').nth(1).locator('summary').click();
     await expect(main.getByText('Html Results')).toBeVisible();
     // 'Load a file', no extension list: the Steel Challenge download file has
     // NO extension, so naming .csv/.txt would promise a filter that hides the
@@ -284,8 +317,12 @@ test.describe('PractiScore import', () => {
     ].join('\n');
     await main.getByLabel('Results text').fill(bigCsv);
 
-    // Step 1 is long (the how-to instructions); stand at the bottom of it, where
-    // the Read results button lives, the way a real paste leaves you.
+    // Step 1 must be LONG for this test's guard to bite (see the comment above:
+    // a short page forces scrollY to 0 and would pass without the fix). Since
+    // the 21 Aug 2026 rearrangement the how-tos are collapsed by default and
+    // step 1 is deliberately short — so open one to make the page tall again,
+    // then stand at the bottom, the way a real reader of the steps is left.
+    await main.locator('details.import-howto').first().locator('summary').click();
     await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
     expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
 
