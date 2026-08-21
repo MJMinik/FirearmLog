@@ -1,7 +1,7 @@
 // Tab screens. Home and Log are live against the database; Compete and
 // Progress arrive in M5 and M7 and say so in plain language.
 import { useEffect, useRef, useState, useCallback } from 'react';
-import type { Ammunition, AppSettings, Classifier, DrillDef, Firearm, Goal, GunCategory, MaintenanceEntry, Match, Purchase, Reference, Reminder, Session } from '../lib/types.ts';
+import type { Ammunition, AppSettings, Classifier, DrillDef, Firearm, Goal, GunCategory, Magazine, MaintenanceEntry, Match, Purchase, Reference, Reminder, Session } from '../lib/types.ts';
 import { goldenGoal } from '../lib/goals.ts';
 import { buildReminderContext, reminderViews, dueReminders, homeComingUp } from '../lib/reminders.ts';
 import type { ReminderView } from '../lib/reminders.ts';
@@ -40,6 +40,9 @@ import type { View } from './nav.ts';
 import { dashboardStats, rangedActivity, roundsByMonth, daysSinceLastSession, selfRatingDipping, alertDismissKey, isAlertDismissed, personalRecords, formatDrillScore, allClassifications, changesSinceBackup, BACKUP_REMINDER_THRESHOLD, BACKUP_TRACKED_STORES } from '../lib/dashboard.ts';
 import { spanStartDate } from '../lib/trends.ts';
 import type { MonthBucket, RoundsFilter } from '../lib/dashboard.ts';
+import { magsNeedingCleaning } from '../lib/magCleaning.ts';
+import type { MagCleaningItem } from '../lib/magCleaning.ts';
+import { stampUpdate } from '../lib/stamps.ts';
 
 function useData(refreshKey: number) {
   const [firearms, setFirearms] = useState<Firearm[]>([]);
@@ -47,6 +50,7 @@ function useData(refreshKey: number) {
   const [trashed, setTrashed] = useState<Session[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [maintenance, setMaintenance] = useState<MaintenanceEntry[]>([]);
+  const [magazines, setMagazines] = useState<Magazine[]>([]);
   const [references, setReferences] = useState<Reference[]>([]);
   const [ammo, setAmmo] = useState<Ammunition[]>([]);
   const [classifiers, setClassifiers] = useState<Classifier[]>([]);
@@ -69,9 +73,10 @@ function useData(refreshKey: number) {
         // Sweep out anything past its 30-day window first, so the lists below are
         // already clean. Fails safe (returns 0) — it can never block the load.
         await purgeExpiredSessions();
-        const [f, s, m, mt, r, am, cl, pu, dr, rem] = await Promise.all([
+        const [f, s, m, mt, mg, r, am, cl, pu, dr, rem] = await Promise.all([
           getAll<Firearm>('firearms'), getAll<Session>('sessions'),
           getAll<Match>('matches'), getAll<MaintenanceEntry>('maintenance'),
+          getAll<Magazine>('magazines'),
           getAll<Reference>('references'), getAll<Ammunition>('ammunition'),
           getAll<Classifier>('classifiers'), getAll<Purchase>('purchases'),
           getAll<DrillDef>('drills'), getAll<Reminder>('reminders')
@@ -84,6 +89,7 @@ function useData(refreshKey: number) {
         setTrashed(trashedOnly(s));
         setMatches(m);
         setMaintenance(mt);
+        setMagazines(mg);
         setReferences(r);
         setAmmo(am);
         setClassifiers(cl);
@@ -99,7 +105,7 @@ function useData(refreshKey: number) {
     })();
     return () => { alive = false; };
   }, [refreshKey, nonce]);
-  return { firearms, sessions, trashed, matches, maintenance, references, ammo, classifiers, purchases, drills, reminders, loaded, error, reload };
+  return { firearms, sessions, trashed, matches, maintenance, magazines, references, ammo, classifiers, purchases, drills, reminders, loaded, error, reload };
 }
 
 function SessionRow({ s, firearms, onTap, onDelete }: {
@@ -344,6 +350,61 @@ function AlertRow({ alert, onTap, onDismiss, onComplete }: {
   );
 }
 
+// A "needs cleaning" row on Home's Needs Attention card (21 Aug 2026 spec).
+// Copies AlertRow's structure/classes/menu wiring EXACTLY -- it isn't an
+// Alert (it's derived from magazines + matches, not the maintenance
+// schedule), so it can't reuse AlertRow's Alert-typed props, but it must
+// look and behave identically. Always a "Due" badge -- lib/magCleaning.ts has
+// no "soon" tier, a mag either needs cleaning or it doesn't.
+function MagCleaningRow({ item, onTap, onDismiss, onMarkCleaned }: {
+  item: MagCleaningItem;
+  onTap: () => void;
+  onDismiss: () => void;
+  onMarkCleaned: () => void;
+}) {
+  const [showActions, setShowActions] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!showActions) return;
+    menuRef.current?.scrollIntoView({ block: 'nearest' });
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') { setShowActions(false); triggerRef.current?.focus(); }
+    };
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (!menuRef.current?.contains(t) && !triggerRef.current?.contains(t)) setShowActions(false);
+    };
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('pointerdown', onDown);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('pointerdown', onDown);
+    };
+  }, [showActions]);
+  return (
+    <div className="alert-row">
+      <button className="row-tap" style={{ flex: 1 }} onClick={onTap}>
+        <span className="label">
+          {item.magLabel}: needs cleaning
+          <div className="row-sub">{item.detail}</div>
+        </span>
+        <span className="badge bad">Due</span>
+      </button>
+      <button ref={triggerRef} className="alert-dismiss-btn" onClick={() => setShowActions(!showActions)}
+        aria-expanded={showActions} aria-haspopup="true"
+        aria-label={`Options for ${item.magLabel}: needs cleaning`}
+        title="Dismiss or mark cleaned">Options ▾</button>
+      {showActions && (
+        <div className="alert-actions" role="menu" ref={menuRef}>
+          <button role="menuitem" onClick={() => { onMarkCleaned(); setShowActions(false); }}>Mark cleaned</button>
+          <button role="menuitem" onClick={() => { onDismiss(); setShowActions(false); }}>Dismiss for now</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // A reminder row on Home (in Needs Attention when due, in Coming up when soon).
 // Tapping opens the Reminders screen, where Mark done / Add to Calendar live.
 function HomeReminderRow({ v, open }: { v: ReminderView; open: (view: View) => void }) {
@@ -365,7 +426,7 @@ function HomeReminderRow({ v, open }: { v: ReminderView; open: (view: View) => v
 export function HomeScreen({ refreshKey, open, onGoBackup }: {
   refreshKey: number; open: (v: View) => void; onGoBackup: () => void;
 }) {
-  const { firearms, sessions, matches, maintenance, references, ammo, classifiers, drills, reminders, loaded, error, reload } = useData(refreshKey);
+  const { firearms, sessions, matches, maintenance, magazines, references, ammo, classifiers, drills, reminders, loaded, error, reload } = useData(refreshKey);
   const [dismissed, setDismissed] = useState<Record<string, string>>({});
   const [chartFilter, setChartFilter] = useState<RoundsFilter>({});
   const [chartMonths, setChartMonths] = useState(12);
@@ -444,6 +505,17 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
   const lowCans = lowAmmo(ammo);
   const showBackup = backupChanges >= BACKUP_REMINDER_THRESHOLD;
 
+  // Mags needing cleaning (21 Aug 2026 spec): same dismissal mechanism as the
+  // maintenance alerts above, keyed `magclean:<magId>` so a dismissal for one
+  // trigger type can never collide with another. isAlertDismissed already
+  // gives the "un-dismiss when the underlying detail changes" behavior for
+  // free -- a new/different tagging match after dismissal changes `detail`,
+  // which makes the stored dismissal stale and the row reappears.
+  const magCleaning = magsNeedingCleaning(magazines, matches).filter((item) => {
+    const key = `magclean:${item.magId}`;
+    return !isAlertDismissed(key, dismissed, item.detail);
+  });
+
   // Reminders share ONE urgency ladder with the maintenance alerts: a due reminder
   // rises into Needs Attention (below), an upcoming one sits in the Coming up card
   // (spec §6 decision 2). An item is never in both, and both cards vanish when empty.
@@ -464,6 +536,25 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
   const handleDismiss = (a: Alert) => {
     const key = alertDismissKey(a.firearmId, a.item.type, a.item.level);
     void saveDismissed({ ...dismissed, [key]: a.item.detail });
+  };
+
+  const handleMagCleanDismiss = (item: MagCleaningItem) => {
+    const key = `magclean:${item.magId}`;
+    void saveDismissed({ ...dismissed, [key]: item.detail });
+  };
+
+  // Stamps today's local day-key onto the magazine (todayKey, the same date
+  // helper the forms use) and reloads so the row drops off the moment its
+  // qualifying match is no longer strictly after this stamp. Never touches
+  // the match's own magConditions -- that history is permanent, which is why
+  // MatchDetail still shows the tag afterward.
+  const handleMarkCleaned = (item: MagCleaningItem) => {
+    void (async () => {
+      const original = magazines.find((m) => m.id === item.magId);
+      if (!original) return;
+      await putOne('magazines', stampUpdate({ ...original, lastCleanedAt: todayKey() }, Date.now()));
+      reload();
+    })();
   };
 
   const recentMatches = [...matches].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5);
@@ -587,7 +678,7 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
           )}
 
           {/* ---- Needs Attention (dismissible) ---- */}
-          {(showBackup || alerts.length > 0 || dueRems.length > 0 || lowCans.length > 0 || (trainingGap !== null && trainingGap >= 14) || (ratingTrend?.dipping)) && (
+          {(showBackup || alerts.length > 0 || magCleaning.length > 0 || dueRems.length > 0 || lowCans.length > 0 || (trainingGap !== null && trainingGap >= 14) || (ratingTrend?.dipping)) && (
             <div className="card" style={{ marginTop: 16 }}>
               <h2>Needs Attention</h2>
               {showBackup && (
@@ -604,6 +695,14 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
                   onTap={() => open({ kind: 'gun-detail', id: a.firearmId })}
                   onDismiss={() => handleDismiss(a)}
                   onComplete={() => open({ kind: 'maint-form', gunId: a.firearmId })} />
+              ))}
+              {/* Mags needing cleaning (21 Aug 2026 spec) -- right after the
+                  maintenance alerts, before due reminders. */}
+              {magCleaning.map((item) => (
+                <MagCleaningRow key={item.magId} item={item}
+                  onTap={() => open({ kind: 'magazine-form', id: item.magId })}
+                  onDismiss={() => handleMagCleanDismiss(item)}
+                  onMarkCleaned={() => handleMarkCleaned(item)} />
               ))}
               {/* Reminders that have come due join the maintenance alerts here. */}
               {dueRems.map((v) => <HomeReminderRow key={v.reminder.id} v={v} open={open} />)}

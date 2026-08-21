@@ -30,12 +30,20 @@ export interface MatchMagPatch {
 
 /** The minimal v1 condition tag (decision 4a) — one optional tag per
  *  match-mag, independent of round count. NOT a structured incident form:
- *  one tag, plus the match's own free-text notes field for anything more. */
+ *  one tag, plus the match's own free-text notes field for anything more.
+ *  Expanded 21 Aug 2026 (board-adopted): Water, Snow, and Dust added
+ *  alongside the original five. The curated list stays fixed — the board
+ *  rejected a user-editable list so condition categories stay comparable
+ *  across mags/matches; anything a tag can't capture belongs in the match's
+ *  own notes field. */
 const CONDITION_TAGS: { value: string; label: string }[] = [
   { value: '', label: 'No tag' },
   { value: 'sand', label: 'Sand' },
   { value: 'mud', label: 'Mud' },
   { value: 'rain', label: 'Rain' },
+  { value: 'water', label: 'Water' },
+  { value: 'snow', label: 'Snow' },
+  { value: 'dust', label: 'Dust' },
   { value: 'dropped', label: 'Dropped' },
   { value: 'issue', label: 'Issue' },
 ];

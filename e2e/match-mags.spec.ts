@@ -325,6 +325,153 @@ test.describe('Magazines in competitions: the match form', () => {
     await expect(page.locator('.row', { hasText: 'Needs cleaning' })).toHaveCount(0);
   });
 
+  test('a tagged mag surfaces on Home as needing cleaning; Mark cleaned clears the row without touching the match\u2019s own history (21 Aug 2026 spec)', async ({ page }) => {
+    await seedDemo(page);
+    await startNewMatch(page, 'Cleaning Test Match');
+
+    const magSection = page.locator('.session-mags');
+    await magSection.locator('.checklist-disclosure').click();
+    await pickMags(page, magSection, ALL_MAGS, ['DR9-1']);
+
+    // The 21 Aug 2026 board-adopted expansion: Water/Snow/Dust join the
+    // original five tags in this same <select> (cheap to check here, before
+    // saving, rather than spending a whole test on it).
+    const tagOptions = await magSection.locator('select').locator('option').allTextContents();
+    for (const label of ['Water', 'Snow', 'Dust']) expect(tagOptions).toContain(label);
+
+    await magSection.locator('select').selectOption({ label: 'Sand' });
+    await clickSave(page);
+    await expect(page.getByRole('heading', { name: 'Cleaning Test Match' })).toBeVisible();
+
+    // Home's Needs Attention card picks up the tag as a "needs cleaning" row.
+    await gotoTab(page, 'Home');
+    const cleaningRow = page.locator('.alert-row', { hasText: 'DR9-1: needs cleaning' });
+    await expect(cleaningRow).toBeVisible();
+    await expect(cleaningRow).toContainText('Sand \u2014 Cleaning Test Match');
+
+    // "Mark cleaned" via the row's Options menu: the row disappears. Assert
+    // only the row's absence -- other Needs Attention triggers in the demo
+    // dataset are not this test's concern.
+    await cleaningRow.locator('.alert-dismiss-btn').click();
+    await cleaningRow.getByRole('menuitem', { name: 'Mark cleaned' }).click();
+    await expect(page.locator('.alert-row', { hasText: 'DR9-1: needs cleaning' })).toHaveCount(0);
+
+    // The match's own "Needs cleaning" row is untouched -- cleaning a mag
+    // never edits or clears a match's condition tags, the match keeps its
+    // history regardless of the mag's current cleaning state.
+    await gotoTab(page, 'Compete');
+    await page.getByText('Cleaning Test Match').first().click();
+    await expect(page.getByRole('heading', { name: 'Cleaning Test Match' })).toBeVisible();
+    await expect(page.locator('.row', { hasText: 'Needs cleaning' })).toBeVisible();
+    await expect(page.getByText('DR9-1 (sand)')).toBeVisible();
+  });
+
+  test('Mark cleaned preserves the record; Dismiss reopens on new evidence; the badge marks the right mag (audit kills, 21 Aug 2026)', async ({ page }) => {
+    // Kills the impostors the tests-constrain audit named: a Mark-cleaned
+    // write that drops the magazine's other fields; a dismissal stored under
+    // a constant instead of the detail string (which would never reopen); a
+    // Magazines-screen badge wired to nothing; a row tap wired to nothing.
+    await seedDemo(page);
+    await startNewMatch(page, 'Two Mag Match');
+
+    const magSection = page.locator('.session-mags');
+    await magSection.locator('.checklist-disclosure').click();
+    await pickMags(page, magSection, ALL_MAGS, ['DR9-1', 'DR9-2']);
+    // One select per picked mag, in pick order: Sand for DR9-1, and Dust for
+    // DR9-2 -- one of the board-adopted new tags, run through the WHOLE
+    // pipeline rather than only read as an <option> label.
+    await magSection.locator('select').nth(0).selectOption({ label: 'Sand' });
+    await magSection.locator('select').nth(1).selectOption({ label: 'Dust' });
+    await clickSave(page);
+    await expect(page.getByRole('heading', { name: 'Two Mag Match' })).toBeVisible();
+
+    // Both rows rise on Home.
+    await gotoTab(page, 'Home');
+    const row1 = page.locator('.alert-row', { hasText: 'DR9-1: needs cleaning' });
+    const row2 = page.locator('.alert-row', { hasText: 'DR9-2: needs cleaning' });
+    await expect(row1).toBeVisible();
+    await expect(row2).toBeVisible();
+    await expect(row2).toContainText('Dust — Two Mag Match');
+
+    // The row BODY (not the Options button) opens the magazine's own form.
+    await row1.locator('.row-tap').click();
+    await expect(page.getByRole('heading', { name: 'Edit Magazine' })).toBeVisible();
+    await expect(page.getByLabel('Label')).toHaveValue('DR9-1');
+    await page.getByRole('button', { name: '‹ Cancel' }).click();
+
+    // Mark DR9-1 cleaned, then prove the write REPLACED nothing but the
+    // cleaning stamp: the Magazines screen still shows its label, its gun,
+    // and a non-zero lifetime count -- and the badge sits on DR9-2 only.
+    await gotoTab(page, 'Home');
+    await row1.locator('.alert-dismiss-btn').click();
+    await row1.getByRole('menuitem', { name: 'Mark cleaned' }).click();
+    await expect(page.locator('.alert-row', { hasText: 'DR9-1: needs cleaning' })).toHaveCount(0);
+
+    await gotoSection(page, 'Magazines');
+    const magRow1 = page.getByRole('main').locator('.row-tap', { hasText: 'DR9-1' }).first();
+    await expect(magRow1).toBeVisible();
+    await expect(magRow1).not.toContainText('No gun assigned');
+    await expect(magRow1).not.toContainText('(retired)');
+    await expect(magRow1.locator('.badge')).toHaveCount(0); // cleaned -> no badge
+    // The raw record, straight from IndexedDB: the Mark-cleaned write is a
+    // full-record replace, so EVERY field family must have survived it, not
+    // just the ones a screen happens to render (verify-audit kill: a write of
+    // {id, lastCleanedAt} alone would pass the screen checks above because
+    // lifetime rounds are partly derived from sessions).
+    const raw = await page.evaluate(async () => {
+      return await new Promise<Record<string, unknown> | undefined>((resolve, reject) => {
+        const o = indexedDB.open('firearmlog');
+        o.onerror = () => reject(o.error);
+        o.onsuccess = () => {
+          const db = o.result;
+          const r = db.transaction('magazines', 'readonly').objectStore('magazines').getAll();
+          r.onerror = () => reject(r.error);
+          r.onsuccess = () => {
+            db.close();
+            resolve((r.result as { label?: string }[]).find((m) => m.label === 'DR9-1'));
+          };
+        };
+      });
+    });
+    expect(raw, 'DR9-1 record must still exist under its label').toBeTruthy();
+    expect(typeof raw!.lastCleanedAt).toBe('string'); // the stamp landed
+    expect(Array.isArray(raw!.firearmIds) && (raw!.firearmIds as unknown[]).length > 0).toBe(true);
+    expect(typeof raw!.totalRounds).toBe('number');
+    expect(typeof raw!.notes).toBe('string');
+    expect(Array.isArray(raw!.springHistory)).toBe(true);
+    expect(raw!.active).toBe(true);
+    const magRow2 = page.getByRole('main').locator('.row-tap', { hasText: 'DR9-2' }).first();
+    await expect(magRow2.locator('.badge', { hasText: 'Needs cleaning' })).toBeVisible();
+
+    // Dismiss DR9-2's row, then change the match's tag for DR9-2: the detail
+    // string changes, so the stored dismissal goes stale and the row returns.
+    await gotoTab(page, 'Home');
+    await row2.locator('.alert-dismiss-btn').click();
+    await row2.getByRole('menuitem', { name: 'Dismiss for now' }).click();
+    await expect(page.locator('.alert-row', { hasText: 'DR9-2: needs cleaning' })).toHaveCount(0);
+
+    await gotoTab(page, 'Compete');
+    await page.getByText('Two Mag Match').first().click();
+    await reopenForEdit(page);
+    // Rename the match, tag left as Dust on purpose (verify-audit kill): an
+    // impostor keying the dismissal by magId+tag would survive a TAG change
+    // (new key, coincidentally reopens) — only a detail change that keeps
+    // the tag proves the reopen comes from the detail string itself.
+    // Wait for the edit form to show the CURRENT name before typing — a fill
+    // dispatched during the form's own state initialisation raced it (seen as
+    // a concatenated name in this test's first run). A person can't type
+    // before the value paints; the test shouldn't either.
+    await expect(page.getByLabel('What this match is called')).toHaveValue('Two Mag Match');
+    await page.getByLabel('What this match is called').fill('Two Mag Match Renamed');
+    await clickSave(page);
+    await expect(page.getByRole('heading', { name: 'Two Mag Match Renamed' })).toBeVisible();
+
+    await gotoTab(page, 'Home');
+    const row2again = page.locator('.alert-row', { hasText: 'DR9-2: needs cleaning' });
+    await expect(row2again).toBeVisible();
+    await expect(row2again).toContainText('Dust — Two Mag Match Renamed');
+  });
+
   test('sticky "same mags as last time" offers on a NEW match, never on an edit of an existing one', async ({ page }) => {
     await seedDemo(page);
 

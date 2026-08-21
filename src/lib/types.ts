@@ -203,6 +203,17 @@ export interface Magazine extends BaseRecord, Imported {
   totalRounds: number;
   springHistory: unknown[];
   notes: string;
+  /**
+   * Set by the "Mark cleaned" action on Home's Needs Attention row (21 Aug
+   * 2026 spec) — an ISO date (YYYY-MM-DD), local day-key. Absent means never
+   * marked cleaned. Match records' condition tags are NEVER edited or
+   * cleared by cleaning — the match keeps its history regardless of this
+   * field. A mag "needs cleaning" (lib/magCleaning.ts) when a non-deleted
+   * match dated strictly AFTER this date (or any tagging match, when this is
+   * absent) tags it in magConditions. Accepted edge: a match dated the SAME
+   * DAY as a cleaning is treated as before it, not after.
+   */
+  lastCleanedAt?: string;
 }
 
 export interface Optic extends BaseRecord, Imported {
