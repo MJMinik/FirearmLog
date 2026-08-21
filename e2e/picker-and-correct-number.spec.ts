@@ -17,6 +17,14 @@ import { RedbrushMultigun } from '../tests/fixtures/scsa-redbrush-multigun.ts';
 // (PractiScoreImport.tsx), so typing anything empties the block by design.
 // That bug cost a CI cycle on the sibling spec; every pick here is reached
 // by searching the FULL field, never the suggestion block.
+//
+// Every getByLabel('Your SCSA #') here passes { exact: true }, and it is
+// load-bearing: getByLabel matches by case-insensitive SUBSTRING, and the
+// adoption question labelling the two answer buttons' group — "Remember
+// <number> as your SCSA #?" — contains "your SCSA #", so the bare locator
+// matches the QUESTION while the correction box is still correctly hidden.
+// That collision produced PR #65's nine identical "expected 0, received 1"
+// failures (21 Aug 2026): the app was right and the locator was wrong.
 
 function formOf(text: string): ScsaForm {
   const r = parseScsaForm(text);
@@ -203,10 +211,10 @@ test.describe('picker and correct number (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.
     const main = page.getByRole('main');
     await loadSteelFile(page, Guncraft8stage);
     await pickEntryAndFinish(page, ME);
-    await expect(main.getByLabel('Your SCSA #')).toHaveCount(0);
+    await expect(main.getByLabel('Your SCSA #', { exact: true })).toHaveCount(0);
 
     await main.getByRole('button', { name: 'Not mine' }).click();
-    const field = main.getByLabel('Your SCSA #');
+    const field = main.getByLabel('Your SCSA #', { exact: true });
     await expect(field).toBeVisible();
     await expect(main.getByText('What is your SCSA #?')).toBeVisible();
     await expect(field).toHaveValue('');
@@ -222,7 +230,7 @@ test.describe('picker and correct number (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.
     await loadSteelFile(page, Guncraft8stage);
     await pickEntryAndFinish(page, STRANGER); // picked the WRONG row on purpose
     await main.getByRole('button', { name: 'Not mine' }).click();
-    await main.getByLabel('Your SCSA #').fill(ME.membership);
+    await main.getByLabel('Your SCSA #', { exact: true }).fill(ME.membership);
     await main.getByRole('button', { name: 'Save match' }).click();
     await expect(main.getByRole('heading', { name: form.matchName, level: 1 })).toBeVisible();
 
@@ -254,7 +262,7 @@ test.describe('picker and correct number (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.
     const notMine = main.getByRole('button', { name: 'Not mine' });
     await notMine.click();
     await expect(notMine).toHaveAttribute('aria-pressed', 'true');
-    await expect(main.getByLabel('Your SCSA #')).toHaveValue('');
+    await expect(main.getByLabel('Your SCSA #', { exact: true })).toHaveValue('');
     await main.getByRole('button', { name: 'Save match' }).click();
     await expect(main.getByRole('heading', { name: form.matchName, level: 1 })).toBeVisible();
 
@@ -272,10 +280,10 @@ test.describe('picker and correct number (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.
     await loadSteelFile(page, Guncraft8stage);
     await pickEntryAndFinish(page, ME);
     await main.getByRole('button', { name: 'Not mine' }).click();
-    await main.getByLabel('Your SCSA #').fill('SC-NOT-THE-REAL-ONE');
+    await main.getByLabel('Your SCSA #', { exact: true }).fill('SC-NOT-THE-REAL-ONE');
     await main.getByRole('button', { name: "Yes — it's mine" }).click();
     // The box hides the moment Yes wins (spec §2.3) — gone entirely.
-    await expect(main.getByLabel('Your SCSA #')).toHaveCount(0);
+    await expect(main.getByLabel('Your SCSA #', { exact: true })).toHaveCount(0);
     await main.getByRole('button', { name: 'Save match' }).click();
     await expect(main.getByRole('heading', { name: form.matchName, level: 1 })).toBeVisible();
 
@@ -295,12 +303,12 @@ test.describe('picker and correct number (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.
     await loadSteelFile(page, Guncraft8stage);
     await pickEntryAndFinish(page, ME);
     await main.getByRole('button', { name: 'Not mine' }).click();
-    await main.getByLabel('Your SCSA #').fill('SC-99999');
+    await main.getByLabel('Your SCSA #', { exact: true }).fill('SC-99999');
     await main.getByRole('button', { name: '‹ Back to the shooter list' }).click();
     await main.getByRole('button', { name: 'Continue', exact: true }).click();
 
     await expect(main.getByRole('button', { name: 'Not mine' })).toHaveAttribute('aria-pressed', 'false');
-    await expect(main.getByLabel('Your SCSA #')).toHaveCount(0);
+    await expect(main.getByLabel('Your SCSA #', { exact: true })).toHaveCount(0);
     await main.getByRole('button', { name: 'Save match' }).click();
     await expect(main.getByRole('heading', { name: form.matchName, level: 1 })).toBeVisible();
 
@@ -338,7 +346,10 @@ test.describe('picker and correct number (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.
 
     await rows.nth(1).click();
     await expect(status).toHaveText('2 entries picked.');
-    await expect(continueBtn).toHaveText('Continue with 2 entries');
+    // The button's accessible name IS the thing under test here, so relocate
+    // by the full label rather than through the exact-'Continue' locator,
+    // which by construction cannot match the renamed button.
+    await expect(main.getByRole('button', { name: 'Continue with 2 entries' })).toBeVisible();
   });
 
   test('the bar counts PICKED entries even when the search box hides them — a filtered count would lie', async ({ page }) => {
@@ -465,11 +476,11 @@ test.describe('picker and correct number (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.
     await loadSteelFile(page, Guncraft8stage);
     await pickEntryAndFinish(page, ME);
     await main.getByRole('button', { name: 'Not mine' }).click();
-    await main.getByLabel('Your SCSA #').fill('SC-77777');
+    await main.getByLabel('Your SCSA #', { exact: true }).fill('SC-77777');
     await main.getByRole('button', { name: "Yes — it's mine" }).click();
-    await expect(main.getByLabel('Your SCSA #')).toHaveCount(0);
+    await expect(main.getByLabel('Your SCSA #', { exact: true })).toHaveCount(0);
     await main.getByRole('button', { name: 'Not mine' }).click();
-    await expect(main.getByLabel('Your SCSA #')).toHaveValue('SC-77777');
+    await expect(main.getByLabel('Your SCSA #', { exact: true })).toHaveValue('SC-77777');
   });
 
   test('Start over clears the typed draft too — the second of the three reset sites', async ({ page }) => {
@@ -481,14 +492,20 @@ test.describe('picker and correct number (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.
     await loadSteelFile(page, Guncraft8stage);
     await pickEntryAndFinish(page, ME);
     await main.getByRole('button', { name: 'Not mine' }).click();
-    await main.getByLabel('Your SCSA #').fill('SC-55555');
+    await main.getByLabel('Your SCSA #', { exact: true }).fill('SC-55555');
     await main.getByRole('button', { name: '‹ Back to the shooter list' }).click();
     await main.getByRole('button', { name: 'Start over' }).click();
 
-    await loadSteelFile(page, Guncraft8stage);
+    // Start over lands on the import screen's own step 1 (load/paste), not on
+    // the Compete tab, so the reload goes straight to the file chooser —
+    // walking loadSteelFile's Import… dialog here has no button to click.
+    await expect(main.getByRole('heading', { name: 'Import from PractiScore' })).toBeVisible();
+    const chooser2 = page.waitForEvent('filechooser');
+    await main.getByRole('button', { name: 'Load a file' }).click();
+    await (await chooser2).setFiles({ name: '80f0b53b-08b5-4605-af0c-c75c6b9874f8', mimeType: 'text/plain', buffer: Buffer.from(Guncraft8stage, 'utf-8') });
     await pickEntryAndFinish(page, ME);
     await main.getByRole('button', { name: 'Not mine' }).click();
-    await expect(main.getByLabel('Your SCSA #')).toHaveValue('');
+    await expect(main.getByLabel('Your SCSA #', { exact: true })).toHaveValue('');
   });
 
   test('the bar counts THREE, so the plural string is not a hard-coded two', async ({ page }) => {
@@ -547,7 +564,7 @@ test.describe('picker and correct number (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.
     await pickEntryAndFinish(page, ME);
     await main.getByRole('button', { name: 'Not mine' }).click();
 
-    const field = main.getByLabel('Your SCSA #');
+    const field = main.getByLabel('Your SCSA #', { exact: true });
     await expect(field).not.toBeFocused();
     const describedBy = await field.getAttribute('aria-describedby');
     expect(describedBy, 'the explanation must be announced with the field').toBeTruthy();
