@@ -909,7 +909,21 @@ h2.disclosure-h2 { margin: 0; font-size: inherit; font-weight: inherit; }
    file for aria-pressed before this build found nothing at all — no rule
    here to collide with. */
 .row-tap[aria-pressed="true"] {
-  background: color-mix(in srgb, var(--accent) 18%, var(--bg-card));
+  /* Deepened 18% -> 32% at Michael's tap-test call (21 Aug 2026, session 129,
+     item 2: "it works however it is too subtle. make it a deeper amber") —
+     at 18% the picked wash sat too close to .suggest-block's 10% tint to read
+     as "chosen" at arm's length. Measured at 32%, both schemes: --text on the
+     wash 15.4:1 light / 8.6:1 dark (AA floor 4.5), .row-check (--accent-ink,
+     a graphic) 4.3:1 light / 4.8:1 dark (floor 3.0). --text-dim, however,
+     drops to 3.8:1 light / 3.0:1 dark on this wash — below the 4.5 text
+     floor — so the picked row's .value and .row-sub lines step up to full
+     --text below. e2e/picker-and-correct-number.spec.ts asserts the label
+     and check floors in pixels. */
+  background: color-mix(in srgb, var(--accent) 32%, var(--bg-card));
+}
+.row-tap[aria-pressed="true"] .value,
+.row-tap[aria-pressed="true"] .row-sub {
+  color: var(--text); /* --text-dim is under 4.5:1 on the 32% wash — see above */
 }
 /* A real DOM sibling of .label, rendered before it (PractiScoreImport.tsx) —
    never inside it, because who-you-are.spec.ts's rowOrder helper reads

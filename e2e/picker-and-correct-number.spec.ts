@@ -216,6 +216,10 @@ test.describe('picker and correct number (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.
     await main.getByRole('button', { name: 'Not mine' }).click();
     const field = main.getByLabel('Your SCSA #', { exact: true });
     await expect(field).toBeVisible();
+    // Tap-test finding (21 Aug 2026, item 6): on the phone the box revealed
+    // BELOW the fold — visible to the DOM, invisible to the shooter. The
+    // reveal now scrolls it into view; this asserts it actually arrives.
+    await expect(field).toBeInViewport();
     await expect(main.getByText('What is your SCSA #?')).toBeVisible();
     await expect(field).toHaveValue('');
   });
@@ -248,6 +252,15 @@ test.describe('picker and correct number (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.
     await expect(suggest).toBeVisible();
     await expect(suggest.getByRole('button', { name: nameRe(ME) }).first()).toBeVisible();
     await expect(suggest.getByRole('button', { name: nameRe(STRANGER) })).toHaveCount(0);
+
+    // Deeper wash follow-up (21 Aug 2026, item 2): the picked row's sub-line
+    // ("SCSA # matches" / "Member # differs") must clear AA on the 32% wash —
+    // the CSS steps it up from --text-dim (3.8:1 light / 3.0:1 dark there) to
+    // full --text; this measures the pixels rather than trusting the rule.
+    await suggest.getByRole('button', { name: nameRe(ME) }).first().click();
+    const subContrast = await contrastOf(page, '.row-tap[aria-pressed="true"] .row-sub');
+    expect(subContrast, 'picked-row sub-line must resolve').toBeTruthy();
+    expect(subContrast as number, 'picked-row sub-line on the deeper wash').toBeGreaterThanOrEqual(4.5);
   });
 
   test('"Not mine" with the box left blank still stores nothing — extends the shipped case, not a rewrite', async ({ page }) => {

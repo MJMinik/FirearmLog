@@ -84,6 +84,13 @@ export function PractiScoreImport({ onCancel, onSaved }: {
   // their behalf, because a household can put two shooters in one match.
   const [ownNames, setOwnNames] = useState<string[]>([]);
   const fileRef = useRef<HTMLInputElement>(null); // audit #19 — styled file picker
+  /* Tap-test finding, 21 Aug 2026 (session 129, item 6): on a phone the
+     adoption question sits low enough that "Not mine" can reveal the
+     correction box entirely BELOW the fold — the shooter answers and sees
+     nothing change. Scroll the revealed box into view (minimally — block:
+     'nearest') the moment it appears. Scrolling only: the spec's §2.2
+     no-keyboard-grab rule stands, so this never focuses the input. */
+  const correctionBoxRef = useRef<HTMLDivElement>(null);
 
   // ── Steel Challenge download-file flow ──────────────────────────────────────
   const [steelForm, setSteelForm] = useState<ScsaForm | null>(null);
@@ -149,6 +156,11 @@ export function PractiScoreImport({ onCancel, onSaved }: {
   }, []);
 
   useEffect(() => { void (async () => setFirearms(await getAll<Firearm>('firearms')))(); }, []);
+  useEffect(() => {
+    if (steelAdoptSelection !== 'no') return;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    correctionBoxRef.current?.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  }, [steelAdoptSelection]);
 
   // Michael's device tap-test (7 Aug 2026): "Read results" swapped the paste card
   // for the shooter field, but the page kept its old scroll position — mid-field,
@@ -785,7 +797,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
                   be a guess (spec §2.2). No format validation, on purpose,
                   same as Settings (spec §0.8) — clubs' number formats vary. */}
               {steelAdoptSelection === 'no' && (
-                <>
+                <div ref={correctionBoxRef}>
                   <p className="report-note"><b>What is your SCSA #?</b></p>
                   {/* aria-describedby, not a paragraph floating loose beside the
                       field: a screen-reader user who tabs straight to the input
@@ -800,7 +812,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
                       aria-describedby="scsa-correction-note"
                       placeholder="SC-12345" maxLength={24} />
                   </label>
-                </>
+                </div>
               )}
             </>
           )}
