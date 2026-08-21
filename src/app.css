@@ -188,6 +188,48 @@ input, select, textarea, button { font-size: max(16px, 1rem); font-family: inher
 .update-banner span { flex: 1; }
 .update-banner button.primary { background: var(--accent); color: var(--on-accent); }
 
+/* IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.md §3.1 (19 Aug 2026): the Steel
+   picker's pinned pick bar. Replaces the in-card Continue, which used to sit
+   below the WHOLE field — 78 entries stood between the suggestion block and
+   the button on Michael's own Gun Craft file (spec §0.3). Always present for
+   as long as the picker step is on screen, never only after a pick, because
+   the not-yet-picked state is precisely the one that needs explaining.
+   Position follows the house precedent .global-error-banner set above: the
+   same 72px-plus-safe-area clearance .screen reserves for the bottom tab
+   bar, and the same >=900px flip to the sidebar layout's own bottom edge. */
+.pick-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 72px);
+  z-index: 20;
+  background: var(--bg-card);
+  border-top: 0.5px solid var(--separator);
+  box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.12);
+  padding: 10px 16px;
+}
+.pick-bar-inner {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.pick-bar-status {
+  flex: 1;
+  margin: 0;
+  font-size: var(--fs-subhead);
+  color: var(--text-dim);
+}
+.pick-bar .button { width: auto; flex-shrink: 0; }
+/* The picker card's own bottom padding, so the bar above can never sit on
+   top of the last rows in a long field (spec §3.1, machine-checked by E2E
+   rather than eyeballed). More than the bar's own height: the status line
+   can wrap to two lines on a narrow phone. */
+.steel-picker-card {
+  padding-bottom: 96px;
+}
+
 /* ---------- Sample-log banner (session 59) ---------- */
 /* Pinned while the log IS the bundled sample: sticky so it rides the top of
    every screen at every scroll depth — the exit lives wherever the excitement
@@ -344,6 +386,43 @@ input, select, textarea, button { font-size: max(16px, 1rem); font-family: inher
    they read as buttons, not links. */
 .button.secondary { background: var(--bg-card); color: var(--accent-ink); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 .button:disabled { opacity: 0.5; }
+
+/* IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.md §1 (19 Aug 2026): the Steel
+   adoption question's two answer buttons. Before this, "Yes — it's mine"
+   wore the app's ordinary .button (solid accent) and "Not mine" wore
+   .button.secondary — so the screen looked answered before the shooter had
+   answered anything, and tapping "Not mine" moved aria-pressed with no
+   visible change at all (a repo-wide grep of every stylesheet for
+   aria-pressed found nothing responding to it — spec §0.10). .button.choice
+   is its OWN rule, not .button.secondary stacked on top, so the pattern can
+   never be half-migrated: at rest both answers read the same quiet
+   card-and-border look; the moment one is tapped, THE SAME ATTRIBUTE THE
+   SCREEN READER HEARS (aria-pressed) drives the paint, so the two
+   expressions can never drift apart again for this pattern — which is the
+   drift that produced this defect in the first place (spec §0.11–§0.12).
+   Scoped to .button.choice on purpose (spec §1.4): a bare [aria-pressed]
+   rule would repaint every one of the app's ~35 other aria-pressed sites
+   (.chip.on, .seg button.on, .gun-toggle.on, .stat-tap.on, …), all of which
+   already speak correct visual state through their own .on classes. */
+.button.choice {
+  background: var(--bg-card);
+  color: var(--accent-ink);
+  border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent);
+}
+.button.choice[aria-pressed="true"] {
+  background: var(--accent);
+  color: var(--on-accent);
+  border-color: var(--accent);
+}
+/* The check glyph — the same one .gun-toggle.on::before draws, so a tick in
+   accent ink reads as "chosen" everywhere on this screen and beyond it. No
+   colour is set here on purpose: the glyph inherits --on-accent from the
+   rule above, the same ink the button's own label sits in, so there is no
+   second colour that could fall out of step with the fill. */
+.button.choice[aria-pressed="true"]::before {
+  content: '\2713';
+  margin-right: 6px;
+}
 
 .empty {
   text-align: center;
@@ -819,6 +898,29 @@ h2.disclosure-h2 { margin: 0; font-size: inherit; font-weight: inherit; }
 }
 .row-sub { font-size: var(--fs-footnote); color: var(--text-dim); font-weight: 400; }
 
+/* IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.md §3.2 (19 Aug 2026): the Steel
+   picker's picked-row state. Before this the only visible difference between
+   a picked and an unpicked row was a trailing dim check character sitting
+   right-aligned among grey numbers inside .value (Michael, 19 Aug 2026: "the
+   check mark appears — but you really have to be aware of this change").
+   Keyed on the attribute itself: .row-tap is the OTHER of the app's two
+   aria-pressed sites that carried no styled state at all before this build
+   (spec §0.11), the same reasoning as .button.choice above. A grep of this
+   file for aria-pressed before this build found nothing at all — no rule
+   here to collide with. */
+.row-tap[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--accent) 18%, var(--bg-card));
+}
+/* A real DOM sibling of .label, rendered before it (PractiScoreImport.tsx) —
+   never inside it, because who-you-are.spec.ts's rowOrder helper reads
+   .label's first child. aria-hidden on the element itself: the state is
+   already spoken through aria-pressed on the row's own button. */
+.row-check {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--accent-ink);
+}
+
 /* ---------- App 7: swipe-to-delete + Recently Deleted ---------- */
 /* A row you swipe left (phone) to reveal a red Delete, or hover (desktop). */
 .swipe-row { position: relative; overflow: hidden; }
@@ -978,6 +1080,12 @@ h2.disclosure-h2 { margin: 0; font-size: inherit; font-weight: inherit; }
     margin-left: 220px; max-width: 860px;
     padding-bottom: 32px;
   }
+  /* IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.md §3.1: at this breakpoint the tab
+     bar is the sidebar above, not a bottom bar, so the pick bar sits at the
+     window's own bottom edge — same reasoning as .screen's own padding-bottom
+     dropping from the phone's 72px+safe-area to a plain 32px, two lines up. */
+  .pick-bar { left: 220px; bottom: 0; }
+  .pick-bar-inner { max-width: 860px; }
 }
 
 /* ---------- M3: sync instruction steps ---------- */

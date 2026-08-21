@@ -303,3 +303,43 @@ export function scsaNumberPatch(
   if (next === '') return { scsaMemberNumber: '', scsaMemberNumberSource: undefined };
   return { scsaMemberNumber: next, scsaMemberNumberSource: 'typed' };
 }
+
+/**
+ * IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.md §2.8 (19 Aug 2026): what "Not
+ * mine" now offers instead of nothing. Michael's own case — Gun Craft filed
+ * him as A185321 where A185231 is correct, two digits swapped by the club,
+ * not by him — is exactly the moment this exists for: he is looking at the
+ * wrong number and knows the right one, and today the app has no way for him
+ * to say so.
+ *
+ * Returns the trimmed, 24-capped typed number ONLY when all three hold:
+ *  - the selection is exactly 'no' (never 'yes', never null/unanswered);
+ *  - the trimmed value is non-empty;
+ *  - shouldRememberScsaNumber(stored, corrected) is true — the fill-only-
+ *    when-empty contract, CALLED rather than restated. This morning's
+ *    cold-audit lesson was exactly this: two copies of one rule are free to
+ *    drift apart. It cannot arise structurally either way — the correction
+ *    box only ever renders when the stored number is already blank (spec
+ *    §2.5) — but the guard is enforced again here anyway, so even a state
+ *    bug on the screen could not produce an overwrite.
+ * Every other input returns null, including a value that is only
+ * punctuation: this box carries no format validation, on purpose, the same
+ * as the Settings field it feeds (spec §0.8) — clubs' number formats vary,
+ * and a strict pattern would reject a real one.
+ */
+export function scsaCorrectedNumber(
+  selection: 'yes' | 'no' | null,
+  typed: string,
+  stored: string | undefined
+): string | null {
+  if (selection !== 'no') return null;
+  const corrected = typed.trim().slice(0, 24);
+  // No explicit blank check: shouldRememberScsaNumber already refuses an
+  // empty incoming value, so a second test for it here would be the SAME
+  // RULE WRITTEN TWICE, free to drift apart. A mutation round on 19 Aug 2026
+  // proved it: deleting an explicit blank check changed no behaviour and no
+  // test, which is an equivalent mutant rather than a coverage gap. The
+  // blank case is covered by tests either way; it is the contract, not this
+  // function, that decides it.
+  return shouldRememberScsaNumber(stored, corrected) ? corrected : null;
+}
