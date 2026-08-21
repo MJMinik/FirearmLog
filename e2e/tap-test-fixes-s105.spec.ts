@@ -14,7 +14,14 @@ test.describe('the import instructions name what is actually on the PractiScore 
       await page.getByRole('dialog', { name: 'Import' }).getByRole('button', { name: 'Import from PractiScore' }).click();
 
       // Step 1 carries two numbered lists since session 124 (Steel file steps +
-      // USPSA copy steps); these assertions are about the USPSA one.
+      // USPSA copy steps); these assertions are about the USPSA one. Since the
+      // 21 Aug 2026 rearrangement both live behind <details> disclosures below
+      // the actions — open them first: every claim here is about what the
+      // instructions SAY, not where they sit, and the visibility of the doing
+      // controls is asserted by practiscore-import.spec.ts's own layout test.
+      for (const d of await main.locator('details.import-howto').all()) {
+        if (!(await d.evaluate((el) => (el as HTMLDetailsElement).open))) await d.locator('summary').click();
+      }
       const steps = main.locator('ol').filter({ hasText: 'Open your match on' });
       // He could not find "Overall" because it is a row label and every row has
       // a "Combined". The copy has to say both of those things.
