@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Firearm, Magazine, Match, Session } from '../lib/types.ts';
 import { magLifetimeRounds } from '../lib/mags.ts';
+import { magsNeedingCleaning } from '../lib/magCleaning.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
@@ -52,6 +53,10 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
   const gunNames = (ids: string[]) =>
     ids.map((id) => firearms.find((f) => f.id === id)?.name ?? '—').join(', ');
 
+  // 21 Aug 2026 spec: same derivation Home's Needs Attention card uses.
+  // magsNeedingCleaning already excludes retired mags, so this never badges one.
+  const needsCleaningIds = new Set(magsNeedingCleaning(mags, matches).map((i) => i.magId));
+
   return (
     <div className="screen">
       <div className="navbar">
@@ -70,6 +75,7 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
           <button className="row-tap" key={m.id} onClick={() => openForm(m.id)}>
             <span className="label">
               {m.label}{m.active ? '' : ' (retired)'}
+              {needsCleaningIds.has(m.id) && <span className="badge bad" style={{ marginLeft: 6 }}>Needs cleaning</span>}
               <div className="row-sub">{gunNames(m.firearmIds) || 'No gun assigned'}</div>
             </span>
             <span className="value">{magLifetimeRounds(m, sessions, matches).toLocaleString()} rds ›</span>
