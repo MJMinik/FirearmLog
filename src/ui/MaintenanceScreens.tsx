@@ -8,6 +8,7 @@ import { todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { MAINT_TYPES, maintLabel, maintenanceStatus } from '../lib/maintenance.ts';
+import { forecastLine } from '../lib/forecast.ts';
 import { buildRefLookup } from '../lib/referenceData.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { ConfirmSheet, DiscardChangesSheet } from './Sheet.tsx';
@@ -56,7 +57,7 @@ export function MaintenanceOverview({ refreshKey, onBack, openGun, logFor }: {
         <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Gun Maintenance <InfoTip title="Gun Maintenance">Cleaning and parts work per gun, against each gun's schedule. Home warns you when something's due. Want a custom schedule or care steps? Create a guide in the Care Guides section and link it to the gun.</InfoTip></h1>
+      <h1 className="large-title">Gun Maintenance <InfoTip title="Gun Maintenance">Cleaning and parts work per gun, against each gun's schedule. Home warns you when something's due. Want a custom schedule or care steps? Create a guide in the Care Guides section and link it to the gun. Once a few recent sessions are logged, rounds-based items also show roughly when they'll come due at your pace.</InfoTip></h1>
       {ownedGuns(firearms).length === 0 && (
         <p className="empty">No guns yet — add a gun on the Guns screen to track its maintenance.</p>
       )}
@@ -66,17 +67,23 @@ export function MaintenanceOverview({ refreshKey, onBack, openGun, logFor }: {
         return (
           <div className="card" key={gun.id}>
             <h2>{gun.name}</h2>
-            {items.map((it) => (
-              <div className="row" key={it.type}>
-                <span className="label">
-                  {it.label}
-                  <div className="row-sub">{it.detail}</div>
-                </span>
-                <span className={`badge ${it.level === 'due' ? 'bad' : it.level === 'warn' ? 'warn-badge' : 'ok'}`}>
-                  {it.level === 'due' ? 'Due' : it.level === 'warn' ? 'Soon' : it.level === 'info' ? 'Note' : 'OK'}
-                </span>
-              </div>
-            ))}
+            {items.map((it) => {
+              const forecast = it.remainingRounds != null && it.level !== 'due'
+                ? forecastLine(it.remainingRounds, gun.id, sessions, now)
+                : null;
+              return (
+                <div className="row" key={it.type}>
+                  <span className="label">
+                    {it.label}
+                    <div className="row-sub">{it.detail}</div>
+                    {forecast && <div className="row-sub">{forecast}</div>}
+                  </span>
+                  <span className={`badge ${it.level === 'due' ? 'bad' : it.level === 'warn' ? 'warn-badge' : 'ok'}`}>
+                    {it.level === 'due' ? 'Due' : it.level === 'warn' ? 'Soon' : it.level === 'info' ? 'Note' : 'OK'}
+                  </span>
+                </div>
+              );
+            })}
             <div style={{ display: 'flex', gap: 8, marginTop: 10 }}>
               <button className="button secondary" style={{ flex: 1 }} onClick={() => logFor(gun.id)}>+ Log Work</button>
               <button className="button secondary" style={{ flex: 1 }} onClick={() => openGun(gun.id)}>Open Gun</button>

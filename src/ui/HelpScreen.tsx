@@ -147,7 +147,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Gun maintenance & care guides',
       view: { kind: 'maintenance' },
-      body: `Log cleaning and parts changes under ${at('Gun Maintenance')}; schedules come from each gun's linked Care Guide or your own settings, and Home warns you when something's due. Care Guides (under ${at('Care Guides')}) holds manufacturer care guides for popular pistol, rifle, and shotgun makers, and you can add your own.`,
+      body: `Log cleaning and parts changes under ${at('Gun Maintenance')}; schedules come from each gun's linked Care Guide or your own settings, and Home warns you when something's due. Once a few recent sessions are logged, rounds-based items also show roughly when they'll come due at your pace. Care Guides (under ${at('Care Guides')}) holds manufacturer care guides for popular pistol, rifle, and shotgun makers, and you can add your own.`,
     },
     {
       title: 'Reminders',

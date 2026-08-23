@@ -7,6 +7,7 @@ import { prepareUploadBytes } from './shrinkImage.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { dryRepsForFirearm, roundsForFirearm } from '../lib/stats.ts';
 import { maintLabel, maintenanceStatus } from '../lib/maintenance.ts';
+import { forecastLine } from '../lib/forecast.ts';
 import { NotFound } from './NotFound.tsx';
 import { ScreenError, ScreenLoading } from './ScreenState.tsx';
 import { isBatteryDue } from '../lib/optics.ts';
@@ -31,6 +32,7 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
   const [photos, setPhotos] = useState<Media[]>([]);
   const [stats, setStats] = useState({ rounds: 0, sessions: 0, dryReps: 0 });
   const [maintItems, setMaintItems] = useState<ReturnType<typeof maintenanceStatus>>([]);
+  const [forecastLines, setForecastLines] = useState<Record<string, string | null>>({});
   const [history, setHistory] = useState<MaintenanceEntry[]>([]);
   const [customRefs, setCustomRefs] = useState<Reference[]>([]);
   const [optics, setOptics] = useState<Optic[]>([]);
@@ -77,7 +79,15 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
         matches.some((m) => m.firearmId === id)
       );
       setCustomRefs(refs);
-      setMaintItems(maintenanceStatus(g, buildRefLookup(refs)(g.referenceId), live, maintenance, firearms, new Date()));
+      const items = maintenanceStatus(g, buildRefLookup(refs)(g.referenceId), live, maintenance, firearms, new Date());
+      setMaintItems(items);
+      const lines: Record<string, string | null> = {};
+      for (const it of items) {
+        if (it.remainingRounds != null && it.level !== 'due') {
+          lines[it.type] = forecastLine(it.remainingRounds, id, live, new Date());
+        }
+      }
+      setForecastLines(lines);
       setHistory(maintenance.filter((m) => m.firearmId === id).sort((a, b) => b.date.localeCompare(a.date)));
       setOptics(allOptics.filter((o) => o.firearmId === id));
       } catch (e) {
@@ -167,6 +177,9 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
             <span className="label">
               {it.label}
               <div className="row-sub">{it.detail}</div>
+              {forecastLines[it.type] && (
+                <div className="row-sub">{forecastLines[it.type]}</div>
+              )}
             </span>
             <span className={`badge ${it.level === 'due' ? 'bad' : it.level === 'warn' ? 'warn-badge' : 'ok'}`}>
               {it.level === 'due' ? 'Due' : it.level === 'warn' ? 'Soon' : it.level === 'info' ? 'Note' : 'OK'}
