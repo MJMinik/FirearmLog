@@ -163,7 +163,7 @@ test.describe('the differs question, mutual exclusion, and duplicate warnings', 
     // Branch 1: Keep my number -- the match-director note appears; Save;
     // Settings still hold the seeded (wrong) number, because "Keep" writes
     // nothing (spec §4).
-    await main.getByRole('button', { name: 'Keep my number' }).click();
+    await main.getByRole('button', { name: /^Keep my #/ }).click();
     await expect(main.getByText('mention it to the match director', { exact: false })).toBeVisible();
     await main.locator('.pick-bar').getByRole('button', { name: 'Save match' }).click();
     // exact: true, or this matches the finishing screen's own "‹ Back to the
@@ -186,7 +186,19 @@ test.describe('the differs question, mutual exclusion, and duplicate warnings', 
     await main.getByRole('button', { name: 'Continue', exact: true }).click();
     await main.getByLabel('Which gun did you shoot?').selectOption({ index: 1 });
     await expect(main.getByText('This file lists a different SCSA # for you.')).toBeVisible();
-    await expect(main.getByRole('button', { name: "Use the file's number" })).toHaveAttribute('aria-pressed', 'false');
+    await expect(main.getByRole('button', { name: /^Use the file's #/ })).toHaveAttribute('aria-pressed', 'false');
+    // The buttons now carry the numbers themselves (tap-test item 4, 23 Aug):
+    // exact accessible names, real values substituted.
+    await expect(main.getByRole('button', { name: `Use the file's # — ${me.membership}` })).toBeVisible();
+    await expect(main.getByRole('button', { name: `Keep my # — ${wrongStored}` })).toBeVisible();
+    // The Save-tap nudge (tap-test item 3): the FIRST tap with the question
+    // unanswered scrolls it into view and saves nothing — no sheet, still on
+    // the finishing screen, question in the viewport. The SECOND tap saves
+    // ("ignoring is safe" costs one deliberate extra tap, never a block) —
+    // and, this being a re-import, meets the duplicate sheet.
+    await main.locator('.pick-bar').getByRole('button', { name: 'Save match' }).click();
+    await expect(main.getByText('This file lists a different SCSA # for you.')).toBeInViewport();
+    await expect(page.getByText('Looks like you already saved this match.')).toHaveCount(0);
     await main.locator('.pick-bar').getByRole('button', { name: 'Save match' }).click();
     await expect(page.getByText('Looks like you already saved this match.')).toBeVisible();
     await page.getByRole('button', { name: 'Save Anyway' }).click();
@@ -204,7 +216,7 @@ test.describe('the differs question, mutual exclusion, and duplicate warnings', 
     await main.getByRole('button', { name: 'Continue', exact: true }).click();
     await main.getByLabel('Which gun did you shoot?').selectOption({ index: 1 });
     await expect(main.getByText('This file lists a different SCSA # for you.')).toBeVisible();
-    const fileBtn = main.getByRole('button', { name: "Use the file's number" });
+    const fileBtn = main.getByRole('button', { name: /^Use the file's #/ });
     await expect(fileBtn).toHaveAttribute('aria-pressed', 'false');
 
     // Branch 3: Use the file's number -- Settings now hold the file's
@@ -275,11 +287,11 @@ test.describe('the differs question, mutual exclusion, and duplicate warnings', 
     // NEITHER differs button is aria-pressed (the reset held; steelPicked
     // and the gun pick themselves are untouched by Back, so no re-pick is
     // needed to reach the question again).
-    await main.getByRole('button', { name: 'Keep my number' }).click();
+    await main.getByRole('button', { name: /^Keep my #/ }).click();
     await main.getByRole('button', { name: '‹ Back to the shooter list' }).click();
     await main.getByRole('button', { name: 'Continue', exact: true }).click();
-    await expect(main.getByRole('button', { name: "Use the file's number" })).toHaveAttribute('aria-pressed', 'false');
-    await expect(main.getByRole('button', { name: 'Keep my number' })).toHaveAttribute('aria-pressed', 'false');
+    await expect(main.getByRole('button', { name: /^Use the file's #/ })).toHaveAttribute('aria-pressed', 'false');
+    await expect(main.getByRole('button', { name: /^Keep my #/ })).toHaveAttribute('aria-pressed', 'false');
   });
 
   test('duplicate warning: the USPSA sample import path, Cancel vs Save Anyway', async ({ page }) => {
@@ -400,6 +412,11 @@ test.describe('the differs question, mutual exclusion, and duplicate warnings', 
       await main.getByRole('button', { name: 'Continue', exact: true }).click();
       await main.getByLabel('What this match is called').fill('');
       await main.getByLabel('Which gun did you shoot?').selectOption({ index: 1 });
+      // The adoption question is on screen and deliberately unanswered, so
+      // the first Save tap is the nudge (scroll, no save) — the second tap
+      // is the one that saves (or meets the duplicate sheet on a re-import).
+      await main.locator('.pick-bar').getByRole('button', { name: 'Save match' }).click();
+      await expect(main.getByText(/Remember .* as your SCSA #\?/)).toBeInViewport();
       await main.locator('.pick-bar').getByRole('button', { name: 'Save match' }).click();
     };
 

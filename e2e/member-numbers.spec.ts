@@ -75,7 +75,7 @@ async function loadSteelFile(page: Page, text: string, name = '80f0b53b-08b5-460
  *  MEMBER_NUMBER_PROVENANCE_SPEC.md (19 Aug 2026, session 128) a Steel save
  *  NEVER stores a member number on its own, so a caller that wants the number
  *  remembered has to say so, exactly as a shooter does. */
-async function saveSteelEntry(page: Page, entry: ScsaEntry, opts: { adopt?: boolean; expectDupe?: boolean } = {}) {
+async function saveSteelEntry(page: Page, entry: ScsaEntry, opts: { adopt?: boolean; expectDupe?: boolean; expectNudge?: boolean } = {}) {
   const main = page.getByRole('main');
   await main.getByPlaceholder('Search shooters by name').fill(entry.lastName);
   const row = main.getByRole('button', { name: nameRe(entry) }).first();
@@ -89,6 +89,12 @@ async function saveSteelEntry(page: Page, entry: ScsaEntry, opts: { adopt?: bool
     await yes.click();
   }
   await main.getByRole('button', { name: 'Save match' }).click();
+  if (opts.expectNudge) {
+    // A question is on screen and unanswered, so the first Save tap is the
+    // scroll-to-question nudge (23 Aug 2026, tap-test item 3) — the second
+    // tap is the save.
+    await main.getByRole('button', { name: 'Save match' }).click();
+  }
   if (opts.expectDupe) {
     // A second import of the same file now meets the duplicate warning
     // (DUPLICATE_IMPORT_DETECTION_SPEC.md, 23 Aug 2026) — same date + same
@@ -216,7 +222,7 @@ test.describe('member numbers in Who you are', () => {
     await gotoTab(page, 'Compete');
     await loadSteelFile(page, Guncraft8stage);
     await main.getByRole('button', { name: 'Yes — find my entry' }).click();
-    await saveSteelEntry(page, other, { expectDupe: true });
+    await saveSteelEntry(page, other, { expectDupe: true, expectNudge: true });
 
     await gotoSection(page, 'Settings');
     await expect(main.getByLabel('SCSA #')).toHaveValue(me.membership);

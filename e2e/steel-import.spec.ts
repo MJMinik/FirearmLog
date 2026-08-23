@@ -211,6 +211,11 @@ test.describe('Steel Challenge download-file import', () => {
     await expect(gunSelects).toHaveCount(2);
     await gunSelects.nth(0).selectOption({ index: 1 });
     await gunSelects.nth(1).selectOption({ index: 1 });
+    // Both entries share one membership, so the adoption question is on
+    // screen, deliberately unanswered — the first Save tap is now the
+    // scroll-to-question nudge (23 Aug 2026, tap-test item 3), the second
+    // tap saves. "Ignoring is safe" holds: nothing blocks, nothing stores.
+    await main.getByRole('button', { name: 'Save 2 matches' }).click();
     await main.getByRole('button', { name: 'Save 2 matches' }).click();
 
     await expect(main.getByRole('heading', { name: form.matchName, level: 1 })).toBeVisible();
@@ -256,6 +261,9 @@ test.describe('Steel Challenge download-file import', () => {
     await main.getByRole('button', { name: new RegExp(fullName(entry)) }).first().click();
     await main.getByRole('button', { name: 'Continue', exact: true }).click();
     await main.getByLabel('Which gun did you shoot?').selectOption({ index: 1 });
+    // This entry carries a membership, so the unanswered adoption question
+    // draws the nudge on the first Save tap (23 Aug 2026); the second saves.
+    await main.getByRole('button', { name: 'Save match' }).click();
     await main.getByRole('button', { name: 'Save match' }).click();
 
     // The detail screen shows the club's own stage name and the correct

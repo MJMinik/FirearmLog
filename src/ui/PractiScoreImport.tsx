@@ -180,6 +180,17 @@ export function PractiScoreImport({ onCancel, onSaved }: {
    *  check wasn't suppressed; cleared on Cancel, and on "Save Anyway" the
    *  same save re-enters itself with the check suppressed for that one tap. */
   const [confirmDupe, setConfirmDupe] = useState<{ kind: 'uspsa' | 'steel'; name: string; date: string } | null>(null);
+  /* Tap-test finding, 23 Aug 2026 (session 130, items 3-4): the pinned bar
+     SAID "1 question above needs a look" but nothing took the shooter TO it
+     — on a phone the question can sit a full screen above the bar, and the
+     words alone did not carry. The cure Michael specified: the FIRST Save
+     tap with a question on screen and unanswered scrolls the question into
+     view and saves nothing; Save again saves regardless. "Ignoring is safe"
+     survives — it costs one deliberate second tap, never a block. Reset per
+     finishing-step visit (the same three sites the answers reset at), so
+     each visit gets exactly one nudge. */
+  const [steelSaveNudged, setSteelSaveNudged] = useState(false);
+  const questionZoneRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let alive = true;
@@ -247,6 +258,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     // question's own answer — one of the three sites the spec names.
     setSteelDiffersSelection(null);
     setSteelDiffersApproved(null);
+    setSteelSaveNudged(false);
     setSteelName(r.form.matchName);
     // The date the match was SHOT, never the download date. '' when the file's
     // date is malformed — the save guard then asks for it, same as USPSA.
@@ -316,6 +328,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     // MEMBER_DIFFERS_ACTION_SPEC.md §5: the same reset for the differs
     // question's own answer.
     setSteelDiffersSelection(null); setSteelDiffersApproved(null);
+    setSteelSaveNudged(false);
   }
 
   function toggleSteelEntry(entry: ScsaEntry) {
@@ -381,6 +394,22 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       toWrite.push({ fields, entry });
     }
     if (toWrite.length === 0) { setProblem('Nothing is selected. Go back and tap your entry first.'); return; }
+    // The Save-tap nudge (Michael's tap-test items 3-4, 23 Aug 2026): a
+    // question on screen, unanswered, and this visit not yet nudged — scroll
+    // the question into view and save NOTHING on this tap. Runs only after
+    // every real validation passed (a missing gun or date still wins), and
+    // never on the Save Anyway re-entry (skipDupeCheck). block: 'center', a
+    // deliberate step past the correction box's 'nearest': this block can sit
+    // a full screen above the pinned bar, and 'center' lands it unmissably
+    // mid-screen, clear of the bar.
+    if (!skipDupeCheck && !steelSaveNudged &&
+        ((steelAdoptionCandidate != null && steelAdoptSelection === null) ||
+         (steelDiffersCandidate != null && steelDiffersSelection === null))) {
+      setSteelSaveNudged(true);
+      const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+      questionZoneRef.current?.scrollIntoView({ block: 'center', behavior: reduce ? 'auto' : 'smooth' });
+      return;
+    }
     // DUPLICATE_IMPORT_DETECTION_SPEC.md §1, §3 (22 Aug 2026, session
     // 129/130): one check for the shared identity every sibling in this
     // batch carries (steelName + steelDate), against the log as loaded
@@ -928,6 +957,9 @@ export function PractiScoreImport({ onCancel, onSaved }: {
               </div>
             );
           })}
+          {/* One ref around BOTH question blocks (only one ever renders —
+              structural mutual exclusion): the Save-tap nudge scrolls here. */}
+          <div ref={questionZoneRef}>
           {/* The adoption question (spec §4): not a modal, not a sheet — an
               inline block on the screen the shooter is already reading,
               immediately above the button it modifies. Tapping selects (shown
@@ -1005,11 +1037,11 @@ export function PractiScoreImport({ onCancel, onSaved }: {
                 style={{ display: 'flex', gap: 8, marginTop: 10, marginBottom: 10, flexWrap: 'wrap' }}>
                 <button className="button choice" style={{ flex: 1 }} aria-pressed={steelDiffersSelection === 'file'}
                   onClick={() => { setSteelDiffersSelection('file'); setSteelDiffersApproved(steelDiffersCandidate); }}>
-                  Use the file's number
+                  Use the file's # — {steelDiffersCandidate}
                 </button>
                 <button className="button choice" style={{ flex: 1 }} aria-pressed={steelDiffersSelection === 'keep'}
                   onClick={() => { setSteelDiffersSelection('keep'); setSteelDiffersApproved(null); }}>
-                  Keep my number
+                  Keep my # — {rememberedNumber}
                 </button>
               </div>
               {/* Progressive disclosure, same pattern and same reason as the
@@ -1027,12 +1059,14 @@ export function PractiScoreImport({ onCancel, onSaved }: {
               )}
             </>
           )}
+          </div>
           <button className="button secondary" style={{ marginTop: 8 }}
             onClick={() => {
               if (saveGateRef.current) return; // mid-save exit guard, same as startOver
               setSteelFinishing(false);
               setSteelAdoptSelection(null); setSteelAdoptedCandidate(null); setSteelCorrectionDraft('');
               setSteelDiffersSelection(null); setSteelDiffersApproved(null);
+              setSteelSaveNudged(false);
             }}>‹ Back to the shooter list</button>
         </div>
         {/* FINISHING_STEP_PINNED_BAR_MEMO.md, Option 2 (22 Aug 2026, session
