@@ -303,3 +303,58 @@ test('a session naming two guns contributes only this gun\'s rounds to the rate'
     latest: 'late October'
   });
 });
+
+// ---------------------------------------------------------------------------
+// Malformed-record hardening (cold-audit finding 1, session 131)
+// ---------------------------------------------------------------------------
+// A .flog restore does no per-record numeric validation, so a session gun with
+// a missing, NaN, or string `rounds` is reachable. The math must go SILENT on
+// data it cannot stand on -- never render "late undefined" or a rate built by
+// string concatenation.
+
+test('NaN remainingRounds returns null from both functions (never "late undefined")', () => {
+  const sessions = [
+    session('2026-04-01', 300),
+    session('2026-04-15', 300),
+    session('2026-05-01', 300)
+  ];
+  assert.equal(maintForecast(NaN, GUN, sessions, NOW), null);
+  assert.equal(forecastLine(NaN, GUN, sessions, NOW), null);
+  assert.equal(maintForecast(Infinity, GUN, sessions, NOW), null);
+});
+
+test('a session gun with undefined or string rounds contributes 0 to the rate, never NaN or concatenation', () => {
+  const malformed = (date: string, rounds: unknown): Session => ({
+    id: `se-${date}-bad`, createdAt: 0, updatedAt: 0,
+    date, type: 'practice', guns: [{ firearmId: GUN, rounds: rounds as number }],
+    location: '', distances: '', notes: '', ammoUsage: [], drills: [],
+    targetMediaIds: [], malfunctions: [], selfRating: null, rangeFee: null,
+    planned: false, checklist: null
+  });
+  // Three good sessions (900 rounds, rate 10/day) plus one undefined-rounds and
+  // one string-rounds session: the malformed pair must change NOTHING -- the
+  // same "early July"/"late July" bounds as the clean known-rate fixture.
+  const sessions = [
+    session('2026-04-01', 300),
+    session('2026-04-15', 300),
+    session('2026-05-01', 300),
+    malformed('2026-05-10', undefined),
+    malformed('2026-05-20', '250')
+  ];
+  assert.deepEqual(maintForecast(300, GUN, sessions, NOW), {
+    earliest: 'early July',
+    latest: 'late July'
+  });
+});
+
+test('an absurd remaining count that overflows the Date returns null, not phrases on an Invalid Date', () => {
+  const sessions = [
+    session('2026-04-01', 300),
+    session('2026-04-15', 300),
+    session('2026-05-01', 300)
+  ];
+  assert.equal(maintForecast(1e12, GUN, sessions, NOW), null);
+  // forecastLine reaches its months-away guard before any bucketing, so the
+  // same input renders the honest far-future shape rather than garbage.
+  assert.equal(forecastLine(1e12, GUN, sessions, NOW), 'Months away at your recent pace');
+});

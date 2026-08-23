@@ -46,10 +46,12 @@ import { dayKey } from '../src/lib/dates.ts';
 const GUN_BELOW = 'e2e-fc-below';
 const GUN_ABOVE = 'e2e-fc-above';
 const GUN_DUE = 'e2e-fc-due';
+const GUN_WARN = 'e2e-fc-warn';
 
 const NAME_BELOW = 'Forecast Gate Below';
 const NAME_ABOVE = 'Forecast Gate Above';
 const NAME_DUE = 'Forecast Due Now';
+const NAME_WARN = 'Forecast Warn Soon';
 
 const RECOIL_INTERVAL = 3000;
 
@@ -113,18 +115,21 @@ async function seedForecastGuns(page: Page): Promise<void> {
   await seedRaw(page, 'firearms', gunRecord(GUN_BELOW, NAME_BELOW, 1));
   await seedRaw(page, 'firearms', gunRecord(GUN_ABOVE, NAME_ABOVE, 2));
   await seedRaw(page, 'firearms', gunRecord(GUN_DUE, NAME_DUE, 3));
+  await seedRaw(page, 'firearms', gunRecord(GUN_WARN, NAME_WARN, 4));
 
   // Recoil spring last changed year 2000 -- ancient, so every seeded session
   // counts toward "rounds since" for every gun.
   await seedRaw(page, 'maintenance', maintRecord('e2e-fc-rs-below', GUN_BELOW, '2000-01-01', 'recoil_spring', 10));
   await seedRaw(page, 'maintenance', maintRecord('e2e-fc-rs-above', GUN_ABOVE, '2000-01-01', 'recoil_spring', 11));
   await seedRaw(page, 'maintenance', maintRecord('e2e-fc-rs-due', GUN_DUE, '2000-01-01', 'recoil_spring', 12));
+  await seedRaw(page, 'maintenance', maintRecord('e2e-fc-rs-warn', GUN_WARN, '2000-01-01', 'recoil_spring', 16));
 
   // Deep clean "done today" on every gun -- see the header comment for why.
   const today = daysAgo(0);
   await seedRaw(page, 'maintenance', maintRecord('e2e-fc-dc-below', GUN_BELOW, today, 'deep_clean', 13));
   await seedRaw(page, 'maintenance', maintRecord('e2e-fc-dc-above', GUN_ABOVE, today, 'deep_clean', 14));
   await seedRaw(page, 'maintenance', maintRecord('e2e-fc-dc-due', GUN_DUE, today, 'deep_clean', 15));
+  await seedRaw(page, 'maintenance', maintRecord('e2e-fc-dc-warn', GUN_WARN, today, 'deep_clean', 17));
 
   // Below-gate: 2 live sessions, 150 rounds each -- 300 rounds, but only 2
   // sessions, under the 3-session evidence floor.
@@ -143,6 +148,16 @@ async function seedForecastGuns(page: Page): Promise<void> {
   await seedRaw(page, 'sessions', sessionRecord('e2e-fc-s-due-1', GUN_DUE, daysAgo(10), 1100, 25));
   await seedRaw(page, 'sessions', sessionRecord('e2e-fc-s-due-2', GUN_DUE, daysAgo(20), 1100, 26));
   await seedRaw(page, 'sessions', sessionRecord('e2e-fc-s-due-3', GUN_DUE, daysAgo(30), 1100, 27));
+
+  // Warn: 3 sessions, 917 rounds each -- 2751 since the spring change sits in
+  // the 90%-but-not-due band (2700 <= 2751 < 3000), so the recoil-spring item
+  // is level 'warn' and appears on Home's Needs Attention card. It ALSO clears
+  // the forecast gate (3 sessions, 2751 rounds, remaining 249) -- which is what
+  // gives the Home-exclusion test teeth for the "due roughly" shape: this
+  // gun's alert row on Home is exactly where a leak would render.
+  await seedRaw(page, 'sessions', sessionRecord('e2e-fc-s-warn-1', GUN_WARN, daysAgo(10), 917, 28));
+  await seedRaw(page, 'sessions', sessionRecord('e2e-fc-s-warn-2', GUN_WARN, daysAgo(20), 917, 29));
+  await seedRaw(page, 'sessions', sessionRecord('e2e-fc-s-warn-3', GUN_WARN, daysAgo(30), 917, 30));
 
   await page.reload();
 }
@@ -206,6 +221,11 @@ test.describe('maintenance forecasting reaches Gun Maintenance and Gun Detail, a
 
     const recoilRow = card.locator('.row').filter({ hasText: 'Recoil spring' });
     await expect(recoilRow.getByText('Due', { exact: true })).toBeVisible();
+    // The due ROW carries neither forecast shape -- case-insensitive, so even
+    // "Months away at your recent pace" would be caught here.
+    await expect(recoilRow.getByText(/at your recent pace/i)).toHaveCount(0);
+    // Card-wide, the "due roughly" range shape is absent (capital-A on purpose:
+    // this gun's deep-clean row legitimately carries the months-away shape).
     await expect(card.getByText(ANY_FORECAST)).toHaveCount(0);
   });
 
@@ -238,9 +258,12 @@ test.describe('maintenance forecasting reaches Gun Maintenance and Gun Detail, a
     // on that incidental behavior.
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();
-    // Case-INSENSITIVE here, unlike the card assertions: on Home we exclude
-    // BOTH forecast shapes -- "At your recent pace, due roughly ..." and
-    // "Months away at your recent pace" -- so a leak of either is caught.
+    // The warn gun's recoil-spring alert is ON Home (proving the surface a
+    // leak would render into is actually present in this fixture) ...
+    await expect(page.getByText(NAME_WARN).first()).toBeVisible();
+    // ... and case-INSENSITIVE here, unlike the card assertions: on Home we
+    // exclude BOTH forecast shapes -- "At your recent pace, due roughly ..."
+    // and "Months away at your recent pace" -- so a leak of either is caught.
     await expect(page.getByText(/at your recent pace/i)).toHaveCount(0);
   });
 });

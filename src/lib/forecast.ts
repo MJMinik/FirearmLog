@@ -69,7 +69,11 @@ interface ForecastCalc {
 /** Shared gate + rate + bound math behind both maintForecast and forecastLine,
  * so the two never drift on what "below the gate" means. */
 function computeForecast(remainingRounds: number, gunId: string, sessions: Session[], now: Date): ForecastCalc | null {
-  if (remainingRounds <= 0) return null;
+  // Number.isFinite, not just <= 0: NaN compares false to everything, so a
+  // NaN remaining (a malformed record upstream) would sail through a bare
+  // <= 0 check and end as "late undefined" in user-facing copy. Silence is
+  // the honest output for data the math cannot stand on.
+  if (!Number.isFinite(remainingRounds) || remainingRounds <= 0) return null;
 
   const cutoff = dayKey(addDays(now, -WINDOW_DAYS));
   const today = dayKey(now);
@@ -81,7 +85,10 @@ function computeForecast(remainingRounds: number, gunId: string, sessions: Sessi
 
   let roundsInWindow = 0;
   for (const s of inWindow) {
-    for (const g of s.guns) if (g.firearmId === gunId) roundsInWindow += g.rounds;
+    // `|| 0`: same guard stats.ts uses on every rounds sum — a record with a
+    // missing/NaN rounds value contributes nothing rather than poisoning the
+    // whole rate (and a string value would otherwise CONCATENATE, not add).
+    for (const g of s.guns) if (g.firearmId === gunId) roundsInWindow += (typeof g.rounds === 'number' && Number.isFinite(g.rounds) ? g.rounds : 0);
   }
   if (roundsInWindow < MIN_LIVE_ROUNDS) return null;
 
@@ -97,12 +104,18 @@ function computeForecast(remainingRounds: number, gunId: string, sessions: Sessi
 
 /** The range as bucket phrases ("mid-September", "early October"), or null
  * below the gate (fewer than 3 live sessions in window, fewer than 200 live
- * rounds in window, or remainingRounds <= 0). */
+ * rounds in window, or remainingRounds not a positive finite number).
+ * NOTE: unlike forecastLine, this carries NO months-away shape — a caller
+ * rendering these phrases directly must apply its own far-future handling
+ * (forecastLine is the only UI-ready form). Bounds so far out that the Date
+ * itself overflows (an absurd remaining count) return null rather than a
+ * phrase built on an Invalid Date. */
 export function maintForecast(
   remainingRounds: number, gunId: string, sessions: Session[], now: Date
 ): { earliest: string; latest: string } | null {
   const calc = computeForecast(remainingRounds, gunId, sessions, now);
   if (!calc) return null;
+  if (isNaN(calc.optimisticDate.getTime()) || isNaN(calc.pessimisticDate.getTime())) return null;
   return { earliest: bucketParts(calc.optimisticDate).phrase, latest: bucketParts(calc.pessimisticDate).phrase };
 }
 
