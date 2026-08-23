@@ -322,6 +322,9 @@ test.describe('picker and correct number (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.
 
     await expect(main.getByRole('button', { name: 'Not mine' })).toHaveAttribute('aria-pressed', 'false');
     await expect(main.getByLabel('Your SCSA #', { exact: true })).toHaveCount(0);
+    // The question is back on screen and unanswered after the reset, so the
+    // first Save tap is the nudge (23 Aug 2026) and the second is the save.
+    await main.getByRole('button', { name: 'Save match' }).click();
     await main.getByRole('button', { name: 'Save match' }).click();
     await expect(main.getByRole('heading', { name: form.matchName, level: 1 })).toBeVisible();
 

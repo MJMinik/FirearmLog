@@ -167,7 +167,11 @@ test.describe('member-number provenance (MEMBER_NUMBER_PROVENANCE_SPEC.md, sessi
     await loadSteelFile(page, Guncraft8stage);
     await pickAndFinish(page, ME);
     await expect(main.getByText(`Remember ${ME.membership} as your SCSA #?`)).toBeVisible();
-    // Neither button tapped, on purpose.
+    // Neither button tapped, on purpose. The first Save tap is therefore the
+    // scroll-to-question nudge (23 Aug 2026, tap-test item 3) — it saves
+    // nothing; the second tap saves with the question still ignored, which
+    // is exactly the contract this test exists to pin.
+    await main.getByRole('button', { name: 'Save match' }).click();
     await main.getByRole('button', { name: 'Save match' }).click();
     await expect(main.getByRole('heading', { name: form.matchName, level: 1 })).toBeVisible();
 
