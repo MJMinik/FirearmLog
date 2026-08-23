@@ -358,3 +358,16 @@ test('an absurd remaining count that overflows the Date returns null, not phrase
   // same input renders the honest far-future shape rather than garbage.
   assert.equal(forecastLine(1e12, GUN, sessions, NOW), 'Months away at your recent pace');
 });
+
+test('same bucket in DIFFERENT months never collapses: the "to" survives (audit-2 finding)', () => {
+  // Second cold audit, session 131: a mutant collapsing on bucket alone
+  // (ignoring month) survived the whole suite -- every fixture was either
+  // same-bucket-same-month or different-bucket. Rate 10/day, remaining 360:
+  // optimistic = 360/15 = 24d -> 2026-07-05 -> "early July";
+  // pessimistic = 360/6.7 = 53.7d -> +53 -> 2026-08-03 -> "early August".
+  // Same bucket (early), different month -- must render as a range.
+  assert.equal(
+    forecastLine(360, GUN, KNOWN_RATE_SESSIONS, NOW),
+    'At your recent pace, due roughly early July to early August'
+  );
+});
