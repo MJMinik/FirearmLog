@@ -237,12 +237,12 @@ test('bucket edge: day 10 is early, day 11 is mid', () => {
   // remaining 135 -> optimistic 9 days -> 2026-04-10 -> early
   assert.equal(maintForecast(135, GUN, APRIL_EDGE_SESSIONS, APRIL1)!.earliest, 'early April');
   // remaining 150 -> optimistic 10 days -> 2026-04-11 -> mid
-  assert.equal(maintForecast(150, GUN, APRIL_EDGE_SESSIONS, APRIL1)!.earliest, 'mid April');
+  assert.equal(maintForecast(150, GUN, APRIL_EDGE_SESSIONS, APRIL1)!.earliest, 'mid-April');
 });
 
 test('bucket edge: day 20 is mid, day 21 is late', () => {
   // remaining 285 -> optimistic 19 days -> 2026-04-20 -> mid
-  assert.equal(maintForecast(285, GUN, APRIL_EDGE_SESSIONS, APRIL1)!.earliest, 'mid April');
+  assert.equal(maintForecast(285, GUN, APRIL_EDGE_SESSIONS, APRIL1)!.earliest, 'mid-April');
   // remaining 300 -> optimistic 20 days -> 2026-04-21 -> late
   assert.equal(maintForecast(300, GUN, APRIL_EDGE_SESSIONS, APRIL1)!.earliest, 'late April');
 });

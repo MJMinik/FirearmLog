@@ -38,8 +38,9 @@ const MONTH_NAMES = [
 ];
 
 /** Local-calendar date arithmetic (never UTC ms math — see dates.ts header).
- * `days` may be fractional; the fractional part carries through as time of
- * day, which is exactly what we want when bucketing the resulting date. */
+ * `days` may be fractional; the Date constructor truncates the fractional
+ * part (MakeDay coerces to integer), so this adds a whole number of calendar
+ * days — the right granularity for bucketing, which is never day-precise. */
 function addDays(d: Date, days: number): Date {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate() + days,
     d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds());
@@ -47,11 +48,16 @@ function addDays(d: Date, days: number): Date {
 
 interface BucketParts { year: number; month: number; bucket: string; phrase: string; }
 
-/** Day 1-10 = early, 11-20 = mid, 21-end = late, then the month name. */
+/** Day 1-10 = early, 11-20 = mid, 21-end = late, then the month name.
+ * The spec's approved copy hyphenates the mid form ("mid-September") and
+ * spaces the others ("early October", "late September") — standard English
+ * for the mid- prefix, and the exact strings Michael signed. */
 function bucketParts(d: Date): BucketParts {
   const day = d.getDate();
   const bucket = day <= 10 ? 'early' : day <= 20 ? 'mid' : 'late';
-  return { year: d.getFullYear(), month: d.getMonth(), bucket, phrase: `${bucket} ${MONTH_NAMES[d.getMonth()]}` };
+  const name = MONTH_NAMES[d.getMonth()];
+  const phrase = bucket === 'mid' ? `mid-${name}` : `${bucket} ${name}`;
+  return { year: d.getFullYear(), month: d.getMonth(), bucket, phrase };
 }
 
 interface ForecastCalc {
