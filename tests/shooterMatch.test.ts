@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import {
   normaliseName, normaliseMemberNumber, normaliseStoredNames, findOwnRows, isOwnName,
   memberNumberVerdict, shouldRememberScsaNumber, numberMayLift, scsaAdoptionCandidate, scsaNumberPatch,
-  scsaCorrectedNumber,
+  scsaCorrectedNumber, scsaDiffersCandidate,
 } from '../src/lib/shooterMatch.ts';
 
 const row = (name: string, memberNumber = '') => ({ name, memberNumber });
@@ -427,4 +427,63 @@ test('scsaCorrectedNumber: punctuation-only is still a real answer -- no format 
   // never given -- clubs' number formats vary, and a strict pattern would
   // reject a real one.
   assert.equal(scsaCorrectedNumber('no', '--', ''), '--');
+});
+
+// --- scsaDiffersCandidate: MEMBER_DIFFERS_ACTION_SPEC.md §5 (22 Aug 2026,
+// session 129) -- the second door §2.5 deliberately left closed. A NEW
+// function: every function above requires the stored value EMPTY, and that
+// guarantee must survive unmodified -- these tests also stand as proof none
+// of the existing scsaAdoptionCandidate tests above needed to change.
+
+test('scsaDiffersCandidate: a genuine transposition is the candidate', () => {
+  // The real Gun Craft pair that started this build: the club filed Michael
+  // as A185321 where A185231 is his.
+  assert.equal(scsaDiffersCandidate(['A185321'], 'A185231'), 'A185321');
+});
+
+test('scsaDiffersCandidate: a match asks nothing', () => {
+  // Catches: a mutant that compares the raw strings instead of calling
+  // memberNumberVerdict, which folds case and punctuation.
+  assert.equal(scsaDiffersCandidate(['a185231'], 'A185231'), null);
+});
+
+test('scsaDiffersCandidate: the digits-agree renewal case asks nothing', () => {
+  // A renewed shooter's prefix changes (A -> TY) while the digits stay
+  // theirs -- memberNumberVerdict already reads that as a match, and this
+  // function must inherit that reading rather than re-deciding it.
+  assert.equal(scsaDiffersCandidate(['TY185231'], 'A185231'), null);
+});
+
+test('scsaDiffersCandidate: a blank stored number is adoption\'s territory, not this one\'s', () => {
+  // Catches: a mutant that drops the stored-non-empty guard, which would let
+  // this function fire on exactly the case scsaAdoptionCandidate owns.
+  assert.equal(scsaDiffersCandidate(['A185321'], ''), null);
+  assert.equal(scsaDiffersCandidate(['A185321'], undefined), null);
+});
+
+test('scsaDiffersCandidate: two distinct memberships is the household case -- silence, not a guess', () => {
+  assert.equal(scsaDiffersCandidate(['SC-1', 'SC-2'], 'SC-999'), null);
+});
+
+test('scsaDiffersCandidate: blanks among agreeing values still yield the value', () => {
+  assert.equal(scsaDiffersCandidate(['', 'X'], 'SC-999'), 'X');
+});
+
+test('scsaDiffersCandidate: every picked membership blank means nothing to ask', () => {
+  assert.equal(scsaDiffersCandidate(['', '  '], 'SC-999'), null);
+});
+
+test('scsaDiffersCandidate: two AGREEING memberships return the FIRST, as written', () => {
+  // Two non-blank entries that agree case-insensitively (a multi-gun
+  // shooter's two entries in one file). The first-as-written contract is
+  // only testable with two entries whose spellings differ: a last-picker
+  // (or an uppercaser) returns 'a185321' here and fails.
+  assert.equal(scsaDiffersCandidate(['A185321', ' a185321 '], 'A185231'), 'A185321');
+});
+
+test('scsaDiffersCandidate: the candidate is returned AS WRITTEN, trimmed -- never uppercased for storage', () => {
+  // Catches: a mutant that stores the uppercased form used for the
+  // disagreement check -- scsaAdoptionCandidate's own storage posture (spec
+  // §5) forbids it, and this function mirrors that posture.
+  assert.equal(scsaDiffersCandidate([' sc-9 '], 'SC-1'), 'sc-9');
 });

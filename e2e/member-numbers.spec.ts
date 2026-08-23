@@ -75,7 +75,7 @@ async function loadSteelFile(page: Page, text: string, name = '80f0b53b-08b5-460
  *  MEMBER_NUMBER_PROVENANCE_SPEC.md (19 Aug 2026, session 128) a Steel save
  *  NEVER stores a member number on its own, so a caller that wants the number
  *  remembered has to say so, exactly as a shooter does. */
-async function saveSteelEntry(page: Page, entry: ScsaEntry, opts: { adopt?: boolean } = {}) {
+async function saveSteelEntry(page: Page, entry: ScsaEntry, opts: { adopt?: boolean; expectDupe?: boolean } = {}) {
   const main = page.getByRole('main');
   await main.getByPlaceholder('Search shooters by name').fill(entry.lastName);
   const row = main.getByRole('button', { name: nameRe(entry) }).first();
@@ -89,6 +89,14 @@ async function saveSteelEntry(page: Page, entry: ScsaEntry, opts: { adopt?: bool
     await yes.click();
   }
   await main.getByRole('button', { name: 'Save match' }).click();
+  if (opts.expectDupe) {
+    // A second import of the same file now meets the duplicate warning
+    // (DUPLICATE_IMPORT_DETECTION_SPEC.md, 23 Aug 2026) — same date + same
+    // name IS the signal, whoever is picked. Save Anyway is the shooter's
+    // stated choice and proceeds exactly as before the warning existed.
+    await expect(page.getByText('Looks like you already saved this match.')).toBeVisible();
+    await page.getByRole('button', { name: 'Save Anyway' }).click();
+  }
   // The new match's own detail screen is the proof the write landed.
   await expect(main.getByRole('button', { name: '‹ Back' })).toBeVisible();
 }
@@ -208,7 +216,7 @@ test.describe('member numbers in Who you are', () => {
     await gotoTab(page, 'Compete');
     await loadSteelFile(page, Guncraft8stage);
     await main.getByRole('button', { name: 'Yes — find my entry' }).click();
-    await saveSteelEntry(page, other);
+    await saveSteelEntry(page, other, { expectDupe: true });
 
     await gotoSection(page, 'Settings');
     await expect(main.getByLabel('SCSA #')).toHaveValue(me.membership);

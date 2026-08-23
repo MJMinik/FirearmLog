@@ -19,7 +19,7 @@
 // ALL selected entries are verified before ANY is written: a refusal writes
 // nothing, never half.
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { AppSettings, Firearm } from '../lib/types.ts';
+import type { AppSettings, Firearm, Match } from '../lib/types.ts';
 import { getAll, getSettings, putMany, putOne, putSettings } from '../lib/db.ts';
 import { stampNew } from '../lib/stamps.ts';
 import { newId } from '../lib/id.ts';
@@ -29,7 +29,7 @@ import { divisionActuallyChanged } from '../lib/divisionNormalise.ts';
 import { fieldOptions } from '../lib/selectOptions.ts';
 import {
   findOwnRows, isOwnName, memberNumberVerdict, normaliseStoredNames, numberMayLift, scsaAdoptionCandidate,
-  scsaCorrectedNumber, scsaNumberPatch, type NameMatch
+  scsaCorrectedNumber, scsaDiffersCandidate, scsaNumberPatch, type NameMatch
 } from '../lib/shooterMatch.ts';
 import {
   parsePractiScore, countInDivision, SAMPLE_PRACTISCORE_CSV, type PsMatch
@@ -43,8 +43,10 @@ import { FormProblem } from './FormProblem.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { MatchMagPicker } from './MatchMagPicker.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
+import { ConfirmSheet } from './Sheet.tsx';
 import { looseNum } from '../lib/csv.ts';
 import { textTooLongMessage, fileTooLargeMessage, MAX_IMPORT_FILE_BYTES } from '../lib/inputLimits.ts';
+import { findLikelyDuplicate } from '../lib/matchDupe.ts';
 
 export function PractiScoreImport({ onCancel, onSaved }: {
   onCancel: () => void;
@@ -78,6 +80,17 @@ export function PractiScoreImport({ onCancel, onSaved }: {
   const [matchMagOverrides, setMatchMagOverrides] = useState<{ magId: string; rounds: number }[]>([]);
   const [matchMagConditions, setMatchMagConditions] = useState<{ magId: string; tag: string }[]>([]);
   const [saving, setSaving] = useState(false);
+  /* Synchronous re-entry gate for BOTH save paths. The `saving` state guard
+     alone has always had a micro-window — React commits state after the
+     event, so two clicks in one frame both read `saving === false` — and the
+     duplicate check (23 Aug 2026) put an ASYNC read in front of
+     setSaving(true), stretching that window from microseconds to a real
+     IndexedDB round-trip. A double-tap on Save could then run the whole save
+     twice, writing the match twice. A ref flips synchronously, so the second
+     entry is refused before anything async happens. Cleared in finally on
+     every exit — including the early return that opens the duplicate sheet,
+     so "Save Anyway" can re-enter. */
+  const saveGateRef = useRef(false);
   const [psQuery, setPsQuery] = useState(''); // audit #18 — find yourself in a big field
   // The names the shooter told us are theirs (Settings -> Who you are). Used
   // ONLY to lift their own rows to the top of the field; nothing is selected on
@@ -91,6 +104,11 @@ export function PractiScoreImport({ onCancel, onSaved }: {
      'nearest') the moment it appears. Scrolling only: the spec's §2.2
      no-keyboard-grab rule stands, so this never focuses the input. */
   const correctionBoxRef = useRef<HTMLDivElement>(null);
+  /* MEMBER_DIFFERS_ACTION_SPEC.md §3 (22 Aug 2026, session 129): the same
+     tap-test lesson, applied to the differs question's own reveal — the
+     match-director note that appears under "Keep my number" gets the same
+     scroll-into-view treatment as the correction box above. */
+  const differsNoteRef = useRef<HTMLDivElement>(null);
   /* The USPSA how-to <details> is stateful for ONE reason: when the new-style
      refusal fires, its message says "the numbered steps below walk through it",
      so those steps must actually be open on the screen the message points at
@@ -133,6 +151,18 @@ export function PractiScoreImport({ onCancel, onSaved }: {
    *  compared again at save time so a changed pick set can never smuggle a
    *  different number through an old answer (spec §4, last bullet). */
   const [steelAdoptedCandidate, setSteelAdoptedCandidate] = useState<string | null>(null);
+  /** MEMBER_DIFFERS_ACTION_SPEC.md §5 (22 Aug 2026, session 129): the
+   *  differs question's own selection trio, mirroring the adoption pair
+   *  above exactly — same "neither selected by default, Save works in
+   *  every state" contract, reset at the same three sites (fresh file,
+   *  Start over, ‹ Back to the shooter list). Structurally this can never
+   *  render alongside the adoption trio: scsaAdoptionCandidate requires the
+   *  stored number EMPTY, scsaDiffersCandidate requires it NON-EMPTY. */
+  const [steelDiffersSelection, setSteelDiffersSelection] = useState<'file' | 'keep' | null>(null);
+  /** The candidate on screen when "Use the file's number" was tapped —
+   *  compared again at save time, the same staleness re-check as
+   *  steelAdoptedCandidate (spec §4). */
+  const [steelDiffersApproved, setSteelDiffersApproved] = useState<string | null>(null);
   /** IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.md §2 (19 Aug 2026): what the
    *  shooter typed in the "Not mine" correction box, if anything. Optional
    *  and never pre-filled — typing is an offer, not a demand. Kept across a
@@ -144,6 +174,12 @@ export function PractiScoreImport({ onCancel, onSaved }: {
    *  (MEMBER_NUMBER_SPEC.md §4) — a confirmation beside a name match on
    *  suggested rows, never a key. */
   const [storedUspsaNumber, setStoredUspsaNumber] = useState('');
+  /** DUPLICATE_IMPORT_DETECTION_SPEC.md §2-3 (22 Aug 2026, session 129/130):
+   *  the suspected-duplicate a save handler found, waiting on the shooter's
+   *  answer. Set by save()/saveSteel() when findLikelyDuplicate hits and the
+   *  check wasn't suppressed; cleared on Cancel, and on "Save Anyway" the
+   *  same save re-enters itself with the check suppressed for that one tap. */
+  const [confirmDupe, setConfirmDupe] = useState<{ kind: 'uspsa' | 'steel'; name: string; date: string } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -166,6 +202,13 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     correctionBoxRef.current?.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
   }, [steelAdoptSelection]);
+  // MEMBER_DIFFERS_ACTION_SPEC.md §3: the same reveal-and-scroll behaviour,
+  // for the differs question's own progressive disclosure.
+  useEffect(() => {
+    if (steelDiffersSelection !== 'keep') return;
+    const reduce = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    differsNoteRef.current?.scrollIntoView({ block: 'nearest', behavior: reduce ? 'auto' : 'smooth' });
+  }, [steelDiffersSelection]);
 
   // Michael's device tap-test (7 Aug 2026): "Read results" swapped the paste card
   // for the shooter field, but the page kept its old scroll position — mid-field,
@@ -200,6 +243,10 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     setSteelAdoptSelection(null);
     setSteelAdoptedCandidate(null);
     setSteelCorrectionDraft('');
+    // MEMBER_DIFFERS_ACTION_SPEC.md §5: the same reset, for the differs
+    // question's own answer — one of the three sites the spec names.
+    setSteelDiffersSelection(null);
+    setSteelDiffersApproved(null);
     setSteelName(r.form.matchName);
     // The date the match was SHOT, never the download date. '' when the file's
     // date is malformed — the save guard then asks for it, same as USPSA.
@@ -248,6 +295,13 @@ export function PractiScoreImport({ onCancel, onSaved }: {
   }
 
   function startOver() {
+    // A Save that is mid-flight (the duplicate check's IndexedDB read runs
+    // BEFORE setSaving(true), so `saving` is still false for a beat) must not
+    // have the state it closed over torn down under it — the resumed save
+    // would still write and then navigate over whatever the shooter did here
+    // (cold audit, 23 Aug 2026: the same widened window the saveGateRef
+    // closes for a second Save tap, closed here for the exits too).
+    if (saveGateRef.current) return;
     // psQuery goes with it. A query left over from the previous paste survived
     // into the next one, where it filtered a shorter field down to nothing AND
     // switched off the suggestions — with the search box itself hidden, because
@@ -259,6 +313,9 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     // The adoption question's own answer resets too (spec §4): a shooter who
     // starts over is picking a possibly different match entirely.
     setSteelAdoptSelection(null); setSteelAdoptedCandidate(null); setSteelCorrectionDraft('');
+    // MEMBER_DIFFERS_ACTION_SPEC.md §5: the same reset for the differs
+    // question's own answer.
+    setSteelDiffersSelection(null); setSteelDiffersApproved(null);
   }
 
   function toggleSteelEntry(entry: ScsaEntry) {
@@ -286,8 +343,10 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     });
   }
 
-  async function saveSteel() {
-    if (saving || steelForm == null || steelPicked.length === 0) return;
+  async function saveSteel(skipDupeCheck = false) {
+    if (saving || saveGateRef.current || steelForm == null || steelPicked.length === 0) return;
+    saveGateRef.current = true;
+    try {
     if (!steelDate) { setProblem('Pick the match date.'); return; }
     const entriesByNumber = new Map(steelForm.entries.map((e) => [e.competitorNumber, e]));
     // Validate EVERYTHING before writing ANYTHING: a refusal writes nothing,
@@ -322,6 +381,34 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       toWrite.push({ fields, entry });
     }
     if (toWrite.length === 0) { setProblem('Nothing is selected. Go back and tap your entry first.'); return; }
+    // DUPLICATE_IMPORT_DETECTION_SPEC.md §1, §3 (22 Aug 2026, session
+    // 129/130): one check for the shared identity every sibling in this
+    // batch carries (steelName + steelDate), against the log as loaded
+    // BEFORE this save — checking here, before any write, is what keeps
+    // sibling records in ONE Steel save from ever tripping each other (the
+    // batch-exclusion rule, spec §1's fact 2): a multi-gun save writes
+    // several records sharing one date+name, and none of them exist yet
+    // when this runs. A hit warns and returns; "Save Anyway" re-enters this
+    // same function with the check suppressed for that one tap (spec §3).
+    if (!skipDupeCheck) {
+      // Fail-safe (rule 23's direction for this check): if this read throws,
+      // the shooter gets today's shipped behaviour — no warning — rather than
+      // an unhandled rejection eating the save. A missed warning costs one
+      // duplicate the shooter chose to import twice; a broken Save costs the
+      // import. The write below keeps its own try/catch either way.
+      try {
+        // The check sees precisely what gets saved, never a guess at it:
+        // buildSteelMatchFields writes `matchName.trim() || 'Steel Challenge
+        // Match'`, so a blank title still collides with a blank-title
+        // re-import (cold audit, 23 Aug 2026 — the raw steelName here missed
+        // exactly that case while the USPSA path four functions down got it
+        // right).
+        const steelWouldBeName = steelName.trim() || 'Steel Challenge Match';
+        const existingMatches = await getAll<Match>('matches');
+        const dupe = findLikelyDuplicate(steelDate, steelWouldBeName, existingMatches);
+        if (dupe) { setConfirmDupe({ kind: 'steel', name: steelWouldBeName, date: steelDate }); return; }
+      } catch { /* proceed without the warning — never block the save on the check */ }
+    }
     setSaving(true);
     // ONE putMany call makes the whole save atomic: every entry's record is
     // built first, then all of them land in a single transaction. A failure
@@ -369,6 +456,39 @@ export function PractiScoreImport({ onCancel, onSaved }: {
             setRememberedSource('imported');
           } catch { /* best-effort; the import already saved */ }
         }
+      } else if (steelDiffersSelection === 'file' && steelDiffersApproved) {
+        // (C) MEMBER_DIFFERS_ACTION_SPEC.md §4 (22 Aug 2026, session 129):
+        // "Use the file's number" writes on save success only, MIRRORING THE
+        // SHIPPED ADOPTION WRITE (A) DIRECTLY ABOVE — the spec's own cited
+        // precedent ("the exact precedent of Yes — it's mine") IS that
+        // write. IMPORTANT, recorded here because it corrects the signed
+        // spec: §4's text says this goes "through scsaNumberPatch" — that is
+        // not implementable, because scsaNumberPatch can only ever emit
+        // source 'typed' (it is the Settings-screen write rule, the guard
+        // scsaCorrectedNumber calls below in branch B). This call site
+        // follows the direct write branch (A) ships today, not the
+        // unbuildable one; the applier is recording this spec correction
+        // separately. Same staleness re-check as (A): recompute from what
+        // actually got written and only honour it if it still equals the
+        // number the shooter approved on screen.
+        const freshDiffers = scsaDiffersCandidate(
+          toWrite.map((w) => w.entry.membership),
+          rememberedNumber
+        );
+        if (freshDiffers && freshDiffers === steelDiffersApproved) {
+          try {
+            await putSettings<AppSettings>({ scsaMemberNumber: freshDiffers, scsaMemberNumberSource: 'imported' });
+            setRememberedNumber(freshDiffers);
+            setRememberedSource('imported');
+          } catch { /* best-effort; the import already saved */ }
+        }
+        // "Keep my number" (steelDiffersSelection === 'keep') writes
+        // nothing — spec §4's other half. It falls through to (B) below,
+        // whose scsaCorrectedNumber guard requires selection === 'no';
+        // steelAdoptSelection is never 'no' from this question (the
+        // adoption and differs questions are structurally mutually
+        // exclusive), so corrected is always null there and (B) stays
+        // silent, exactly as the spec requires.
       } else {
         // (B) The correction (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.md §2, 19
         // Aug 2026): "Not mine" no longer stores nothing and offers nothing —
@@ -397,10 +517,15 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     } finally {
       setSaving(false);
     }
+    } finally {
+      saveGateRef.current = false;
+    }
   }
 
-  async function save() {
-    if (saving || parsed == null || chosenIdx == null) return;
+  async function save(skipDupeCheck = false) {
+    if (saving || saveGateRef.current || parsed == null || chosenIdx == null) return;
+    saveGateRef.current = true;
+    try {
     if (!matchDate) { setProblem('Pick the match date.'); return; }
     if (!firearmId) { setProblem('Pick which gun you shot.'); return; }
     const me = parsed.competitors[chosenIdx];
@@ -413,6 +538,24 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     // OR its canonical form (spec §3.3). Saving "Carry Optics" after pre-selection on
     // a "CO" file does NOT fire the guard, so the real placing is preserved.
     const divisionChanged = divisionActuallyChanged(me.division, division, DIVISIONS);
+    // DUPLICATE_IMPORT_DETECTION_SPEC.md §1, §3 (22 Aug 2026, session
+    // 129/130): the would-be name is exactly the value the record below
+    // writes (the same trim-or-fallback), so the check sees precisely what
+    // gets saved, never a guess at it. A hit warns and returns — never a
+    // silent block (the ruling's own words, spec §2) — and "Save Anyway"
+    // re-enters this same function with the check suppressed for that one
+    // tap (spec §3).
+    const wouldBeName = matchName.trim() || 'PractiScore Match';
+    if (!skipDupeCheck) {
+      // Same fail-safe as saveSteel's check: a thrown read means no warning,
+      // never a broken Save (rule 23 — the check must not be able to cost an
+      // import it exists to protect).
+      try {
+        const existingMatches = await getAll<Match>('matches');
+        const dupe = findLikelyDuplicate(matchDate, wouldBeName, existingMatches);
+        if (dupe) { setConfirmDupe({ kind: 'uspsa', name: wouldBeName, date: matchDate }); return; }
+      } catch { /* proceed without the warning — never block the save on the check */ }
+    }
     setSaving(true);
     try {
       const mid = newId('mt');
@@ -455,6 +598,9 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     } finally {
       setSaving(false);
     }
+    } finally {
+      saveGateRef.current = false;
+    }
   }
 
   const me = parsed != null && chosenIdx != null ? parsed.competitors[chosenIdx] : null;
@@ -483,6 +629,21 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       (n) => steelForm.entries.find((e) => e.competitorNumber === n)?.membership ?? ''
     );
     return scsaAdoptionCandidate(memberships, rememberedNumber);
+  }, [steelForm, steelFinishing, steelPicked, rememberedNumber]);
+
+  /** MEMBER_DIFFERS_ACTION_SPEC.md §2, §5: the differs question's own
+   *  candidate, computed beside steelAdoptionCandidate with the identical
+   *  membership extraction and the identical per-render recompute, so a
+   *  changed pick set never leaves a stale question on screen. Structurally
+   *  mutually exclusive with the candidate above: scsaAdoptionCandidate
+   *  requires the stored number EMPTY, scsaDiffersCandidate requires it
+   *  NON-EMPTY — one block or the other ever has something to show. */
+  const steelDiffersCandidate: string | null = useMemo(() => {
+    if (!steelForm || !steelFinishing) return null;
+    const memberships = steelPicked.map(
+      (n) => steelForm.entries.find((e) => e.competitorNumber === n)?.membership ?? ''
+    );
+    return scsaDiffersCandidate(memberships, rememberedNumber);
   }, [steelForm, steelFinishing, steelPicked, rememberedNumber]);
 
   /** One shooter row. Shared so a suggested row and a row in the full field are
@@ -526,7 +687,7 @@ export function PractiScoreImport({ onCancel, onSaved }: {
   return (
     <div className="screen">
       <div className="navbar">
-        <button className="back-btn" onClick={onCancel}>‹ Cancel</button>
+        <button className="back-btn" onClick={() => { if (saveGateRef.current) return; onCancel(); }}>‹ Cancel</button>
         <span />
       </div>
       <h1 className="large-title">Import from PractiScore</h1>
@@ -704,7 +865,8 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       {/* Steel step C — finish the details and save. Every field is visible and
           editable before anything is written; nothing is saved until the button. */}
       {steelForm && steelConfirmed && steelFinishing && (
-        <div className="card">
+        <>
+        <div className="card steel-finish-card">
           <h2>Finish the details</h2>
           <label className="field">What this match is called
             <input value={steelName} onChange={(e) => setSteelName(e.target.value)}
@@ -822,12 +984,96 @@ export function PractiScoreImport({ onCancel, onSaved }: {
               )}
             </>
           )}
-          <button className="button" disabled={saving} onClick={() => void saveSteel()}>
-            {steelPicked.length <= 1 ? 'Save match' : `Save ${steelPicked.length} matches`}
-          </button>
+          {/* MEMBER_DIFFERS_ACTION_SPEC.md §2-3 (22 Aug 2026, session 129):
+              the second door §2.5 deliberately left closed. Mirrors the
+              adoption block above exactly — same markup, same progressive
+              disclosure, same "ignoring is safe" rule. Structural mutual
+              exclusion with the block above: scsaAdoptionCandidate requires
+              the stored number EMPTY, scsaDiffersCandidate requires it
+              NON-EMPTY, so only one of these two ever has something to show. */}
+          {steelDiffersCandidate && (
+            <>
+              <p className="report-note" id="scsa-differs-question"><b>This file lists a different SCSA # for you.</b></p>
+              <p className="report-note">
+                Your saved number is {rememberedNumber}. This file lists {steelDiffersCandidate}. Either could be the right one — only you know.
+              </p>
+              {/* role="group" + aria-labelledby, toggle buttons rather than a
+                  radiogroup, neither preselected — the same reasoning as the
+                  adoption question above (cold audit, 19 Aug 2026, session
+                  128, carried into this second door). */}
+              <div role="group" aria-labelledby="scsa-differs-question"
+                style={{ display: 'flex', gap: 8, marginTop: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+                <button className="button choice" style={{ flex: 1 }} aria-pressed={steelDiffersSelection === 'file'}
+                  onClick={() => { setSteelDiffersSelection('file'); setSteelDiffersApproved(steelDiffersCandidate); }}>
+                  Use the file's number
+                </button>
+                <button className="button choice" style={{ flex: 1 }} aria-pressed={steelDiffersSelection === 'keep'}
+                  onClick={() => { setSteelDiffersSelection('keep'); setSteelDiffersApproved(null); }}>
+                  Keep my number
+                </button>
+              </div>
+              {/* Progressive disclosure, same pattern and same reason as the
+                  correction box above: the reminder only means something
+                  once "Keep my number" says the club's copy is the wrong
+                  one, so it only appears then (spec §3). Scrolled into view
+                  the same way (Tap-test finding, 21 Aug 2026, session 129,
+                  item 6) — reduced-motion respected, block: 'nearest'. */}
+              {steelDiffersSelection === 'keep' && (
+                <div ref={differsNoteRef}>
+                  <p className="report-note">
+                    If your saved number is the right one, the club's record is what needs fixing — mention it to the match director.
+                  </p>
+                </div>
+              )}
+            </>
+          )}
           <button className="button secondary" style={{ marginTop: 8 }}
-            onClick={() => { setSteelFinishing(false); setSteelAdoptSelection(null); setSteelAdoptedCandidate(null); setSteelCorrectionDraft(''); }}>‹ Back to the shooter list</button>
+            onClick={() => {
+              if (saveGateRef.current) return; // mid-save exit guard, same as startOver
+              setSteelFinishing(false);
+              setSteelAdoptSelection(null); setSteelAdoptedCandidate(null); setSteelCorrectionDraft('');
+              setSteelDiffersSelection(null); setSteelDiffersApproved(null);
+            }}>‹ Back to the shooter list</button>
         </div>
+        {/* FINISHING_STEP_PINNED_BAR_MEMO.md, Option 2 (22 Aug 2026, session
+            129/130, folded into this branch per the memo's own
+            recommendation): the picker step's own pinned .pick-bar, reused
+            verbatim on the Steel finishing card only — the memo's recon
+            names it the tall one (per-entry details, a mag picker per
+            entry, and now a question block, all above Save). The USPSA
+            finishing card is untouched. The status line is advisory, never
+            a gate: both questions above already promise "ignoring is safe"
+            (spec §3 / MEMBER_NUMBER_PROVENANCE_SPEC.md §4), so the bar's
+            job is to say what's true, not hold anyone back — Save always
+            works, in every state. REPLACES the in-card Save button removed
+            above (the picker step's own precedent). */}
+        <div className="pick-bar">
+          <div className="pick-bar-inner">
+            <p className="pick-bar-status" aria-live="polite">
+              {(() => {
+                // Priority order (charter §1: "ready to save" would be FALSE
+                // while a required field is still missing — strings 1-2
+                // reuse the save guards' own vocabulary on purpose, so the
+                // bar never promises something Save is about to refuse).
+                const missingGun = steelPicked.some((n) => !steelDetails[n]?.firearmId);
+                if (missingGun) {
+                  return steelPicked.length <= 1 ? 'Pick your gun above.' : 'Pick a gun for each entry above.';
+                }
+                if (steelDate === '') return 'Pick the match date above.';
+                // A question block is on screen and unanswered.
+                if ((steelAdoptionCandidate != null && steelAdoptSelection === null) ||
+                    (steelDiffersCandidate != null && steelDiffersSelection === null)) {
+                  return '1 question above needs a look';
+                }
+                return steelPicked.length <= 1 ? '1 match ready to save' : `${steelPicked.length} matches ready to save`;
+              })()}
+            </p>
+            <button className="button" disabled={saving} onClick={() => void saveSteel()}>
+              {steelPicked.length <= 1 ? 'Save match' : `Save ${steelPicked.length} matches`}
+            </button>
+          </div>
+        </div>
+        </>
       )}
 
       {/* Step 1 — paste or load the export */}
@@ -1098,9 +1344,30 @@ export function PractiScoreImport({ onCancel, onSaved }: {
               <input inputMode="decimal" value={entryFee} onChange={(e) => setEntryFee(e.target.value)} placeholder="e.g. 35" />
             </label>
             <button className="button" disabled={saving} onClick={() => void save()}>Save match</button>
-            <button className="button secondary" style={{ marginTop: 8 }} onClick={() => setChosenIdx(null)}>‹ Pick a different shooter</button>
+            <button className="button secondary" style={{ marginTop: 8 }} onClick={() => { if (saveGateRef.current) return; setChosenIdx(null); }}>‹ Pick a different shooter</button>
           </div>
         </>
+      )}
+
+      {/* DUPLICATE_IMPORT_DETECTION_SPEC.md §2-3 (22 Aug 2026, session
+          129/130): the warn-then-confirm modal, rendered at component level
+          so either save path can open it. A hint (same date + name) warns,
+          never blocks; "Save Anyway" re-enters the SAME save function with
+          the check suppressed for that one tap. Cancel first, the confirm
+          in the danger style — the shipped ConfirmSheet pattern and the
+          spec's own safe-first order (spec §2's "Audit #1" precedent); no
+          styling changes. */}
+      {confirmDupe && (
+        <ConfirmSheet
+          title="Looks like you already saved this match."
+          message={`Your log already has ‘${confirmDupe.name}’ on ${confirmDupe.date}. Importing it again makes a second copy — and if magazines are picked on both, their round counts will count it twice.`}
+          confirmLabel="Save Anyway"
+          onConfirm={() => {
+            const kind = confirmDupe.kind;
+            setConfirmDupe(null);
+            if (kind === 'uspsa') void save(true); else void saveSteel(true);
+          }}
+          onClose={() => setConfirmDupe(null)} />
       )}
     </div>
   );
