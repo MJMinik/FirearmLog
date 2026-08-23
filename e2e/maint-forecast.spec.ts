@@ -238,6 +238,9 @@ test.describe('maintenance forecasting reaches Gun Maintenance and Gun Detail, a
     // on that incidental behavior.
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();
-    await expect(page.getByText(ANY_FORECAST)).toHaveCount(0);
+    // Case-INSENSITIVE here, unlike the card assertions: on Home we exclude
+    // BOTH forecast shapes -- "At your recent pace, due roughly ..." and
+    // "Months away at your recent pace" -- so a leak of either is caught.
+    await expect(page.getByText(/at your recent pace/i)).toHaveCount(0);
   });
 });
