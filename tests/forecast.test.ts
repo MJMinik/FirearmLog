@@ -274,3 +274,32 @@ test('forecastLine across the year wrap renders the range shape with correct mon
     'At your recent pace, due roughly late December to early January'
   );
 });
+
+// ---------------------------------------------------------------------------
+// Multi-gun sessions: only THIS gun's rounds feed the rate
+// ---------------------------------------------------------------------------
+// Found by the session-131 mutation round (mutant m10: dropping the per-gun
+// filter in the rounds sum survived every test above, because every fixture
+// session named exactly one gun). A real session often names two -- log the
+// Erebus and the Apollo in one range trip -- and the other gun's rounds must
+// not inflate this gun's pace.
+// 3 sessions of 100 rounds for GUN + 500 for OTHER_GUN in the same session:
+// correct rate = 300/90 = 3.333/day; polluted rate would be 1800/90 = 20/day.
+// Remaining 300: correct optimistic = 300/(3.333*1.5) = 60d -> NOW+60 =
+// 2026-08-10 -> "early August"; polluted would be 10d -> "late June".
+
+test('a session naming two guns contributes only this gun\'s rounds to the rate', () => {
+  const twoGun = (date: string): Session => ({
+    id: `se-${date}-two`, createdAt: 0, updatedAt: 0,
+    date, type: 'practice',
+    guns: [{ firearmId: GUN, rounds: 100 }, { firearmId: OTHER_GUN, rounds: 500 }],
+    location: '', distances: '', notes: '', ammoUsage: [], drills: [],
+    targetMediaIds: [], malfunctions: [], selfRating: null, rangeFee: null,
+    planned: false, checklist: null
+  });
+  const sessions = [twoGun('2026-04-01'), twoGun('2026-04-15'), twoGun('2026-05-01')];
+  assert.deepEqual(maintForecast(300, GUN, sessions, NOW), {
+    earliest: 'early August',
+    latest: 'late October'
+  });
+});
