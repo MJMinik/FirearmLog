@@ -85,9 +85,10 @@ function computeForecast(remainingRounds: number, gunId: string, sessions: Sessi
 
   let roundsInWindow = 0;
   for (const s of inWindow) {
-    // `|| 0`: same guard stats.ts uses on every rounds sum — a record with a
-    // missing/NaN rounds value contributes nothing rather than poisoning the
-    // whole rate (and a string value would otherwise CONCATENATE, not add).
+    // Strict typeof+isFinite guard — deliberately STRONGER than the `|| 0`
+    // stats.ts uses, because `|| 0` would pass a truthy string through and a
+    // string rounds value would CONCATENATE into the rate, not add. A record
+    // with a missing/NaN/string rounds value contributes exactly nothing.
     for (const g of s.guns) if (g.firearmId === gunId) roundsInWindow += (typeof g.rounds === 'number' && Number.isFinite(g.rounds) ? g.rounds : 0);
   }
   if (roundsInWindow < MIN_LIVE_ROUNDS) return null;

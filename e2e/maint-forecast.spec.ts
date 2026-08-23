@@ -259,8 +259,11 @@ test.describe('maintenance forecasting reaches Gun Maintenance and Gun Detail, a
     await page.goto('/');
     await expect(page.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();
     // The warn gun's recoil-spring alert is ON Home (proving the surface a
-    // leak would render into is actually present in this fixture) ...
-    await expect(page.getByText(NAME_WARN).first()).toBeVisible();
+    // leak would render into is actually present in this fixture). Asserted by
+    // its unique detail string, not the gun name -- the same gun also throws a
+    // field-strip warn row, and the name alone would stay green even if the
+    // rounds-warn band (the leak-target row) regressed away.
+    await expect(page.getByText('2,751 of 3,000 rounds on this spring').first()).toBeVisible();
     // ... and case-INSENSITIVE here, unlike the card assertions: on Home we
     // exclude BOTH forecast shapes -- "At your recent pace, due roughly ..."
     // and "Months away at your recent pace" -- so a leak of either is caught.
