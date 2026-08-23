@@ -123,6 +123,13 @@ async function openTheMatch(page: Page) {
   const edit = page.getByRole('button', { name: /Edit/ }).first();
   await edit.click();
   await expect(page.getByLabel('What this match is called')).toBeVisible();
+  // The edit form initialises its state ASYNC after mount (setName/setMatchType/
+  // ...). An interaction dispatched before that init lands is silently reverted
+  // by it — the fail-then-pass flake this file carried (third occurrence 22 Aug
+  // 2026, ~23% rate measured over 22 runs; same race class match-mags.spec.ts
+  // hit with its rename fill). A person cannot act before the values paint; the
+  // tests must not either — wait for the initialised VALUE, not mere visibility.
+  await expect(page.getByLabel('What this match is called')).toHaveValue('Picker Round Trip');
 }
 
 test.describe('Edit Match: the picker shows what the record holds', () => {
