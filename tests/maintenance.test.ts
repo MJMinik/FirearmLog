@@ -130,3 +130,31 @@ test('alerts: only warn/due items, due first', () => {
   assert.equal(alerts[0].item.level, 'due'); // deep clean blown past
   assert.ok(alerts.every((a) => a.item.level === 'due' || a.item.level === 'warn'));
 });
+
+test('remainingRounds: set on the two rounds-based items, exact interval-minus-since arithmetic', () => {
+  // Forecasting (src/lib/forecast.ts) trusts this field as its remaining-rounds
+  // input, so its arithmetic is pinned here, not just its presence.
+  const g = gun({ deepCleanInterval: 1000, recoilSpringInterval: 500 });
+  const items = maintenanceStatus(g, undefined, [session('2026-01-01', 300)], [], [g], NOW);
+  assert.equal(items.find((i) => i.type === 'deep_clean')!.remainingRounds, 700);
+  assert.equal(items.find((i) => i.type === 'recoil_spring')!.remainingRounds, 200);
+});
+
+test('remainingRounds counts from the LAST matching maintenance entry, and goes negative when overdue', () => {
+  const g = gun({ deepCleanInterval: 1000, recoilSpringInterval: 500 });
+  const sessions = [session('2026-01-01', 400), session('2026-02-01', 600)];
+  const history = [maint('2026-01-15', 'deep_clean')];
+  const items = maintenanceStatus(g, undefined, sessions, history, [g], NOW);
+  // Deep clean: only the 600 rounds after the Jan-15 clean count -> 1000 - 600.
+  assert.equal(items.find((i) => i.type === 'deep_clean')!.remainingRounds, 400);
+  // Recoil spring never changed: all 1000 rounds count -> 500 - 1000 = -500,
+  // negative on purpose (downstream forecastLine treats <= 0 as no forecast).
+  assert.equal(items.find((i) => i.type === 'recoil_spring')!.remainingRounds, -500);
+});
+
+test('remainingRounds is absent from the non-rounds-based items', () => {
+  const g = gun({ recoilSpringInterval: 500 });
+  const items = maintenanceStatus(g, undefined, [session('2026-01-01', 100)], [], [g], NOW);
+  assert.equal(items.find((i) => i.type === 'field_strip')!.remainingRounds, undefined);
+  assert.equal(items.find((i) => i.type === 'annual_inspection')!.remainingRounds, undefined);
+});
