@@ -229,6 +229,15 @@ input, select, textarea, button { font-size: max(16px, 1rem); font-family: inher
 .steel-picker-card {
   padding-bottom: 96px;
 }
+/* FINISHING_STEP_PINNED_BAR_MEMO.md, Option 2 (22 Aug 2026, session 129/130):
+   the Steel finishing card's own pinned Save bar, reusing .pick-bar verbatim
+   -- same reserve, same reason as its neighbour above: the bar can never sit
+   on top of the last field on a multi-gun day, when several mag pickers and
+   an adoption/differs question can run the card long. The USPSA finishing
+   card is untouched -- the memo's recon names the Steel card as the tall one. */
+.steel-finish-card {
+  padding-bottom: 96px;
+}
 
 /* ---------- Sample-log banner (session 59) ---------- */
 /* Pinned while the log IS the bundled sample: sticky so it rides the top of

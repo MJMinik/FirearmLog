@@ -343,3 +343,45 @@ export function scsaCorrectedNumber(
   // function, that decides it.
   return shouldRememberScsaNumber(stored, corrected) ? corrected : null;
 }
+
+// --- scsaDiffersCandidate: MEMBER_DIFFERS_ACTION_SPEC.md §5 (22 Aug 2026,
+// session 129) -- the second door IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.md
+// §2.5 deliberately left closed: "If Michael wants an in-import correction
+// for a WRONG STORED number... that is a real want but a separate decision,
+// parked in §9." Michael's 21 Aug ruling IS that decision.
+
+/**
+ * Whether a Steel save has exactly one number to raise a DISAGREEMENT about,
+ * and what it is (spec §2, §5). A NEW function, deliberately not a branch on
+ * scsaAdoptionCandidate: every shipped helper above (shouldRememberScsaNumber,
+ * scsaAdoptionCandidate, scsaCorrectedNumber) structurally requires the
+ * stored value to be EMPTY, and that guarantee must survive unmodified — the
+ * second door gets its own hinge rather than loosening the first's.
+ *
+ * Returns the file's number when ALL hold:
+ *  - the stored number is non-empty after trim — the mirror image of the
+ *    fill-only-when-empty contract: this asks only when there is something
+ *    on record to disagree WITH;
+ *  - the picked entries carry exactly one distinct non-empty membership
+ *    number — two distinct numbers is the household case, and asking would
+ *    be a guess, so it is not asked (silence, not a guess — the same rule
+ *    scsaAdoptionCandidate already follows);
+ *  - memberNumberVerdict(stored, that number) reads 'differs' — a 'match',
+ *    including the digits-agree renewal case, asks nothing.
+ * Returns the FIRST membership AS WRITTEN in the file, trimmed — never
+ * uppercased for storage, mirroring scsaAdoptionCandidate's own storage
+ * posture; uppercasing is used only for the disagreement check, exactly as
+ * scsaAdoptionCandidate uses it only for its own agreement check.
+ */
+export function scsaDiffersCandidate(
+  memberships: readonly string[],
+  stored: string | undefined
+): string | null {
+  if ((stored ?? '').trim() === '') return null;
+  const trimmed = memberships.map((m) => m.trim()).filter((m) => m !== '');
+  if (trimmed.length === 0) return null;
+  const first = trimmed[0];
+  const disagree = trimmed.some((m) => m.toUpperCase() !== first.toUpperCase());
+  if (disagree) return null;
+  return memberNumberVerdict(stored, first) === 'differs' ? first : null;
+}
