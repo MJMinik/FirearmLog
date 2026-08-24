@@ -1793,7 +1793,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           {!quickAdding && pickable.map((d) => {
             const on = picked.has(d.id);
             return (
-              <button key={d.id} className={`drill-pick-row ${on ? 'on' : ''}`} aria-pressed={on}
+              <button key={d.id} className="drill-pick-row" aria-pressed={on}
                 onClick={() => { setTouched(true); setPicked((prev) => {
                   const next = new Set(prev);
                   if (next.has(d.id)) next.delete(d.id); else next.add(d.id);
