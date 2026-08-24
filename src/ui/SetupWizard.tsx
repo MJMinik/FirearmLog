@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import { countAll, getAll, getSettings, localLastModified, putSettings, restoreSnapshot } from '../lib/db.ts';
 import { parseFlog } from '../lib/flog.ts';
+import { shiftDemoDates } from '../lib/demoShift.ts';
 import { applySetupGoal, goalStepNeeded, SETUP_GOAL_PRESETS } from '../lib/northStar.ts';
 import type { SetupGoalChoice } from '../lib/northStar.ts';
 import type { AppSettings, Goal } from '../lib/types.ts';
@@ -212,7 +213,7 @@ export function SetupWizard({ onFinish, onCancel }: {
       const res = await fetch(new URL('demo-dataset.bin', document.baseURI));
       if (!res.ok) throw new Error('not ok');
       const snap = parseFlog(new Uint8Array(await res.arrayBuffer()));
-      await restoreSnapshot(snap);
+      await restoreSnapshot(shiftDemoDates(snap, Date.now()));
       onFinish();
     } catch {
       setDemoBusy(false);
