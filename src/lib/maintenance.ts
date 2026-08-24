@@ -35,6 +35,14 @@ export interface MaintItem {
   label: string;
   level: MaintLevel;
   detail: string;
+  /**
+   * Rounds left before this item comes due, for the two rounds-based items
+   * only (deep_clean, recoil_spring). May be negative when already overdue --
+   * downstream (forecastLine) treats <= 0 as "no forecast", so a negative
+   * value here is harmless, never a defect to guard against. Absent for the
+   * other item types, which are not rounds-based and have nothing to forecast.
+   */
+  remainingRounds?: number;
 }
 
 /** Rounds this gun fired in live (not dry, not planned) sessions strictly after a date.
@@ -94,7 +102,8 @@ export function maintenanceStatus(
   items.push({
     type: 'deep_clean', label: 'Deep clean',
     level: sinceDeep >= dc ? 'due' : sinceDeep >= dc * 0.9 ? 'warn' : 'ok',
-    detail: `${sinceDeep.toLocaleString()} of ${dc.toLocaleString()} rounds since last deep clean`
+    detail: `${sinceDeep.toLocaleString()} of ${dc.toLocaleString()} rounds since last deep clean`,
+    remainingRounds: dc - sinceDeep
   });
 
   // Field strip — after any live session.
@@ -134,7 +143,8 @@ export function maintenanceStatus(
     items.push({
       type: 'recoil_spring', label: 'Recoil spring',
       level: sinceRS >= rs ? 'due' : sinceRS >= rs * 0.9 ? 'warn' : 'ok',
-      detail: `${sinceRS.toLocaleString()} of ${rs.toLocaleString()} rounds on this spring`
+      detail: `${sinceRS.toLocaleString()} of ${rs.toLocaleString()} rounds on this spring`,
+      remainingRounds: rs - sinceRS
     });
   }
 
