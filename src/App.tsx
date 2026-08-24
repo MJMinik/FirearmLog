@@ -463,7 +463,8 @@ export function App() {
     // Keyed per tour request so Help > Quick Tour re-launches even when the
     // Tour & Setup screen is already open (a fresh mount re-reads initialTour).
     content = <HelpScreen key={view.tour ? `${view.tour}-${tourSeq.current}` : ''}
-      onBack={back} open={push} initialTour={view.tour} />;
+      onBack={back} open={push} initialTour={view.tour}
+      onDemoLoaded={() => { refresh(); setTabState('home'); replace(null); scrollTop(); }} />;
   } else if (view?.kind === 'numbers') {
     content = <NumbersGuide onBack={back} section={view.section} />;
   } else if (view?.kind === 'setup') {

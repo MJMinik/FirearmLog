@@ -8,6 +8,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { View } from './nav.ts';
 import { Sheet } from './Sheet.tsx';
 import { InstallCard } from './InstallCard.tsx';
+import { SampleLogButton } from './SampleLogButton.tsx';
 import { ClearAllSheet } from './ClearAllSheet.tsx';
 import { APP_VERSION } from '../version.ts';
 
@@ -211,8 +212,11 @@ function TourModal({ steps, onClose, onGo }: { steps: TourStep[]; onClose: () =>
   );
 }
 
-export function HelpScreen({ onBack, open, initialTour }: {
+export function HelpScreen({ onBack, open, initialTour, onDemoLoaded }: {
   onBack: () => void; open: (v: View) => void;
+  /** Wired by App to the same land-on-Home contract as finishing the setup
+   *  wizard — after the sample log loads, the payoff is Home showing it. */
+  onDemoLoaded: () => void;
   /** Start with a tour already running — how the desktop menu bar's Help >
    *  Quick/Full Tour items land here mid-tour instead of two clicks away.
    *  (App remounts this screen per request, so the initializer is enough.) */
@@ -239,6 +243,22 @@ export function HelpScreen({ onBack, open, initialTour }: {
           The Quick Tour is a fast lap around the app. The Full Tour is the complete guide, section by
           section. Set Up walks you through adding your gear or loading sample data.
         </p>
+        {/* Michael's design, 24 Aug 2026 (session 132, from his own tap-test
+            note): the sample-log offer surfaces HERE, one screen earlier than
+            the wizard — "the same long bar extending above Quick Tour/Full
+            tour/Setup with the explanation coming in as the second paragraph."
+            Copy is the wizard card's approved paragraph, verbatim (rule 44 —
+            reused, not rewritten); the button is the same shared component,
+            so the confirm gate and date shift can never differ by surface. */}
+        <p className="report-note" style={{ marginBottom: 10 }}>
+          Load a sample log — a year and a half of range trips, matches, and dry-fire,
+          a gun getting cared for, gear and costs accounted for, and a goal taking
+          shape — and see what your own log will be telling you once you&rsquo;ve been
+          keeping yours a while. Start fresh any time and begin yours.
+        </p>
+        <div style={{ marginBottom: 8 }}>
+          <SampleLogButton onLoaded={onDemoLoaded} />
+        </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="button" style={{ flex: 1, minWidth: 100 }} onClick={() => setActive('quick')}>Quick Tour</button>
           <button className="button secondary" style={{ flex: 1, minWidth: 100 }} onClick={() => setActive('full')}>Full Tour</button>

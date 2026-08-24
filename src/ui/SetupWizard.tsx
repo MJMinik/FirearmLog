@@ -11,16 +11,14 @@
 // (The legacy migration importer lives in lib/import/ with no user-facing
 // surface — F11 removed its last screen; it's not part of any first run.)
 import { useEffect, useState } from 'react';
-import { countAll, getAll, getSettings, localLastModified, putSettings, restoreSnapshot } from '../lib/db.ts';
-import { parseFlog } from '../lib/flog.ts';
-import { shiftDemoDates } from '../lib/demoShift.ts';
+import { countAll, getAll, getSettings, localLastModified, putSettings } from '../lib/db.ts';
 import { applySetupGoal, goalStepNeeded, SETUP_GOAL_PRESETS } from '../lib/northStar.ts';
 import type { SetupGoalChoice } from '../lib/northStar.ts';
 import type { AppSettings, Goal } from '../lib/types.ts';
-import { ConfirmSheet } from './Sheet.tsx';
 import { CoachMark } from './CoachMark.tsx';
 import { coachMarkDismissals, dismissCoachMark } from '../lib/coachMarks.ts';
 import { FormProblem } from './FormProblem.tsx';
+import { SampleLogButton } from './SampleLogButton.tsx';
 import { noAutofillProps } from './SuggestField.tsx';
 import { GunForm } from './GunForm.tsx';
 import { syncTelemetryEnabled, telemetryState } from '../lib/telemetry.ts';
@@ -86,9 +84,6 @@ export function SetupWizard({ onFinish, onCancel }: {
   // just guns — a gun-less log is still someone's real data.
   const [hasAnyData, setHasAnyData] = useState(false);
   const [bump, setBump] = useState(0);
-  const [demoBusy, setDemoBusy] = useState(false);
-  const [demoErr, setDemoErr] = useState('');
-  const [confirmDemo, setConfirmDemo] = useState(false);
   // F10: the goal step's state — the write-my-own reveal and its text, plus
   // busy/error so a failed save shows and can be retried instead of vanishing.
   const [goalCustom, setGoalCustom] = useState(false);
@@ -152,18 +147,10 @@ export function SetupWizard({ onFinish, onCancel }: {
   // M-6 hardening: the effect above fills hasAnyData asynchronously, and a fast
   // tap can beat that read — which would replace a real log with the sample,
   // no confirmation asked (caught by E2E on a slower machine; on CI the read
-  // always won the race). So decide from a FRESH read at tap time. The state
-  // values still short-circuit the common case instantly; if the read itself
-  // fails, fail SAFE and ask anyway — an unnecessary confirm is a shrug, a
-  // skipped one is someone's log.
-  async function demoTapped() {
-    let any = hasAnyData || counts.guns > 0;
-    if (!any) {
-      try { any = (await localLastModified()) > 0; } catch { any = true; }
-    }
-    if (any) setConfirmDemo(true);
-    else await loadDemo();
-  }
+  // always won the race). The fresh-read-at-tap-time hardening this comment
+  // once introduced now lives inside SampleLogButton (extracted session 132
+  // so Tour & Setup can offer the same load) — the cached state here is
+  // passed down only as the instant short-circuit hint.
 
   // F10: "Done" on the gear checklist. Whether the goal question appears is
   // decided from a FRESH read (mirrors demoTapped's hardening — cached state
@@ -204,23 +191,6 @@ export function SetupWizard({ onFinish, onCancel }: {
     void pickGoal({ kind: 'goal', text });
   }
 
-  // One-tap sample data for testers — loads the bundled demo file straight from
-  // the app, so there's nothing to download, save, or pick. Uses the same
-  // validated restore path as a normal Load from File.
-  async function loadDemo() {
-    setConfirmDemo(false); setDemoErr(''); setDemoBusy(true);
-    try {
-      const res = await fetch(new URL('demo-dataset.bin', document.baseURI));
-      if (!res.ok) throw new Error('not ok');
-      const snap = parseFlog(new Uint8Array(await res.arrayBuffer()));
-      await restoreSnapshot(shiftDemoDates(snap, Date.now()));
-      onFinish();
-    } catch {
-      setDemoBusy(false);
-      setDemoErr('Could not load the sample data — check your connection and try again.');
-    }
-  }
-
   // One sample-data card, used by both welcome variants (first-run + re-run).
   // The story frame (DESIGN_DIRECTION §4, July 12 2026): the sample log is a
   // flash-forward of the USER'S own future — the copy shows them their story,
@@ -235,11 +205,7 @@ export function SetupWizard({ onFinish, onCancel }: {
         shape — and see what your own log will be telling you once you&rsquo;ve been
         keeping yours a while. Start fresh any time and begin yours.
       </p>
-      <FormProblem problem={demoErr} />
-      <button className="button secondary" disabled={demoBusy}
-        onClick={() => void demoTapped()}>
-        {demoBusy ? 'Loading sample data…' : 'See a log 18 months in'}
-      </button>
+      <SampleLogButton probablyHasData={hasAnyData || counts.guns > 0} onLoaded={onFinish} />
     </div>
   );
 
@@ -397,15 +363,6 @@ export function SetupWizard({ onFinish, onCancel }: {
         </>
       )}
 
-      {confirmDemo && (
-        <ConfirmSheet
-          title="Load sample data?"
-          message="This replaces what's on this device with a sample log. There's no undo."
-          confirmLabel="Load sample data"
-          onConfirm={() => void loadDemo()}
-          onClose={() => setConfirmDemo(false)}
-        />
-      )}
     </div>
   );
 }
