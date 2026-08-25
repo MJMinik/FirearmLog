@@ -548,6 +548,46 @@ export interface StageScoreContext {
 }
 
 /**
+ * Score one specific Review row directly, bypassing selectShooterRow --
+ * PASS 2 addition (session 132): when the UI has already resolved a
+ * name/member-number collision to one row itself (the shooter tapped which
+ * one they are), this runs the identical honesty-gate tail parseStagePaste
+ * uses for an automatic match, so a collision resolution is held to exactly
+ * the same standard -- never a second, looser code path that could drift
+ * from the first. parseStagePaste's own tail now calls this rather than
+ * duplicating it (refactor only; its return values are unchanged).
+ */
+export function scoreReviewRow(row: StageReviewRow, powerFactor: string): StageScoreResult {
+  if (isDnfRow(row)) return { ok: false, code: 'dnf' };
+  if (row.printedHitFactor === null) return { ok: false, code: 'unparseable-hf', row };
+
+  const hits = {
+    alphas: row.alphas, charlies: row.charlies, deltas: row.deltas,
+    misses: row.misses, noShoots: row.noShoots, procedurals: row.procedurals,
+  };
+  const derived = scoreStageHits(hits, powerFactor, row.time);
+  // Unreachable in practice: isDnfRow already excluded the only shape
+  // (every count 0 AND time null) that makes hasHitBreakdown false, and a
+  // non-DNF row always has a real (possibly zero) count in at least one
+  // field. Guarded anyway rather than asserted past, because scoring code
+  // is exactly where "this can't happen" earns the least trust.
+  if (derived === null) return { ok: false, code: 'unparseable-hf', row };
+
+  if (!hitFactorsAgree(derived.hitFactor, row.printedHitFactor)) {
+    return { ok: false, code: 'hf-mismatch', row, derived, printedHitFactor: row.printedHitFactor };
+  }
+
+  // The cast is safe, not asserted: hitFactorsAgree just returned true,
+  // which requires derived.hitFactor !== null, which scoreStageHits only
+  // ever produces when its own `time` argument (row.time) was a real
+  // positive number -- so row.time cannot be null on this path.
+  return {
+    ok: true,
+    accepted: { row, hits, time: row.time as number, derived, printedHitFactor: row.printedHitFactor },
+  };
+}
+
+/**
  * Parse one pasted stage-results page and either accept a stage's Layer-2
  * fields + time, or refuse with a reason pass 2 can render (spec section 4,
  * 5, 6a in full). Throws nothing; every input, including empty/garbage
@@ -572,34 +612,7 @@ export function parseStagePaste(text: string, ctx: StageScoreContext): StageScor
   if (selection.kind === 'not-found') return { ok: false, code: 'shooter-not-found' };
   if (selection.kind === 'collision') return { ok: false, code: 'name-collision', candidates: selection.candidates };
 
-  const row = selection.row;
-  if (isDnfRow(row)) return { ok: false, code: 'dnf' };
-  if (row.printedHitFactor === null) return { ok: false, code: 'unparseable-hf', row };
-
-  const hits = {
-    alphas: row.alphas, charlies: row.charlies, deltas: row.deltas,
-    misses: row.misses, noShoots: row.noShoots, procedurals: row.procedurals,
-  };
-  const derived = scoreStageHits(hits, ctx.powerFactor, row.time);
-  // Unreachable in practice: isDnfRow already excluded the only shape
-  // (every count 0 AND time null) that makes hasHitBreakdown false, and a
-  // non-DNF row always has a real (possibly zero) count in at least one
-  // field. Guarded anyway rather than asserted past, because scoring code
-  // is exactly where "this can't happen" earns the least trust.
-  if (derived === null) return { ok: false, code: 'unparseable-hf', row };
-
-  if (!hitFactorsAgree(derived.hitFactor, row.printedHitFactor)) {
-    return { ok: false, code: 'hf-mismatch', row, derived, printedHitFactor: row.printedHitFactor };
-  }
-
-  // The cast is safe, not asserted: hitFactorsAgree just returned true,
-  // which requires derived.hitFactor !== null, which scoreStageHits only
-  // ever produces when its own `time` argument (row.time) was a real
-  // positive number -- so row.time cannot be null on this path.
-  return {
-    ok: true,
-    accepted: { row, hits, time: row.time as number, derived, printedHitFactor: row.printedHitFactor },
-  };
+  return scoreReviewRow(selection.row, ctx.powerFactor);
 }
 
 // Re-exported so tests and a future pass-2 screen can reach the header

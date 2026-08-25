@@ -35,6 +35,7 @@ import {
   parsePractiScore, countInDivision, SAMPLE_PRACTISCORE_CSV, type PsMatch
 } from '../lib/practiscore.ts';
 import { looksLikeNewStyleResults, looksLikeSteelChallengeResults } from '../lib/practiscoreDetect.ts';
+import { detectStagePageSurface } from '../lib/stageScores.ts';
 import {
   parseScsaForm, looksLikeScsaForm, groupEntriesByPerson, type ScsaEntry, type ScsaForm
 } from '../lib/scsaForm.ts';
@@ -299,6 +300,13 @@ export function PractiScoreImport({ onCancel, onSaved }: {
       } else if (looksLikeNewStyleResults(text)) {
         setProblem("That looks like PractiScore’s new results page, which doesn’t carry the table this import reads. Nothing was imported. On your match page, find Old style results and tap Html Results, then tap Combined at the right-hand end of the top Overall row, and copy that whole page — the numbered steps below walk through it.");
         setUspsaHowtoOpen(true); // the message points at steps that must be visible
+      } else if (detectStagePageSurface(text) === 'review') {
+        // Stage-scores importer wrong-surface auto-route, the other direction
+        // (STAGE_SCORES_SPEC.md section 6a Seat 11 condition 9): a single
+        // stage's Review page pasted into the WHOLE-match importer. Forward-
+        // pointing, never "wrong box" -- and never a write, this importer
+        // has nothing that can read a single-stage page anyway.
+        setProblem("This looks like one stage's Review page, not the whole match's results. A single stage's scores go on that match's own screen, under \"Add stage scores\" -- not here.");
       } else {
         setProblem(e instanceof Error ? e.message : 'Could not read that.');
       }

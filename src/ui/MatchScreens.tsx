@@ -380,8 +380,22 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
 
       {match.stages.length > 0 && !isSteel && !isIdpa && (
         <div className="card">
-          <h2>Stage breakdown <InfoTip title="Stage breakdown">Hit factor is your points divided by your time (higher is better). Stage percent is your score against the stage winner. We flag your weakest stage -- where you lost the most ground against the winners -- and your strongest. Add a stage's A/C/D/miss breakdown (when you log or edit the match) and we'll show what it would have scored with all A's, plus your % of available points.</InfoTip></h2>
+          <h2>Stage breakdown <InfoTip title="Stage breakdown">Hit factor is your points divided by your time (higher is better). Stage percent is your score against the stage winner. We flag your weakest stage -- where you lost the most ground against the winners -- and your strongest. Add a stage's A/C/D/miss breakdown (when you log or edit the match, or paste it in from PractiScore) and we'll show what it would have scored with all A's, plus your % of available points.</InfoTip></h2>
           <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers', section: wikiSection })}>How the numbers work ›</button>
+          {/* Stage-scores importer entry point (STAGE_SCORES_SPEC.md section 6a
+              Seat 11 conditions 6-7): USPSA-scored + a stage skeleton (both
+              already true of this card's own gate) + at least one stage still
+              missing a hit breakdown -- never a dead control once every stage
+              is filled in. */}
+          {match.stages.some((st) => !hasHitBreakdown(st)) && (
+            <button className="row-tap" style={{ marginBottom: 4 }}
+              onClick={() => open({ kind: 'stage-scores', id: match.id })}>
+              <span className="label">Add stage scores
+                <div className="row-sub">Paste each stage's Review page from PractiScore instead of typing the breakdown by hand.</div>
+              </span>
+              <span className="value">›</span>
+            </button>
+          )}
           {insights.rankedBy !== 'none' && insights.strongest && insights.toughest.length > 0 && (
             <p className="report-note" style={{ marginTop: 0, marginBottom: 10 }}>
               Weakest (by %): {insights.toughest.map((s) => `Stage ${s.number} (${fmtMetric(s, insights.rankedBy)})`).join(', ')}.{' '}

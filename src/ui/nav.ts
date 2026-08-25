@@ -18,6 +18,7 @@ export type View =
   | { kind: 'reference-form'; id?: string; copyFrom?: string }
   | { kind: 'match-detail'; id: string }
   | { kind: 'match-form'; id?: string }
+  | { kind: 'stage-scores'; id: string }
   | { kind: 'classifier-form'; id?: string }
   | { kind: 'ammo' }
   | { kind: 'ammo-form'; id?: string }
