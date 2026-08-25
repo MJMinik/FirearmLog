@@ -498,3 +498,34 @@ test('selectShooterRow: an empty rows list is not-found, not a crash', () => {
   const result = selectShooterRow([], 'A100001', ['Test, Shooter']);
   assert.equal(result.kind, 'not-found');
 });
+
+// ---------------------------------------------------------------------------
+// Mutation-round additions (session 133 verifier). Two survivors from the
+// mutation pass exposed fixture blind spots; these tests exist to kill them.
+// ---------------------------------------------------------------------------
+
+test('refuses a printed hit factor that differs only in the 4th decimal (mutation: loosening round-to-4 to round-to-3 must go red here)', () => {
+  // Derived is 1.9800 (103 / 52.02); the printed cell says 1.9804. At three
+  // decimals both round to 1.980 -- only the 4-decimal contract catches it.
+  const text = reviewPage([row({ hf: '1.9804' })]);
+  const result = parseStagePaste(text, ctxFor());
+  assert.equal(result.ok, false);
+  if (!result.ok) assert.equal(result.code, 'hf-mismatch');
+});
+
+test("normalises a literal '0' member number to empty at parse time (spec section 3a; mutation: dropping the normalisation must go red here)", () => {
+  const text = reviewPage([row({ member: '0' })]);
+  const result = parseStagePaste(text, ctxFor({ memberNumber: undefined }));
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.accepted.row.memberNumber, '');
+});
+
+test("a stored '0' member number never number-matches rows that all carry '0' -- name fallback decides", () => {
+  const text = reviewPage([
+    row({ name: 'One, Alpha', member: '0' }),
+    row({ name: 'Two, Beta', member: '0', a: '15', c: '8', d: '1', m: '2', pf: 'Maj', time: '16.55', hf: '5.3776' }),
+  ]);
+  const result = parseStagePaste(text, ctxFor({ powerFactor: 'Major', memberNumber: '0', storedNames: ['Two, Beta'] }));
+  assert.equal(result.ok, true);
+  if (result.ok) assert.equal(result.accepted.row.name, 'Two, Beta');
+});
