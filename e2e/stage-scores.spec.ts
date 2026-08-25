@@ -117,8 +117,16 @@ test.describe('Stage scores importer (pass 2)', () => {
     // Nothing has committed yet -- the Save button is still on screen, unclicked.
     await expect(main.getByRole('button', { name: /Save Stage 4.s scores/ })).toBeVisible();
 
-    // Leave without confirming: Stage 4 is still Empty.
+    // Leave without confirming: Stage 4 is still Empty. Cold audit L-4: the
+    // original assertion here only checked in-memory state after the ‹ Stages
+    // tap -- reload from disk first, the same "danger-flows" pattern the
+    // refusal-path test below uses, so this actually proves nothing committed
+    // rather than just that the screen's own state never advanced.
     await main.getByRole('button', { name: '‹ Stages' }).click();
+    await page.reload();
+    await gotoTab(page, 'Compete');
+    await main.getByText('Stage Scores Identity Test').click();
+    await main.getByRole('button', { name: /Add stage scores/ }).click();
     await expect(main.getByRole('button', { name: 'Stage 4' })).toContainText('Empty');
   });
 

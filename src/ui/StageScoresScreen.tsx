@@ -13,13 +13,13 @@ import { useEffect, useState } from 'react';
 import type { AppSettings, Match } from '../lib/types.ts';
 import { getOne, getSettings } from '../lib/db.ts';
 import { formatDayKey } from '../lib/dates.ts';
-import { hasHitBreakdown } from '../lib/competition.ts';
 import { normaliseStoredNames } from '../lib/shooterMatch.ts';
+import { textTooLongMessage } from '../lib/inputLimits.ts';
 import {
   parseStagePaste, scoreReviewRow,
   type StageScoreResult, type StageReviewRow, type AcceptedStageScore,
 } from '../lib/stageScores.ts';
-import { commitStageScore, StageScoreWriteError } from '../lib/stageScoresWrite.ts';
+import { commitStageScore, stageFilled, StageScoreWriteError } from '../lib/stageScoresWrite.ts';
 import type { View } from './nav.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { ScreenLoading, ScreenError } from './ScreenState.tsx';
@@ -129,6 +129,10 @@ export function StageScoresScreen({ id, onBack, open }: {
   function readStage() {
     if (!match) return;
     setWriteProblem('');
+    // S-2 (cold audit M-4): the same paste-size guard every sibling importer
+    // applies, at the same boundary -- before the parser ever walks the text.
+    const tooLong = textTooLongMessage(text.length);
+    if (tooLong) { setWriteProblem(tooLong); return; }
     const r = parseStagePaste(text, {
       powerFactor: match.powerFactor,
       memberNumber: settings?.uspsaMemberNumber?.trim() || undefined,
@@ -195,8 +199,7 @@ export function StageScoresScreen({ id, onBack, open }: {
 
   // ── Paste / confirm sub-view for one stage ────────────────────────────
   if (activeStage != null) {
-    const stage = match.stages.find((s) => s.number === activeStage);
-    const alreadyFilled = !!stage && hasHitBreakdown(stage);
+    const alreadyFilled = stageFilled(match, activeStage);
     return (
       <div className="screen">
         <div className="navbar"><button className="back-btn" onClick={closeStage}>‹ Stages</button></div>
@@ -274,6 +277,8 @@ export function StageScoresScreen({ id, onBack, open }: {
                 `Stage ${activeStage}'s printed hit factor couldn't be read on this page, so nothing was saved. Try copying the page again.`}
               {result.code === 'hf-mismatch' &&
                 `Stage ${activeStage}'s numbers include something this app can't verify -- likely an extra penalty the range officer entered, or an edit on the official page. Nothing was saved for Stage ${activeStage}; the other stages are untouched.`}
+              {result.code === 'hf-mismatch' && result.powerFactorDisagrees &&
+                ` This match is logged as ${match.powerFactor} power factor, and this row's page shows a different one -- check the match's power factor under Edit Match if that's not right.`}
             </p>
             {result.code === 'wrong-surface-combined' && <HowTo open={howtoOpen} onToggle={setHowtoOpen} stageNumber={activeStage} />}
             {result.code === 'unknown-header' && <HowTo open={howtoOpen} onToggle={setHowtoOpen} stageNumber={activeStage} />}
@@ -304,10 +309,17 @@ export function StageScoresScreen({ id, onBack, open }: {
         {result && !result.ok && result.code === 'dnf' && (
           <div className="card">
             <p className="report-note">
-              No stage scores are published for Stage {activeStage} yet. Nothing was saved -- check back once
-              the match posts full results.
+              Stage {activeStage}&rsquo;s results page shows no score for you on this stage -- typically a DNF
+              or a reassigned score. Nothing was saved.
             </p>
           </div>
+        )}
+
+        {/* L-1 (cold audit): every refusal card leaves an obvious way back to
+            the paste box -- without it, the only exit was ‹ Stages, and the
+            copy above says "try again" with nothing on screen to try again with. */}
+        {result && !result.ok && (
+          <button className="button secondary" onClick={() => setResult(null)}>Paste something else</button>
         )}
       </div>
     );
@@ -325,7 +337,7 @@ export function StageScoresScreen({ id, onBack, open }: {
           a few now and come back for the rest later.
         </p>
         {match.stages.map((st) => {
-          const filled = hasHitBreakdown(st);
+          const filled = stageFilled(match, st.number);
           return (
             <button className="row-tap" key={st.number} onClick={() => openStage(st.number)}>
               <span className="label">Stage {st.number}

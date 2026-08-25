@@ -34,21 +34,39 @@ function readStageScoreLog(match: Match): StageScoreLog {
   return (raw && typeof raw === 'object') ? (raw as StageScoreLog) : {};
 }
 
-/** Whether this match already carries a hit breakdown for the given stage
- *  number -- the fact the screen's confirm-overwrite gate reads. `false`
- *  (never a throw) when the stage number doesn't exist at all; the caller
- *  finds that out for itself from the disk-driven stage list, not from here. */
+/** Whether this stage already carries content that a silent overwrite would
+ *  destroy -- the fact the screen's confirm-overwrite gate reads, and the
+ *  same fact its Added/Empty row label shows.
+ *
+ * WIDENED (cold audit M-1, session 133): `hasHitBreakdown` alone missed a
+ * stage with hand-entered Layer-1 time/points but no A/C/D breakdown -- that
+ * stage read "Empty" and a paste overwrote it with no confirm, the exact
+ * silent-data-loss shape the overwrite gate exists to prevent. "Filled"
+ * now means EITHER a hit breakdown OR a real (non-null) time or points
+ * value -- whatever a shooter already put here by hand still counts.
+ *
+ * `false` (never a throw) when the stage number doesn't exist at all; the
+ * caller finds that out for itself from the disk-driven stage list. */
 export function stageFilled(match: Match, stageNumber: number): boolean {
   const st = match.stages.find((s) => s.number === stageNumber);
-  return !!st && hasHitBreakdown(st);
+  if (!st) return false;
+  return hasHitBreakdown(st) || st.time != null || st.points != null;
 }
 
 /**
  * Merge one accepted stage score onto a match, ADDITIVELY: the six Layer-2
  * hit fields + `time` land on the existing stage at `stageNumber`; `percent`
  * is left exactly as it was (spec section 4 -- "Stage percent keeps its
- * existing value; do not touch it"). `points`/hit factor are never written
- * here -- they stay derived, same as any hand-entered breakdown.
+ * existing value; do not touch it").
+ *
+ * `points` IS written here, to the freshly derived `accepted.derived.
+ * stagePoints` -- the same convention MatchForm's own stageObjs useMemo
+ * follows (src/ui/MatchScreens.tsx: "When a breakdown is entered, the
+ * stage's points are DERIVED from the hits ... so points can never disagree
+ * with the hits"), reproduced here rather than diverging from it (cold audit
+ * M-1). Leaving a hand-entered `points` value in place once a breakdown
+ * lands would contradict the pasted time/hits the moment anyone looked --
+ * exactly the stale-points defect this fixes.
  *
  * Pure. Never mutates its input; returns a brand-new Match object ready for
  * putOne, or `null` when the match has no stage at that number (the caller's
@@ -64,6 +82,7 @@ export function applyStageScore(
   stages[idx] = {
     ...stages[idx],
     time: accepted.time,
+    points: accepted.derived.stagePoints,
     alphas: accepted.hits.alphas,
     charlies: accepted.hits.charlies,
     deltas: accepted.hits.deltas,

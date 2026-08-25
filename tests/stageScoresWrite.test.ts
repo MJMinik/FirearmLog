@@ -105,6 +105,17 @@ test('applyStageScore preserves an existing legacy field from another importer (
   assert.ok(out.legacy!.stageScores);
 });
 
+// Cold audit M-1: once a breakdown is written, `points` is set to the freshly
+// DERIVED value -- the same convention MatchForm's stageObjs useMemo follows
+// -- so a stale hand-entered points value can never survive next to the
+// pasted hits/time it now contradicts. accept()'s 20A/2C/Minor derives
+// 5*20 + 3*2 = 106, no penalties.
+test('applyStageScore writes points to the derived stagePoints, matching MatchForm\'s own convention', () => {
+  const m = match([{ ...blankStage(1), points: 999 }]); // a stale hand-entered value
+  const out = applyStageScore(m, 1, accept(), 1000)!;
+  assert.equal(out.stages[0].points, 106);
+});
+
 // ── stageFilled ──────────────────────────────────────────────────────────
 
 test('stageFilled is false for a blank stage and true once a breakdown exists', () => {
@@ -117,6 +128,27 @@ test('stageFilled is false for a blank stage and true once a breakdown exists', 
 test('stageFilled is false for a stage number that does not exist', () => {
   const m = match([blankStage(1)]);
   assert.equal(stageFilled(m, 9), false);
+});
+
+// Cold audit M-1: hasHitBreakdown alone missed a stage with hand-entered
+// Layer-1 time/points but no A/C/D breakdown -- it read "Empty" and a paste
+// silently overwrote it with no confirm. "Filled" now widens to count a
+// real (non-null) time or points value too, whatever a shooter already
+// entered by hand -- the same fact the overwrite gate and the list row's
+// Added/Empty label both now read.
+test('stageFilled is true for a stage with only a hand-entered time (no breakdown) -- the widened definition (M-1)', () => {
+  const m = match([{ ...blankStage(1), time: 45.6 }]);
+  assert.equal(stageFilled(m, 1), true);
+});
+
+test('stageFilled is true for a stage with only a hand-entered points value (no breakdown) -- the widened definition (M-1)', () => {
+  const m = match([{ ...blankStage(1), points: 80 }]);
+  assert.equal(stageFilled(m, 1), true);
+});
+
+test('stageFilled is still false for a stage with neither a breakdown nor time/points', () => {
+  const m = match([blankStage(1)]);
+  assert.equal(stageFilled(m, 1), false);
 });
 
 // ── commitStageScore (the real read-then-write) ─────────────────────────────
@@ -141,6 +173,21 @@ test('commitStageScore refuses to overwrite a filled stage without allowOverwrit
   // Nothing was overwritten by the refused call.
   const onDisk = await getOne<Match>('matches', m.id);
   assert.equal(onDisk!.stages[0].alphas, 20);
+});
+
+// Cold audit M-1: a stage with only HAND-ENTERED time (no A/C/D breakdown)
+// must be refused the same as a breakdown-filled one -- before the fix this
+// read "Empty" via hasHitBreakdown alone and a paste overwrote it silently.
+test('commitStageScore refuses to overwrite a stage that has only a hand-entered time, no breakdown (M-1)', async () => {
+  const m = match([{ ...blankStage(1), time: 45.6 }]);
+  await putOne('matches', m);
+  await assert.rejects(
+    () => commitStageScore(m.id, 1, accept(), false),
+    (e: unknown) => e instanceof StageScoreWriteError && e.code === 'stage-already-filled',
+  );
+  const onDisk = await getOne<Match>('matches', m.id);
+  assert.equal(onDisk!.stages[0].time, 45.6); // untouched by the refused call
+  assert.equal(onDisk!.stages[0].alphas, undefined);
 });
 
 test('commitStageScore overwrites a filled stage when allowOverwrite is true', async () => {

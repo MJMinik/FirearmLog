@@ -10,7 +10,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   parseStagePaste, selectShooterRow, hitFactorsAgree, isDnfRow,
-  humanStageNumber, zeroBasedStageIndex, detectStagePageSurface,
+  humanStageNumber, zeroBasedStageIndex, detectStagePageSurface, rowPowerFactorDisagrees,
   type StageScoreContext,
 } from '../src/lib/stageScores.ts';
 
@@ -138,6 +138,75 @@ test('an AP (additional penalty) value refuses: the scorer does not model AP', (
   assert.equal(result.code, 'hf-mismatch');
   if (result.code !== 'hf-mismatch') return;
   assert.equal(result.derived.hitFactor, 1.98);
+});
+
+// Cold audit L-3: when BOTH sides floor to the identical rounded value (most
+// often 0.0000, but the argument holds for any coincidence), the ordinary
+// hitFactorsAgree check has ZERO power to catch a B or AP column the scorer
+// never modelled -- it would accept the row minus its bravos entirely. This
+// row derives an honest 0 (an all-zero scoring line) and the page also
+// prints 0.0000, so pre-fix this would have been WRONGLY ACCEPTED despite
+// carrying 3 B-zone hits FirearmLog silently dropped.
+test('a floored-to-zero row with B>0 still refuses -- HF agreement alone cannot catch it (L-3)', () => {
+  const text = reviewPage([row({
+    a: '0', b: '3', c: '0', d: '0', m: '0', ns: '0', proc: '0', ap: '0',
+    time: '10', hf: '0.0000',
+  })]);
+  const result = parseStagePaste(text, ctxFor());
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.code, 'hf-mismatch');
+  if (result.code !== 'hf-mismatch') return;
+  assert.equal(result.derived.hitFactor, 0);
+  assert.equal(result.printedHitFactor, 0);
+});
+
+test('a floored-to-zero row with AP>0 (no B) also refuses on the same principle (L-3)', () => {
+  const text = reviewPage([row({
+    a: '0', b: '-', c: '0', d: '0', m: '0', ns: '0', proc: '0', ap: '2',
+    time: '10', hf: '0.0000',
+  })]);
+  const result = parseStagePaste(text, ctxFor());
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.code, 'hf-mismatch');
+});
+
+// ---------------------------------------------------------------------------
+// Cold audit M-3: an hf-mismatch refusal names when the row's own PF cell
+// disagrees with the match's stored power factor -- a detectable, plain
+// cause the copy must not hide behind "likely an extra penalty."
+// ---------------------------------------------------------------------------
+
+test('hf-mismatch carries powerFactorDisagrees: true when the row PF cell differs from the match (M-3)', () => {
+  // ctxFor()'s match is scored Minor; this row's own PF cell says Maj.
+  const text = reviewPage([row({ pf: 'Maj', hf: '9.9999' })]);
+  const result = parseStagePaste(text, ctxFor({ powerFactor: 'Minor' }));
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.code, 'hf-mismatch');
+  if (result.code !== 'hf-mismatch') return;
+  assert.equal(result.powerFactorDisagrees, true);
+});
+
+test('hf-mismatch carries powerFactorDisagrees: false when the row PF cell agrees with the match (M-3)', () => {
+  // row()'s default pf is 'Min', matching ctxFor()'s default 'Minor'.
+  const text = reviewPage([row({ hf: '9.9999' })]);
+  const result = parseStagePaste(text, ctxFor());
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.equal(result.code, 'hf-mismatch');
+  if (result.code !== 'hf-mismatch') return;
+  assert.equal(result.powerFactorDisagrees, false);
+});
+
+test('rowPowerFactorDisagrees: full words and abbreviations both recognised, an unreadable cell never guesses', () => {
+  assert.equal(rowPowerFactorDisagrees('Min', 'Minor'), false);
+  assert.equal(rowPowerFactorDisagrees('Minor', 'Minor'), false);
+  assert.equal(rowPowerFactorDisagrees('Maj', 'Minor'), true);
+  assert.equal(rowPowerFactorDisagrees('Major', 'Major'), false);
+  assert.equal(rowPowerFactorDisagrees('', 'Minor'), false);
+  assert.equal(rowPowerFactorDisagrees('???', 'Minor'), false);
 });
 
 // ---------------------------------------------------------------------------

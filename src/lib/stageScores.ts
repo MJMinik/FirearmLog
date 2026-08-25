@@ -412,6 +412,20 @@ export function hitFactorsAgree(derived: number | null, printed: number | null):
   return round4(derived) === round4(printed);
 }
 
+/** Cold audit M-3: whether a Review row's own PF cell ('Min'/'Maj', or the
+ *  full word -- both observed) names a DIFFERENT power factor than the
+ *  match's stored one. A disagreement here is a detectable, plain cause of
+ *  an hf-mismatch refusal -- scoreStageHits scores against the match's power
+ *  factor, never the row's own -- so hiding it sends the shooter looking for
+ *  a phantom range-officer penalty instead of the match's own PF setting.
+ *  Never a guess: an unrecognised PF cell (neither Min/Minor nor Maj/Major)
+ *  returns false rather than claiming a disagreement it can't support. */
+export function rowPowerFactorDisagrees(rowPowerFactor: string, matchPowerFactor: string): boolean {
+  const t = rowPowerFactor.trim().toLowerCase();
+  const rowPf = t === 'min' || t === 'minor' ? 'Minor' : t === 'maj' || t === 'major' ? 'Major' : null;
+  return rowPf !== null && rowPf !== matchPowerFactor;
+}
+
 // ---------------------------------------------------------------------------
 // Wrong-surface detection (pure detection only -- pass 2 owns the copy)
 // ---------------------------------------------------------------------------
@@ -527,10 +541,17 @@ export type StageScoreResult =
    *  3: "an unparseable printed-HF cell -> REFUSE, never skip the check"). */
   | { ok: false; code: 'unparseable-hf'; row: StageReviewRow }
   /** The app's own derivation does not reproduce the page's printed Hit
-   *  Factor to 4 decimals -- the honesty gate (spec section 4). Carries
-   *  both numbers plus the full derivation so pass 2's confirm/refusal copy
-   *  can say what it needs to. */
-  | { ok: false; code: 'hf-mismatch'; row: StageReviewRow; derived: StageScore; printedHitFactor: number };
+   *  Factor to 4 decimals -- the honesty gate (spec section 4). Also the code
+   *  for the forced-refusal case (cold audit L-3): a B>0 or AP>0 row refuses
+   *  even when the two hit factors happen to agree (both floor to 0.0000, or
+   *  any other coincidence), because neither column is modelled by the
+   *  scorer at all, so agreement there proves nothing. Carries both numbers
+   *  plus the full derivation so pass 2's confirm/refusal copy can say what
+   *  it needs to, plus `powerFactorDisagrees` (cold audit M-3) -- true when
+   *  the row's own PF cell names a different power factor than the match's
+   *  stored one, a detectable and much more likely cause than an RO penalty
+   *  that the refusal copy should not hide. */
+  | { ok: false; code: 'hf-mismatch'; row: StageReviewRow; derived: StageScore; printedHitFactor: number; powerFactorDisagrees: boolean };
 
 export interface StageScoreContext {
   /** The MATCH's stored power factor ('Major' | 'Minor', competition.ts
@@ -573,8 +594,23 @@ export function scoreReviewRow(row: StageReviewRow, powerFactor: string): StageS
   // is exactly where "this can't happen" earns the least trust.
   if (derived === null) return { ok: false, code: 'unparseable-hf', row };
 
+  const powerFactorDisagrees = rowPowerFactorDisagrees(row.powerFactor, powerFactor);
+
+  // L-3 (cold audit, session 133): B (bravos) and AP (additional penalties)
+  // are both columns scoreStageHits never models -- they contribute NOTHING
+  // to `derived`. When the real Hit Factor is small, both sides can floor to
+  // the SAME rounded value (0.0000 vs 0.0000, or any other coincidence) even
+  // though the row carries a B or AP the app quietly dropped, and the
+  // ordinary agreement check below has zero power to catch that: it would
+  // accept a stage minus its B hits. Refuse UNCONDITIONALLY whenever either
+  // column is nonzero, before the HF comparison even runs -- agreement here
+  // proves nothing about a column that was never compared in the first place.
+  if (row.bravos > 0 || row.additionalPenalties > 0) {
+    return { ok: false, code: 'hf-mismatch', row, derived, printedHitFactor: row.printedHitFactor, powerFactorDisagrees };
+  }
+
   if (!hitFactorsAgree(derived.hitFactor, row.printedHitFactor)) {
-    return { ok: false, code: 'hf-mismatch', row, derived, printedHitFactor: row.printedHitFactor };
+    return { ok: false, code: 'hf-mismatch', row, derived, printedHitFactor: row.printedHitFactor, powerFactorDisagrees };
   }
 
   // The cast is safe, not asserted: hitFactorsAgree just returned true,

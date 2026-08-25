@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test';
 import { seedDemo, gotoTab } from './helpers';
+import { GUNCRAFT_2026_08_02_STAGE1_COMBINED } from '../tests/fixtures/stageScoresGuncraft-2026-08-02.ts';
 
 // End-to-end coverage for the PractiScore importer (src/ui/PractiScoreImport.tsx):
 // paste/try-sample -> parse -> pick which shooter is you -> preview -> Save match.
@@ -271,6 +272,50 @@ test.describe('PractiScore import', () => {
     // Leaving the screen confirms nothing was written.
     await main.getByRole('button', { name: '‹ Cancel' }).click();
     await expect(main.getByRole('heading', { name: 'Compete' })).toBeVisible();
+    await expect(matchRows).toHaveCount(totalBefore);
+  });
+
+  // Cold audit H-1 (session 133): a stage-level Combined page carries the same
+  // Place/Name/No./Div/PF columns the WHOLE-match parser accepts, so pasting
+  // one here used to parse "successfully" — one stage's Stage Pts silently
+  // read as the whole match's Match Pts, stages: [] — and the catch-branch
+  // route (which only checked the 'review' surface) never fired, so a garbage
+  // match saved with no warning. detectStagePageSurface(text) is now consulted
+  // on the parse-SUCCESS path too, before the parse result is ever offered.
+  test('a stage Combined page pasted into the whole-match importer is refused, not saved as a garbage match (H-1)', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Compete');
+    const main = page.getByRole('main');
+
+    const matchesCard = main.locator('.card').filter({ has: page.getByRole('heading', { name: 'Matches', exact: true }) });
+    const matchRows = matchesCard.locator('.row-tap');
+    await expect(matchRows.first()).toBeVisible();
+    const totalBefore = await matchRows.count();
+
+    await main.getByRole('button', { name: 'Import…' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Import' });
+    await sheet.getByRole('button', { name: 'Import from PractiScore' }).click();
+    await expect(main.getByRole('heading', { name: 'Import from PractiScore' })).toBeVisible();
+
+    await main.getByLabel('Results text').fill(GUNCRAFT_2026_08_02_STAGE1_COMBINED);
+    await main.getByRole('button', { name: 'Read results' }).click();
+
+    // A visible, plain-language error naming what the page actually is, and
+    // forward-pointing at where a single stage's scores actually go.
+    await expect(page.getByRole('alert')).toContainText(/one stage's summary page/);
+    await expect(page.getByRole('alert')).toContainText(/Add stage scores/);
+
+    // Still on step 1: no shooter picker, no preview, no way to save.
+    await expect(main.getByRole('button', { name: 'Read results' })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Save match' })).toHaveCount(0);
+    await expect(main.getByText('Which one is you?')).toHaveCount(0);
+
+    // Leaving the screen and reloading confirms nothing was written to disk —
+    // not just that the in-memory step never advanced.
+    await main.getByRole('button', { name: '‹ Cancel' }).click();
+    await expect(main.getByRole('heading', { name: 'Compete' })).toBeVisible();
+    await page.reload();
+    await gotoTab(page, 'Compete');
     await expect(matchRows).toHaveCount(totalBefore);
   });
 

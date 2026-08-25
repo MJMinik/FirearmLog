@@ -279,6 +279,17 @@ export function PractiScoreImport({ onCancel, onSaved }: {
     if (tryStartSteel(text)) return;
     try {
       const m = parsePractiScore(text);
+      // H-1 (cold audit, session 133): a stage-level Combined page carries the
+      // same Place/Name/No./Div/PF columns the overall parser accepts, so it
+      // parses "successfully" here — the result is garbage (one stage's Stage
+      // Pts read as the whole match's Match Pts, stages: []). Consult the
+      // surface BEFORE trusting a successful parse, not just after a refused
+      // one, or a stage-Combined paste would save silently as a fake match.
+      if (detectStagePageSurface(text) === 'combined') {
+        setProblem("This looks like one stage's summary page, not the whole match's results — a single stage's scores go on that match's own screen, under \"Add stage scores\", not here.");
+        setPsQuery('');
+        return;
+      }
       setParsed(m);
       setChosenIdx(null);
       setMatchName(m.name);
@@ -304,9 +315,14 @@ export function PractiScoreImport({ onCancel, onSaved }: {
         // Stage-scores importer wrong-surface auto-route, the other direction
         // (STAGE_SCORES_SPEC.md section 6a Seat 11 condition 9): a single
         // stage's Review page pasted into the WHOLE-match importer. Forward-
-        // pointing, never "wrong box" -- and never a write, this importer
+        // pointing, never "wrong box" — and never a write, this importer
         // has nothing that can read a single-stage page anyway.
-        setProblem("This looks like one stage's Review page, not the whole match's results. A single stage's scores go on that match's own screen, under \"Add stage scores\" -- not here.");
+        setProblem("This looks like one stage's Review page, not the whole match's results — a single stage's scores go on that match's own screen, under \"Add stage scores\", not here.");
+      } else if (detectStagePageSurface(text) === 'combined') {
+        // H-1: the same route as the success-path check above, reached when
+        // parsePractiScore instead throws on a stage-Combined shape (rather
+        // than misreading it) — both paths must catch it, not just one.
+        setProblem("This looks like one stage's summary page, not the whole match's results — a single stage's scores go on that match's own screen, under \"Add stage scores\", not here.");
       } else {
         setProblem(e instanceof Error ? e.message : 'Could not read that.');
       }
