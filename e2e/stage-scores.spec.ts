@@ -201,6 +201,48 @@ test.describe('Stage scores importer (pass 2)', () => {
     await expect(main.getByRole('button', { name: /Add stage scores/ })).toHaveCount(0);
   });
 
+  // Cold audit NEW-L-1 (session 133): the stage-list label and the match's
+  // own "Add stage scores" entry gate used to disagree about a hand-entered,
+  // no-breakdown stage -- the list called it "Added" while the gate (which
+  // reads hasHitBreakdown, unchanged here) still treated the match as having
+  // an unfilled stage. This proves all three labels now say what's true, and
+  // that the entry gate still shows for the hand-entered stage specifically.
+  test('the stage list gives a hand-entered, no-breakdown stage its own label -- distinct from Added and Empty', async ({ page }) => {
+    await seedDemo(page);
+    const main = page.getByRole('main');
+    await gotoTab(page, 'Compete');
+    await main.getByRole('button', { name: '+ Log Match' }).click();
+    await main.getByLabel('What this match is called').fill('Stage Scores Third Label Test');
+    await main.locator('#match-gun-select').selectOption({ index: 1 });
+    const addStage = main.getByRole('button', { name: '+ Add Stage' });
+    await addStage.click();
+    await addStage.click();
+    await addStage.click();
+    const blocks = main.locator('.drill-edit');
+
+    // Stage 1: time only, no breakdown -- the new "logged by hand" case.
+    await blocks.nth(0).getByLabel('Time (s)').fill('12.5');
+    // Stage 2: left completely bare -- still Empty.
+    // Stage 3: a full hit breakdown -- still Added.
+    await blocks.nth(2).getByLabel('Time (s)').fill('9');
+    await blocks.nth(2).getByRole('button', { name: /Add hit breakdown/ }).click();
+    await blocks.nth(2).getByLabel('Alphas (A)', { exact: true }).fill('10');
+
+    await main.getByRole('button', { name: 'Save match' }).click();
+    await expect(main.getByRole('heading', { name: 'Stage Scores Third Label Test', level: 1 })).toBeVisible();
+
+    // The entry gate still shows -- Stage 1 and Stage 2 both lack a
+    // hasHitBreakdown, so the match still has "unfilled" stages by the gate's
+    // own (unchanged) definition.
+    await main.getByRole('button', { name: /Add stage scores/ }).click();
+    await expect(main.getByRole('heading', { name: 'Add stage scores' })).toBeVisible();
+
+    await expect(main.getByRole('button', { name: 'Stage 1' })).toContainText('Logged by hand');
+    await expect(main.getByRole('button', { name: 'Stage 1' })).toContainText('paste to add the hit breakdown');
+    await expect(main.getByRole('button', { name: 'Stage 2' })).toContainText('Empty');
+    await expect(main.getByRole('button', { name: 'Stage 3' })).toContainText('Added');
+  });
+
   test('overwrite: re-pasting an already-filled stage requires an explicit confirm', async ({ page }) => {
     await seedDemo(page);
     await seedWhoYouAre(page);

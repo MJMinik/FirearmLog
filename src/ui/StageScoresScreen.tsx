@@ -20,6 +20,7 @@ import {
   type StageScoreResult, type StageReviewRow, type AcceptedStageScore,
 } from '../lib/stageScores.ts';
 import { commitStageScore, stageFilled, StageScoreWriteError } from '../lib/stageScoresWrite.ts';
+import { hasHitBreakdown } from '../lib/competition.ts';
 import type { View } from './nav.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { ScreenLoading, ScreenError } from './ScreenState.tsx';
@@ -257,7 +258,11 @@ export function StageScoresScreen({ id, onBack, open }: {
 
         {result && !result.ok && result.code === 'name-collision' && (
           <div className="card">
-            <p className="report-note">
+            {/* Carried a11y Low (cold audit, session 133): a neutral outcome,
+                not an error -- role="status" so a screen-reader user who taps
+                Read stage hears it, without the assertive interruption
+                role="alert" would give a refusal. */}
+            <p className="report-note" role="status">
               More than one row on Stage {activeStage}&rsquo;s page could be you. Tap yours.
             </p>
             {result.candidates.map((c, i) => <CandidateRow key={i} c={c} onPick={() => pickCandidate(c)} />)}
@@ -287,7 +292,8 @@ export function StageScoresScreen({ id, onBack, open }: {
 
         {result && !result.ok && result.code === 'wrong-surface-overall' && (
           <div className="card">
-            <p className="report-note">
+            {/* Carried a11y Low (cold audit, session 133): neutral outcome, role="status". */}
+            <p className="report-note" role="status">
               This looks like the whole match&rsquo;s overall results, not Stage {activeStage} on its own. That
               page goes in Import from PractiScore instead of here.
             </p>
@@ -299,7 +305,8 @@ export function StageScoresScreen({ id, onBack, open }: {
 
         {result && !result.ok && result.code === 'dq-absent' && (
           <div className="card">
-            <p className="report-note">
+            {/* Carried a11y Low (cold audit, session 133): neutral outcome, role="status". */}
+            <p className="report-note" role="status">
               {result.name} is marked DQ on this page, so PractiScore isn&rsquo;t publishing stage scores for
               Stage {activeStage}. Nothing was saved -- that&rsquo;s expected for a DQ, not an error.
             </p>
@@ -308,7 +315,8 @@ export function StageScoresScreen({ id, onBack, open }: {
 
         {result && !result.ok && result.code === 'dnf' && (
           <div className="card">
-            <p className="report-note">
+            {/* Carried a11y Low (cold audit, session 133): neutral outcome, role="status". */}
+            <p className="report-note" role="status">
               Stage {activeStage}&rsquo;s results page shows no score for you on this stage -- typically a DNF
               or a reassigned score. Nothing was saved.
             </p>
@@ -337,11 +345,26 @@ export function StageScoresScreen({ id, onBack, open }: {
           a few now and come back for the rest later.
         </p>
         {match.stages.map((st) => {
-          const filled = stageFilled(match, st.number);
+          // Cold audit NEW-L-1 (session 133): the list label used to share
+          // stageFilled with the overwrite gate, so a stage with only a
+          // hand-entered time/points (no breakdown) read "Added" here while
+          // MatchScreens' own entry gate (hasHitBreakdown) still treated it as
+          // unfilled and kept offering "Add stage scores" for the match. This
+          // stage now gets its own label naming what's actually true, so it
+          // agrees with the entry gate instead of contradicting it. The
+          // overwrite gate (`alreadyFilled` above) is untouched -- a hand-
+          // entered stage still demands confirm-overwrite.
+          const hasBreakdown = hasHitBreakdown(st);
+          const handEnteredOnly = !hasBreakdown && stageFilled(match, st.number);
+          const label = hasBreakdown
+            ? 'Added'
+            : handEnteredOnly
+              ? 'Logged by hand -- paste to add the hit breakdown'
+              : 'Empty -- add it or leave it, either is fine';
           return (
             <button className="row-tap" key={st.number} onClick={() => openStage(st.number)}>
               <span className="label">Stage {st.number}
-                <div className="row-sub">{filled ? 'Added' : 'Empty -- add it or leave it, either is fine'}</div>
+                <div className="row-sub">{label}</div>
               </span>
               <span className="value">›</span>
             </button>
