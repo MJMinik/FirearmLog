@@ -98,6 +98,39 @@ test.describe('Stage scores importer (pass 2)', () => {
     await expect(main.getByText('HF 1.98')).toBeVisible();
   });
 
+  // Session 134. The entry gate used to hide "Add stage scores" once every
+  // stage carried a hit breakdown. That made the feature unreachable on a log
+  // where every stage had been filled in by hand -- which is Michael's whole
+  // log, so it shipped unusable for its only user. Every other test in this
+  // file starts from EMPTY stages and clicks the button immediately, so the
+  // suite stayed green while the door never opened. This test starts where he
+  // starts: a match with nothing left to fill.
+  test('a match whose every stage is already filled still offers the importer', async ({ page }) => {
+    await seedDemo(page);
+    await seedWhoYouAre(page);
+    await logUspsaMatch(page, 'Stage Scores All Filled', 1);
+    const main = page.getByRole('main');
+
+    await openStageBox(page, 1);
+    await main.getByRole('textbox', { name: 'Stage results text' }).fill(GUNCRAFT_2026_08_02_STAGE1_REVIEW);
+    await main.getByRole('button', { name: 'Read stage' }).click();
+    await main.getByRole('button', { name: /Save Stage 1.s scores/ }).click();
+    await expect(main.getByText('Added').first()).toBeVisible();
+
+    // Back on the debrief with every stage filled, the door must STILL be open:
+    // replacing a filled stage is a supported path (the stage list says "add or
+    // replace it" and guards the overwrite with a confirm).
+    await main.getByRole('button', { name: '\u2039 Back' }).click();
+    await expect(main.getByRole('heading', { name: 'Stage Scores All Filled' })).toBeVisible();
+    await expect(main.getByRole('button', { name: /Add stage scores/ })).toBeVisible();
+
+    // Survives a reload, so this is the stored state and not a stale render.
+    await page.reload();
+    await gotoTab(page, 'Compete');
+    await main.getByText('Stage Scores All Filled').click();
+    await expect(main.getByRole('button', { name: /Add stage scores/ })).toBeVisible();
+  });
+
   test('the identity E2E: content pasted at the wrong stage slot shows the slot before anything commits', async ({ page }) => {
     await seedDemo(page);
     await seedWhoYouAre(page);
@@ -183,7 +216,15 @@ test.describe('Stage scores importer (pass 2)', () => {
     await expect(main.getByRole('button', { name: /Add stage scores/ })).toHaveCount(0);
   });
 
-  test('gate absence: no "Add stage scores" row once every stage already has a breakdown', async ({ page }) => {
+  // Session 134, REVERSED. This test used to assert the row was ABSENT once
+  // every stage carried a breakdown -- it pinned seat 11's condition, and the
+  // condition was wrong in practice: Michael had hand-entered breakdowns on
+  // every stage of every match, so the importer was unreachable on his entire
+  // log. The behaviour was specified, built AND tested; nothing overlooked it.
+  // It now asserts the opposite, because replacing a hand-entered stage with
+  // the source-verified numbers is a supported path the old gate made
+  // impossible to reach.
+  test('the "Add stage scores" row stays offered once every stage already has a breakdown', async ({ page }) => {
     await seedDemo(page);
     const main = page.getByRole('main');
     await gotoTab(page, 'Compete');
@@ -198,7 +239,7 @@ test.describe('Stage scores importer (pass 2)', () => {
     await main.getByRole('button', { name: 'Save match' }).click();
     await expect(main.getByRole('heading', { name: 'Stage Scores Filled Gate Test', level: 1 })).toBeVisible();
 
-    await expect(main.getByRole('button', { name: /Add stage scores/ })).toHaveCount(0);
+    await expect(main.getByRole('button', { name: /Add stage scores/ })).toBeVisible();
   });
 
   // Cold audit NEW-L-1 (session 133): the stage-list label and the match's
@@ -231,9 +272,9 @@ test.describe('Stage scores importer (pass 2)', () => {
     await main.getByRole('button', { name: 'Save match' }).click();
     await expect(main.getByRole('heading', { name: 'Stage Scores Third Label Test', level: 1 })).toBeVisible();
 
-    // The entry gate still shows -- Stage 1 and Stage 2 both lack a
-    // hasHitBreakdown, so the match still has "unfilled" stages by the gate's
-    // own (unchanged) definition.
+    // The entry gate shows. (Session 134: it now shows on every USPSA match
+    // with a stage skeleton, so this no longer turns on hasHitBreakdown at
+    // all -- the comment above about the gate's definition is history.)
     await main.getByRole('button', { name: /Add stage scores/ }).click();
     await expect(main.getByRole('heading', { name: 'Add stage scores' })).toBeVisible();
 

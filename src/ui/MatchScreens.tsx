@@ -382,20 +382,25 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
         <div className="card">
           <h2>Stage breakdown <InfoTip title="Stage breakdown">Hit factor is your points divided by your time (higher is better). Stage percent is your score against the stage winner. We flag your weakest stage -- where you lost the most ground against the winners -- and your strongest. Add a stage's A/C/D/miss breakdown (when you log or edit the match, or paste it in from PractiScore) and we'll show what it would have scored with all A's, plus your % of available points.</InfoTip></h2>
           <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers', section: wikiSection })}>How the numbers work ›</button>
-          {/* Stage-scores importer entry point (STAGE_SCORES_SPEC.md section 6a
-              Seat 11 conditions 6-7): USPSA-scored + a stage skeleton (both
-              already true of this card's own gate) + at least one stage still
-              missing a hit breakdown -- never a dead control once every stage
-              is filled in. */}
-          {match.stages.some((st) => !hasHitBreakdown(st)) && (
-            <button className="row-tap" style={{ marginBottom: 4 }}
-              onClick={() => open({ kind: 'stage-scores', id: match.id })}>
-              <span className="label">Add stage scores
-                <div className="row-sub">Paste each stage's Review page from PractiScore instead of typing the breakdown by hand.</div>
-              </span>
-              <span className="value">›</span>
-            </button>
-          )}
+          {/* Stage-scores importer entry point (STAGE_SCORES_SPEC.md section 6a).
+              Gated ONLY by this card's own gate: USPSA-scored + a stage skeleton.
+              Seat 11's conditions 6-7 also required "at least one stage still
+              missing a hit breakdown -- never a dead control once every stage is
+              filled in", and session 134 REVERSED that at Michael's decision,
+              because it made the feature unreachable on his entire log: he had
+              hand-entered breakdowns on every stage of every match, so the door
+              never appeared. The control is not dead on a filled match -- the
+              stage-list screen it opens says "Tap a stage to add OR REPLACE it"
+              and guards the overwrite with a confirm, and replacing hand-entered
+              numbers with source-verified ones is the feature's best use. The old
+              gate made that path unreachable and the promise unkeepable. */}
+          <button className="row-tap" style={{ marginBottom: 4 }}
+            onClick={() => open({ kind: 'stage-scores', id: match.id })}>
+            <span className="label">Add stage scores
+              <div className="row-sub">Paste each stage's Review page from PractiScore to add or replace the breakdown.</div>
+            </span>
+            <span className="value">›</span>
+          </button>
           {insights.rankedBy !== 'none' && insights.strongest && insights.toughest.length > 0 && (
             <p className="report-note" style={{ marginTop: 0, marginBottom: 10 }}>
               Weakest (by %): {insights.toughest.map((s) => `Stage ${s.number} (${fmtMetric(s, insights.rankedBy)})`).join(', ')}.{' '}
