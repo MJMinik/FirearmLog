@@ -10,6 +10,7 @@ import {
 import { ProgressScreen } from './ui/ProgressScreen.tsx';
 import { CompeteScreen, ClassifierForm } from './ui/CompeteScreen.tsx';
 import { MatchDetail, MatchForm } from './ui/MatchScreens.tsx';
+import { StageScoresScreen } from './ui/StageScoresScreen.tsx';
 import { GunDetail } from './ui/GunDetail.tsx';
 import { GunForm } from './ui/GunForm.tsx';
 import { SessionForm } from './ui/SessionForm.tsx';
@@ -385,6 +386,12 @@ export function App() {
       onCancel={back}
       onSaved={(mid) => { refresh(); replace({ kind: 'match-detail', id: mid }); }}
       onDirtyChange={reportFormDirty} onSaverChange={reportFormSaver} />;
+  } else if (view?.kind === 'stage-scores') {
+    const v = view;
+    // Each accepted paste writes immediately (its own commitStageScore call),
+    // so there is nothing to "save" on the way out -- ‹ Back just pops, and
+    // MatchDetail re-mounts fresh on return, reading whatever is on disk.
+    content = <StageScoresScreen id={v.id} onBack={back} open={push} />;
   } else if (view?.kind === 'ammo') {
     content = <AmmoScreen refreshKey={refreshKey}
       onBack={back}
