@@ -23,7 +23,7 @@ test.describe('Telemetry dark state — no surface shows before the pipe exists'
       // Desktop: the App & Data group renders down the sidebar. Wait for a
       // neighbour row so the zero-count below is non-vacuous (the sidebar has
       // actually rendered its section entries).
-      await expect(nav(page).getByRole('button', { name: 'Free Up Space' })).toBeVisible();
+      await expect(nav(page).getByRole('button', { name: 'Sync & Backup' })).toBeVisible();
       await expect(nav(page).getByRole('button', { name: 'Your Data' })).toHaveCount(0);
     } else {
       // Phone: the App & Data group lives on the More screen.

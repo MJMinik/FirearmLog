@@ -39,7 +39,6 @@ test.describe('Menu groups', () => {
     { group: 'Records', section: 'Malfunctions', heading: 'Malfunctions' },
     { group: 'App & Data', section: 'Tour & Setup', heading: 'Tour & Setup' },
     { group: 'App & Data', section: 'Sync & Backup', heading: 'Sync & Backup' },
-    { group: 'App & Data', section: 'Free Up Space', heading: 'Free Up Space' },
   ];
 
   for (const { group, section, heading } of dests) {

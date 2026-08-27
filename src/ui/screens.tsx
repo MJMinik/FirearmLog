@@ -1180,11 +1180,6 @@ export function MoreScreen({ refreshKey, open }: {
           <span className="label">Sync &amp; Backup</span>
           <span className="value">›</span>
         </button>
-        <button className="row-tap" onClick={() => open({ kind: 'free-space' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="cleanup" size={20} /></span>
-          <span className="label">Free Up Space</span>
-          <span className="value">›</span>
-        </button>
         <button className="row-tap" onClick={() => open({ kind: 'export-csv' })}>
           <span className="row-ico" aria-hidden="true"><Icon name="reports" size={20} /></span>
           <span className="label">Export as CSV</span>
