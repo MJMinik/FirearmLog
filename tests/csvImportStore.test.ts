@@ -202,7 +202,28 @@ const REFERENCE_CASES: { store: StoreName; label: string; record: (gunId: string
   { store: 'skillSets', label: 'timed skills', record: (id) => ({ id: 'ss-ref', createdAt: 1, updatedAt: 1, sessionId: 'se-other', date: '2026-03-03', skill: 'draw', firearmId: id, dryFire: false, count: 10, bestSec: 1.4, cold: false, notes: '' }) },
   { store: 'matches', label: 'matches', record: (id) => ({ id: 'mc-ref', createdAt: 1, updatedAt: 1, date: '2026-04-04', name: 'Club match', matchType: 'USPSA', division: 'CO', powerFactor: 'Minor', firearmId: id, totalRounds: null, overallPlace: null, overallOf: null, divisionPlace: null, divisionOf: null, matchPercent: null, stages: [], entryFee: null, practiScoreUrl: '', notes: '' }) },
   { store: 'reminders', label: 'reminders', record: (id) => ({ id: 'rm-ref', createdAt: 1, updatedAt: 1, title: 'Change the spring', notes: '', source: 'custom', trigger: 'rounds', everyRounds: 5000, baselineRounds: 0, firearmId: id, enabled: true }) },
+  // `purchases` joined the scan in Aug 2026 with the "gun & gear cost" feature.
+  // It shipped WITHOUT a case here, and the gap was invisible: the scan branch
+  // could be replaced with `ids: () => []` and the whole 1,512-test suite stayed
+  // green. The `satisfies` clause on FIREARM_REF_SOURCES forces an ENTRY to
+  // exist; nothing forced the entry to be right. (Session-135 cold audit.)
+  { store: 'purchases', label: 'purchases', record: (id) => ({ id: 'pu-ref', createdAt: 1, updatedAt: 1, date: '2026-02-02', category: 'Gear / Equipment', item: 'Holster', vendor: 'Local shop', cost: 60, notes: '', firearmId: id }) },
 ];
+
+// THE KEEPER FOR THE LIST ABOVE. The comment two blocks up promises "every store
+// that holds a firearm id, one case each" -- and that promise was false the day
+// purchases was added, with nothing to say so. A hand-maintained list of stores
+// goes stale silently; a list checked against the table it mirrors goes RED.
+// Note what this does and does not buy: it catches a MISSING case, which is the
+// failure that actually happened. A case that exists but asserts the wrong thing
+// is still only caught by the per-store tests below.
+test('REFERENCE_CASES has a case for every store the firearm scan reads', () => {
+  assert.deepEqual(
+    REFERENCE_CASES.map((c) => c.store).slice().sort(),
+    REF_SCAN_STORES.firearm.slice().sort(),
+    'a store added to FIREARM_REF_SOURCES needs a case here, or its scan branch ships undefended',
+  );
+});
 
 for (const scanCase of REFERENCE_CASES) {
   test(`undo keeps an imported gun that ${scanCase.store} still points at`, async () => {

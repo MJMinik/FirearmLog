@@ -121,7 +121,7 @@ export function costsReport(d: ReportBundle): ReportResult {
     { heading: `This Year (${year})`, rows: totalsRows(ytd) },
     { heading: 'All Time', rows: totalsRows(all) },
     { heading: 'All-In Cost', rows: [{ label: 'Cost per round fired', value: fired > 0 ? '$' + (all.total / fired).toFixed(3) : '—' }] },
-    { heading: 'Spend by Gun', table: { headers: ['Gun', 'Ammo', 'Range', 'Matches', 'Parts', 'Total'],
+    { heading: 'Ammo & fees per gun', table: { headers: ['Gun', 'Ammo', 'Range', 'Matches', 'Parts', 'Total'],
       rows: spend.map((x) => [x.f.name, money(x.g.ammo), money(x.g.rangeFees), money(x.g.matchFees), money(x.g.parts), money(x.g.total)]) } }
   ] };
 }

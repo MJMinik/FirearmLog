@@ -288,7 +288,7 @@ export function PartForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }
         </label>
         <p className="report-note">
           A cost here shows up in Costs &amp; Purchases — in the totals, and (if the part's
-          tied to a gun) in that gun's Spend by Gun.
+          tied to a gun) in that gun's Ammo &amp; fees per gun.
         </p>
         <label className="field">Notes
           <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />

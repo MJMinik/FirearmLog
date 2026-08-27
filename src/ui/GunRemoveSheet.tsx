@@ -4,7 +4,7 @@
 // can be freed; on "no longer own" and on permanent delete they always move to
 // inventory (optic & parts -> unassigned, magazines drop this gun).
 import { useState } from 'react';
-import type { Firearm, Magazine, Optic, Part, Reminder } from '../lib/types.ts';
+import type { Firearm, Magazine, Optic, Part, Purchase, Reminder } from '../lib/types.ts';
 import { deleteOne, getAll, putOne } from '../lib/db.ts';
 import { stampUpdate } from '../lib/stamps.ts';
 import { todayKey } from '../lib/dates.ts';
@@ -64,6 +64,21 @@ export function GunRemoveSheet({ gun, hasHistory, onClose, onDone }: {
     for (const rid of reminderIdsForGun(reminders, gun.id)) {
       await deleteOne('reminders', rid);
     }
+    // A purchase linked to this gun keeps its money and loses its gun. The
+    // purchase itself is a real thing the shooter spent and must survive; the
+    // link cannot, because the gun it names is about to stop existing. Left
+    // dangling it is invisible in every mode (no row to carry it), re-opening the
+    // purchase shows the picker blank while state still holds the dead id, and
+    // saving untouched re-saves it. Cleared HERE and not in freeAccessories on
+    // purpose: retiring or selling a gun keeps the gun record, so the link stays
+    // true and the historical cost keeps naming the right gun. Only a permanent
+    // delete makes the link false. (Session-135 cold audit, finding 3.)
+    const purchases = await getAll<Purchase>('purchases');
+    for (const p of purchases) {
+      if (p.firearmId === gun.id) {
+        await putOne('purchases', stampUpdate({ ...p, firearmId: null }, Date.now()));
+      }
+    }
     await deleteOne('firearms', gun.id);
     onDone(true);
   }
@@ -72,7 +87,7 @@ export function GunRemoveSheet({ gun, hasHistory, onClose, onDone }: {
     return (
       <ConfirmSheet
         title={`Delete ${gun.name} permanently?`}
-        message="This gun has no logged sessions or matches, so it can be fully removed. Its optic and magazines move to your inventory, and any reminders you set for it are removed with it. There's no undo."
+        message="This gun has no logged sessions or matches, so it can be fully removed. Its optic and magazines move to your inventory, any purchases you linked to it stay in your costs but stop naming a gun, and any reminders you set for it are removed with it. There's no undo."
         confirmLabel="Delete Permanently"
         onConfirm={() => void deleteForever()}
         onClose={() => setConfirmDelete(false)}

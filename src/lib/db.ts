@@ -1653,10 +1653,15 @@ const str = (v: unknown): string => (typeof v === 'string' ? v : v == null ? '' 
  * damage this feature can do, which is why this is a table.
  *
  * Stores absent from the union entirely, each checked rather than assumed:
- * Purchase, Goal, Classifier, Reference, DrillDef, SkillAssessment, Ammunition
- * and TrashItem hold no firearm field at all, and SessionChecklist's `f_${id}`
+ * Goal, Classifier, Reference, DrillDef, SkillAssessment, Ammunition and
+ * TrashItem hold no firearm field at all, and SessionChecklist's `f_${id}`
  * keys are only ever read by walking the LIVE firearms, so a stale key resolves
  * to nothing and cannot orphan anything.
+ *
+ * `purchases` joined this table Aug 2026 when the "gun & gear cost" feature
+ * added an optional firearmId to Purchase (the "For which gun" picker, Gear /
+ * Equipment and Service / Repair only). A shooter's own gear-cost link is as
+ * real a reason to keep an imported gun as a maintenance entry or a part is.
  */
 const FIREARM_REF_SOURCES: RefTable<FirearmRefStore, SilencedFirearmStore> = {
   sessions: {
@@ -1672,6 +1677,7 @@ const FIREARM_REF_SOURCES: RefTable<FirearmRefStore, SilencedFirearmStore> = {
   },
   optics: { label: 'optics', ids: (r) => [str(r.firearmId)] },
   parts: { label: 'parts', ids: (r) => [str(r.firearmId)] },
+  purchases: { label: 'purchases', ids: (r) => [str(r.firearmId)] },
   skillSets: { label: 'timed skills', ids: (r) => [str(r.firearmId)] },
   matches: { label: 'matches', ids: (r) => [str(r.firearmId)] },
   reminders: { label: 'reminders', ids: (r) => [str(r.firearmId)] },
