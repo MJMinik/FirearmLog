@@ -3,7 +3,8 @@ import assert from 'node:assert/strict';
 import {
   ammoCurrentCostPerRound, computeFifoCosts, costPerRoundAfterBuy, costTotals, firearmShare,
   gunOwnershipSpend, gunSpend, inventoryAfterUsageChange, isLinkableGunCategory,
-  linkedGunIdForSave, lowAmmo, matchFee, purchaseAmmoLink, roundsFired, sessionAmmoCost
+  linkedGunIdForSave, lowAmmo, matchFee, partsTotalCost, purchaseAmmoLink, roundsFired,
+  sessionAmmoCost
 } from '../src/lib/costing.ts';
 
 // The worked example from the old app's verified engine: 1,500 @ $0.40 in
@@ -389,4 +390,83 @@ test('a NEGATIVE stored price contributes 0 rather than subtracting from the gun
   assert.equal(mixed.gun, 900);
   assert.equal(mixed.optic, 0);
   assert.equal(mixed.total, 900);
+});
+
+
+// ---------------------------------------------------------------------------
+// THE NEGATIVE-COST FLOOR, WIDENED (Michael, 27 Aug 2026)
+// ---------------------------------------------------------------------------
+//
+// The floor first shipped on gunOwnershipSpend alone. The cold audit's NEW-2
+// pointed out the consequence: one corrupt record then gave TWO answers on one
+// screen -- zero in the gear view, a negative in the totals card beside it.
+// Michael's call was to correct it everywhere, so every cost read in costing.ts
+// now goes through paid().
+//
+// None of this is reachable through the app's own forms, which reject a
+// negative. It is reachable through a restore: a .flog is written back verbatim
+// and the read boundary never touches optional numbers, so a hand-edited or
+// third-party backup can carry one.
+
+test('costTotals: a negative purchase cost and a negative range fee both floor to 0', () => {
+  const purchases = [
+    { id: 'pu-a', date: '2026-01-01', category: 'Ammo Purchase', cost: -600 },
+    { id: 'pu-b', date: '2026-01-02', category: 'Range Fee', cost: -12 },
+    { id: 'pu-c', date: '2026-01-03', category: 'Gear / Equipment', cost: -200 },
+    { id: 'pu-d', date: '2026-01-04', category: 'Ammo Purchase', cost: 100 },
+  ];
+  const sessions = [{ id: 'se-a', date: '2026-01-05', rangeFee: -20 }];
+  const t = costTotals(sessions, purchases, []);
+  assert.equal(t.ammoBought, 100, 'the poisoned ammo row contributes 0, the good one still counts');
+  assert.equal(t.rangeFees, 0, 'both the purchase fee and the session fee floor');
+  assert.equal(t.gearAndOther, 0);
+  assert.equal(t.total, 100, 'and the grand total can never be dragged below its honest parts');
+});
+
+test('matchFee: a negative entryFee AND a negative legacy cost both floor to 0', () => {
+  // entryFee was returned raw -- it never went through money() at all, so it
+  // survived the first round of guarding untouched.
+  assert.equal(matchFee({ date: '2026-01-01', entryFee: -25 }), 0);
+  assert.equal(matchFee({ date: '2026-01-01', cost: -30 }), 0);
+  assert.equal(matchFee({ date: '2026-01-01', entryFee: 25 }), 25, 'a real fee is unchanged');
+});
+
+test('gunSpend and partsTotalCost: negative range fees and part costs floor to 0', () => {
+  const parts = [
+    { firearmId: 'fa-1', cost: -40 },
+    { firearmId: 'fa-1', cost: 15 },
+    { firearmId: '', cost: -25 },
+  ];
+  assert.equal(partsTotalCost(parts), 15, 'only the honest part counts');
+
+  const sessions = [{ id: 'se-1', date: '2026-01-05', rangeFee: -20, guns: [{ firearmId: 'fa-1', rounds: 100 }] }];
+  const g = gunSpend('fa-1', sessions, [], [{ date: '2026-01-06', firearmId: 'fa-1', entryFee: -50 }], [], parts);
+  assert.equal(g.rangeFees, 0);
+  assert.equal(g.matchFees, 0);
+  assert.equal(g.parts, 15);
+  assert.equal(g.total, 15);
+});
+
+test('the two views of one poisoned record now AGREE, which is the whole point', () => {
+  // The defect this change exists to close: the same record read two ways gave
+  // two different answers on one screen.
+  const parts = [{ firearmId: 'fa-1', cost: -40 }];
+  const guns = [{ id: 'fa-1', pricePaid: 500 }];
+  const ammoOnly = gunSpend('fa-1', [], [], [], [], parts);
+  const gearView = gunOwnershipSpend('fa-1', [], [], [], guns, [], parts);
+  assert.equal(ammoOnly.parts, 0, 'default per-gun view floors');
+  assert.equal(gearView.parts, 0, 'gear view floors');
+  assert.equal(ammoOnly.parts, gearView.parts, 'and they agree');
+});
+
+test('an ammo purchase with a negative cost seeds no FIFO lot at all', () => {
+  // HONEST NOTE ON WHAT THIS TEST IS. It does NOT guard the floor: the guard
+  // here has always read `> 0`, so a negative-cost lot was refused before this
+  // change too, and removing the floor leaves this test green. It is a
+  // REGRESSION test -- routing that guard through paid() must not quietly change
+  // what it accepts -- and it is written down as that rather than left to look
+  // like proof of something it cannot prove.
+  assert.equal(purchaseAmmoLink({
+    id: 'pu-neg', date: '2026-01-05', category: 'Ammo Purchase', cost: -600, ammoId: 'am-1', rounds: 1500,
+  }), null);
 });

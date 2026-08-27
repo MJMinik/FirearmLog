@@ -65,9 +65,37 @@ export interface PartCostLike {
   datePurchased?: string;
 }
 
+/**
+ * A COST read off a stored record, floored at zero. Every cost in this file goes
+ * through this; `money()` stays the raw coercion beneath it and is still used
+ * where the value is not a cost (a legacy round count, for one).
+ *
+ * WHY THE FLOOR. `money()` passes any finite number through, negatives included.
+ * The forms reject a negative, but a `.flog` restore writes a backup's records
+ * back verbatim and the read boundary never touches optional numbers, so a
+ * hand-edited or third-party file can carry `cost: -500`. Unfloored it SUBTRACTS
+ * from a total, and because rows totalling zero are skipped on the Costs card it
+ * can delete a gun's row from the screen entirely -- a wrong answer wearing a
+ * tidy face.
+ *
+ * WIDENED 27 Aug 2026, Michael's call, and the reason is worth keeping. The
+ * floor first shipped on `gunOwnershipSpend` alone. A cold audit pointed out the
+ * consequence: one corrupt record then gave TWO answers on one screen, zero in
+ * the gear view and a negative in the totals card beside it. A guard that is
+ * right for one reading of a number is right for all of them, and disagreeing
+ * with itself is worse than either answer.
+ *
+ * This changes nothing for any value at or above zero, which is every value the
+ * app itself can write.
+ */
+const paid = (v: unknown): number => {
+  const n = money(v);
+  return n > 0 ? n : 0;
+};
+
 /** Total spent on spare parts. */
 export function partsTotalCost(parts: PartCostLike[]): number {
-  return parts.reduce((t, p) => t + money(p.cost), 0);
+  return parts.reduce((t, p) => t + paid(p.cost), 0);
 }
 
 const money = (v: unknown): number =>
@@ -98,14 +126,18 @@ export function purchaseAmmoLink(p: CostPurchaseLike): { ammoId: string; rounds:
   const rounds = typeof p.rounds === 'number' && Number.isFinite(p.rounds) && p.rounds > 0
     ? p.rounds
     : money(p.legacy?.rounds);
-  if (!ammoId || !(rounds > 0) || !(money(p.cost) > 0)) return null;
+  if (!ammoId || !(rounds > 0) || !(paid(p.cost) > 0)) return null;
   return { ammoId, rounds };
 }
 
 /** A match's entry fee — entryFee if set, else the old app's `cost` field. */
 export function matchFee(m: CostMatchLike): number {
-  if (typeof m.entryFee === 'number' && Number.isFinite(m.entryFee)) return m.entryFee;
-  return money(m.cost);
+  // Both branches floored: a stored entryFee was returned raw, so a negative one
+  // reached every total untouched even after the purchase paths were guarded.
+  if (typeof m.entryFee === 'number' && Number.isFinite(m.entryFee)) {
+    return m.entryFee > 0 ? m.entryFee : 0;
+  }
+  return paid(m.cost);
 }
 
 // ---- FIFO ammo costing (mirrors the old app's verified engine) ----
@@ -137,7 +169,7 @@ export function computeFifoCosts(
   for (const p of purchases) {
     const link = purchaseAmmoLink(p);
     if (!link) continue;
-    const unitCost = money(p.cost) / link.rounds;
+    const unitCost = paid(p.cost) / link.rounds;
     if (!Number.isFinite(unitCost)) continue; // audit CR-9: never seed a NaN/Infinity lot
     (lotsBySku[link.ammoId] ??= []).push({
       date: p.date || '', id: p.id,
@@ -293,13 +325,13 @@ export function costTotals(
 ): CostTotals {
   let ammoBought = 0, rangeFees = 0, gearAndOther = 0;
   for (const p of purchases) {
-    const c = money(p.cost);
+    const c = paid(p.cost);
     if (isAmmoPurchase(p)) ammoBought += c;
     else if (isRangeFeePurchase(p)) rangeFees += c;
     else gearAndOther += c;
   }
   for (const s of sessions) {
-    if (!s.planned) rangeFees += money(s.rangeFee);
+    if (!s.planned) rangeFees += paid(s.rangeFee);
   }
   const matchFees = matches.reduce((t, m) => t + matchFee(m), 0);
   const partsCost = partsTotalCost(parts);
@@ -345,14 +377,14 @@ export function gunSpend(
     const share = firearmShare(s, firearmId);
     if (share === 0) continue;
     ammoCost += sessionAmmoCost(s, fifo, ammo) * share;
-    rangeFees += money(s.rangeFee) * share;
+    rangeFees += paid(s.rangeFee) * share;
   }
   const matchFees = matches
     .filter((m) => m.firearmId === firearmId)
     .reduce((t, m) => t + matchFee(m), 0);
   const partsCost = parts
     .filter((p) => p.firearmId === firearmId)
-    .reduce((t, p) => t + money(p.cost), 0);
+    .reduce((t, p) => t + paid(p.cost), 0);
   return {
     ammo: ammoCost, rangeFees, matchFees, parts: partsCost,
     total: ammoCost + rangeFees + matchFees + partsCost
@@ -399,23 +431,6 @@ function isLinkedGunPurchase(p: CostPurchaseLike, firearmId: string): boolean {
   return p.firearmId === firearmId && isLinkableGunCategory(p.category);
 }
 
-/**
- * A cost read off a stored record, floored at zero.
- *
- * `money()` passes any finite number through, negatives included. The forms
- * reject a negative, but a `.flog` restore writes a backup's records verbatim and
- * the read boundary never touches optional numbers, so a hand-edited or
- * third-party file can carry `pricePaid: -500`. Unfloored, that SUBTRACTS from
- * what a gun has cost, and because rows totalling zero are skipped it can delete
- * the gun's row from the card entirely -- a wrong answer wearing a tidy face.
- * Floored here rather than inside `money()`, which other callers rely on to pass
- * a value through unchanged. (Session-135 cold audit, finding 6.)
- */
-const paid = (v: unknown): number => {
-  const n = money(v);
-  return n > 0 ? n : 0;
-};
-
 export interface GunOwnershipSpend {
   ammo: number; gun: number; optic: number; parts: number; linked: number; total: number;
 }
@@ -444,9 +459,8 @@ export interface GunOwnershipSpend {
  * double-counted, but this is a current-assignment sum, not a lifetime one, and
  * the wording above says so deliberately.
  *
- * Every stored cost is read through `paid()` rather than `money()`, so a
- * negative smuggled in by a hand-edited backup contributes zero instead of
- * subtracting.
+ * Every stored cost is read through `paid()`, which floors at zero -- as every
+ * other cost path in this file now does too.
  */
 export function gunOwnershipSpend(
   firearmId: string,
