@@ -80,7 +80,12 @@ test.describe('Gun & gear cost per gun', () => {
     await expect(page.getByLabel('Include the gun, optic, parts and gear')).not.toBeChecked();
   });
 
-  test('"For which gun" appears only for Gear / Equipment and Service / Repair', async ({ page }) => {
+  // The name of this test said "only Gear / Equipment and Service / Repair" and
+  // became FALSE the moment Firearm was added as a third linkable category on
+  // 27 Aug 2026 -- while still passing, because it never asserted Firearm's
+  // absence. Renamed and extended rather than left as a title that lies, which
+  // is the failure this file has now met three times.
+  test('"For which gun" is offered on exactly the three linkable categories', async ({ page }) => {
     await seedDemo(page);
     await gotoSection(page, 'Costs & Purchases');
     await page.getByRole('button', { name: '+ Add Purchase' }).click();
@@ -89,17 +94,15 @@ test.describe('Gun & gear cost per gun', () => {
     await expect(page.getByLabel('For which gun')).toBeVisible();
     await expect(page.getByLabel('For which gun').locator('option').first()).toHaveText('Not gun-specific');
 
-    await page.getByLabel('Category').selectOption('Ammo Purchase');
-    await expect(page.getByLabel('For which gun')).toHaveCount(0);
-
-    await page.getByLabel('Category').selectOption('Service / Repair');
-    await expect(page.getByLabel('For which gun')).toBeVisible();
-
-    await page.getByLabel('Category').selectOption('Range Fee');
-    await expect(page.getByLabel('For which gun')).toHaveCount(0);
-
-    await page.getByLabel('Category').selectOption('Gear / Equipment');
-    await expect(page.getByLabel('For which gun')).toBeVisible();
+    // Every category, each asserted, so a new one cannot quietly join either set.
+    for (const c of ['Firearm', 'Gear / Equipment', 'Service / Repair']) {
+      await page.getByLabel('Category').selectOption(c);
+      await expect(page.getByLabel('For which gun'), c + ' must offer the picker').toBeVisible();
+    }
+    for (const c of ['Ammo Purchase', 'Range Fee', 'Training / Class', 'Travel', 'Other']) {
+      await page.getByLabel('Category').selectOption(c);
+      await expect(page.getByLabel('For which gun'), c + ' must NOT offer the picker').toHaveCount(0);
+    }
   });
 
   // SESSION-135 COLD-AUDIT FINDING 3. A permanently deleted gun used to leave its
@@ -160,6 +163,41 @@ test.describe('Gun & gear cost per gun', () => {
     await expect(page.getByLabel('Cost ($)')).toHaveValue('75');
   });
 
+  // THE "FIREARM" CATEGORY (27 Aug 2026). Added because Michael's own log had no
+  // home for a gun purchase, so two pistols worth $14,600 sat under Gear /
+  // Equipment and made that one bucket 94% of everything he had ever spent.
+  //
+  // The dangerous part is not the category, it is the MIGRATION it invites. He
+  // had already linked his three gun purchases to their guns while they were
+  // still Gear / Equipment. Moving a purchase to a NON-linkable category clears
+  // its link by design -- so if 'Firearm' were not linkable, the first thing this
+  // feature asks him to do would silently destroy the links he had just made.
+  test('moving a linked purchase to Firearm keeps the gun link', async ({ page }) => {
+    await seedDemo(page);
+    await gotoSection(page, 'Costs & Purchases');
+    await page.getByRole('button', { name: '+ Add Purchase' }).click();
+
+    await expect(page.getByLabel('Category').locator('option', { hasText: 'Firearm' }).first()).toHaveCount(1);
+
+    await page.getByLabel('Item').fill('E2E category move');
+    await page.getByLabel('Cost ($)').fill('8000');
+    const picker = page.getByLabel('For which gun');
+    await picker.selectOption({ index: 1 });
+    const chosen = await picker.inputValue();
+    expect(chosen, 'a real gun must be selected for this test to mean anything').not.toBe('');
+
+    // Gear / Equipment -> Firearm. The picker must stay, holding the same gun.
+    await page.getByLabel('Category').selectOption('Firearm');
+    await expect(page.getByLabel('For which gun')).toBeVisible();
+    await expect(page.getByLabel('For which gun')).toHaveValue(chosen);
+    await page.getByRole('button', { name: 'Save purchase' }).click();
+
+    // And it survived the write, not just the render.
+    await page.getByText('E2E category move').click();
+    await expect(page.getByLabel('Category')).toHaveValue('Firearm');
+    await expect(page.getByLabel('For which gun')).toHaveValue(chosen);
+  });
+
   test('picking a gun then moving the category away clears the link, not just hides it', async ({ page }) => {
     await seedDemo(page);
     await gotoSection(page, 'Costs & Purchases');
@@ -170,7 +208,7 @@ test.describe('Gun & gear cost per gun', () => {
     const gunPicker = page.getByLabel('For which gun');
     await gunPicker.selectOption({ index: 1 }); // any real gun from the demo log
 
-    // Move the category off the two linkable ones before saving — the picker
+    // Move the category off the linkable ones before saving — the picker
     // disappears, and the link it held must not survive to disk.
     await page.getByLabel('Category').selectOption('Travel');
     await expect(page.getByLabel('For which gun')).toHaveCount(0);
@@ -179,6 +217,18 @@ test.describe('Gun & gear cost per gun', () => {
     // Re-open the saved purchase and switch back to a linkable category: if
     // the old link had survived, it would show up selected here.
     await page.getByText('E2E linked holster').click();
+
+    // WAIT FOR THE FORM TO FINISH LOADING BEFORE TOUCHING IT. This test was
+    // intermittent -- two passes and a failure in three phone runs -- and the
+    // cause is a race, not the feature: the edit form fills its fields from an
+    // async read, so a selectOption fired before that read lands is overwritten
+    // by it, the category snaps back to Travel, and the picker the next line
+    // looks for is legitimately absent. Asserting the SAVED value first both
+    // waits for the load and strengthens the test, because it now also proves
+    // the category itself round-tripped. Same fix, same reason, as the earlier
+    // "wait for form init before interacting" flake on the edit-match picker.
+    await expect(page.getByLabel('Category')).toHaveValue('Travel');
+
     await page.getByLabel('Category').selectOption('Gear / Equipment');
     await expect(page.getByLabel('For which gun')).toHaveValue('');
   });

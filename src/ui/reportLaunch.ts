@@ -112,6 +112,7 @@ export function costsReport(d: ReportBundle): ReportResult {
   const ytd = costTotals(inYear(d.sessions), inYear(d.purchases), inYear(d.matches), partCosts.filter((p) => (p.datePurchased || '').startsWith(year)));
   const fired = roundsFired(d.sessions, d.matches);
   const totalsRows = (t: typeof all) => [
+    { label: 'Firearms', value: money(t.firearms) },
     { label: 'Ammo bought', value: money(t.ammoBought) },
     { label: 'Range fees', value: money(t.rangeFees) },
     { label: 'Match fees', value: money(t.matchFees) },

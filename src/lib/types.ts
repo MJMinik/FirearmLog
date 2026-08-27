@@ -156,7 +156,7 @@ export interface Ammunition extends BaseRecord, Imported {
 
 export interface Purchase extends BaseRecord, Imported {
   date: string;
-  category: string; // 'Ammo Purchase' | 'Range Fee' | 'Gear / Equipment' | 'Service / Repair' | 'Training / Class' | 'Travel' | 'Other'
+  category: string; // 'Firearm' | 'Ammo Purchase' | 'Range Fee' | 'Gear / Equipment' | 'Service / Repair' | 'Training / Class' | 'Travel' | 'Other'
   item: string;
   vendor: string;
   cost: number;
