@@ -245,6 +245,28 @@ export interface RangedActivity {
   liveFireRounds: number;
   liveSessions: number;
   drySessions: number;
+  /**
+   * Matches shot in the window. NOT added into liveSessions -- carried beside
+   * it, the way drySessions already is.
+   *
+   * Michael asked what common practice was and the board was convened on it
+   * (27 Aug 2026). The evidence split by domain. Strava has no separate race
+   * record at all -- a race is a TAG on an ordinary activity -- and the
+   * session-RPE literature says its method "is not only valid for assessing
+   * the load relative to training sessions, but also to competition". But this
+   * sport goes the other way: Stoeger and Park put it as "dryfire is your
+   * practice, live fire is your test", and the shooting apps that log practice
+   * (PractiScore's own Log app, Ranger) keep practice and matches apart.
+   *
+   * What EVERY convention agreed on is that competition is visible next to
+   * training and labelled distinctly. None of them hides it. This app hid it:
+   * a match contributed nothing to the tile and nothing on screen said so, so
+   * a month of three matches and one practice read as "1 session". Merging
+   * would have flattened a distinction the sport depends on; staying silent
+   * was undercounting his range days. Carrying it alongside is the only option
+   * that does neither.
+   */
+  matches: number;
 }
 
 /**
@@ -265,10 +287,11 @@ export function rangedActivity(
       liveFireRounds: totalRounds(firearms, sessions, matches),
       liveSessions: sessions.filter(isLiveSession).length,
       drySessions: sessions.filter(isDrySession).length,
+      matches: (matches ?? []).length,
     };
   }
   const owned = new Set((firearms ?? []).map((f) => f.id));
-  let liveFireRounds = 0, liveSessions = 0, drySessions = 0;
+  let liveFireRounds = 0, liveSessions = 0, drySessions = 0, matchCount = 0;
   for (const s of sessions ?? []) {
     if (!s.date || s.date < cutoff) continue;
     if (isDrySession(s)) drySessions++;
@@ -281,9 +304,15 @@ export function rangedActivity(
   }
   for (const m of matches ?? []) {
     if (!m.date || m.date < cutoff) continue;
+    // COUNTED WHATEVER GUN IT NAMES. The linked-firearm test below governs
+    // ROUNDS only, and exists so a bounded window can never exceed all-time.
+    // A match you shot with a gun since deleted is still a match you shot, and
+    // this mirrors liveSessions above, which counts a session regardless of
+    // which guns it names.
+    matchCount += 1;
     if (m.firearmId && owned.has(m.firearmId)) liveFireRounds += m.totalRounds ?? 0;
   }
-  return { liveFireRounds, liveSessions, drySessions };
+  return { liveFireRounds, liveSessions, drySessions, matches: matchCount };
 }
 
 // ---- Firearm status summaries (for the status cards) ----
