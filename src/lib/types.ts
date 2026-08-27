@@ -250,7 +250,10 @@ export interface Optic extends BaseRecord, Imported {
   /**
    * What you paid for the optic itself (Aug 2026, "gun & gear cost" feature).
    * Feeds Costs & Purchases' "Gun & gear cost per gun" mode, summed across
-   * every optic that has carried this gun's firearmId over time. Optional and
+   * every optic CURRENTLY assigned to that gun. Not a lifetime sum, and the
+   * wording matters: an optic record carries only its current firearmId and no
+   * history, so reassigning an optic moves its price with it, and freeing a
+   * gun's accessories drops it from that gun's total. Optional and
    * additive: absent/null on every existing optic and needs no migration;
    * blank on the form stores null rather than 0, so "not recorded" stays
    * distinct from "free."

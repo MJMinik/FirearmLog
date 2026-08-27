@@ -10,7 +10,8 @@ import { activeOnly } from '../lib/softDelete.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
-import { costTotals, gunOwnershipSpend, gunSpend, purchaseAmmoLink, roundsFired } from '../lib/costing.ts';
+import { costTotals, gunOwnershipSpend, gunSpend, isLinkableGunCategory, linkedGunIdForSave,
+  purchaseAmmoLink, roundsFired } from '../lib/costing.ts';
 import { recentValues } from '../lib/suggest.ts';
 import { filterHidden } from '../lib/listEdits.ts';
 import { ownedGuns } from '../lib/gunStatus.ts';
@@ -258,7 +259,10 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
   // Which categories the "For which gun" picker is offered on (spec decision 6).
-  const linkableCategory = category === 'Gear / Equipment' || category === 'Service / Repair';
+  // Asked of costing.ts rather than re-tested here, so the answer that decides
+  // whether the picker SHOWS is by construction the same answer that decides what
+  // gets SAVED a few lines below.
+  const linkableCategory = isLinkableGunCategory(category);
 
   useEffect(() => {
     let alive = true;
@@ -336,7 +340,7 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
         ammoId: isAmmo && ammoId ? ammoId : null,
         rounds: isAmmo ? r : null,
         addedToInventory: isAmmo && addToInv && !!ammoId && (r ?? 0) > 0,
-        firearmId: linkableCategory && firearmIdSel ? firearmIdSel : null
+        firearmId: linkedGunIdForSave(category, firearmIdSel)
       };
       if (original) await reverseOldBump(original);
       const record = original

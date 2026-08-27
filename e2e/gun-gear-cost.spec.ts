@@ -77,6 +77,54 @@ test.describe('Gun & gear cost per gun', () => {
     await expect(page.getByLabel('For which gun')).toBeVisible();
   });
 
+  // SESSION-135 COLD-AUDIT FINDING 3. A permanently deleted gun used to leave its
+  // linked purchases naming an id that no longer resolved. Nothing crashed and
+  // nothing was lost -- which is exactly why it needed a test: the linked cost
+  // simply stopped appearing anywhere (no gun row left to carry it), re-opening
+  // the purchase showed a blank picker while state still held the dead id, and
+  // saving it untouched wrote the dead id straight back. The clear happens ONLY
+  // on permanent delete, never on retire or "no longer own", because those keep
+  // the gun record and the link stays true.
+  test('deleting a gun permanently clears the link on purchases that named it', async ({ page }) => {
+    await seedDemo(page);
+
+    // A gun with no sessions and no matches, so "Delete permanently" is offered.
+    await gotoSection(page, 'Guns');
+    await page.getByRole('button', { name: '+ Add Gun' }).click();
+    const gunName = `E2E Doomed Gun ${Date.now()}`;
+    await page.getByRole('textbox', { name: 'What this Gun is called' }).fill(gunName);
+    await page.getByRole('button', { name: 'Save gun', exact: true }).click();
+    await expect(page.getByText(gunName)).toBeVisible();
+
+    // A gear purchase pointing at it.
+    await gotoSection(page, 'Costs & Purchases');
+    await page.getByRole('button', { name: '+ Add Purchase' }).click();
+    await page.getByLabel('Item').fill('E2E doomed holster');
+    await page.getByLabel('Cost ($)').fill('75');
+    await page.getByLabel('For which gun').selectOption({ label: gunName });
+    await page.getByRole('button', { name: 'Save purchase' }).click();
+    await expect(page.getByText('E2E doomed holster')).toBeVisible();
+
+    // Proof the link is real before we destroy the gun: gun & gear mode carries it.
+    const toggle = page.getByLabel('Include the gun, optic, parts and gear');
+    await toggle.check();
+    await expect(page.locator('.row', { hasText: gunName })).toContainText('$75.00');
+
+    // Delete the gun for good.
+    await gotoSection(page, 'Guns');
+    await page.getByText(gunName).click();
+    await page.getByRole('button', { name: 'Retire or remove this gun…' }).click();
+    await page.getByRole('button', { name: 'Delete permanently' }).click();
+    await page.getByRole('button', { name: 'Delete Permanently' }).click();
+    await expect(page.getByText(gunName)).toHaveCount(0);
+
+    // The purchase survives with its money intact and its gun link gone.
+    await gotoSection(page, 'Costs & Purchases');
+    await page.getByText('E2E doomed holster').click();
+    await expect(page.getByLabel('Cost ($)')).toHaveValue('75');
+    await expect(page.getByLabel('For which gun')).toHaveValue('');
+  });
+
   test('picking a gun then moving the category away clears the link, not just hides it', async ({ page }) => {
     await seedDemo(page);
     await gotoSection(page, 'Costs & Purchases');

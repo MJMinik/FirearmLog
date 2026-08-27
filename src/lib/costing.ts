@@ -371,9 +371,50 @@ export function gunSpend(
  */
 const LINKED_PURCHASE_CATEGORIES = new Set(['gear / equipment', 'service / repair']);
 
-function isLinkedGunPurchase(p: CostPurchaseLike, firearmId: string): boolean {
-  return p.firearmId === firearmId && LINKED_PURCHASE_CATEGORIES.has(p.category.toLowerCase());
+/**
+ * The purchase categories a gun link is offered on, and the ONE place that
+ * question is answered (spec decision 6: Gear / Equipment and Service / Repair).
+ *
+ * Exported because the screen needs the same answer twice -- to decide whether to
+ * SHOW the "For which gun" picker, and to decide what to SAVE when the category
+ * has moved. Those two lived as separate expressions and could drift apart, which
+ * is the shape of defect where a link is hidden but still stored. Routed through
+ * one function instead, so forgetting is not possible rather than merely unlikely.
+ */
+export function isLinkableGunCategory(category: string): boolean {
+  return LINKED_PURCHASE_CATEGORIES.has((category || '').toLowerCase());
 }
+
+/**
+ * The gun link a purchase should be stored with, given the category showing on
+ * the form and the gun currently picked. Null on any non-linkable category, so
+ * moving a purchase away from Gear / Equipment or Service / Repair CLEARS the
+ * link rather than leaving one that no surface will ever show again.
+ */
+export function linkedGunIdForSave(category: string, selectedGunId: string | null): string | null {
+  return isLinkableGunCategory(category) && selectedGunId ? selectedGunId : null;
+}
+
+function isLinkedGunPurchase(p: CostPurchaseLike, firearmId: string): boolean {
+  return p.firearmId === firearmId && isLinkableGunCategory(p.category);
+}
+
+/**
+ * A cost read off a stored record, floored at zero.
+ *
+ * `money()` passes any finite number through, negatives included. The forms
+ * reject a negative, but a `.flog` restore writes a backup's records verbatim and
+ * the read boundary never touches optional numbers, so a hand-edited or
+ * third-party file can carry `pricePaid: -500`. Unfloored, that SUBTRACTS from
+ * what a gun has cost, and because rows totalling zero are skipped it can delete
+ * the gun's row from the card entirely -- a wrong answer wearing a tidy face.
+ * Floored here rather than inside `money()`, which other callers rely on to pass
+ * a value through unchanged. (Session-135 cold audit, finding 6.)
+ */
+const paid = (v: unknown): number => {
+  const n = money(v);
+  return n > 0 ? n : 0;
+};
 
 export interface GunOwnershipSpend {
   ammo: number; gun: number; optic: number; parts: number; linked: number; total: number;
@@ -387,13 +428,25 @@ export interface GunOwnershipSpend {
  * session's `rangeFee` field, so there is no field left for either to leak in
  * through.
  *
- * Adds together: the gun's own pricePaid, every optic that has carried this
- * gun's firearmId (summed — a gun can wear more than one optic over its life),
- * spare parts tied to the gun, "Gear / Equipment" and "Service / Repair"
- * purchases linked to it by the For-which-gun picker, and its prorated share
- * of ammo cost — the SAME FIFO figure gunSpend computes, reusing the same
- * helpers (computeFifoCosts, firearmShare, sessionAmmoCost) rather than
- * reimplementing FIFO.
+ * Adds together: the gun's own pricePaid, every optic CURRENTLY assigned to this
+ * gun (summed — a gun can wear more than one at a time), spare parts tied to the
+ * gun, "Gear / Equipment" and "Service / Repair" purchases linked to it by the
+ * For-which-gun picker, and its prorated share of ammo cost — the SAME FIFO
+ * figure gunSpend computes, reusing the same helpers (computeFifoCosts,
+ * firearmShare, sessionAmmoCost) rather than reimplementing FIFO.
+ *
+ * ONE HONEST LIMIT, and it is a property of the data model rather than of this
+ * function (session-135 cold audit, finding 5). An optic record carries only its
+ * CURRENT firearmId; no history is kept. So reassigning an optic moves its whole
+ * price to the new gun, and marking a gun "no longer owned" frees its
+ * accessories, which drops that optic's price out of this total while the gun's
+ * own price and its linked purchases stay. Nothing is lost and nothing is
+ * double-counted, but this is a current-assignment sum, not a lifetime one, and
+ * the wording above says so deliberately.
+ *
+ * Every stored cost is read through `paid()` rather than `money()`, so a
+ * negative smuggled in by a hand-edited backup contributes zero instead of
+ * subtracting.
  */
 export function gunOwnershipSpend(
   firearmId: string,
@@ -412,16 +465,16 @@ export function gunOwnershipSpend(
     if (share === 0) continue;
     ammoCost += sessionAmmoCost(s, fifo, ammo) * share;
   }
-  const gunCost = money(firearms.find((f) => f.id === firearmId)?.pricePaid);
+  const gunCost = paid(firearms.find((f) => f.id === firearmId)?.pricePaid);
   const opticCost = optics
     .filter((o) => o.firearmId === firearmId)
-    .reduce((t, o) => t + money(o.pricePaid), 0);
+    .reduce((t, o) => t + paid(o.pricePaid), 0);
   const partsCost = parts
     .filter((p) => p.firearmId === firearmId)
-    .reduce((t, p) => t + money(p.cost), 0);
+    .reduce((t, p) => t + paid(p.cost), 0);
   const linkedCost = purchases
     .filter((p) => isLinkedGunPurchase(p, firearmId))
-    .reduce((t, p) => t + money(p.cost), 0);
+    .reduce((t, p) => t + paid(p.cost), 0);
   return {
     ammo: ammoCost, gun: gunCost, optic: opticCost, parts: partsCost, linked: linkedCost,
     total: ammoCost + gunCost + opticCost + partsCost + linkedCost

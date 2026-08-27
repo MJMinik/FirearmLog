@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ammoCurrentCostPerRound, computeFifoCosts, costPerRoundAfterBuy, costTotals, firearmShare,
-  gunOwnershipSpend, gunSpend, inventoryAfterUsageChange, lowAmmo, matchFee, purchaseAmmoLink,
-  roundsFired, sessionAmmoCost
+  gunOwnershipSpend, gunSpend, inventoryAfterUsageChange, isLinkableGunCategory,
+  linkedGunIdForSave, lowAmmo, matchFee, purchaseAmmoLink, roundsFired, sessionAmmoCost
 } from '../src/lib/costing.ts';
 
 // The worked example from the old app's verified engine: 1,500 @ $0.40 in
@@ -331,4 +331,62 @@ test('gunOwnershipSpend: two optics on the same gun over its life sum together',
   const g = gunOwnershipSpend('fa-7', [], [], [], firearms, optics);
   assert.equal(g.optic, 340);
   assert.equal(g.total, 340);
+});
+
+
+// ---------------------------------------------------------------------------
+// SESSION-135 COLD-AUDIT FIXES
+// ---------------------------------------------------------------------------
+
+// The gun link is decided in two places on the purchase form -- whether to SHOW
+// the picker, and what to SAVE once the category may have moved. They were two
+// separate expressions and could drift apart, which is exactly how a link ends
+// up hidden but still stored. Both now call these, so the two answers cannot
+// disagree. Tested directly because the property lives in the pure function, not
+// in the screen: an E2E round trip proves one path works, this proves the rule.
+test('isLinkableGunCategory: only the two categories the picker is offered on', () => {
+  assert.equal(isLinkableGunCategory('Gear / Equipment'), true);
+  assert.equal(isLinkableGunCategory('Service / Repair'), true);
+  assert.equal(isLinkableGunCategory('gear / equipment'), true, 'case-insensitive, as stored data may vary');
+  for (const c of ['Ammo Purchase', 'Range Fee', 'Training / Class', 'Travel', 'Other', '']) {
+    assert.equal(isLinkableGunCategory(c), false, c + ' must never carry a gun link');
+  }
+});
+
+test('linkedGunIdForSave: a category change away from the linkable two CLEARS the link', () => {
+  assert.equal(linkedGunIdForSave('Gear / Equipment', 'fa-1'), 'fa-1');
+  assert.equal(linkedGunIdForSave('Service / Repair', 'fa-1'), 'fa-1');
+  // The defect this exists to stop: the shooter picks a gun on a gear purchase,
+  // then switches the category to Ammo. The picker disappears from the screen;
+  // without this rule the id it was holding is still written to disk.
+  assert.equal(linkedGunIdForSave('Ammo Purchase', 'fa-1'), null);
+  assert.equal(linkedGunIdForSave('Range Fee', 'fa-1'), null);
+  assert.equal(linkedGunIdForSave('Other', 'fa-1'), null);
+  // And no gun picked is null on a linkable category too, never ''.
+  assert.equal(linkedGunIdForSave('Gear / Equipment', ''), null);
+  assert.equal(linkedGunIdForSave('Gear / Equipment', null), null);
+});
+
+test('a NEGATIVE stored price contributes 0 rather than subtracting from the gun total', () => {
+  // Not reachable through the forms, which reject negatives. Reachable through a
+  // restore: a .flog is written back verbatim and optional numbers are never
+  // normalised, so a hand-edited or third-party backup can carry one. Unfloored,
+  // this subtracted -- and because rows totalling 0 are skipped on the card, a
+  // big enough negative deleted the gun's row from the screen altogether.
+  const guns = [{ id: 'fa-1', pricePaid: -500 }];
+  const optics = [{ firearmId: 'fa-1', pricePaid: -50 }];
+  const partsNeg = [{ id: 'pt-1', firearmId: 'fa-1', cost: -25 }];
+  const buys = [{ id: 'pu-1', date: '2026-01-01', category: 'Gear / Equipment', cost: -80, firearmId: 'fa-1' }];
+  const g = gunOwnershipSpend('fa-1', [], buys, [], guns, optics, partsNeg);
+  assert.equal(g.gun, 0, 'a negative gun price is floored');
+  assert.equal(g.optic, 0, 'a negative optic price is floored');
+  assert.equal(g.parts, 0, 'a negative part cost is floored');
+  assert.equal(g.linked, 0, 'a negative linked purchase is floored');
+  assert.equal(g.total, 0);
+  // And the floor must not eat a legitimate figure sitting beside a poisoned one.
+  const mixed = gunOwnershipSpend(
+    'fa-1', [], [], [], [{ id: 'fa-1', pricePaid: 900 }], [{ firearmId: 'fa-1', pricePaid: -50 }], []);
+  assert.equal(mixed.gun, 900);
+  assert.equal(mixed.optic, 0);
+  assert.equal(mixed.total, 900);
 });
