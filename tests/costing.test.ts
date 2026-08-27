@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {
   ammoCurrentCostPerRound, computeFifoCosts, costPerRoundAfterBuy, costTotals, firearmShare,
   gunOwnershipSpend, gunSpend, inventoryAfterUsageChange, isLinkableGunCategory,
-  linkedGunIdForSave, lowAmmo, matchFee, partsTotalCost, purchaseAmmoLink, roundsFired,
-  sessionAmmoCost
+  isFirearmPurchase, linkedGunIdForSave, lowAmmo, matchFee, partsTotalCost, purchaseAmmoLink,
+  roundsFired, sessionAmmoCost
 } from '../src/lib/costing.ts';
 
 // The worked example from the old app's verified engine: 1,500 @ $0.40 in
@@ -469,4 +469,69 @@ test('an ammo purchase with a negative cost seeds no FIFO lot at all', () => {
   assert.equal(purchaseAmmoLink({
     id: 'pu-neg', date: '2026-01-05', category: 'Ammo Purchase', cost: -600, ammoId: 'am-1', rounds: 1500,
   }), null);
+});
+
+
+// ---------------------------------------------------------------------------
+// THE "FIREARM" PURCHASE CATEGORY (Michael, 27 Aug 2026, from his own data)
+// ---------------------------------------------------------------------------
+//
+// There was no category for buying a gun, so one had to be filed as
+// Gear / Equipment. On his real log that put two pistols worth $14,600 beside
+// $16.99 of snap caps and made "Gear & other" 94% of everything he had spent,
+// which is a breakdown that cannot answer a question.
+
+test('costTotals: a Firearm purchase gets its own bucket and leaves the total alone', () => {
+  const purchases = [
+    { id: 'pu-gun', date: '2026-08-01', category: 'Firearm', cost: 8000 },
+    { id: 'pu-gear', date: '2026-08-01', category: 'Gear / Equipment', cost: 124.57 },
+    { id: 'pu-ammo', date: '2026-08-01', category: 'Ammo Purchase', cost: 291.39 },
+  ];
+  const t = costTotals([], purchases, []);
+  assert.equal(t.firearms, 8000);
+  assert.equal(t.gearAndOther, 124.57, 'the gun no longer inflates the gear bucket');
+  assert.equal(t.ammoBought, 291.39);
+  // The whole point is to SPLIT the same money, never to add or lose any.
+  assert.equal(t.total, 8000 + 124.57 + 291.39);
+});
+
+test('costTotals: an unknown category still falls through to Gear & other', () => {
+  const t = costTotals([], [{ id: 'pu-x', date: '2026-01-01', category: 'Something New', cost: 50 }], []);
+  assert.equal(t.firearms, 0);
+  assert.equal(t.gearAndOther, 50);
+  assert.equal(t.total, 50);
+});
+
+test('isFirearmPurchase: exact category, case-insensitive, and nothing adjacent', () => {
+  const buy = (category: string) => ({ id: 'pu-x', date: '2026-01-01', category, cost: 1 });
+  assert.equal(isFirearmPurchase(buy('Firearm')), true);
+  assert.equal(isFirearmPurchase(buy('firearm')), true);
+  for (const c of ['Firearms', 'Gear / Equipment', 'Ammo Purchase', 'Other', '']) {
+    assert.equal(isFirearmPurchase(buy(c)), false, c + ' is not a firearm purchase');
+  }
+});
+
+test('MOVING a purchase to Firearm must NOT drop the gun link it already had', () => {
+  // The trap this closes. Michael linked his three gun purchases to their guns
+  // while they were still Gear / Equipment. If 'Firearm' were not a linkable
+  // category, re-categorising them -- the very thing this feature invites him to
+  // do -- would silently clear every one of those links on save.
+  assert.equal(isLinkableGunCategory('Firearm'), true);
+  assert.equal(linkedGunIdForSave('Firearm', 'fa-1'), 'fa-1');
+});
+
+test('a linked Firearm purchase counts in the gun & gear view', () => {
+  const guns = [{ id: 'fa-1', pricePaid: null }];
+  const buys = [{ id: 'pu-gun', date: '2026-08-01', category: 'Firearm', cost: 8000, firearmId: 'fa-1' }];
+  const g = gunOwnershipSpend('fa-1', [], buys, [], guns, [], []);
+  assert.equal(g.linked, 8000);
+  assert.equal(g.gun, 0, 'the gun form price is separate and stays blank');
+  assert.equal(g.total, 8000);
+});
+
+test('a Firearm purchase linked to ANOTHER gun stays out of this one', () => {
+  const guns = [{ id: 'fa-1' }, { id: 'fa-2' }];
+  const buys = [{ id: 'pu-gun', date: '2026-08-01', category: 'Firearm', cost: 8000, firearmId: 'fa-2' }];
+  assert.equal(gunOwnershipSpend('fa-1', [], buys, [], guns, [], []).total, 0);
+  assert.equal(gunOwnershipSpend('fa-2', [], buys, [], guns, [], []).linked, 8000);
 });

@@ -114,6 +114,24 @@ export const isRangeFeePurchase = (p: CostPurchaseLike): boolean =>
   p.category.toLowerCase() === 'range fee';
 
 /**
+ * A purchase of a gun itself (added 27 Aug 2026, Michael, from his own data).
+ *
+ * There was no category for buying a firearm, so a gun had to be filed under
+ * Gear / Equipment. On his real log that put two pistols worth $14,600 in the
+ * same bucket as $16.99 of snap caps, and "Gear & other" came to $30,827 of a
+ * $32,813 total -- 94% of everything he had ever spent, in one line, which is
+ * a breakdown that cannot tell him anything.
+ *
+ * NOTHING IS RE-CATEGORISED AUTOMATICALLY. Existing purchases keep the category
+ * he gave them; this only makes a better one available. His three gun rows are
+ * his to move, and moving them must not cost him the gun links he just made,
+ * which is why 'firearm' is in LINKED_PURCHASE_CATEGORIES below and there is a
+ * test for exactly that.
+ */
+export const isFirearmPurchase = (p: CostPurchaseLike): boolean =>
+  p.category.toLowerCase() === 'firearm';
+
+/**
  * Which ammo can a purchase feeds, and how many rounds. Reads the formal
  * fields first, then falls back to the `legacy` bag so data Michael imported
  * BEFORE these fields existed still costs correctly without a re-import.
@@ -309,6 +327,7 @@ export function firearmShare(s: CostSessionLike, firearmId: string): number {
 // ---- Roll-ups for the Costs screen ----
 
 export interface CostTotals {
+  firearms: number;     // the guns themselves (purchases categorized "Firearm")
   ammoBought: number;   // money handed over for ammo (purchases)
   rangeFees: number;    // session fees + purchases categorized "Range Fee"
   matchFees: number;    // match entry fees (single source — spec §12.2)
@@ -323,10 +342,11 @@ export function costTotals(
   matches: CostMatchLike[],
   parts: PartCostLike[] = []
 ): CostTotals {
-  let ammoBought = 0, rangeFees = 0, gearAndOther = 0;
+  let firearms = 0, ammoBought = 0, rangeFees = 0, gearAndOther = 0;
   for (const p of purchases) {
     const c = paid(p.cost);
-    if (isAmmoPurchase(p)) ammoBought += c;
+    if (isFirearmPurchase(p)) firearms += c;
+    else if (isAmmoPurchase(p)) ammoBought += c;
     else if (isRangeFeePurchase(p)) rangeFees += c;
     else gearAndOther += c;
   }
@@ -336,8 +356,8 @@ export function costTotals(
   const matchFees = matches.reduce((t, m) => t + matchFee(m), 0);
   const partsCost = partsTotalCost(parts);
   return {
-    ammoBought, rangeFees, matchFees, parts: partsCost, gearAndOther,
-    total: ammoBought + rangeFees + matchFees + partsCost + gearAndOther
+    firearms, ammoBought, rangeFees, matchFees, parts: partsCost, gearAndOther,
+    total: firearms + ammoBought + rangeFees + matchFees + partsCost + gearAndOther
   };
 }
 
@@ -401,7 +421,7 @@ export function gunSpend(
  * the FIFO figure above and a range fee can never slip into this mode, which
  * excludes range fees on principle.
  */
-const LINKED_PURCHASE_CATEGORIES = new Set(['gear / equipment', 'service / repair']);
+const LINKED_PURCHASE_CATEGORIES = new Set(['firearm', 'gear / equipment', 'service / repair']);
 
 /**
  * The purchase categories a gun link is offered on, and the ONE place that

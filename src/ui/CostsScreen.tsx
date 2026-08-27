@@ -24,8 +24,12 @@ import { FormProblem } from './FormProblem.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
 import { ScreenError } from './ScreenState.tsx';
 
+// 'Firearm' leads the list (added 27 Aug 2026): it is the largest thing a
+// shooter buys and it had nowhere to go before, so a gun had to be filed as
+// gear. The form's default is set explicitly further down, so changing this
+// order changes what is OFFERED without changing what is PRE-SELECTED.
 const CATEGORIES = [
-  'Ammo Purchase', 'Range Fee', 'Gear / Equipment', 'Service / Repair',
+  'Firearm', 'Ammo Purchase', 'Range Fee', 'Gear / Equipment', 'Service / Repair',
   'Training / Class', 'Travel', 'Other'
 ];
 
@@ -91,6 +95,7 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
   const TotalsCard = ({ title, t }: { title: string; t: typeof all }) => (
     <div className="card">
       <h2>{title}</h2>
+      <div className="row"><span className="label">Firearms</span><span className="value">{dollars(t.firearms)}</span></div>
       <div className="row"><span className="label">Ammo bought</span><span className="value">{dollars(t.ammoBought)}</span></div>
       <div className="row"><span className="label">Range fees</span><span className="value">{dollars(t.rangeFees)}</span></div>
       <div className="row"><span className="label">Match fees</span><span className="value">{dollars(t.matchFees)}</span></div>
