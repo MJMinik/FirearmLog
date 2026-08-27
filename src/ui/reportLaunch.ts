@@ -8,7 +8,7 @@
 // photo-heavy insurance report, now applied uniformly.
 import type {
   Ammunition, Classifier, DrillDef, Firearm, Goal, Magazine, Match, MalfunctionEntry,
-  MaintenanceEntry, Media, Part, Purchase, Reference, Session
+  MaintenanceEntry, Media, Optic, Part, Purchase, Reference, Session
 } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
 import { canonicalDivision, formatClassPct } from '../lib/competition.ts';
@@ -16,7 +16,7 @@ import { getAll, getAllMediaWholeStore } from '../lib/db.ts';
 import { activeOnly, activeMalfunctions, trashedIdSet } from '../lib/softDelete.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { roundsForFirearm, dryRepsForFirearm, totalRounds } from '../lib/stats.ts';
-import { costTotals, gunSpend, roundsFired, matchFee } from '../lib/costing.ts';
+import { costTotals, gunOwnershipSpend, gunSpend, roundsFired, matchFee } from '../lib/costing.ts';
 import { allClassifications, personalRecords, formatDrillScore } from '../lib/dashboard.ts';
 import { goalStats } from '../lib/goals.ts';
 import { ratePerThousand } from '../lib/trends.ts';
@@ -33,6 +33,9 @@ export interface ReportBundle {
   ammo: Ammunition[]; classifiers: Classifier[]; malfunctions: MalfunctionEntry[];
   maintenance: MaintenanceEntry[]; references: Reference[]; drills: DrillDef[];
   goals: Goal[]; media: Media[]; parts: Part[]; magazines: Magazine[];
+  // Optics joined the bundle 27 Aug 2026: the Costs report's gun & gear table
+  // sums each gun's optic price, and nothing else here had ever needed them.
+  optics: Optic[];
 }
 
 export interface ReportResult { title: string; subtitle: string; sections: ReportSection[] }
@@ -43,18 +46,19 @@ const money = (x: number) => '$' + x.toLocaleString(undefined, { minimumFraction
 /** Load everything the reports read — the same live-data-only rules the
  *  Reports screen applies (trashed sessions and their malfunctions excluded). */
 export async function loadReportBundle(): Promise<ReportBundle> {
-  const [firearms, sessions, matches, purchases, ammo, classifiers, malfunctions, maintenance, references, drills, goals, media, parts, magazines] =
+  const [firearms, sessions, matches, purchases, ammo, classifiers, malfunctions, maintenance, references, drills, goals, media, parts, magazines, optics] =
     await Promise.all([
       getAll<Firearm>('firearms'), getAll<Session>('sessions'), getAll<Match>('matches'),
       getAll<Purchase>('purchases'), getAll<Ammunition>('ammunition'), getAll<Classifier>('classifiers'),
       getAll<MalfunctionEntry>('malfunctions'), getAll<MaintenanceEntry>('maintenance'),
       getAll<Reference>('references'), getAll<DrillDef>('drills'), getAll<Goal>('goals'),
-      getAllMediaWholeStore(), getAll<Part>('parts'), getAll<Magazine>('magazines')
+      getAllMediaWholeStore(), getAll<Part>('parts'), getAll<Magazine>('magazines'),
+      getAll<Optic>('optics')
     ]);
   // App 7: every report works off live data only.
   const liveSessions = activeOnly(sessions);
   const liveMalfs = activeMalfunctions(malfunctions, trashedIdSet(sessions));
-  return { firearms, sessions: liveSessions, matches, purchases, ammo, classifiers, malfunctions: liveMalfs, maintenance, references, drills, goals, media, parts, magazines };
+  return { firearms, sessions: liveSessions, matches, purchases, ammo, classifiers, malfunctions: liveMalfs, maintenance, references, drills, goals, media, parts, magazines, optics };
 }
 
 /** Open the report window NOW (inside the click, so it's never popup-blocked)
@@ -117,12 +121,25 @@ export function costsReport(d: ReportBundle): ReportResult {
   ];
   const spend = d.firearms.map((f) => ({ f, g: gunSpend(f.id, d.sessions, d.purchases, d.matches, d.ammo, partCosts) }))
     .filter((x) => x.g.total > 0);
+  // The printed page carries BOTH per-gun answers, one under the other, because
+  // it cannot carry the screen's checkbox (Michael's call, 27 Aug 2026). Each
+  // table says in a note what it counts and what it leaves out, since two
+  // similar-looking money tables on one page are exactly where a reader guesses.
+  const ownership = d.firearms
+    .map((f) => ({ f, g: gunOwnershipSpend(f.id, d.sessions, d.purchases, d.ammo, d.firearms, d.optics, partCosts) }))
+    .filter((x) => x.g.total > 0);
   return { title: 'Costs', subtitle: `Year ${year} and all-time`, sections: [
     { heading: `This Year (${year})`, rows: totalsRows(ytd) },
     { heading: 'All Time', rows: totalsRows(all) },
     { heading: 'All-In Cost', rows: [{ label: 'Cost per round fired', value: fired > 0 ? '$' + (all.total / fired).toFixed(3) : '—' }] },
-    { heading: 'Ammo & fees per gun', table: { headers: ['Gun', 'Ammo', 'Range', 'Matches', 'Parts', 'Total'],
-      rows: spend.map((x) => [x.f.name, money(x.g.ammo), money(x.g.rangeFees), money(x.g.matchFees), money(x.g.parts), money(x.g.total)]) } }
+    { heading: 'Ammo & fees per gun',
+      note: 'What it has cost to shoot each gun: its share of ammo and range fees, its match fees, and spare parts bought for it.',
+      table: { headers: ['Gun', 'Ammo', 'Range', 'Matches', 'Parts', 'Total'],
+        rows: spend.map((x) => [x.f.name, money(x.g.ammo), money(x.g.rangeFees), money(x.g.matchFees), money(x.g.parts), money(x.g.total)]) } },
+    { heading: 'Gun & gear cost per gun',
+      note: 'What it has cost to own and feed each gun: what you paid for the gun and its optic, spare parts, gear and service bought for it, and its share of ammo. Range fees and match fees are not counted here — they are in the totals above.',
+      table: { headers: ['Gun', 'Ammo', 'The gun', 'Optic', 'Parts', 'Gear & service', 'Total'],
+        rows: ownership.map((x) => [x.f.name, money(x.g.ammo), money(x.g.gun), money(x.g.optic), money(x.g.parts), money(x.g.linked), money(x.g.total)]) } }
   ] };
 }
 
