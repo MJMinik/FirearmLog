@@ -1,10 +1,35 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { seedDemo, gotoSection, gotoTab } from './helpers';
 
 // "Gun & gear cost per gun" (Aug 2026): a second mode on the Costs & Purchases
 // per-gun card that answers "what has owning and feeding this gun cost me" —
 // the gun itself, its optic, parts, and linked gear/service — instead of the
 // default "Ammo & fees per gun" (ammo + range fees + match fees + parts).
+
+/**
+ * Read the purchases store straight out of IndexedDB.
+ *
+ * Needed because a dangling gun link and a cleared one are INDISTINGUISHABLE on
+ * every rendered surface: once the gun record is gone its <option> never renders,
+ * so the "For which gun" select reads empty either way. An assertion on the
+ * select therefore cannot fail, which is exactly what the first version of the
+ * permanent-delete test below did. Storage is the only vantage point from which
+ * the two states look different. (Session-135 verify pass, NEW-1.)
+ */
+async function readPurchases(page: Page): Promise<{ id: string; item: string; cost: number; firearmId?: string | null }[]> {
+  return page.evaluate(async () => {
+    return await new Promise((resolve, reject) => {
+      const o = indexedDB.open('firearmlog');
+      o.onerror = () => reject(o.error);
+      o.onsuccess = () => {
+        const db = o.result;
+        const r = db.transaction('purchases', 'readonly').objectStore('purchases').getAll();
+        r.onerror = () => reject(r.error);
+        r.onsuccess = () => { db.close(); resolve(r.result); };
+      };
+    });
+  });
+}
 
 test.describe('Gun & gear cost per gun', () => {
   test('default is unchecked; checking it swaps the heading and the numbers', async ({ page }) => {
@@ -119,10 +144,20 @@ test.describe('Gun & gear cost per gun', () => {
     await expect(page.getByText(gunName)).toHaveCount(0);
 
     // The purchase survives with its money intact and its gun link gone.
+    // ASSERTED AT STORAGE, deliberately. The obvious assertion here -- that the
+    // "For which gun" select reads empty -- passes whether the link was cleared or
+    // is still dangling, because the deleted gun has no <option> to select. It
+    // cannot fail, so it proves nothing. The record itself can tell the two apart.
+    const rows = await readPurchases(page);
+    const saved = rows.find((r) => r.item === 'E2E doomed holster');
+    expect(saved, 'the purchase itself must survive the gun being deleted').toBeTruthy();
+    expect(saved?.cost).toBe(75);
+    expect(saved?.firearmId ?? null, 'the link to the deleted gun must be cleared, not dangling').toBeNull();
+
+    // And the screen agrees with the record.
     await gotoSection(page, 'Costs & Purchases');
     await page.getByText('E2E doomed holster').click();
     await expect(page.getByLabel('Cost ($)')).toHaveValue('75');
-    await expect(page.getByLabel('For which gun')).toHaveValue('');
   });
 
   test('picking a gun then moving the category away clears the link, not just hides it', async ({ page }) => {

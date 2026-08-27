@@ -4,13 +4,14 @@
 // can be freed; on "no longer own" and on permanent delete they always move to
 // inventory (optic & parts -> unassigned, magazines drop this gun).
 import { useState } from 'react';
-import type { Firearm, Magazine, Optic, Part, Purchase, Reminder } from '../lib/types.ts';
+import type { Firearm, Magazine, Optic, Part, Reminder } from '../lib/types.ts';
 import { deleteOne, getAll, putOne } from '../lib/db.ts';
 import { stampUpdate } from '../lib/stamps.ts';
 import { todayKey } from '../lib/dates.ts';
 import { REMOVAL_REASONS } from '../lib/gunStatus.ts';
 import { reminderIdsForGun } from '../lib/reminders.ts';
 import { Sheet, ConfirmSheet } from './Sheet.tsx';
+import { clearGunLinkFromPurchases } from './gunDelete.ts';
 
 async function freeAccessories(gunId: string) {
   const [optics, mags, parts] = await Promise.all([
@@ -64,21 +65,10 @@ export function GunRemoveSheet({ gun, hasHistory, onClose, onDone }: {
     for (const rid of reminderIdsForGun(reminders, gun.id)) {
       await deleteOne('reminders', rid);
     }
-    // A purchase linked to this gun keeps its money and loses its gun. The
-    // purchase itself is a real thing the shooter spent and must survive; the
-    // link cannot, because the gun it names is about to stop existing. Left
-    // dangling it is invisible in every mode (no row to carry it), re-opening the
-    // purchase shows the picker blank while state still holds the dead id, and
-    // saving untouched re-saves it. Cleared HERE and not in freeAccessories on
-    // purpose: retiring or selling a gun keeps the gun record, so the link stays
-    // true and the historical cost keeps naming the right gun. Only a permanent
-    // delete makes the link false. (Session-135 cold audit, finding 3.)
-    const purchases = await getAll<Purchase>('purchases');
-    for (const p of purchases) {
-      if (p.firearmId === gun.id) {
-        await putOne('purchases', stampUpdate({ ...p, firearmId: null }, Date.now()));
-      }
-    }
+    // A purchase linked to this gun keeps its money and loses its gun. Extracted
+    // to gunDelete.ts so it can actually be tested -- read that file's header for
+    // why the first version of this rule was untestable from in here.
+    await clearGunLinkFromPurchases(gun.id);
     await deleteOne('firearms', gun.id);
     onDone(true);
   }
