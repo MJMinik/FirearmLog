@@ -95,7 +95,7 @@ test.describe('Stage scores importer (pass 2)', () => {
     // The derived hit factor shows up on the match's own debrief.
     await main.getByRole('button', { name: '‹ Back' }).click();
     await expect(main.getByRole('heading', { name: 'Stage Scores Happy Path' })).toBeVisible();
-    await expect(main.getByText('HF 1.98')).toBeVisible();
+    await expect(main.getByText('HF 1.9800')).toBeVisible();
   });
 
   // Session 134. The entry gate used to hide "Add stage scores" once every

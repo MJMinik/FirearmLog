@@ -9,7 +9,7 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { DIVISIONS, IDPA_DIVISIONS, STEEL_DIVISIONS, MATCH_TYPES, POWER_FACTORS, canonicalDivision, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown,
   scoringTypeFor, scoreSteelStage, steelMatchTotal, steelStringsExpected, STEEL_STAGES,
   scoreIdpaStage, idpaMatchTotal, reconcileTime, matchSpeedAccuracy, matchWhatItCost, coachingRead,
-  isMinorOnly, optionsWithStored, suggestDivision, divisionMismatchKind } from '../lib/competition.ts';
+  isMinorOnly, optionsWithStored, suggestDivision, divisionMismatchKind, fmtHitFactor } from '../lib/competition.ts';
 import type { SpeedAccuracy, WhatItCost } from '../lib/competition.ts';
 import { MarkThumb } from './MarkThumb.tsx';
 import { mediaLabel } from './media.ts';
@@ -37,7 +37,7 @@ import { ammoLabel } from './AmmoScreens.tsx';
 /** Format a stage's ranking metric for the debrief read-out. */
 function fmtMetric(s: { percent: number | null; hitFactor: number | null }, by: 'percent' | 'hitFactor' | 'none'): string {
   if (by === 'percent' && s.percent !== null) return `${s.percent}%`;
-  if (by === 'hitFactor' && s.hitFactor !== null) return `HF ${s.hitFactor}`;
+  if (by === 'hitFactor' && s.hitFactor !== null) return `HF ${fmtHitFactor(s.hitFactor)}`;
   return '--';
 }
 
@@ -410,7 +410,16 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
           {insights.stages.map((st, i) => (
             <div className="row" key={i}>
               <span className="label">
-                Stage {st.number}
+                {/* Session 135, Michael's decision (option 1 of three): "Stage" and its
+                    number are one unbreakable unit. The ONLY line-break opportunity in
+                    this label was the single space between them, so once a Weakest or
+                    Strongest badge widened the line past the phone, that space is the one
+                    place it could break -- giving "Stage" on one line and "2 Weakest" on
+                    the next, on stages 2, 3 and 6 of his 2 Aug match. The badge itself may
+                    still wrap to its own line and reads correctly there; gluing the badge
+                    on as well was the rejected option, because an unbreakable block has
+                    nowhere to go at 320px and trades a wrap defect for an overflow one. */}
+                <span style={{ whiteSpace: 'nowrap' }}>Stage {st.number}</span>
                 {st.isToughest && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--text-dim)' }}>Weakest</span>}
                 {st.isStrongest && <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 600, color: 'var(--accent-ink)' }}>Strongest</span>}
                 {st.notes && <div className="row-sub">{st.notes}</div>}
@@ -418,15 +427,15 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
                   <div className="row-sub">
                     A {st.score.alphas} · C {st.score.charlies} · D {st.score.deltas} · M {st.score.misses}
                     {(st.score.noShoots > 0 || st.score.procedurals > 0) ? ` · NS ${st.score.noShoots} · P ${st.score.procedurals}` : ''}
-                    {st.score.allAlphaDelta != null && st.score.allAlphaDelta > 0 ? ` -- all A's ${st.score.allAlphaHitFactor} (+${st.score.allAlphaDelta})` : ''}
-                    {st.score.pctAvailable != null ? ` -- ${Math.round(st.score.pctAvailable * 100)}% of points` : ''}
+                    {st.score.allAlphaDelta != null && st.score.allAlphaDelta > 0 ? ` · all A's ${fmtHitFactor(st.score.allAlphaHitFactor)} (+${fmtHitFactor(st.score.allAlphaDelta)})` : ''}
+                    {st.score.pctAvailable != null ? ` · ${Math.round(st.score.pctAvailable * 100)}% of points` : ''}
                   </div>
                 )}
               </span>
               <span className="value">
                 {[(st.score ? st.score.stagePoints : st.points) !== null ? `${st.score ? st.score.stagePoints : st.points} pts` : null,
                   st.time !== null ? `${st.time}s` : null,
-                  st.hitFactor !== null ? `HF ${st.hitFactor}` : null,
+                  st.hitFactor !== null ? `HF ${fmtHitFactor(st.hitFactor)}` : null,
                   st.percent !== null ? `${st.percent}%` : null].filter(Boolean).join(' · ') || '--'}
               </span>
             </div>
@@ -1622,7 +1631,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
           return (
             <div className="drill-edit" key={i}>
               <div className="drill-edit-head">
-                <strong>Stage {i + 1}{hf !== null ? ` -- HF ${hf}` : ''}</strong>
+                <strong><span style={{ whiteSpace: 'nowrap' }}>Stage {i + 1}</span>{hf !== null ? ` · HF ${fmtHitFactor(hf)}` : ''}</strong>
                 <button className="icon-btn" aria-label={`Remove stage ${i + 1}`}
                   onClick={() => { setTouched(true); setStages((p) => p.filter((_, x) => x !== i)); }}><Icon name="close" size={18} /></button>
               </div>
@@ -1659,8 +1668,8 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
                   </div>
                   {sc && (
                     <p className="report-note" style={{ marginTop: 2 }}>
-                      Derived <InfoTip title="How this is derived">Hit factor = points / time. Points come from your hits -- A is 5; C is 4 major / 3 minor; D is 2 major / 1 minor -- minus 10 for each miss, no-shoot, and procedural, and never below zero. "All A's" is what it would be if every hit were an alpha, at the same time. Full math and sources: "How the numbers work" (under More, or from any saved match).</InfoTip>: {sc.stagePoints} pts{sc.hitFactor != null ? ` · HF ${sc.hitFactor}` : ''}
-                      {sc.allAlphaDelta != null && sc.allAlphaDelta > 0 ? ` · all A's ${sc.allAlphaHitFactor} (+${sc.allAlphaDelta})` : ''}
+                      Derived <InfoTip title="How this is derived">Hit factor = points / time. Points come from your hits -- A is 5; C is 4 major / 3 minor; D is 2 major / 1 minor -- minus 10 for each miss, no-shoot, and procedural, and never below zero. "All A's" is what it would be if every hit were an alpha, at the same time. Full math and sources: "How the numbers work" (under More, or from any saved match).</InfoTip>: {sc.stagePoints} pts{sc.hitFactor != null ? ` · HF ${fmtHitFactor(sc.hitFactor)}` : ''}
+                      {sc.allAlphaDelta != null && sc.allAlphaDelta > 0 ? ` · all A's ${fmtHitFactor(sc.allAlphaHitFactor)} (+${fmtHitFactor(sc.allAlphaDelta)})` : ''}
                       {sc.pctAvailable != null ? ` · ${Math.round(sc.pctAvailable * 100)}% of points` : ''}
                     </p>
                   )}

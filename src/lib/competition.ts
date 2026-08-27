@@ -256,6 +256,29 @@ export function hitFactor(points: number | null, time: number | null): number | 
   return Math.round((points / time) * 10000) / 10000;
 }
 
+/** Print a USPSA hit factor the way PractiScore prints it: ALWAYS four decimal
+ *  places, trailing zeros kept. Michael's decision, session 135 (26 Aug 2026),
+ *  option 1 of two.
+ *
+ *  Verified before the decision was put to him, against the real Stage Results -
+ *  Review page of his 2026-08-02 Gun Craft match: all 78 rows carry four places
+ *  including their zeros (0.1830, 6.0920, 2.8200, 6.2500, and 0.0000 for a
+ *  zeroed stage). His own row reads 1.8147.
+ *
+ *  This changes NOTHING about the number. `hitFactor` and `round4` already round
+ *  to four places; the loss was purely in printing, because interpolating a
+ *  number into a string prints the shortest form that means the same value. That
+ *  is why one screen read 1.98, 1.1038, 3.064 and 2.1214 across four stages of a
+ *  single match -- three different widths for values of identical precision.
+ *
+ *  DRILL hit factors are deliberately NOT routed through this and stay at two
+ *  places (`formatDrillScore`, `formatMetricTick`): a drill has no PractiScore
+ *  page to agree with, those surfaces are already internally consistent, and a
+ *  chart axis tick at four places would not fit its gutter. */
+export function fmtHitFactor(hf: number | null | undefined): string {
+  return (typeof hf === 'number' && Number.isFinite(hf)) ? hf.toFixed(4) : '--';
+}
+
 /** Exact rulebook quotes for USPSA stage scoring, so the in-app wiki can show the
  *  source verbatim rather than paraphrasing. Direct quotations from the official
  *  USPSA Competition Rules, edition 2026-03 (rules.uspsa.org/uspsa); `section`

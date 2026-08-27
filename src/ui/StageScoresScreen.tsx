@@ -20,7 +20,7 @@ import {
   type StageScoreResult, type StageReviewRow, type AcceptedStageScore,
 } from '../lib/stageScores.ts';
 import { commitStageScore, stageFilled, StageScoreWriteError } from '../lib/stageScoresWrite.ts';
-import { hasHitBreakdown } from '../lib/competition.ts';
+import { hasHitBreakdown, fmtHitFactor } from '../lib/competition.ts';
 import type { View } from './nav.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { ScreenLoading, ScreenError } from './ScreenState.tsx';
@@ -236,7 +236,7 @@ export function StageScoresScreen({ id, onBack, open }: {
               <div className="row"><span className="label">Shooter</span><span className="value">{result.accepted.row.name || '(no name)'}</span></div>
               <div className="row"><span className="label">Hits</span><span className="value">{hitsLine(result.accepted.hits)}</span></div>
               <div className="row"><span className="label">Time</span><span className="value">{result.accepted.time}s</span></div>
-              <div className="row"><span className="label">Hit factor</span><span className="value">{result.accepted.derived.hitFactor}</span></div>
+              <div className="row"><span className="label">Hit factor</span><span className="value">{fmtHitFactor(result.accepted.derived.hitFactor)}</span></div>
               <p className="report-note" style={{ marginTop: 4 }}>
                 Checks out against the page&rsquo;s own printed hit factor ({result.accepted.printedHitFactor}).
               </p>
