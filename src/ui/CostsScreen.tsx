@@ -33,6 +33,27 @@ const CATEGORIES = [
   'Training / Class', 'Travel', 'Other'
 ];
 
+/**
+ * Why "ammo used" can exceed "Ammo bought" (Michael, 27 Aug 2026, from his own
+ * numbers: $3,458 used against $1,491 bought).
+ *
+ * They answer different questions and both are right. "Ammo bought" is money he
+ * handed over on purchase rows. The per-gun figure is the VALUE OF WHAT HE SHOT:
+ * FIFO against his purchase lots for as many rounds as those cover, then each
+ * can's own cost-per-round for the rest (see sessionAmmoCost, the M-9 fix -- those
+ * rounds used to be priced at zero, which undercounted the cost-per-round a
+ * shooter would quote). His first ammo purchase is dated 9 July 2026 and he has
+ * been logging since February, so most of his rounds are priced from the can.
+ *
+ * Nothing is double-counted and no total is wrong. The defect was that one word,
+ * "ammo", was doing both jobs a few inches apart on one screen. Hence "ammo used"
+ * on the rows and this sentence in the help.
+ */
+const AMMO_USED_NOTE =
+  'Ammo used is what you shot, not what you bought: rounds your recorded ammo purchases cover are '
+  + 'priced from those purchases, and anything you owned before you started recording them is priced '
+  + 'from the can\'s cost per round. So ammo used can be more than the "Ammo bought" total above.';
+
 const dollars = (n: number): string =>
   '$' + n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
@@ -128,8 +149,8 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
             {gunGearMode ? 'Gun & gear cost per gun' : 'Ammo & fees per gun'}{' '}
             <InfoTip title={gunGearMode ? 'Gun & gear cost per gun' : 'Ammo & fees per gun'}>
               {gunGearMode
-                ? 'What owning and feeding this gun has actually cost: what the gun itself cost, its optic, spare parts, and any gear or service purchases you told it was for, plus your prorated share of ammo shot through it. Range fees and match fees are not counted here (they\'re the cost of shooting and competing, not of the gun). You can still see them by unchecking the box below, and in the totals at the top of this screen.'
-                : 'Each gun\'s share of ammo, range fees, match fees, and parts. When a session or match used more than one gun, the cost is split by each gun\'s actual rounds, so nothing is double-counted.'}
+                ? `What owning and feeding this gun has actually cost: what the gun itself cost, its optic, spare parts, and any gear or service purchases you told it was for, plus your prorated share of ammo shot through it. Range fees and match fees are not counted here (they're the cost of shooting and competing, not of the gun). You can still see them by unchecking the box below, and in the totals at the top of this screen. ${AMMO_USED_NOTE}`
+                : `Each gun's share of ammo, range fees, match fees, and parts. When a session or match used more than one gun, the cost is split by each gun's actual rounds, so nothing is double-counted. ${AMMO_USED_NOTE}`}
             </InfoTip>
           </h2>
           <label className="checklist-take" style={{ margin: '8px 0' }}>
@@ -151,7 +172,7 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
                     <div className="row-sub">
                       {[g.gun > 0 && `${dollars(g.gun)} gun`,
                         g.optic > 0 && `${dollars(g.optic)} optic`,
-                        g.ammo > 0 && `${dollars(g.ammo)} ammo`,
+                        g.ammo > 0 && `${dollars(g.ammo)} ammo used`,
                         g.parts > 0 && `${dollars(g.parts)} parts`,
                         g.linked > 0 && `${dollars(g.linked)} gear`].filter(Boolean).join(' · ')}
                     </div>
@@ -166,7 +187,7 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
               <div className="row" key={f.id}>
                 <span className="label">{f.name}
                   <div className="row-sub">
-                    {[g.ammo > 0 && `${dollars(g.ammo)} ammo`,
+                    {[g.ammo > 0 && `${dollars(g.ammo)} ammo used`,
                       g.rangeFees > 0 && `${dollars(g.rangeFees)} range`,
                       g.matchFees > 0 && `${dollars(g.matchFees)} matches`,
                       g.parts > 0 && `${dollars(g.parts)} parts`].filter(Boolean).join(' · ')}
