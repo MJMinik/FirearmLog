@@ -73,7 +73,6 @@ const GROUPS: { label: string; sections: SectionDef[] }[] = [
       { target: { kind: 'help' }, label: 'Tour & Setup', icon: 'help', also: ['setup'] },
       { target: { kind: 'settings' }, label: 'Settings', icon: 'settings', also: [] },
       { target: { kind: 'sync' }, label: 'Sync & Backup', icon: 'sync', also: [] },
-      { target: { kind: 'free-space' }, label: 'Free Up Space', icon: 'cleanup', also: [] },
       { target: { kind: 'export-csv' }, label: 'Export as CSV', icon: 'reports', also: [] },
       { target: { kind: 'import-csv' }, label: 'Import from CSV', icon: 'reports', also: [] },
       { target: { kind: 'your-data' }, label: 'Your Data', icon: 'shield', also: [], when: () => telemetryState().wired }

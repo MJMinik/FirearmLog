@@ -2,6 +2,21 @@
 // are shrunk automatically on the way in (see shrinkImage.ts); this handles the
 // back-catalog of full-resolution photos that were saved before that existed.
 //
+// RENAMED AND RELOCATED (Michael's decision, 25 Aug 2026, built 27 Aug). It was
+// "Free Up Space" on its own always-visible menu row. It is now "Compress
+// Photos" and lives inside Sync & Backup as a card that shows itself only when
+// there is actually something to compress. Two reasons that is better than it
+// sounds. A row that is present every time and usually leads to "nothing to do"
+// teaches the shooter to ignore it, so it is worst exactly when it finally
+// matters. And this card's own copy has always told him to "use Save to File
+// above" first -- which was untrue on a screen of its own, and is true here,
+// because Save to File is now genuinely the card above it.
+//
+// The `standalone` prop went with the screen. It existed only to keep the card
+// visible with a "nothing to free up" message when it had no work; that state
+// has no home now, and keeping a prop nothing passes is how dead branches
+// survive long enough to be mistaken for behaviour.
+//
 // Safety (working rule 9 — this rewrites the user's real stored photos):
 //  - Each photo is updated IN PLACE (same record id) so references from guns
 //    (photoIds) and drills (targetMediaIds) stay intact. Each putOne is its own
@@ -28,21 +43,19 @@ type Stage =
   | { name: 'working'; done: number; total: number }
   | { name: 'done'; shrunk: number; savedMB: string };
 
-export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean } = {}) {
+export function PhotoCleanupCard() {
   const [stage, setStage] = useState<Stage>({ name: 'idle' });
   const [hasOversized, setHasOversized] = useState(false);
-  const [checked, setChecked] = useState(false);
 
   // On open, check whether any stored photo is still full-size. If none, the
-  // card hides itself — there's nothing to free up. On its own screen
-  // (standalone) it stays and shows a plain "nothing to free up" state instead.
-  // P-7 probe: cursor stops at the first oversize hit so the photo library
-  // never lands in memory at once — only one record is live at a time.
+  // card hides itself — there is nothing to compress, so there is nothing to
+  // say. P-7 probe: the cursor stops at the first oversize hit so the photo
+  // library never lands in memory at once — only one record is live at a time.
   useEffect(() => {
     let alive = true;
     void (async () => {
       const oversized = await hasOversizedMedia(OVERSIZE_BYTES);
-      if (alive) { setHasOversized(oversized); setChecked(true); }
+      if (alive) setHasOversized(oversized);
     })();
     return () => { alive = false; };
   }, []);
@@ -72,26 +85,15 @@ export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean 
 
   // Nothing to free up (and not mid-run / not showing a result). Inline on the
   // More screen the card hides itself; on its own screen it stays and says so.
-  if (stage.name === 'idle' && !hasOversized) {
-    if (!standalone) return null;
-    if (!checked) return <div className="card" aria-hidden="true" style={{ minHeight: 88 }} />;
-    return (
-      <div className="card">
-        <h2>Free Up Space</h2>
-        <p className="report-note">
-          Your photos are already optimized — there's nothing to free up right now. New photos are
-          shrunk automatically as you add them.
-        </p>
-      </div>
-    );
-  }
+  if (stage.name === 'idle' && !hasOversized) return null;
 
   return (
     <div className="card">
-      <h2>Free Up Space</h2>
+      <h2>Compress Photos</h2>
       <p className="report-note" style={{ marginBottom: 12 }}>
-        Make smaller copies of the photos already in your log. They'll still look good on screen
-        and in reports, but take far less space and sync faster (videos are left alone).{' '}
+        Some photos in your log are still full size. Making smaller copies of them frees up room
+        and makes syncing faster, and they'll still look good on screen and in reports (videos are
+        left alone).{' '}
         <strong>Back up first:</strong> use Save to File above before running this — it rewrites your
         stored photos and can only be undone by pulling a backup.
       </p>
@@ -107,7 +109,7 @@ export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean 
       ) : (
         <>
           <button className="button" onClick={() => setStage({ name: 'confirm' })}>
-            Shrink Stored Photos
+            Compress Photos
           </button>
           {stage.name === 'idle' && stage.message && (
             <p className="report-note" style={{ marginTop: 10 }}>{stage.message}</p>
@@ -116,9 +118,9 @@ export function PhotoCleanupCard({ standalone = false }: { standalone?: boolean 
       )}
       {stage.name === 'confirm' && (
         <ConfirmSheet
-          title="Shrink stored photos?"
-          message="This makes smaller copies of every photo in your log to free up space. Make sure you've backed up first with Save to File. Continue?"
-          confirmLabel="Shrink Photos"
+          title="Compress the photos in your log?"
+          message="This makes smaller copies of every full-size photo in your log. Make sure you've backed up first with Save to File. Continue?"
+          confirmLabel="Compress Photos"
           onConfirm={() => void run()}
           onClose={() => setStage({ name: 'idle' })}
         />

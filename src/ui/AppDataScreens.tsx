@@ -1,8 +1,13 @@
-// App & Data section screens (July 2026). Sync & Backup and Free Up Space each
-// get their own screen so the "App & Data" menu group reads as clean chevron
-// rows (the iOS Settings pattern) instead of a stack of unlike cards. These are
-// thin shells around the existing SyncCard / PhotoCleanup components — no
-// behavior change, only where they live. (F11, session 55: the orphaned
+// App & Data section screens (July 2026). Each gets its own screen so the
+// "App & Data" menu group reads as clean chevron rows (the iOS Settings
+// pattern) instead of a stack of unlike cards. These are thin shells around the
+// existing components — no behavior change, only where they live.
+//
+// 27 Aug 2026 (Michael's decision of the 25th): "Free Up Space" no longer has a
+// screen or a menu row. Compress Photos is a card inside Sync & Backup that
+// shows itself only when some photo is still full size. The two belong together
+// — the card tells you to Save to File before running it, and Save to File is
+// now the card directly above. (F11, session 55: the orphaned
 // ImportScreen was removed — the migration importer library in lib/import/
 // stays forever, per rules 5/46, but it has no user-facing surface.)
 import { useEffect, useState } from 'react';
@@ -35,14 +40,10 @@ export function SyncScreen({ onBack, onImported }: { onBack: () => void; onImpor
   return (
     <ScreenShell title="Sync & Backup" onBack={onBack}>
       <SyncCard onPulled={onImported} onBackedUp={onImported} />
-    </ScreenShell>
-  );
-}
-
-export function FreeSpaceScreen({ onBack }: { onBack: () => void }) {
-  return (
-    <ScreenShell title="Free Up Space" onBack={onBack}>
-      <PhotoCleanupCard standalone />
+      {/* Below Save to File on purpose: the card's own copy says to back up
+          first, and this is the order that makes that sentence true. It renders
+          nothing at all unless a photo is still full size. */}
+      <PhotoCleanupCard />
     </ScreenShell>
   );
 }

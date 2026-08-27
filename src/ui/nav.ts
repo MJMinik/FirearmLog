@@ -36,7 +36,6 @@ export type View =
   | { kind: 'setup' }
   | { kind: 'settings' }
   | { kind: 'sync' }
-  | { kind: 'free-space' }
   | { kind: 'export-csv' }
   | { kind: 'import-csv' }
   | { kind: 'your-data' }
