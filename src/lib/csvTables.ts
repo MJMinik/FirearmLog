@@ -282,6 +282,7 @@ const firearmColumns: CsvColumn<Firearm>[] = [
   { header: 'Barrel installed', get: (f) => f.barrelInstallDate ?? '' },
   { header: 'Recoil spring interval', get: (f) => f.recoilSpringInterval ?? '' },
   { header: 'Recoil spring weight', get: (f) => f.recoilSpringWeight ?? '' },
+  { header: 'What you paid', get: (f) => f.pricePaid ?? '' },
   { header: 'Status', get: (f) => f.status ?? 'active' },
   { header: 'Status reason', get: (f) => f.statusReason ?? '' },
   { header: 'Status date', get: (f) => f.statusDate ?? '' },
@@ -302,13 +303,14 @@ const ammoColumns: CsvColumn<Ammunition>[] = [
   { header: 'Notes', get: (a) => a.notes },
 ];
 
-const purchaseColumns: CsvColumn<Purchase>[] = [
+const purchaseColumns = (lk: CsvLookup): CsvColumn<Purchase>[] => [
   { header: 'Date', get: (p) => p.date },
   { header: 'Category', get: (p) => p.category },
   { header: 'Item', get: (p) => p.item },
   { header: 'Vendor', get: (p) => p.vendor },
   { header: 'Cost', get: (p) => p.cost },
   { header: 'Rounds', get: (p) => p.rounds ?? '' },
+  { header: 'Gun', get: (p) => lk.gunName(p.firearmId) },
   { header: 'Notes', get: (p) => p.notes },
 ];
 
@@ -350,6 +352,7 @@ const opticColumns = (lk: CsvLookup): CsvColumn<Optic>[] => [
   { header: 'Mount height', get: (o) => o.mountHeight },
   { header: 'Torque spec', get: (o) => o.torqueSpec },
   { header: 'Settings', get: (o) => o.settingsSnapshot },
+  { header: 'What you paid', get: (o) => o.pricePaid ?? '' },
   { header: 'Notes', get: (o) => o.notes },
 ];
 
@@ -493,7 +496,7 @@ export const CSV_TABLES: CsvTable[] = [
     label: 'Costs',
     describes: 'One row per purchase, fee or expense.',
     count: (s) => list(s.purchases).length,
-    toText: (s) => toCsvText(list(s.purchases), purchaseColumns),
+    toText: (s, lk) => toCsvText(list(s.purchases), purchaseColumns(lk)),
   },
   {
     key: 'maintenance',

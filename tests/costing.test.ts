@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   ammoCurrentCostPerRound, computeFifoCosts, costPerRoundAfterBuy, costTotals, firearmShare,
-  gunSpend, inventoryAfterUsageChange, lowAmmo, matchFee, purchaseAmmoLink,
+  gunOwnershipSpend, gunSpend, inventoryAfterUsageChange, lowAmmo, matchFee, purchaseAmmoLink,
   roundsFired, sessionAmmoCost
 } from '../src/lib/costing.ts';
 
@@ -226,4 +226,109 @@ test('costPerRoundAfterBuy: typed flat cost covers shelf rounds when no lots exi
 test('costPerRoundAfterBuy: nothing to price returns null', () => {
   assert.equal(costPerRoundAfterBuy(null, [], [], 0, 0, 0, 0), null);
   assert.equal(costPerRoundAfterBuy('am-none', [], [], 0, 500, 0, 0), null);
+});
+
+// ---------------------------------------------------------------------------
+// gunOwnershipSpend — "Gun & gear cost per gun" (Aug 2026)
+// ---------------------------------------------------------------------------
+
+test('gunOwnershipSpend: gun price + optic + parts + linked gear + linked service + ammo all add up', () => {
+  const firearms = [{ id: 'fa-1', pricePaid: 500 }];
+  const optics = [{ firearmId: 'fa-1', pricePaid: 300 }];
+  const parts = [{ firearmId: 'fa-1', cost: 40 }];
+  const purchases = [
+    ...lots, // ammo lots — not linked to any gun, feed FIFO only
+    { id: 'pu-gear', date: '2026-03-01', category: 'Gear / Equipment', cost: 60, firearmId: 'fa-1' },
+    { id: 'pu-svc', date: '2026-03-02', category: 'Service / Repair', cost: 25, firearmId: 'fa-1' },
+  ];
+  const sessions = [marchApril[0]]; // se-mar: 1,000 rounds of am-1, all fa-1's
+  const withGuns = sessions.map((s) => ({ ...s, guns: [{ firearmId: 'fa-1', rounds: 1000 }] }));
+  const ammo = [{ id: 'am-1', quantity: 0, costPerRound: 0 }];
+  const g = gunOwnershipSpend('fa-1', withGuns, purchases, ammo, firearms, optics, parts);
+  assert.equal(g.ammo, 400);   // same FIFO figure as gunSpend: 1,000 × $0.40 (Jan lot)
+  assert.equal(g.gun, 500);
+  assert.equal(g.optic, 300);
+  assert.equal(g.parts, 40);
+  assert.equal(g.linked, 85);  // $60 gear + $25 service
+  assert.equal(g.total, 400 + 500 + 300 + 40 + 85);
+});
+
+test('gunOwnershipSpend: a gun with nothing recorded but ammo shows only ammo', () => {
+  const firearms = [{ id: 'fa-2' }]; // no pricePaid at all
+  const sessions = [{ ...marchApril[0], guns: [{ firearmId: 'fa-2', rounds: 1000 }] }];
+  const ammo = [{ id: 'am-1', quantity: 0, costPerRound: 0 }];
+  const g = gunOwnershipSpend('fa-2', sessions, lots, ammo, firearms);
+  assert.equal(g.ammo, 400);
+  assert.equal(g.gun, 0);
+  assert.equal(g.optic, 0);
+  assert.equal(g.parts, 0);
+  assert.equal(g.linked, 0);
+  assert.equal(g.total, 400);
+});
+
+test('gunOwnershipSpend never includes range fees or match fees, which gunSpend does', () => {
+  const firearms = [{ id: 'fa-3', pricePaid: 100 }];
+  const sessions = [{
+    id: 'se-y', date: '2026-04-01', rangeFee: 20,
+    guns: [{ firearmId: 'fa-3', rounds: 100 }], ammoUsage: []
+  }];
+  const matches = [{ firearmId: 'fa-3', date: '2026-04-05', entryFee: 30, totalRounds: 50 }];
+  const ammo: { id: string; quantity: number; costPerRound: number }[] = [];
+  // gunOwnershipSpend takes no `matches` argument at all — there is no field
+  // for a match fee to arrive through, and it never reads session.rangeFee.
+  const own = gunOwnershipSpend('fa-3', sessions, [], ammo, firearms);
+  assert.equal(own.total, 100); // the gun's own price only
+  // Same session and gun, through gunSpend: both fees show up there.
+  const spend = gunSpend('fa-3', sessions, [], matches, ammo);
+  assert.equal(spend.rangeFees, 20);
+  assert.equal(spend.matchFees, 30);
+  assert.equal(spend.total, 50);
+});
+
+test('gunOwnershipSpend: a linked Ammo Purchase or Range Fee purchase is ignored even with a firearmId', () => {
+  const firearms = [{ id: 'fa-4' }];
+  const purchases = [
+    { id: 'pu-ammo-linked', date: '2026-01-01', category: 'Ammo Purchase', cost: 999, ammoId: 'am-4', rounds: 100, firearmId: 'fa-4' },
+    { id: 'pu-fee-linked', date: '2026-01-01', category: 'Range Fee', cost: 50, firearmId: 'fa-4' },
+  ];
+  const g = gunOwnershipSpend('fa-4', [], purchases, [], firearms);
+  assert.equal(g.linked, 0);
+  assert.equal(g.total, 0);
+});
+
+test('gunOwnershipSpend: a linked Ammo Purchase still feeds FIFO once, never doubled as gear', () => {
+  const firearms = [{ id: 'fa-5' }];
+  const purchases = [
+    { id: 'pu-5', date: '2026-01-01', category: 'Ammo Purchase', cost: 40, ammoId: 'am-5', rounds: 100, firearmId: 'fa-5' },
+  ];
+  const sessions = [
+    { id: 'se-5', date: '2026-02-01', guns: [{ firearmId: 'fa-5', rounds: 100 }], ammoUsage: [{ ammoId: 'am-5', rounds: 100 }] },
+  ];
+  const ammo = [{ id: 'am-5', quantity: 0, costPerRound: 0 }];
+  const g = gunOwnershipSpend('fa-5', sessions, purchases, ammo, firearms);
+  assert.equal(g.ammo, 40);   // the FIFO figure, once
+  assert.equal(g.linked, 0);  // never added a second time as gear
+  assert.equal(g.total, 40);
+});
+
+test('gunOwnershipSpend: a missing or non-numeric pricePaid contributes 0, never NaN', () => {
+  const firearms = [{ id: 'fa-6', pricePaid: 'free' as unknown as number }];
+  const optics = [{ firearmId: 'fa-6', pricePaid: undefined }, { firearmId: 'fa-6' }];
+  const g = gunOwnershipSpend('fa-6', [], [], [], firearms, optics);
+  assert.equal(g.gun, 0);
+  assert.equal(g.optic, 0);
+  assert.equal(Number.isNaN(g.total), false);
+  assert.equal(g.total, 0);
+});
+
+test('gunOwnershipSpend: two optics on the same gun over its life sum together', () => {
+  const firearms = [{ id: 'fa-7' }];
+  const optics = [
+    { firearmId: 'fa-7', pricePaid: 250 },
+    { firearmId: 'fa-7', pricePaid: 90 },
+    { firearmId: 'fa-other', pricePaid: 1000 }, // a different gun's optic never counts
+  ];
+  const g = gunOwnershipSpend('fa-7', [], [], [], firearms, optics);
+  assert.equal(g.optic, 340);
+  assert.equal(g.total, 340);
 });

@@ -33,7 +33,15 @@ export interface CostPurchaseLike {
   ammoId?: string | null;
   rounds?: number | null;
   legacy?: Record<string, unknown>;
+  /** Which gun (if any) this purchase is for — "gun & gear cost" feature. */
+  firearmId?: string | null;
 }
+
+/** A gun as a cost source: what you paid for it, if recorded. */
+export interface FirearmCostLike { id: string; pricePaid?: unknown }
+
+/** An optic as a cost source: what you paid for it, and the gun it's mounted on. */
+export interface OpticCostLike { firearmId?: string | null; pricePaid?: unknown }
 
 export interface CostMatchLike {
   date?: string;
@@ -348,6 +356,75 @@ export function gunSpend(
   return {
     ammo: ammoCost, rangeFees, matchFees, parts: partsCost,
     total: ammoCost + rangeFees + matchFees + partsCost
+  };
+}
+
+// ---- Gun ownership cost ("Gun & gear cost per gun", Aug 2026) ----
+
+/**
+ * Purchase categories a "For which gun" link may count toward gun ownership
+ * cost. Deliberately narrow (spec decision 6: Gear / Equipment AND Service /
+ * Repair, nothing else) — an Ammo Purchase or Range Fee is IGNORED here even
+ * if it happens to carry a firearmId, so ammo is never double-counted against
+ * the FIFO figure above and a range fee can never slip into this mode, which
+ * excludes range fees on principle.
+ */
+const LINKED_PURCHASE_CATEGORIES = new Set(['gear / equipment', 'service / repair']);
+
+function isLinkedGunPurchase(p: CostPurchaseLike, firearmId: string): boolean {
+  return p.firearmId === firearmId && LINKED_PURCHASE_CATEGORIES.has(p.category.toLowerCase());
+}
+
+export interface GunOwnershipSpend {
+  ammo: number; gun: number; optic: number; parts: number; linked: number; total: number;
+}
+
+/**
+ * What owning and feeding one gun has actually cost — a second, deliberately
+ * narrower question than gunSpend answers. Range fees and match fees are the
+ * price of shooting and competing, not of the gun, so NEITHER appears here:
+ * this function doesn't even take a `matches` parameter, and it never reads a
+ * session's `rangeFee` field, so there is no field left for either to leak in
+ * through.
+ *
+ * Adds together: the gun's own pricePaid, every optic that has carried this
+ * gun's firearmId (summed — a gun can wear more than one optic over its life),
+ * spare parts tied to the gun, "Gear / Equipment" and "Service / Repair"
+ * purchases linked to it by the For-which-gun picker, and its prorated share
+ * of ammo cost — the SAME FIFO figure gunSpend computes, reusing the same
+ * helpers (computeFifoCosts, firearmShare, sessionAmmoCost) rather than
+ * reimplementing FIFO.
+ */
+export function gunOwnershipSpend(
+  firearmId: string,
+  sessions: CostSessionLike[],
+  purchases: CostPurchaseLike[],
+  ammo: AmmoLike[],
+  firearms: FirearmCostLike[],
+  optics: OpticCostLike[] = [],
+  parts: PartCostLike[] = []
+): GunOwnershipSpend {
+  const fifo = computeFifoCosts(purchases, sessions);
+  let ammoCost = 0;
+  for (const s of sessions) {
+    if (s.planned) continue;
+    const share = firearmShare(s, firearmId);
+    if (share === 0) continue;
+    ammoCost += sessionAmmoCost(s, fifo, ammo) * share;
+  }
+  const gunCost = money(firearms.find((f) => f.id === firearmId)?.pricePaid);
+  const opticCost = optics
+    .filter((o) => o.firearmId === firearmId)
+    .reduce((t, o) => t + money(o.pricePaid), 0);
+  const partsCost = parts
+    .filter((p) => p.firearmId === firearmId)
+    .reduce((t, p) => t + money(p.cost), 0);
+  const linkedCost = purchases
+    .filter((p) => isLinkedGunPurchase(p, firearmId))
+    .reduce((t, p) => t + money(p.cost), 0);
+  return {
+    ammo: ammoCost, gun: gunCost, optic: opticCost, parts: partsCost, linked: linkedCost,
+    total: ammoCost + gunCost + opticCost + partsCost + linkedCost
   };
 }
 

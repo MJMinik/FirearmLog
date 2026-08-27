@@ -49,12 +49,17 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }:
   const [lifetimeClamped, setLifetimeClamped] = useState(false);
   const [deepClean, setDeepClean] = useState('');
   const [recoilSpring, setRecoilSpring] = useState('');
+  // What you paid for the gun (Aug 2026, "gun & gear cost" feature). Optional
+  // like deepClean/recoilSpring below — blank stays blank (stored null), so
+  // "not recorded" never gets confused with "free."
+  const [pricePaid, setPricePaid] = useState('');
   const [notes, setNotes] = useState('');
   const [problem, setProblem] = useState<SaveProblem>(null);
   const nameFieldRef = useRef<HTMLInputElement>(null);
   const startCountFieldRef = useRef<HTMLInputElement>(null);
   const deepCleanFieldRef = useRef<HTMLInputElement>(null);
   const recoilSpringFieldRef = useRef<HTMLInputElement>(null);
+  const pricePaidFieldRef = useRef<HTMLInputElement>(null);
   const [referenceId, setReferenceId] = useState<string | null>(null);
   const [customRefs, setCustomRefs] = useState<Reference[]>([]);
   const [refSuggestion, setRefSuggestion] = useState<ReferenceEntry | null>(null);
@@ -90,7 +95,7 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }:
   const [lifetimeLoaded, setLifetimeLoaded] = useState<boolean>(!editing);
   const dirty = useDirtyTracker({
     name, manufacturer, model, caliber, category, serial, acquired,
-    startCount, lifetime, deepClean, recoilSpring, notes, referenceId,
+    startCount, lifetime, deepClean, recoilSpring, pricePaid, notes, referenceId,
   }, loaded && lifetimeLoaded);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
@@ -124,6 +129,7 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }:
       setAcquired(g.dateAcquired); setStartCount(String(g.startingRoundCount));
       setDeepClean(g.deepCleanInterval ? String(g.deepCleanInterval) : '');
       setRecoilSpring(g.recoilSpringInterval ? String(g.recoilSpringInterval) : '');
+      setPricePaid(g.pricePaid != null ? String(g.pricePaid) : '');
       setNotes(g.notes);
       setReferenceId(g.referenceId);
       // AUDIT FIX: flip the dirty-tracker's baseline gate ONLY after fields
@@ -237,6 +243,13 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }:
     if (rsNum !== null && !(rsNum > 0)) {
       return { field: 'recoilSpring', message: 'Schedule intervals need to be plain round counts (or left blank).' };
     }
+    // Unlike the two intervals above, 0 is a legitimate answer here (a gift or
+    // a build from spare parts really did cost nothing) — only reject
+    // negative or non-numeric, not zero.
+    const ppNum = pricePaid.trim() === '' ? null : Number(pricePaid);
+    if (ppNum !== null && (!Number.isFinite(ppNum) || ppNum < 0)) {
+      return { field: 'pricePaid', message: 'What you paid needs to be a plain number (or left blank).' };
+    }
     return null;
   }
 
@@ -251,6 +264,7 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }:
         p.field === 'startCount' ? startCountFieldRef :
         p.field === 'deepClean' ? deepCleanFieldRef :
         p.field === 'recoilSpring' ? recoilSpringFieldRef :
+        p.field === 'pricePaid' ? pricePaidFieldRef :
         nameFieldRef;
       setTimeout(() => {
         fieldRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -263,11 +277,12 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }:
     const start = Number(startCount);
     const dcNum = deepClean.trim() === '' ? null : Number(deepClean);
     const rsNum = recoilSpring.trim() === '' ? null : Number(recoilSpring);
+    const ppNum = pricePaid.trim() === '' ? null : Number(pricePaid);
     const fields = {
       name: effectiveName, manufacturer: manufacturer.trim(), model: model.trim(),
       caliber: caliber.trim(), category, serialNumber: serial.trim() || null,
       dateAcquired: acquired, startingRoundCount: start, notes: notes.trim(),
-      deepCleanInterval: dcNum, recoilSpringInterval: rsNum, referenceId
+      deepCleanInterval: dcNum, recoilSpringInterval: rsNum, pricePaid: ppNum, referenceId
     };
     if (editing && original) {
       const updated = stampUpdate({ ...original, ...fields }, Date.now());
@@ -374,6 +389,18 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }:
           </label>
           <label className="field">Date acquired
             <input type="date" value={acquired} onChange={(e) => setAcquired(e.target.value)} />
+          </label>
+          <label className={`field${problem?.field === 'pricePaid' ? ' invalid' : ''}`}>What you paid
+            <input
+              ref={pricePaidFieldRef}
+              id="gun-pricepaid-input"
+              type="number" inputMode="decimal" min="0" step="0.01"
+              value={pricePaid}
+              onChange={(e) => { setPricePaid(e.target.value); if (problem?.field === 'pricePaid') setProblem(null); }}
+              placeholder="0.00"
+              aria-invalid={problem?.field === 'pricePaid' || undefined}
+              aria-describedby={problem?.field === 'pricePaid' ? 'gun-pricepaid-err' : undefined} />
+            <FieldProblem id="gun-pricepaid-err" problem={problem} field="pricePaid" />
           </label>
           {/* A1: while editing, show the gun's lifetime as it stands now, so the
               shooter knows what the two boxes below add up to. Skipped on a new

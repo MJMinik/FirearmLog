@@ -197,6 +197,10 @@ export function OpticForm({ id, firearmId, onSaved, onCancel, onDirtyChange, onS
   const [mountHeight, setMountHeight] = useState('');
   const [torqueSpec, setTorqueSpec] = useState('');
   const [settingsSnapshot, setSettingsSnapshot] = useState('');
+  // What you paid for the optic (Aug 2026, "gun & gear cost" feature). Blank
+  // stays blank (stored null) — same not-recorded-vs-free semantics as the
+  // gun form's field.
+  const [pricePaid, setPricePaid] = useState('');
   const [notes, setNotes] = useState('');
   const [problem, setProblem] = useState('');
   const [confirming, setConfirming] = useState(false);
@@ -205,7 +209,7 @@ export function OpticForm({ id, firearmId, onSaved, onCancel, onDirtyChange, onS
   // an untouched edit doesn't fire "Discard changes?".
   const [loaded, setLoaded] = useState<boolean>(!editing);
   const [hiddenSuggestions, setHiddenSuggestions] = useState<Record<string, string[]>>({});
-  const dirty = useDirtyTracker({ firearmIdSel, make, model, installDate, dotSize, zeroDist, mountHeight, torqueSpec, settingsSnapshot, notes }, loaded);
+  const dirty = useDirtyTracker({ firearmIdSel, make, model, installDate, dotSize, zeroDist, mountHeight, torqueSpec, settingsSnapshot, pricePaid, notes }, loaded);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
 
@@ -224,7 +228,9 @@ export function OpticForm({ id, firearmId, onSaved, onCancel, onDirtyChange, onS
         setInstallDate(o.installDate);
         setDotSize(o.dotSize); setZeroDist(o.zeroDist);
         setMountHeight(o.mountHeight); setTorqueSpec(o.torqueSpec);
-        setSettingsSnapshot(o.settingsSnapshot); setNotes(o.notes);
+        setSettingsSnapshot(o.settingsSnapshot);
+        setPricePaid(o.pricePaid != null ? String(o.pricePaid) : '');
+        setNotes(o.notes);
         setLoaded(true); // AUDIT FIX
       });
     } else if (firearmId) {
@@ -238,17 +244,22 @@ export function OpticForm({ id, firearmId, onSaved, onCancel, onDirtyChange, onS
 
   function saveProblem(): string | null {
     if (!make.trim() && !model.trim()) return 'Give the optic a make or model.';
+    // 0 is a legitimate answer (a gift, a trade, a giveaway) — only reject
+    // negative or non-numeric, not zero.
+    const pp = pricePaid.trim() === '' ? null : Number(pricePaid);
+    if (pp !== null && (!Number.isFinite(pp) || pp < 0)) return 'What you paid needs to be a plain number (or left blank).';
     return null;
   }
 
   async function persistForm(): Promise<boolean> {
     const p = saveProblem();
     if (p) { setProblem(p); return false; }
+    const pp = pricePaid.trim() === '' ? null : Number(pricePaid);
     const fields = {
       firearmId: firearmIdSel, make: make.trim(), model: model.trim(),
       installDate, dotSize: dotSize.trim(), zeroDist: zeroDist.trim(),
       mountHeight: mountHeight.trim(), torqueSpec: torqueSpec.trim(),
-      settingsSnapshot: settingsSnapshot.trim(), notes: notes.trim()
+      settingsSnapshot: settingsSnapshot.trim(), pricePaid: pp, notes: notes.trim()
     };
     if (original) {
       await putOne('optics', stampUpdate({ ...original, ...fields }, Date.now()));
@@ -340,6 +351,10 @@ export function OpticForm({ id, firearmId, onSaved, onCancel, onDirtyChange, onS
         <label className="field">Settings snapshot
           <textarea rows={3} value={settingsSnapshot} onChange={(e) => setSettingsSnapshot(e.target.value)}
             placeholder="Brightness setting, mode, etc." />
+        </label>
+        <label className="field">What you paid
+          <input type="number" inputMode="decimal" min="0" step="0.01" value={pricePaid}
+            onChange={(e) => setPricePaid(e.target.value)} placeholder="0.00" />
         </label>
         <label className="field">Notes
           <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />

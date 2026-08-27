@@ -4,15 +4,16 @@
 // spend prorates multi-gun sessions by rounds (the old F2 bug, now unit-tested).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScreenLoading } from './ScreenState.tsx';
-import type { Ammunition, Firearm, Match, Part, Purchase, Session } from '../lib/types.ts';
+import type { Ammunition, Firearm, Match, Optic, Part, Purchase, Session } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, getSettings, putOne } from '../lib/db.ts';
 import { activeOnly } from '../lib/softDelete.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
-import { costTotals, gunSpend, purchaseAmmoLink, roundsFired } from '../lib/costing.ts';
+import { costTotals, gunOwnershipSpend, gunSpend, purchaseAmmoLink, roundsFired } from '../lib/costing.ts';
 import { recentValues } from '../lib/suggest.ts';
 import { filterHidden } from '../lib/listEdits.ts';
+import { ownedGuns } from '../lib/gunStatus.ts';
 import { ammoLabel } from './AmmoScreens.tsx';
 import { SuggestField } from './SuggestField.tsx';
 import { InfoTip } from './InfoTip.tsx';
@@ -40,18 +41,24 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [ammo, setAmmo] = useState<Ammunition[]>([]);
   const [parts, setParts] = useState<Part[]>([]);
+  const [optics, setOptics] = useState<Optic[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
   const [q, setQ] = useState('');
+  // "Gun & gear cost per gun" mode (Aug 2026). Unchecked on every fresh open —
+  // deliberately NOT persisted (a plain useState, no settings write) — so the
+  // screen always opens on the familiar ammo-and-fees view.
+  const [gunGearMode, setGunGearMode] = useState(false);
 
   useEffect(() => {
     let alive = true;
     setError(false);
     void Promise.all([
       getAll<Session>('sessions'), getAll<Purchase>('purchases'), getAll<Match>('matches'),
-      getAll<Firearm>('firearms'), getAll<Ammunition>('ammunition'), getAll<Part>('parts')
-    ]).then(([s, p, m, f, a, pt]) => {
+      getAll<Firearm>('firearms'), getAll<Ammunition>('ammunition'), getAll<Part>('parts'),
+      getAll<Optic>('optics')
+    ]).then(([s, p, m, f, a, pt, op]) => {
       if (!alive) return;
       setSessions(activeOnly(s)); // App 7: trashed sessions never count toward costs
       // Date-safe sort: a purchase with a missing date must never crash the
@@ -61,6 +68,7 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
       setFirearms(f);
       setAmmo(a);
       setParts(pt);
+      setOptics(op);
       setLoaded(true);
     }).catch(() => { if (alive) setError(true); });
     return () => { alive = false; };
@@ -110,12 +118,42 @@ export function CostsScreen({ refreshKey, onBack, openForm, openPart }: {
 
       {firearms.length > 0 && (
         <div className="card">
-          <h2>Spend by Gun <InfoTip title="Spend by Gun">Each gun's share of ammo, range fees, match fees, and parts. When a session or match used more than one gun, the cost is split by each gun's actual rounds, so nothing is double-counted.</InfoTip></h2>
+          <h2>
+            {gunGearMode ? 'Gun & gear cost per gun' : 'Ammo & fees per gun'}{' '}
+            <InfoTip title={gunGearMode ? 'Gun & gear cost per gun' : 'Ammo & fees per gun'}>
+              {gunGearMode
+                ? 'What owning and feeding this gun has actually cost: what the gun itself cost, its optic, spare parts, and any gear or service purchases you told it was for, plus your prorated share of ammo shot through it. Range fees and match fees are not counted here (they\'re the cost of shooting and competing, not of the gun). You can still see them by unchecking the box below, and in the totals at the top of this screen.'
+                : 'Each gun\'s share of ammo, range fees, match fees, and parts. When a session or match used more than one gun, the cost is split by each gun\'s actual rounds, so nothing is double-counted.'}
+            </InfoTip>
+          </h2>
+          <label className="checklist-take" style={{ margin: '8px 0' }}>
+            <input type="checkbox" checked={gunGearMode} onChange={(e) => setGunGearMode(e.target.checked)} />
+            Include the gun, optic, parts and gear
+          </label>
           <p className="report-note" style={{ marginBottom: 8 }}>
-            Ammo shot up (oldest purchases first) plus each gun's share of range fees —
-            split sessions are divided by rounds, never counted twice — plus its match fees.
+            {gunGearMode
+              ? 'What the gun cost, its optic, spare parts, and any gear or service you linked to it, plus its share of ammo shot (oldest purchases first). Range fees and match fees are left out.'
+              : 'Ammo shot up (oldest purchases first) plus each gun\'s share of range fees — split sessions are divided by rounds, never counted twice — plus its match fees.'}
           </p>
           {firearms.map((f) => {
+            if (gunGearMode) {
+              const g = gunOwnershipSpend(f.id, sessions, purchases, ammo, firearms, optics, parts);
+              if (g.total === 0) return null;
+              return (
+                <div className="row" key={f.id}>
+                  <span className="label">{f.name}
+                    <div className="row-sub">
+                      {[g.gun > 0 && `${dollars(g.gun)} gun`,
+                        g.optic > 0 && `${dollars(g.optic)} optic`,
+                        g.ammo > 0 && `${dollars(g.ammo)} ammo`,
+                        g.parts > 0 && `${dollars(g.parts)} parts`,
+                        g.linked > 0 && `${dollars(g.linked)} gear`].filter(Boolean).join(' · ')}
+                    </div>
+                  </span>
+                  <span className="value">{dollars(g.total)}</span>
+                </div>
+              );
+            }
             const g = gunSpend(f.id, sessions, purchases, matches, ammo, parts);
             if (g.total === 0) return null;
             return (
@@ -190,6 +228,7 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
   const editing = id !== undefined;
   const [original, setOriginal] = useState<Purchase | null>(null);
   const [ammo, setAmmo] = useState<Ammunition[]>([]);
+  const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [pastVendors, setPastVendors] = useState<string[]>([]);
   const [pastItems, setPastItems] = useState<string[]>([]);
   const [date, setDate] = useState(todayKey());
@@ -200,6 +239,10 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
   const [rounds, setRounds] = useState('');
   const [ammoId, setAmmoId] = useState('');
   const [addToInv, setAddToInv] = useState(true);
+  // "For which gun" (Aug 2026, "gun & gear cost" feature). Only offered — and
+  // only ever saved — for Gear / Equipment and Service / Repair (spec decision
+  // 6). '' means "Not gun-specific".
+  const [firearmIdSel, setFirearmIdSel] = useState('');
   const [notes, setNotes] = useState('');
   const [problem, setProblem] = useState('');
   const [confirming, setConfirming] = useState(false);
@@ -210,14 +253,20 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
   // fires "Discard changes?" untouched.
   const [loaded, setLoaded] = useState<boolean>(!editing);
   const [hiddenSuggestions, setHiddenSuggestions] = useState<Record<string, string[]>>({});
-  const dirty = useDirtyTracker({ date, category, item, vendor, cost, rounds, ammoId, addToInv, notes }, loaded);
+  const dirty = useDirtyTracker({ date, category, item, vendor, cost, rounds, ammoId, addToInv, firearmIdSel, notes }, loaded);
   useEffect(() => { onDirtyChange?.(dirty); }, [dirty, onDirtyChange]);
   useEffect(() => () => onDirtyChange?.(false), [onDirtyChange]);
+
+  // Which categories the "For which gun" picker is offered on (spec decision 6).
+  const linkableCategory = category === 'Gear / Equipment' || category === 'Service / Repair';
 
   useEffect(() => {
     let alive = true;
     void getAll<Ammunition>('ammunition').then((a) => {
       if (alive) setAmmo(a.sort((x, y) => ammoLabel(x).localeCompare(ammoLabel(y))));
+    });
+    void getAll<Firearm>('firearms').then((f) => {
+      if (alive) setFirearms(f.sort((x, y) => x.name.localeCompare(y.name)));
     });
     void getAll<Purchase>('purchases').then((all) => {
       if (!alive) return;
@@ -239,6 +288,7 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
         setRounds(link ? String(link.rounds) : '');
         setAmmoId(link?.ammoId ?? '');
         setAddToInv(p.addedToInventory === true);
+        setFirearmIdSel(p.firearmId ?? '');
         setNotes(p.notes);
         setLoaded(true); // AUDIT FIX
       });
@@ -278,12 +328,15 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
     try {
       const now = Date.now();
       // Clear stale ammo fields when the category moves away from Ammo Purchase
-      // (the old app's F6 fix, kept).
+      // (the old app's F6 fix, kept). Same rule for the gun link: it's only
+      // ever offered on Gear / Equipment and Service / Repair, so a category
+      // change away from those two clears it rather than leaving it dangling.
       const fields = {
         date, category, item: item.trim(), vendor: vendor.trim(), cost: c, notes: notes.trim(),
         ammoId: isAmmo && ammoId ? ammoId : null,
         rounds: isAmmo ? r : null,
-        addedToInventory: isAmmo && addToInv && !!ammoId && (r ?? 0) > 0
+        addedToInventory: isAmmo && addToInv && !!ammoId && (r ?? 0) > 0,
+        firearmId: linkableCategory && firearmIdSel ? firearmIdSel : null
       };
       if (original) await reverseOldBump(original);
       const record = original
@@ -355,6 +408,14 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
             {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
           </select>
         </label>
+        {linkableCategory && (
+          <label className="field">For which gun
+            <select value={firearmIdSel} onChange={(e) => setFirearmIdSel(e.target.value)}>
+              <option value="">Not gun-specific</option>
+              {ownedGuns(firearms, [firearmIdSel]).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </label>
+        )}
         <SuggestField label="Item" value={item} onChange={setItem}
           suggestions={filterHidden(pastItems, hiddenSuggestions, 'purchase-items')}
           placeholder={category === 'Ammo Purchase' ? '1,000 rds Blazer Brass 115gr' : 'Safariland holster'} />

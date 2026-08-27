@@ -46,6 +46,14 @@ export interface Firearm extends BaseRecord, Imported {
   status?: 'active' | 'retired' | 'former';
   statusReason?: string; // 'former' only: Sold | Gifted | Lost | Stolen | Destroyed
   statusDate?: string;   // YYYY-MM-DD the gun was retired / removed
+  /**
+   * What you paid for the gun itself (Aug 2026, "gun & gear cost" feature).
+   * Feeds Costs & Purchases' "Gun & gear cost per gun" mode. Optional and
+   * additive: absent/null on every existing gun and needs no migration; blank
+   * on the form stores null rather than 0, so "not recorded" stays distinct
+   * from "free."
+   */
+  pricePaid?: number | null;
 }
 
 export interface SessionGun {
@@ -159,6 +167,17 @@ export interface Purchase extends BaseRecord, Imported {
   rounds?: number | null;
   /** True if saving this purchase bumped the can's on-hand count (so edits/deletes can undo it). */
   addedToInventory?: boolean;
+  /**
+   * Which gun this purchase was for (Aug 2026, "gun & gear cost" feature). Only
+   * offered on the form for "Gear / Equipment" and "Service / Repair" — an Ammo
+   * Purchase or Range Fee never carries one, so it can never be double-counted
+   * against the FIFO ammo figure or leak a range fee into gun ownership cost
+   * (see costing.ts gunOwnershipSpend). Optional and additive: absent/null on
+   * every existing purchase and needs no migration; blank on the form stores
+   * null, and changing the category away from those two clears it rather than
+   * leaving a dangling link.
+   */
+  firearmId?: string | null;
 }
 
 export interface MaintenanceEntry extends BaseRecord, Imported {
@@ -228,6 +247,15 @@ export interface Optic extends BaseRecord, Imported {
   settingsSnapshot: string;
   batteryLog: unknown[];
   notes: string;
+  /**
+   * What you paid for the optic itself (Aug 2026, "gun & gear cost" feature).
+   * Feeds Costs & Purchases' "Gun & gear cost per gun" mode, summed across
+   * every optic that has carried this gun's firearmId over time. Optional and
+   * additive: absent/null on every existing optic and needs no migration;
+   * blank on the form stores null rather than 0, so "not recorded" stays
+   * distinct from "free."
+   */
+  pricePaid?: number | null;
 }
 
 export interface Part extends BaseRecord, Imported {
