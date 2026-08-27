@@ -630,6 +630,11 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
                     +{activity.drySessions} dry
                   </span>
                 )}
+                {activity.matches > 0 && (
+                  <span style={{ fontSize: 13, color: 'var(--text-dim)', marginLeft: 6 }}>
+                    +{activity.matches} {activity.matches === 1 ? 'match' : 'matches'}
+                  </span>
+                )}
               </div>
               <div className="cap">Sessions{rangeLabel}</div>
             </div>
