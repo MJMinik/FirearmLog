@@ -359,6 +359,36 @@ input, select, textarea, button { font-size: max(16px, 1rem); font-family: inher
 .stat .num { font-size: var(--fs-stat); font-weight: 700; }
 .stat .cap { font-size: var(--fs-footnote); color: var(--text-dim); margin-top: 2px; }
 
+/* Riders under a stat number -- "+42 dry  +9 matches" beneath the session count.
+   They get their OWN row rather than sitting inside .num's line box. Two faults
+   are being closed here, both reported by Michael on 27 Aug 2026 (session 136).
+   (1) 13px text riding a 28px .num line box gets a tall empty gap above and
+   below it whenever it wraps -- what he saw as double spacing. It was never
+   margin; it was small text on a big-text line.
+   (2) "+9 matches" had a plain space as its only break opportunity, so it split
+   in half exactly the way "Stage 2" did the day before. Each rider is nowrap.
+   flex-wrap carries the rest of his spec verbatim: side by side when they fit,
+   and when they do not, the second drops to the next line LEFT-ALIGNED under
+   the first rather than hanging wherever the break happened to fall.
+   Weight is deliberately inherited from .num so this changes layout only.
+
+   HONEST NOTE ON THE nowrap BELOW: it is defence in depth, NOT the load-bearing
+   fix, and it could not be red-proofed. Removing it leaves every test green,
+   because once the riders are separate flex items the break happens BETWEEN
+   them and no single rider is ever boxed narrowly enough to split. It earns its
+   place only for the residual case -- one rider alone wider than the tile -- so
+   do not read the passing suite as proof that it is doing work today. */
+.stat .stat-riders {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 8px;
+  font-size: var(--fs-footnote);
+  line-height: 1.25;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+.stat .stat-riders > span { white-space: nowrap; }
+
 .classification-grid { margin-top: 8px; }
 /* Selectable classification cell (Compete): a stat that taps to show its detail. */
 .stat-tap {

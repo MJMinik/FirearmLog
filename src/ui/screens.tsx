@@ -625,15 +625,15 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
             <div className="stat">
               <div className="num">
                 {activity.liveSessions}
-                {activity.drySessions > 0 && (
-                  <span style={{ fontSize: 13, color: 'var(--text-dim)', marginLeft: 6 }}>
-                    +{activity.drySessions} dry
-                  </span>
-                )}
-                {activity.matches > 0 && (
-                  <span style={{ fontSize: 13, color: 'var(--text-dim)', marginLeft: 6 }}>
-                    +{activity.matches} {activity.matches === 1 ? 'match' : 'matches'}
-                  </span>
+                {(activity.drySessions > 0 || activity.matches > 0) && (
+                  <div className="stat-riders">
+                    {activity.drySessions > 0 && (
+                      <span>+{activity.drySessions} dry</span>
+                    )}
+                    {activity.matches > 0 && (
+                      <span>+{activity.matches} {activity.matches === 1 ? 'match' : 'matches'}</span>
+                    )}
+                  </div>
                 )}
               </div>
               <div className="cap">Sessions{rangeLabel}</div>
