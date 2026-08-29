@@ -505,6 +505,17 @@ export interface Reminder extends BaseRecord, Imported {
   /** false = paused: hidden from Home and the active lists, kept in the Done
    *  section so a one-off can be turned back on or removed. */
   enabled: boolean;
+  /**
+   * The optic this battery reminder is for (OPTIC_BATTERY_INTEGRATION_SPEC.md,
+   * session 137 — "one battery verdict"). Absent = created before linking
+   * existed, matched instead by the legacy rule in lib/opticBattery.ts (same
+   * gun, that gun's only optic, battery-shaped); null = deliberately not
+   * linked by a person's own choice, and never legacy-matches. Optional and
+   * nullable on purpose: the read boundary (recordShape.ts) only fills in
+   * required plain-string fields, so this field needs no entry there, and a
+   * stored reminder that never had this key keeps not having it forever.
+   */
+  opticId?: string | null;
 }
 
 /**

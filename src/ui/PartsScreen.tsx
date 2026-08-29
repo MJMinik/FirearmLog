@@ -3,12 +3,13 @@
 // PLUS any optic not currently mounted on a firearm, which lives here as
 // inventory until you assign it to a gun. Includes a printable report.
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Firearm, Optic, Part } from '../lib/types.ts';
+import type { Firearm, Optic, Part, Reminder } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, getSettings, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
-import { isBatteryDue } from '../lib/optics.ts';
+import { opticBatteryStatus } from '../lib/opticBattery.ts';
+import { opticBatteryBadge } from './opticBatteryDisplay.ts';
 import { recentValues } from '../lib/suggest.ts';
 import { filterHidden } from '../lib/listEdits.ts';
 import { buildPartsReportHtml, opticLabel } from '../lib/partsReport.ts';
@@ -28,6 +29,7 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
   const [parts, setParts] = useState<Part[]>([]);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [unassignedOptics, setUnassignedOptics] = useState<Optic[]>([]);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
   const [problem, setProblem] = useState('');
   const [q, setQ] = useState('');
   const [error, setError] = useState(false);
@@ -38,13 +40,16 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
     setError(false);
     void (async () => {
       try {
-        const [p, f, o] = await Promise.all([getAll<Part>('parts'), getAll<Firearm>('firearms'), getAll<Optic>('optics')]);
+        const [p, f, o, r] = await Promise.all([
+          getAll<Part>('parts'), getAll<Firearm>('firearms'), getAll<Optic>('optics'), getAll<Reminder>('reminders'),
+        ]);
         if (!alive) return;
         setParts(p.sort((a, b) => a.name.localeCompare(b.name)));
         setFirearms(f);
         setUnassignedOptics(
           o.filter((op) => !op.firearmId).sort((a, b) => opticLabel(a).localeCompare(opticLabel(b)))
         );
+        setReminders(r);
       } catch (e) {
         console.error('Parts load failed', e);
         if (alive) setError(true);
@@ -119,7 +124,11 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
             Optics not on a gun yet. Tap one to edit it or mount it on a firearm.
           </p>
           {unassignedOptics.map((op) => {
-            const due = isBatteryDue(op.batteryLog, new Date());
+            // Unassigned (no firearmId): the legacy-match rule inside
+            // opticBatteryStatus can never fire on a falsy firearmId, so the
+            // "optics on this gun" count passed here is inert either way.
+            const status = opticBatteryStatus(op, reminders, 1, new Date());
+            const badge = opticBatteryBadge(status);
             return (
               <button className="row-tap" key={op.id} onClick={() => openOpticForm(op.id)}>
                 <span className="label">
@@ -128,7 +137,7 @@ export function PartsScreen({ refreshKey, onBack, openPartForm, openOpticForm }:
                     {[op.dotSize, op.zeroDist].filter(Boolean).join(' · ') || 'Unassigned'}
                   </div>
                 </span>
-                <span className={`badge ${due ? 'warn-badge' : 'ok'}`}>{due ? 'Battery due' : 'Active'}</span>
+                <span className={`badge ${badge.cls}`}>{badge.text}</span>
               </button>
             );
           })}

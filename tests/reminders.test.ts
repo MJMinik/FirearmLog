@@ -2,8 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   addMonthsToDay, advanceDueDate, buildReminderContext, comingUpReminders, completionPatch,
-  daysBetween, dueReminders, homeComingUp, inactiveNote, inactiveReminders, laterReminders,
-  reminderIdsForGun, reminderView, reminderViews,
+  daysBetween, dueReminders, homeComingUp, inactiveNote, inactiveReminders, isRealDayKey, laterReminders,
+  parseDay, reminderIdsForGun, reminderView, reminderViews,
 } from '../src/lib/reminders.ts';
 import type { ReminderContext } from '../src/lib/reminders.ts';
 import type { Firearm, Reminder } from '../src/lib/types.ts';
@@ -39,6 +39,25 @@ test('date reminder detail reads plainly for each case', () => {
 
 test('a date reminder with no date is inactive, never a crash', () => {
   assert.equal(reminderView(rem({ trigger: 'date', dueDate: null }), ctx()).level, 'inactive');
+});
+
+// Audit round 3, closing review, item 1: reminderView's date branch used to
+// parse dueDate with daysBetween's own lenient rule (whatever's regex-shaped
+// gets normalized), so a calendar-invalid dueDate like '2027-02-30' still
+// rendered as an ACTIVE reminder here ("In 10 days · Mar 2, 2027") on Home
+// and the Reminders screen, while reminderGovernsOptic (lib/opticBattery.ts)
+// now rejects the exact same string via isRealDayKey. Two screens, two
+// verdicts about the same battery — the disease this feature exists to
+// cure, still alive for this one input class. A malformed-but-present date
+// now reads exactly like a missing one: inactive, in the Done section, with
+// its own row to fix or delete it.
+test('a date reminder with a calendar-invalid dueDate is inactive, not silently rendered as active', () => {
+  const invalid = reminderView(rem({ trigger: 'date', dueDate: '2027-02-30' }), ctx());
+  assert.equal(invalid.level, 'inactive');
+  // Blast radius check, not an assertion by fiat: a REAL date one day later
+  // in the identical context is completely unaffected by this fix.
+  const real = reminderView(rem({ trigger: 'date', dueDate: '2027-02-28' }), ctx());
+  assert.notEqual(real.level, 'inactive');
 });
 
 // ---- round urgency ----
@@ -103,8 +122,14 @@ test('inactiveNote explains each Done row plainly', () => {
     inactiveNote(rem({ trigger: 'rounds', firearmId: 'fa-gone', everyRounds: 5000 }), false),
     /no longer in your log/,
   );
-  // Unmeasurable for any other reason.
+  // Unmeasurable for any other reason: no date at all.
   assert.match(inactiveNote(rem({ trigger: 'date', dueDate: null }), true), /Missing its date or round count/);
+  // Audit round 3, closing review, item 1: a date that IS present but
+  // calendar-invalid is a different situation from a missing one — "missing
+  // its date" is imprecise (and mildly confusing) for a record that visibly
+  // has a dueDate value. Distinct, honest wording for it.
+  assert.match(inactiveNote(rem({ trigger: 'date', dueDate: '2027-02-30' }), true), /valid/i);
+  assert.doesNotMatch(inactiveNote(rem({ trigger: 'date', dueDate: '2027-02-30' }), true), /Missing its date/);
 });
 
 // ---- Home cap / overflow (spec §6b LOCKED) ----
@@ -204,4 +229,44 @@ test('buildReminderContext resolves known guns and reports null for missing ones
   assert.equal(c.roundsForGun('fa-1'), 1200);
   assert.equal(c.roundsForGun('fa-missing'), null);
   assert.equal(c.gunName('fa-1'), 'Carry 9');
+});
+
+// ---- isRealDayKey / parseDay export (audit round 3, F-1) ----
+// opticBattery.ts needs the SAME day-validity rule a reminder's own dueDate
+// is held to, rather than a second parser that could quietly disagree —
+// this pins the contract directly, independent of opticBattery.test.ts's
+// battery-log-specific pins.
+
+test('isRealDayKey: a real calendar day, canonically formatted, is true', () => {
+  assert.equal(isRealDayKey('2027-07-14'), true);
+  assert.equal(isRealDayKey('2024-02-29'), true); // 2024 IS a leap year — Feb 29 is real that year
+});
+
+test('isRealDayKey: month overflow is false, even though it matches the YYYY-MM-DD shape', () => {
+  assert.equal(isRealDayKey('2027-13-01'), false); // month 13 — JS would normalize to 2028-01-01
+});
+
+test('isRealDayKey: day overflow is false, even though it matches the YYYY-MM-DD shape', () => {
+  assert.equal(isRealDayKey('2027-02-30'), false); // Feb never has 30 days
+  assert.equal(isRealDayKey('2023-02-29'), false); // 2023 is NOT a leap year — Feb 29 doesn't exist that year
+  assert.equal(isRealDayKey('2027-04-31'), false); // April has 30 days
+});
+
+test('isRealDayKey: garbage, non-canonical, and non-string values are all false, never throw', () => {
+  for (const v of ['not-a-date', '', '2027-7-14', '2027/07/14', null, undefined, 42, {}, []]) {
+    assert.doesNotThrow(() => assert.equal(isRealDayKey(v), false));
+  }
+});
+
+test('parseDay round-trips every value isRealDayKey accepts, and only those', () => {
+  for (const key of ['2027-07-14', '2024-02-29', '2000-01-01']) {
+    const d = parseDay(key);
+    assert.notEqual(d, null);
+  }
+  for (const key of ['2027-13-01', '2027-02-30', 'garbage']) {
+    const d = parseDay(key);
+    // parseDay itself may still return a normalized Date for some of these
+    // (it's the lenient parser) — isRealDayKey is what catches the mismatch.
+    if (d !== null) assert.notEqual(isRealDayKey(key), true);
+  }
 });

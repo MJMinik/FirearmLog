@@ -4,7 +4,7 @@
 // empty state does the discovery. Date reminders can be exported to the calendar.
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ScreenLoading, ScreenError } from './ScreenState.tsx';
-import type { Firearm, Match, Reminder, Session } from '../lib/types.ts';
+import type { Firearm, Match, Optic, Reminder, Session } from '../lib/types.ts';
 import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { activeOnly } from '../lib/softDelete.ts';
 import { todayKey } from '../lib/dates.ts';
@@ -12,6 +12,9 @@ import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { roundsForFirearm } from '../lib/stats.ts';
 import { ownedGuns } from '../lib/gunStatus.ts';
+import { reminderGovernsOptic } from '../lib/opticBattery.ts';
+import { hasBatteryLogEntry, safeBatteryLog } from '../lib/optics.ts';
+import { shouldStampNewOpticLink } from './reminderOpticLink.ts';
 import {
   buildReminderContext, comingUpReminders, completionPatch, dueReminders,
   inactiveNote, inactiveReminders, laterReminders, reminderViews,
@@ -192,8 +195,8 @@ export function RemindersScreen({ refreshKey, onBack, open }: {
 
 // ---- Add / edit a reminder ----
 
-export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onSaved, onCancel, onDirtyChange, onSaverChange }: {
-  id?: string; templateKey?: string; firearmId?: string;
+export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, opticId: initialOpticId, onSaved, onCancel, onDirtyChange, onSaverChange }: {
+  id?: string; templateKey?: string; firearmId?: string; opticId?: string;
   onSaved: () => void; onCancel: () => void; onDirtyChange?: (dirty: boolean) => void;
   // Save-from-discard: reports a persist function when the form is valid, null
   // when invalid or unmounted, so App's DiscardChangesSheet can show Save.
@@ -207,6 +210,7 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
   const [firearms, setFirearms] = useState<Firearm[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
+  const [optics, setOptics] = useState<Optic[]>([]);
 
   const [title, setTitle] = useState(tpl?.title ?? '');
   const [notes, setNotes] = useState(tpl?.notes ?? '');
@@ -227,10 +231,10 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
   useEffect(() => {
     let alive = true;
     void Promise.all([
-      getAll<Firearm>('firearms'), getAll<Session>('sessions'), getAll<Match>('matches'),
-    ]).then(([f, s, m]) => {
+      getAll<Firearm>('firearms'), getAll<Session>('sessions'), getAll<Match>('matches'), getAll<Optic>('optics'),
+    ]).then(([f, s, m, o]) => {
       if (!alive) return;
-      setFirearms(f); setSessions(activeOnly(s)); setMatches(m);
+      setFirearms(f); setSessions(activeOnly(s)); setMatches(m); setOptics(o);
     }).catch(() => { /* the picker just stays empty — never block the form */ });
     return () => { alive = false; };
   }, []);
@@ -307,10 +311,63 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
   const gunOptions = ownedGuns(firearms, original?.firearmId ? [original.firearmId] : []);
   const selectedRounds = firearmId ? roundsForFirearm(firearmId, firearms, sessions, matches) : null;
 
+  /**
+   * The optic this reminder is linked to right now, for display (spec §4
+   * "Linked optic" row) — an explicit `opticId` (from the record, or from the
+   * "Set a battery reminder" button on a brand-new one) OR a live legacy
+   * match (opticId absent, same gun, that gun's only optic, battery-shaped).
+   * `opticId === null` (deliberately unlinked) always shows nothing, and
+   * never legacy-matches — same rule opticBatteryStatus uses. Recomputed
+   * every render off `optics`/`original`, same style as gunOptions above.
+   *
+   * The `!editing` branch runs the SAME `shouldStampNewOpticLink` guard
+   * persistForm now uses (finding 6, audit round 2) — without it, this
+   * preview kept showing "Linked optic" even after the shooter changed the
+   * gun away from the one the button was pressed for, promising a link that
+   * the fixed persistForm would then correctly refuse to save. A preview
+   * that disagrees with what save() actually does is its own kind of bug.
+   */
+  function resolveLinkedOptic(): Optic | null {
+    if (!editing) {
+      return shouldStampNewOpticLink(initialOpticId, initialFirearmId, firearmId, trigger)
+        ? (optics.find((o) => o.id === initialOpticId) ?? null)
+        : null;
+    }
+    if (!original) return null;
+    if (original.opticId) return optics.find((o) => o.id === original.opticId) ?? null;
+    if (original.opticId === null) return null; // deliberately unlinked
+    const gunOptics = optics.filter((o) => o.firearmId === original.firearmId);
+    return gunOptics.length === 1 && reminderGovernsOptic(original, gunOptics[0], 1) ? gunOptics[0] : null;
+  }
+  const linkedOptic = resolveLinkedOptic();
+
   async function persistForm(): Promise<boolean> {
     const p = saveProblem();
     if (p) { setProblem(p); return false; }
     const now = Date.now();
+    // Creating the link (spec §4): a brand-new reminder made via the optic's
+    // "Set a battery reminder" button stamps its opticId straight away.
+    // Upgrading the link (spec §4 "Migration story"): an EXISTING reminder
+    // that currently legacy-matches (opticId key absent — never present-null)
+    // gets that match stamped as an explicit opticId the first time it's
+    // saved through this form — but ONLY when the gun field wasn't changed in
+    // this same edit, so a stale match is never stamped onto the wrong optic.
+    const opticIdPatch: { opticId?: string } = {};
+    if (!original) {
+      // Finding 6 (audit round 2): this branch used to stamp initialOpticId
+      // unconditionally — create the reminder via the optic's button, change
+      // which gun it's for before saving, and the optic kept being governed
+      // by a reminder now labelled for a DIFFERENT gun. Guarded the same way
+      // the sibling branch below guards its own stamp.
+      if (shouldStampNewOpticLink(initialOpticId, initialFirearmId, firearmId, trigger)) {
+        opticIdPatch.opticId = initialOpticId!;
+      }
+    } else if (!('opticId' in original) && firearmId === (original.firearmId ?? '')) {
+      const gunOptics = optics.filter((o) => o.firearmId === original.firearmId);
+      if (gunOptics.length === 1 && reminderGovernsOptic(original, gunOptics[0], 1)) {
+        opticIdPatch.opticId = gunOptics[0].id;
+      }
+    }
     const base = {
       title: title.trim(),
       notes: notes.trim(),
@@ -319,6 +376,7 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
       firearmId: firearmId || null,
       enabled: original ? original.enabled : true,
       lastDoneDate: original?.lastDoneDate ?? null,
+      ...opticIdPatch,
     };
     let record: ReminderFields;
     if (trigger === 'date') {
@@ -354,8 +412,60 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
     if (!original) return;
     const ctx = buildReminderContext(firearms, sessions, matches, todayKey());
     const patch = completionPatch(original, ctx);
+    const today = todayKey();
+    const provenanceNote = 'Marked done from the reminder';
+    // Decision 1-A: marking a GOVERNING reminder done also writes the fact
+    // into the optic's battery log — dated today, with a note that says
+    // exactly what happened so the log never claims a change the owner
+    // didn't actually make. Write order (spec §4): the fact (the optic)
+    // first, then the schedule (the reminder) — same order the Log Battery
+    // Change sheet uses, for the same reason.
+    //
+    // Unlike that sheet's reminder write, THIS write is never swallowed:
+    // if the log entry can't be saved, the reminder must not silently
+    // advance on the strength of a fact that never actually landed. So on
+    // failure this bails out BEFORE touching the reminder, using the same
+    // visible error surface every other problem on this form uses (never a
+    // silent failure, never a dead button, never an uncaught rejection) —
+    // and the shooter can just tap Mark done again once whatever went wrong
+    // is fixed.
+    if (linkedOptic) {
+      try {
+        // Finding F-4 (audit round 3): re-read fresh, and skip the write
+        // entirely if today's provenance entry is ALREADY there. A PRIOR tap
+        // can have written the optic successfully and then failed on the
+        // reminder write below (see the second try/catch) — the advice in
+        // that failure message is "tap Mark done again", and without this
+        // check that retry would append a SECOND, byte-identical entry for
+        // the same day.
+        const freshOptic = await getOne<Optic>('optics', linkedOptic.id);
+        const base = freshOptic ?? linkedOptic;
+        if (!hasBatteryLogEntry(base.batteryLog, today, provenanceNote)) {
+          const entry = { date: today, notes: provenanceNote };
+          await putOne('optics', stampUpdate({ ...base, batteryLog: [...safeBatteryLog(base.batteryLog), entry] }, Date.now()));
+        }
+      } catch (e) {
+        setProblem(e instanceof Error
+          ? `The battery log entry couldn't be saved, so this reminder wasn't marked done either: ${e.message}`
+          : "The battery log entry couldn't be saved, so this reminder wasn't marked done either.");
+        return;
+      }
+    }
+    // Finding F-4 (audit round 3): this write was previously unwrapped — a
+    // rejection here surfaced as a generic global error, left the log entry
+    // written but the reminder NOT marked done (the write order above means
+    // the fact always lands first), and gave no path back except retrying
+    // the whole tap. Wrapped the same visible way as every other write on
+    // this form, worded for the state it actually leaves.
+    try {
+      await putOne('reminders', stampUpdate({ ...original, ...patch }, Date.now()));
+    } catch (e) {
+      setProblem(e instanceof Error
+        ? `The battery log entry was saved, but this reminder couldn't be marked done: ${e.message}. It's still due — tap Mark done again.`
+        : "The battery log entry was saved, but this reminder couldn't be marked done. It's still due — tap Mark done again.");
+      return;
+    }
     onDirtyChange?.(false);
-    await putOne('reminders', stampUpdate({ ...original, ...patch }, Date.now()));
     onSaved();
   }
 
@@ -450,6 +560,12 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
                 {gunOptions.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
               </select>
             </label>
+            {linkedOptic && (
+              <div className="row">
+                <span className="label">Linked optic</span>
+                <span className="value">{[linkedOptic.make, linkedOptic.model].filter(Boolean).join(' ') || 'Unnamed optic'}</span>
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -480,6 +596,11 @@ export function ReminderForm({ id, templateKey, firearmId: initialFirearmId, onS
 
       <button className="button" onClick={() => void save()}>{editing ? 'Save changes' : 'Save reminder'}</button>
 
+      {editing && !paused && linkedOptic && (
+        <p className="report-note" style={{ marginTop: 8 }}>
+          Mark done also adds today's date to this optic's battery log.
+        </p>
+      )}
       {editing && !paused && (
         <button className="button secondary" style={{ marginTop: 8 }} onClick={() => void markDone()}>
           Mark done

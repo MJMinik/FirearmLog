@@ -75,11 +75,35 @@ export function buildReminderContext(
 
 // ---- date helpers (local, DST-safe: parse at local noon) ----
 
-function parseDay(key: string | null | undefined): Date | null {
+// Exported (audit round 3, F-1): opticBattery.ts needs the exact same
+// day-parsing this file already uses for a reminder's own dueDate, rather
+// than writing a second regex/parser that could quietly disagree with this
+// one — see isRealDayKey below for why "parses" isn't the same question as
+// "is a real day".
+export function parseDay(key: string | null | undefined): Date | null {
   if (!key) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(key);
   if (!m) return null;
   return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), 12, 0, 0, 0);
+}
+
+/**
+ * True only when `key` is EXACTLY a real calendar day in canonical
+ * YYYY-MM-DD form (audit round 3, F-1). The shape regex alone isn't enough:
+ * JS's Date constructor NORMALIZES calendar overflow instead of rejecting
+ * it — `new Date(2027, 1, 30, ...)` silently becomes March 2, so a naive
+ * "did parseDay return non-null" check calls '2027-02-30' just as parseable
+ * as '2027-02-28'. The round-trip (`dayKey(parseDay(key)) === key`) catches
+ * that: a normalized value can never round-trip back to the key it came
+ * from. This is also engine-INDEPENDENT, unlike parsing the string as a
+ * Date-time via `new Date(key + 'T12:00:00')` (ECMA-262 leaves out-of-range
+ * date-time fields implementation-defined, and V8's legacy-format fallback
+ * need not agree with WebKit's — this app's floor is Safari 15.4).
+ */
+export function isRealDayKey(key: unknown): key is string {
+  if (typeof key !== 'string') return false;
+  const d = parseDay(key);
+  return d !== null && dayKey(d) === key;
 }
 
 /** Whole days from `fromKey` to `toKey` (positive = to is later). Null if unparseable. */
@@ -154,7 +178,13 @@ export function reminderView(r: Reminder, ctx: ReminderContext): ReminderView {
   }
 
   // date-based
-  const days = r.dueDate ? daysBetween(ctx.today, r.dueDate) : null;
+  // Audit round 3, closing review, item 1: dueDate must be judged by the
+  // SAME rule reminderGovernsOptic (lib/opticBattery.ts) holds it to now —
+  // isRealDayKey, not merely "daysBetween's lenient parser accepted it".
+  // Before this, a calendar-invalid dueDate like '2027-02-30' rendered here
+  // as an active reminder while the optic it governs read the fallback
+  // rule's own verdict — two screens, two answers about the same battery.
+  const days = isRealDayKey(r.dueDate) ? daysBetween(ctx.today, r.dueDate) : null;
   if (days === null) return inactive(r, gunName);
   const level: ReminderLevel = days <= 0 ? 'due' : days <= REMINDER_HORIZON_DAYS ? 'soon' : 'later';
   const when = formatDayKey(r.dueDate as string);
@@ -208,6 +238,13 @@ export function inactiveNote(r: Reminder, gunResolved: boolean): string {
   }
   if (r.firearmId && !gunResolved) {
     return 'The gun this was for is no longer in your log — you can delete this reminder.';
+  }
+  // Audit round 3, closing review, item 1: a date that's PRESENT but
+  // calendar-invalid (e.g. '2027-02-30') is a different situation from one
+  // that's simply missing — "Missing its date" is imprecise, and mildly
+  // confusing, for a record the shooter can see has a dueDate value.
+  if (r.trigger === 'date' && r.dueDate && !isRealDayKey(r.dueDate)) {
+    return "That date isn't valid — open it to fix or delete it.";
   }
   return 'Missing its date or round count — open it to fix or delete it.';
 }
