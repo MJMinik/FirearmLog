@@ -357,11 +357,13 @@ export function App() {
     content = <RemindersScreen refreshKey={refreshKey} onBack={back} open={push} />;
   } else if (view?.kind === 'reminder-form') {
     const v = view;
-    content = <ReminderForm id={v.id} templateKey={v.templateKey} firearmId={v.firearmId}
+    content = <ReminderForm id={v.id} templateKey={v.templateKey} firearmId={v.firearmId} opticId={v.opticId}
       onCancel={back}
-      // A2: reminder-form is only ever pushed from the Reminders list, so its
-      // origin is always Reminders — same-kind, the dead-dup replace() left. back()
-      // dedups it. Safe DESPITE the dirty guard: every save path (save, markDone,
+      // A2: reminder-form is pushed from the Reminders list (same-kind, the
+      // dead-dup replace() left) OR from an optic's "Set a battery reminder"
+      // button (OPTIC_BATTERY_INTEGRATION_SPEC.md, session 137) — back() just
+      // pops to whichever pushed it, so both origins land correctly. Safe
+      // DESPITE the dirty guard: every save path (save, markDone,
       // turnBackOn, reallyDelete) calls onDirtyChange(false) BEFORE onSaved(), and
       // the dirty-reporting effect's deps (sig, initialSig) don't change across the
       // save, so it never re-runs to re-arm the guard before the pop. formDirty is
@@ -425,7 +427,10 @@ export function App() {
   } else if (view?.kind === 'optics') {
     content = <OpticsScreen refreshKey={refreshKey}
       onBack={back}
-      openOpticForm={(oid) => push({ kind: 'optic-form', id: oid })} />;
+      openOpticForm={(oid) => push({ kind: 'optic-form', id: oid })}
+      openReminderForm={(opticId, firearmId) => push({
+        kind: 'reminder-form', templateKey: 'optic-battery', firearmId: firearmId || undefined, opticId,
+      })} />;
   } else if (view?.kind === 'optic-form') {
     const v = view;
     content = <OpticForm id={v.id} firearmId={v.firearmId}

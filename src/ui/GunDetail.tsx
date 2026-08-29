@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Firearm, MaintenanceEntry, Match, Media, Optic, Reference, Session } from '../lib/types.ts';
+import type { Firearm, MaintenanceEntry, Match, Media, Optic, Reference, Reminder, Session } from '../lib/types.ts';
 import { getAll, getMediaForOwner, getOne, putOne } from '../lib/db.ts';
 import { activeOnly } from '../lib/softDelete.ts';
 import { newId } from '../lib/id.ts';
@@ -10,7 +10,8 @@ import { maintLabel, maintenanceStatus } from '../lib/maintenance.ts';
 import { forecastLine } from '../lib/forecast.ts';
 import { NotFound } from './NotFound.tsx';
 import { ScreenError, ScreenLoading } from './ScreenState.tsx';
-import { isBatteryDue } from '../lib/optics.ts';
+import { opticBatteryStatus } from '../lib/opticBattery.ts';
+import { opticBatterySubline } from './opticBatteryDisplay.ts';
 import { buildRefLookup, referencesForCategory, toEntry } from '../lib/referenceData.ts';
 import { formatDayKey } from '../lib/dates.ts';
 import { MarkThumb } from './MarkThumb.tsx';
@@ -36,6 +37,7 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
   const [history, setHistory] = useState<MaintenanceEntry[]>([]);
   const [customRefs, setCustomRefs] = useState<Reference[]>([]);
   const [optics, setOptics] = useState<Optic[]>([]);
+  const [reminders, setReminders] = useState<Reminder[]>([]);
   const [viewing, setViewing] = useState<Media | null>(null);
   const [pickingRef, setPickingRef] = useState(false);
   const [localBump, setLocalBump] = useState(0);
@@ -50,7 +52,7 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
     setError(false);
     void (async () => {
       try {
-      const [g, firearms, sessions, matches, media, maintenance, refs, allOptics] = await Promise.all([
+      const [g, firearms, sessions, matches, media, maintenance, refs, allOptics, allReminders] = await Promise.all([
         getOne<Firearm>('firearms', id),
         getAll<Firearm>('firearms'),
         getAll<Session>('sessions'),
@@ -58,7 +60,8 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
         getMediaForOwner('firearm', id),
         getAll<MaintenanceEntry>('maintenance'),
         getAll<Reference>('references'),
-        getAll<Optic>('optics')
+        getAll<Optic>('optics'),
+        getAll<Reminder>('reminders')
       ]);
       if (!alive) return;
       if (!g) { setNotFound(true); return; }
@@ -90,6 +93,7 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
       setForecastLines(lines);
       setHistory(maintenance.filter((m) => m.firearmId === id).sort((a, b) => b.date.localeCompare(a.date)));
       setOptics(allOptics.filter((o) => o.firearmId === id));
+      setReminders(allReminders);
       } catch (e) {
         console.error('Gun detail load failed', e);
         if (alive) setError(true);
@@ -235,12 +239,15 @@ export function GunDetail({ id, onEdit, onBack, onLogMaintenance, onEditMaintena
           <p className="report-note" style={{ marginBottom: 10 }}>No optic linked to this gun yet.</p>
         )}
         {optics.map((op) => {
-          const due = isBatteryDue(op.batteryLog, new Date());
+          // `optics` here is already this gun's own optics (filtered above),
+          // so its length IS the "optics on the same gun" count opticBatteryStatus
+          // needs for the legacy-match rule (spec §4).
+          const status = opticBatteryStatus(op, reminders, optics.length, new Date());
           return (
             <button className="row-tap" key={op.id} onClick={() => onOpenOptic(op.id, op.firearmId)}>
               <span className="label">
                 {[op.make, op.model].filter(Boolean).join(' ') || 'Unnamed optic'}
-                <div className="row-sub">{due ? 'Battery due' : 'Active'}</div>
+                <div className="row-sub">{opticBatterySubline(status)}</div>
               </span>
               <span className="value">›</span>
             </button>
