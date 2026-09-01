@@ -173,12 +173,15 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }:
 
   // Suggest a maintenance guide that matches the manufacturer, scoped to
   // type — but only while nothing is linked and that exact suggestion
-  // hasn't already been waved off. Never links automatically.
+  // hasn't already been waved off. Never links automatically. Model-aware
+  // since decision 49 (session 138): a model like "10/22" steers the
+  // suggestion to that model's guide; anything else gets the manufacturer's
+  // general guide, exactly as before.
   useEffect(() => {
     if (referenceId) { setRefSuggestion(null); return; }
-    const match = suggestReferenceMatch(manufacturer, category, customRefs);
+    const match = suggestReferenceMatch(manufacturer, category, customRefs, model);
     setRefSuggestion(match && match.id !== dismissedSuggestionId ? match : null);
-  }, [manufacturer, category, customRefs, referenceId, dismissedSuggestionId]);
+  }, [manufacturer, model, category, customRefs, referenceId, dismissedSuggestionId]);
 
   // A1: the two fields are two views of one number (lifetime = start + logged).
   // Editing either updates the other through the pure helpers. An empty box is

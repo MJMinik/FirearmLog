@@ -51,6 +51,57 @@ test('suggestReferenceMatch: no match for blank or unrecognized manufacturer', (
   assert.equal(suggestReferenceMatch('Some Random Maker', 'Pistol', []), null);
 });
 
+/* ---- Model-aware suggestion (decision 49, session 138). The first test below
+   is the PROVE-FAIL for the whole change: on the pre-change matcher, "Ruger" in
+   Rifle returned whichever Ruger guide sat first in the array (the centerfire
+   one), model or no model — so a 10/22 owner got the centerfire guide and this
+   assertion goes red on the old code. ---- */
+
+test('suggestReferenceMatch: the model steers a Ruger rifle to the 10/22 guide', () => {
+  assert.equal(suggestReferenceMatch('Ruger', 'Rifle', [], '10/22')?.id, 'ref-ruger-1022');
+  assert.equal(suggestReferenceMatch('Ruger', 'Rifle', [], '10/22 Takedown')?.id, 'ref-ruger-1022');
+  assert.equal(suggestReferenceMatch('Ruger', 'Rifle', [], '10-22 Carbine')?.id, 'ref-ruger-1022');
+});
+
+test('suggestReferenceMatch: no model, or a centerfire model, falls back to the general Ruger rifle guide', () => {
+  assert.equal(suggestReferenceMatch('Ruger', 'Rifle', [])?.id, 'ref-ruger-rifle');
+  assert.equal(suggestReferenceMatch('Ruger', 'Rifle', [], '')?.id, 'ref-ruger-rifle');
+  assert.equal(suggestReferenceMatch('Ruger', 'Rifle', [], 'American Predator')?.id, 'ref-ruger-rifle');
+  assert.equal(suggestReferenceMatch('Ruger', 'Rifle', [], 'AR-556')?.id, 'ref-ruger-rifle');
+});
+
+test('suggestReferenceMatch: S&W pistols split between centerfire and the SW22 Victory by model', () => {
+  assert.equal(suggestReferenceMatch('Smith & Wesson', 'Pistol', [])?.id, 'ref-sw-pistol');
+  assert.equal(suggestReferenceMatch('Smith & Wesson', 'Pistol', [], 'M&P 9 M2.0')?.id, 'ref-sw-pistol');
+  assert.equal(suggestReferenceMatch('Smith & Wesson', 'Pistol', [], 'SW22 Victory')?.id, 'ref-sw22-victory');
+  assert.equal(suggestReferenceMatch('Smith & Wesson', 'Pistol', [], 'Victory Target')?.id, 'ref-sw22-victory');
+});
+
+test('suggestReferenceMatch: the punctuation-blind compare treats 10/22, 10-22 and 1022 as one word', () => {
+  assert.equal(suggestReferenceMatch('Ruger', 'Rifle', [], '1022')?.id, 'ref-ruger-1022');
+  assert.equal(suggestReferenceMatch('Smith & Wesson', 'Rifle', [], 'M&P15-22 Sport')?.id, 'ref-sw-mp1522');
+  assert.equal(suggestReferenceMatch('Smith & Wesson', 'Rifle', [], 'MP 15-22')?.id, 'ref-sw-mp1522');
+});
+
+test('suggestReferenceMatch: the new categories route — PCC and Revolver get their first guides', () => {
+  assert.equal(suggestReferenceMatch('Ruger', 'PCC', [], 'PC Carbine')?.id, 'ref-ruger-pcc');
+  assert.equal(suggestReferenceMatch('Ruger', 'PCC', [])?.id, 'ref-ruger-pcc'); // only Ruger PCC guide — model optional
+  assert.equal(suggestReferenceMatch('JP Enterprises', 'PCC', [], 'GMR-15')?.id, 'ref-jp-gmr15');
+  assert.equal(suggestReferenceMatch('Smith & Wesson', 'Revolver', [], 'Model 617')?.id, 'ref-sw-617');
+  assert.equal(suggestReferenceMatch('Smith & Wesson', 'Revolver', [])?.id, 'ref-sw-617'); // only S&W revolver guide
+});
+
+test('suggestReferenceMatch: model-aware pistols — Mark IV and Buck Mark', () => {
+  assert.equal(suggestReferenceMatch('Ruger', 'Pistol', [], 'Mark IV Target')?.id, 'ref-ruger-markiv');
+  assert.equal(suggestReferenceMatch('Ruger', 'Pistol', [], 'MK IV 22/45 Lite')?.id, 'ref-ruger-markiv');
+  assert.equal(suggestReferenceMatch('Browning', 'Pistol', [], 'Buck Mark Plus')?.id, 'ref-browning-buckmark');
+});
+
+test('suggestReferenceMatch: a model that matches nothing changes nothing (old behavior preserved)', () => {
+  assert.equal(suggestReferenceMatch('Glock', 'Pistol', [], 'G34 Gen5')?.id, 'ref-glock');
+  assert.equal(suggestReferenceMatch('Mossberg', 'Pistol', [], '940')?.id, undefined);
+});
+
 test('suggestReferenceMatch: matches a custom guide before built-ins', () => {
   const mine: Reference = {
     ...customGuide, id: 'refx-mine', name: 'Acme Custom Shop', category: 'Pistol'

@@ -1,5 +1,8 @@
-// Reference library (spec §9) — maintenance guidance for the 15 approved
-// manufacturers plus Atlas Gunworks. Ships with the app (read-only for now).
+// Reference library (spec §9) — built-in maintenance guidance, one guide per
+// manufacturer per category, plus model-scoped guides where one model dominates
+// (the SCSA expansion, decisions 48/49, session 138). Ships with the app
+// (read-only for now). No guide count is written here on purpose — it went
+// stale the first time the list grew.
 // Intervals are widely used starting points, NOT gospel — the owner's manual
 // always wins, and every gun can be customized on its own page.
 
@@ -9,6 +12,13 @@ export interface ReferenceEntry {
   id: string;
   name: string;
   category: GunCategory;
+  /** Model aliases for the MODEL-AWARE suggestion (decision 49, session 138).
+   *  Present only on model-scoped guides (e.g. the 10/22 guide); a guide
+   *  without this field is the manufacturer's GENERAL guide for the category
+   *  and wins whenever no alias matches the gun's model. Compared in compact
+   *  form (lowercase, all punctuation and spaces removed), so '10/22',
+   *  '10-22' and '1022' all hit the same alias. */
+  models?: string[];
   maintenance: {
     deepCleanRounds: number;
     recoilSpringRounds?: number;
@@ -99,6 +109,49 @@ export const REFERENCES: ReferenceEntry[] = [
     guidance: 'CZ75-pattern guns carry the slide inside the frame, so grit hides in the rails — flush and re-oil them at every cleaning. Competition Shadows commonly get recoil springs every 3,000–5,000 rounds. Deep clean by 5,000 rounds and keep an eye on the slide stop.',
     links: [{ label: 'CZ-USA support', url: 'https://cz-usa.com' }]
   },
+  {
+    id: 'ref-ruger-markiv', name: 'Ruger (Mark IV / 22/45)', category: 'Pistol',
+    models: ['Mark IV', 'MK IV', 'MKIV', '22/45'],
+    maintenance: { deepCleanRounds: 1000, note: 'Ruger sets no round count — clean at regular intervals and after dust, sand or moisture. Rimfire runs dirty; err early.' },
+    checklist: [
+      'Field strip with the one-button takedown and wipe the bolt face and chamber',
+      'Run a lightly oiled patch through the bore, then a dry one',
+      'Wipe surfaces with a lightly oiled cloth — light, Ruger warns excess oil collects grit',
+      'Clean magazines whenever they look dirty',
+      'Confirm sight or optic screws are tight'
+    ],
+    guidance: 'Ruger\u2019s manual gives no round count: clean at regular intervals, always after adverse conditions, and a wipe-down after each range day keeps a .22 honest — rimfire fouling builds faster than centerfire. The one-button takedown makes the field strip a no-tool job. Oil goes on light and sparing, and any oil left in the bore comes out before firing — both straight from the manual. The 1,000-round deep clean here is a common starting point, not Ruger\u2019s number; the manual wins.',
+    links: [{ label: 'Ruger Mark IV manual (PDF)', url: 'https://ruger-docs.s3.amazonaws.com/_manuals/Mark-IV-Pc4tS28s.pdf' }]
+  },
+  {
+    id: 'ref-browning-buckmark', name: 'Browning (Buck Mark)', category: 'Pistol',
+    models: ['Buck Mark', 'Buckmark'],
+    maintenance: { deepCleanRounds: 1000, note: 'Browning\u2019s own cadence: clean after every day of shooting; magazines every 500\u20131,000 rounds.' },
+    checklist: [
+      'Clean after every day of shooting — Browning\u2019s own instruction',
+      'Light film of quality gun oil on moving parts, the slide contact and the spring guide',
+      'Keep oil away from wood grips — Browning warns it softens them',
+      'Clean magazines every 500\u20131,000 rounds with a polymer-safe solvent',
+      'No disassembly beyond the manual — deeper service goes to a gunsmith or Browning'
+    ],
+    guidance: 'Browning is unusually plain about the cadence: clean the pistol after every day of shooting, more often if it gets filthy, and give the magazines a solvent clean every 500 to 1,000 rounds — their figures, not ours. Lubrication is a very light film, sparingly; extra oil migrates into wood grips and can interfere with function. The manual draws a hard line at its own takedown steps, so anything deeper is a gunsmith job. The 1,000-round deep clean is a starting point in the same spirit as their day-of-shooting rule.',
+    links: [{ label: 'Browning Buck Mark owner\u2019s manual (PDF)', url: 'https://www.browning.com/content/dam/browning/support/owners-manuals/2021/21-BFA-009_Buck_Mark_Pistol_OM_WEB.pdf' }]
+  },
+  {
+    id: 'ref-sw22-victory', name: 'Smith & Wesson (SW22 Victory)', category: 'Pistol',
+    models: ['SW22', 'Victory'],
+    maintenance: { deepCleanRounds: 1000, note: 'S&W gives no round count; a single drop at the marked points is the manual\u2019s own lubrication rule.' },
+    checklist: [
+      'Take down with the hex wrench on the takedown screw, muzzle up, barrel assembly forward and off',
+      'One drop of lubricant at the marked points: top of the bolt, both rail sides, extractor',
+      'Wipe off any excess — S&W warns it collects carbon and powder',
+      'Leave the recoil spring in the bolt for normal cleaning; it releases under real force',
+      'Confirm sight or optic screws are tight'
+    ],
+    guidance: 'S&W sets no round count for the Victory — clean before first use, after firing, and after any dust or moisture. Their lubrication instruction is exact and worth taking literally: a single drop at each marked point, no more, because excess collects carbon. The takedown screw wants its hex wrench, and the recoil spring stays put during a normal clean — it is compressed in the bolt and comes out fast if uncontrolled. The 1,000-round deep clean is a rimfire community starting point, not S&W\u2019s figure.',
+    links: [{ label: 'S&W SW22 Victory manual (PDF)', url: 'https://assets.contentstack.io/v3/assets/bltb61dcb3c40854cd9/blt617aba344182ac2d/636c0431358231185a7a8bdb/SW22_Victory_PC_3010478_080118.pdf' }]
+  },
+
   // ---------- Rifles ----------
   {
     id: 'ref-dd', name: 'Daniel Defense', category: 'Rifle',
@@ -127,17 +180,24 @@ export const REFERENCES: ReferenceEntry[] = [
     links: [{ label: 'BCM support', url: 'https://bravocompanyusa.com' }]
   },
   {
-    id: 'ref-ruger-rifle', name: 'Ruger (Rifle)', category: 'Rifle',
-    maintenance: { deepCleanRounds: 4000, note: '10/22s and bolt guns appreciate cleaner chambers than ARs.' },
+    /* Decision 49 (session 138): this guide's rimfire content moved to the new
+       Ruger (10/22) guide; this one now serves the centerfire Ruger rifles that
+       land on it under model-aware matching. Same id on purpose — guns link by
+       id, so every existing link survives the rename. */
+    id: 'ref-ruger-rifle', name: 'Ruger (Centerfire Rifle)', category: 'Rifle',
+    maintenance: { deepCleanRounds: 2000, note: 'Ruger\u2019s own words: \u201cthere is no fixed rule\u201d — condition sets the schedule.' },
     checklist: [
-      'Clean the chamber — rimfire fouling builds fast',
-      'Wipe the bolt and lube contact points lightly',
-      'Inspect the extractor claw (10/22)',
-      'Check action screws torque on bolt guns',
-      'Verify scope base screws are tight'
+      'Bore with solvent, brush and patches, finished with a dry patch; chamber wiped dry',
+      'A drop of oil, very sparingly, at the bolt components, trigger pivots, safety, bolt stop and magazine latch — the American manual\u2019s own list',
+      'On the AR-556, clear gas-system residue from the mechanism with solvent',
+      'Never stretch or modify the buffer spring — the AR-556 manual\u2019s explicit caution',
+      'Check action screw torque on bolt guns; scope base screws on everything'
     ],
-    guidance: 'For 10/22s, the chamber and extractor do most of the complaining — keep them clean and the rifle runs forever. Bolt guns mostly need bore care and consistent action screw torque. Deep clean by about 4,000 rounds, sooner for rimfire.',
-    links: [{ label: 'Ruger support', url: 'https://ruger.com' }]
+    guidance: 'Ruger\u2019s centerfire manuals decline to give a schedule — the American Rifle manual says plainly that \u201cthere is no fixed rule as to how frequently the cleaning should be carried out\u201d — so condition decides: clean after each session, after any dust or moisture, and whenever accuracy or feeding says so. Bolt guns are mostly bore care, a dry chamber, and consistent action-screw torque; the AR-556 adds gas-system residue to the list and a firm warning to leave the buffer spring alone. Oil goes at the manual\u2019s named points, very sparingly. The 2,000-round deep clean here is a starting point, not Ruger\u2019s number.',
+    links: [
+      { label: 'Ruger American Rifle manual (PDF)', url: 'https://ruger-docs.s3.amazonaws.com/_manuals/americanRifle.pdf' },
+      { label: 'Ruger AR-556 manual (PDF)', url: 'https://ruger-docs.s3.amazonaws.com/_manuals/AR-556-Mt92d8ha1p5g.pdf' }
+    ]
   },
   {
     id: 'ref-sw-rifle', name: 'Smith & Wesson (Rifle)', category: 'Rifle',
@@ -165,6 +225,35 @@ export const REFERENCES: ReferenceEntry[] = [
     guidance: 'Aero rifles are often self-built, so the maintenance story depends on your parts. The AR fundamentals hold: wet bolt carrier group, deep clean near 5,000 rounds, and a hard look at fastener torque early in the rifle’s life.',
     links: [{ label: 'Aero Precision support', url: 'https://aeroprecisionusa.com' }]
   },
+  {
+    id: 'ref-ruger-1022', name: 'Ruger (10/22)', category: 'Rifle',
+    models: ['10/22', '10-22', '1022'],
+    maintenance: { deepCleanRounds: 1500, note: 'Ruger\u2019s focus is the chamber and extractor — \u201cas often as necessary.\u201d A feeding complaint is the rifle asking early.' },
+    checklist: [
+      'Clean the chamber — Ruger\u2019s manual makes it the first job, and rimfire fouling builds fast',
+      'Clean the extractor \u201cas often as necessary to prevent the accumulation of grease and dirt\u201d',
+      'Lightly oiled patch through the bore, then dry; light oil only on the action',
+      'Read a failure to feed or extract as a dirty chamber before suspecting anything else',
+      'Verify scope base screws are tight'
+    ],
+    guidance: 'Ruger\u2019s 10/22 manual points at two places: the chamber and the extractor, cleaned as often as necessary — and it names failures to feed or extract as the tell that necessary has arrived. Beyond that it is the standard Ruger rhythm: clean at regular intervals, after each range session, and after any dust or moisture, with oil light and sparing. The 1,500-round deep clean here is a common starting point for a 10/22 that gets regular chamber attention; the manual\u2019s own answer is condition, not a number.',
+    links: [{ label: 'Ruger 10/22 manual (PDF)', url: 'https://ruger-docs.s3.amazonaws.com/_manuals/Ruger_1022.pdf' }]
+  },
+  {
+    id: 'ref-sw-mp1522', name: 'Smith & Wesson (M&P15-22)', category: 'Rifle',
+    models: ['M&P15-22', '15-22', 'MP15-22'],
+    maintenance: { deepCleanRounds: 1000, note: 'S&W\u2019s own words: cleaning matters \u201ceven more\u201d on .22 rimfire rifles.' },
+    checklist: [
+      'Clean after firing — S&W flags rimfire rifles as needing more attention than centerfire',
+      'Wipe the bolt and rails; leave a light film of oil on all metal parts, inside and out',
+      'Run several boxes of quality ammunition before trusting it in a match — the manual\u2019s advice',
+      'Use a lighter-weight oil in cold weather, per the manual',
+      'Leave internal components alone beyond the manual\u2019s own steps'
+    ],
+    guidance: 'S&W says it directly: cleaning is essential, and \u201cthis is of even more importance with 22 rimfire caliber rifles.\u201d The care itself is simple — clean after firing, a light film of quality oil on all metal inside and out, lighter oil when it is cold. The manual also gives match shooters a genuinely useful instruction: put several boxes of good ammunition through the rifle before relying on it, because rimfire ignition earns trust rather than assuming it. No round count is published; the 1,000 here is a rimfire starting point, not S&W\u2019s.',
+    links: [{ label: 'S&W M&P15-22 manual (PDF)', url: 'https://assets.contentstack.io/v3/assets/bltb61dcb3c40854cd9/blt484b89d2ae4eeadd/65d518a7bdb22a85b5c23612/M&P1522_Rifle_113022_3005746.pdf' }]
+  },
+
   // ---------- Shotguns ----------
   {
     id: 'ref-remington', name: 'Remington', category: 'Shotgun',
@@ -230,6 +319,52 @@ export const REFERENCES: ReferenceEntry[] = [
     ],
     guidance: 'Citori-style over/unders want clean bores and a thin film of grease on the hinge — that’s the whole secret to their longevity. Autoloaders follow gas/inertia care per the manual. Deep clean by 2,000 rounds.',
     links: [{ label: 'Browning support', url: 'https://www.browning.com' }]
+  },
+
+  // ---------- PCC ----------
+  {
+    id: 'ref-ruger-pcc', name: 'Ruger (PC Carbine)', category: 'PCC',
+    models: ['PC Carbine', 'PC9'],
+    maintenance: { deepCleanRounds: 2000, note: 'Ruger\u2019s one published number: verify charging-handle torque every 1,000 rounds.' },
+    checklist: [
+      'Verify charging-handle torque every 1,000 rounds, or whenever the handle comes off — Ruger\u2019s own interval',
+      'Split at the takedown, lock the bolt back, and clean barrel assembly and action',
+      'Light oil only; keep grease out of the chamber',
+      'Check magazine follower tension frequently, per the manual',
+      'Confirm optic screws are tight'
+    ],
+    guidance: 'The PC Carbine manual carries the standard Ruger rhythm — clean after each range session, at regular intervals, and after any dust or moisture — plus one genuinely numeric instruction: verify the charging-handle torque every 1,000 rounds, and any time the handle is removed. The takedown split is the whole field strip for routine cleaning. Ruger also asks for frequent checks of magazine follower tension. The 2,000-round deep clean is a starting point for a 9mm carbine; the 1,000-round torque check is Ruger\u2019s.',
+    links: [{ label: 'Ruger PC Carbine manual (PDF)', url: 'https://ruger-docs.s3.amazonaws.com/_manuals/PC-Carbine.pdf' }]
+  },
+  {
+    id: 'ref-jp-gmr15', name: 'JP Enterprises (GMR-15)', category: 'PCC',
+    models: ['GMR-15', 'GMR15'],
+    maintenance: { deepCleanRounds: 1000, note: 'JP publishes real numbers: oil the bolt every 200\u2013300 rounds in long sessions; inspect at 1,000\u20132,000.' },
+    checklist: [
+      'Oil the bolt and carrier before every use — low-to-medium viscosity oil, per JP',
+      'On long sessions, re-oil the bolt through the ejection port every 200\u2013300 rounds — JP\u2019s figure',
+      'Clean the compensator and crown after every use if possible; 9mm lead fouls them fast',
+      'If fired, clean within 24 hours and recheck for corrosion a few days later — JP\u2019s instruction',
+      'Inspect the captured-spring bumper and check anti-walk pins about every 1,000 rounds'
+    ],
+    guidance: 'JP\u2019s manual is specific, so this guide can be too: the bolt and carrier get oiled before every use, and on a long match or practice day re-oiled through the ejection port every 200 to 300 rounds. The compensator and crown want cleaning after every use because 9mm lead builds fast there. A fired gun gets cleaned within 24 hours, then rechecked for corrosion a few days on. Inspection of the captured-spring bumper and the anti-walk pins sits at about 1,000 rounds, with broader service in JP\u2019s 1,000\u20132,000-round window — the deep-clean number here is the bottom of JP\u2019s own range.',
+    links: [{ label: 'JP GMR-15 manual (PDF)', url: 'https://www.jprifles.com/document_pdfs/JP%20GMR15%20Manual_806.pdf' }]
+  },
+
+  // ---------- Revolvers ----------
+  {
+    id: 'ref-sw-617', name: 'Smith & Wesson (Model 617)', category: 'Revolver',
+    models: ['617'],
+    maintenance: { deepCleanRounds: 1000, note: 'Sourced from S&W\u2019s revolver-family manual — S&W publishes no 617-specific document, and this guide says so.' },
+    checklist: [
+      'Clean the bore and every chamber of the cylinder after firing',
+      'Scrub carbon off the cylinder face — rimfire builds it fast',
+      'Light coat of quality gun oil on metal parts, internal and external, per the manual',
+      'Use a lighter-weight oil in cold weather, per the manual',
+      'Leave the internals closed — S&W routes internal work to a qualified gunsmith with genuine parts'
+    ],
+    guidance: 'S&W publishes one manual for this whole revolver family rather than a 617-specific document, so that family manual is the source here, and it sets no interval: clean before first use, after firing, and after any dust or moisture, then a light coat of quality oil inside and out. What the manual leaves unsaid, range experience adds and is labelled as such: a .22 revolver builds carbon on the cylinder face and in the chambers faster than centerfire, and sticky extraction is the usual first complaint. The 1,000-round deep clean is that community starting point, not an S&W figure.',
+    links: [{ label: 'S&W revolver family manual (PDF)', url: 'https://assets.contentstack.io/v3/assets/bltb61dcb3c40854cd9/bltde0363f919659521/636c0539f5f6d3155a6cfe22/S&W_JKLN_Revolver_Manual_112119_416560000.pdf' }]
   }
 ];
 
@@ -295,14 +430,33 @@ function parentheticals(s: string): string[] {
  * don't collide). Returns null if nothing looks like a fit — this powers a
  * one-tap suggestion, never an automatic link.
  */
-export function suggestReferenceMatch(manufacturer: string, category: GunCategory, custom: Reference[]): ReferenceEntry | null {
+export function suggestReferenceMatch(manufacturer: string, category: GunCategory, custom: Reference[], model?: string): ReferenceEntry | null {
   const make = normalizeName(manufacturer);
   if (!make) return null;
   const candidates = [...custom.filter((r) => r.category === category).map(toEntry), ...referencesForCategory(category)];
+  /* Pass 1 — every guide whose NAME looks like the manufacturer, in candidate
+     order (the shooter's own guides first). This is the original matching,
+     kept byte-for-byte in spirit; what changed (decision 49) is only how a
+     WINNER is picked from the matches. */
+  const matches: ReferenceEntry[] = [];
   for (const r of candidates) {
     const base = normalizeName(r.name);
-    if (make === base || parentheticals(r.name).includes(make)) return r;
-    if (make.length >= 3 && base.length >= 3 && (make.includes(base) || base.includes(make))) return r;
+    if (make === base || parentheticals(r.name).includes(make)) { matches.push(r); continue; }
+    if (make.length >= 3 && base.length >= 3 && (make.includes(base) || base.includes(make))) matches.push(r);
   }
-  return null;
+  if (matches.length === 0) return null;
+  /* Pass 2 — MODEL-AWARE pick (decision 49, session 138, Michael's 1a): a gun
+     whose model text hits a guide's alias gets that guide; otherwise the
+     manufacturer's GENERAL guide (the first match without a models list); and
+     if the manufacturer only ships model-scoped guides, the first match stands
+     — a one-tap suggestion, never an automatic link, so a near-miss costs one
+     glance. Compact comparison so 10/22, 10-22 and 1022 are the same word. */
+  const compact = (v: string) => normalizeName(v).replace(/ /g, '');
+  const gunModel = compact(model ?? '');
+  if (gunModel) {
+    for (const r of matches) {
+      if (r.models?.some((a) => { const c = compact(a); return c.length >= 3 && gunModel.includes(c); })) return r;
+    }
+  }
+  return matches.find((r) => !r.models) ?? matches[0];
 }

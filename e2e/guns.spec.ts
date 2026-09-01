@@ -62,4 +62,30 @@ test.describe('Guns', () => {
     await page.getByRole('button', { name: 'Save gun', exact: true }).click();
     await expect(page.getByRole('button', { name: 'Retire or remove this gun…' })).toBeVisible();
   });
+
+  // Decision 49 (session 138): the suggestion reads the MODEL, not just the
+  // maker. A Ruger rifle with no model gets the centerfire guide; typing
+  // "10/22" switches the same prompt to the 10/22 guide, live. On pre-change
+  // code the model changes nothing and the second assertion goes red.
+  test('care-guide prompt is model-aware: a 10/22 outranks the general Ruger rifle guide', async ({ page }) => {
+    await seedDemo(page);
+    await gotoSection(page, 'Guns');
+    await page.getByRole('button', { name: '+ Add Gun' }).click();
+
+    await page.getByRole('textbox', { name: 'What this Gun is called' }).fill(`E2E Ruger ${Date.now()}`);
+    await page.getByLabel('Type').selectOption('Rifle');
+    await page.getByRole('textbox', { name: 'Made by' }).fill('Ruger');
+
+    // No model yet: the manufacturer's general (centerfire) guide is offered.
+    await expect(page.getByRole('button', { name: 'Link Ruger (Centerfire Rifle)' })).toBeVisible();
+
+    // The model steers it: same maker, same screen, different guide.
+    await page.getByRole('textbox', { name: 'Model' }).fill('10/22 Takedown');
+    await expect(page.getByRole('button', { name: 'Link Ruger (10/22)' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Link Ruger (Centerfire Rifle)' })).toHaveCount(0);
+
+    // And it links like any suggestion does.
+    await page.getByRole('button', { name: 'Link Ruger (10/22)' }).click();
+    await expect(page.getByText('Care guide linked ✓')).toBeVisible();
+  });
 });
