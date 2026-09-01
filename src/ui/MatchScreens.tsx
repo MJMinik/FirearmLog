@@ -1188,7 +1188,7 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         <FieldProblem id="match-group-err" problem={problem} field="matchGroup" />
         <label className="field">What this match is called
           <input value={name} onChange={(e) => { setName(e.target.value); if (problem?.field === 'matchGroup') setProblem(null); }} placeholder="June Club Match"
-            {...noAutofillProps} name="match-title" />
+            {...noAutofillProps} name="flog-match" />
         </label>
         <label className={`field${problem?.field === 'date' ? ' invalid' : ''}`}>Date
           <input

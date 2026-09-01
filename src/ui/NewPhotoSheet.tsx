@@ -51,7 +51,7 @@ export function NewPhotoSheet({ file, onSave, onClose }: {
       )}
       <label className="field">Caption
         <input value={name} onChange={(e) => setName(e.target.value)}
-          {...noAutofillProps} name="photo-title" />
+          {...noAutofillProps} name="flog-photo" />
       </label>
       <label className="field">Notes
         <textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />

@@ -350,7 +350,7 @@ export function ReferenceForm({ id, copyFrom, onSaved, onCancel, onDirtyChange, 
             placeholder="Wilson Combat, Grandpa's 1911…"
             aria-invalid={problem?.field === 'name' || undefined}
             aria-describedby={problem?.field === 'name' ? 'reference-name-err' : undefined}
-            {...noAutofillProps} name="reference-title" />
+            {...noAutofillProps} name="flog-ref" />
           <FieldProblem id="reference-name-err" problem={problem} field="name" />
         </label>
         <label className="field">Gun type

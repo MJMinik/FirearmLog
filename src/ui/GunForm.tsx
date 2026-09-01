@@ -362,7 +362,7 @@ export function GunForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }:
             placeholder={name.trim() === '' && derivedName ? derivedName : 'Atlas Erebus'}
             aria-invalid={problem?.field === 'name' || undefined}
             aria-describedby={problem?.field === 'name' ? 'gun-name-err' : undefined}
-            {...noAutofillProps} name="gun-title" />
+            {...noAutofillProps} name="flog-gun" />
           <FieldProblem id="gun-name-err" problem={problem} field="name" />
         </label>
         <label className="field">Made by

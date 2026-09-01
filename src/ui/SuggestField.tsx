@@ -11,6 +11,15 @@ import { rankSuggestions } from '../lib/suggest.ts';
 // alone, so OUR suggestions — not Apple's "AutoFill Contact" bar — show up.
 // Spread onto any plain text input that was wrongly triggering contact
 // autofill. Pair with a non-name-like `name` to defeat iOS's label heuristic.
+/* iOS contact-AutoFill defense, round two (session 138, 1 Sep 2026, Michael's
+   phone). Round one (July audit) found Safari scans a field's name attribute,
+   then placeholder, then label for contact-ish tokens, and renamed the fields
+   to *-title — which killed the bar at the time. It came back: "title" is
+   itself a contact-card token (job title), and a later iOS appears to treat it
+   as one. The standing rule these props travel with: a text field's name
+   attribute uses flog-* words that no contact card carries — never name,
+   title, first, last, phone, email, organization, address. autoComplete='off'
+   alone does NOT stop the contact bar on iOS. */
 export const noAutofillProps = {
   autoComplete: 'off',
   autoCorrect: 'off',

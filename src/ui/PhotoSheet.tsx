@@ -79,7 +79,7 @@ export function PhotoSheet({ media, onClose, onChanged, allowDelete = true }: {
       )}
       <label className="field">Caption
         <input value={name} onChange={(e) => setName(e.target.value)}
-          {...noAutofillProps} name="photo-title" />
+          {...noAutofillProps} name="flog-photo" />
       </label>
       <label className="field">Notes
         <textarea rows={3} value={annotations} onChange={(e) => setAnnotations(e.target.value)} />
