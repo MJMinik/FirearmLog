@@ -20,10 +20,16 @@ import { SuggestField, noAutofillProps } from './SuggestField.tsx';
 import { FormProblem } from './FormProblem.tsx';
 import { ownedGuns } from '../lib/gunStatus.ts';
 
-export function OpticsScreen({ refreshKey, onBack, openOpticForm, openReminderForm }: {
+export function OpticsScreen({ refreshKey, onBack, openOpticForm, openReminderForm, openReminder }: {
   refreshKey: number; onBack: () => void;
   openOpticForm: (id?: string) => void;
   openReminderForm: (opticId: string, firearmId: string) => void;
+  // Session 138, Michael's tap test: the reminder row used to be display-only —
+  // the one row in the battery block that answered no tap and offered no way to
+  // the reminder it was reporting. It now opens that reminder's own edit form,
+  // where change/mark-done/delete already live (one home per control, the same
+  // one-verdict idea as the badge).
+  openReminder: (id: string) => void;
 }) {
   const [optics, setOptics] = useState<Optic[]>([]);
   const [firearms, setFirearms] = useState<Firearm[]>([]);
@@ -143,12 +149,13 @@ export function OpticsScreen({ refreshKey, onBack, openOpticForm, openReminderFo
             )}
             {op.settingsSnapshot && <p className="report-note">{op.settingsSnapshot}</p>}
 
-            <h2 style={{ marginTop: 12 }}>Battery Log</h2>
+            <h2 className="card-section-break">Battery Log</h2>
             {status.kind === 'reminder' && (
-              <div className="row">
+              <button className="row-tap" onClick={() => openReminder(status.reminder.id)}
+                aria-label={`Battery reminder, ${status.detail} — opens the reminder`}>
                 <span className="label">Battery reminder</span>
-                <span className="value">{status.detail}</span>
-              </div>
+                <span className="value">{status.detail} ›</span>
+              </button>
             )}
             {status.kind === 'age-due' && (
               <p className="report-note">

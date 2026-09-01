@@ -430,7 +430,8 @@ export function App() {
       openOpticForm={(oid) => push({ kind: 'optic-form', id: oid })}
       openReminderForm={(opticId, firearmId) => push({
         kind: 'reminder-form', templateKey: 'optic-battery', firearmId: firearmId || undefined, opticId,
-      })} />;
+      })}
+      openReminder={(rid) => push({ kind: 'reminder-form', id: rid })} />;
   } else if (view?.kind === 'optic-form') {
     const v = view;
     content = <OpticForm id={v.id} firearmId={v.firearmId}

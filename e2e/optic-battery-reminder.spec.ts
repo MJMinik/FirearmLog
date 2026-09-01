@@ -182,6 +182,30 @@ test.describe('one battery verdict — the optic badge and the battery reminder 
     await expect(await badgeTextFor(page, 'PartsLink Optic')).toHaveText('Active');
   });
 
+  test("the Battery reminder row is a door: tapping it opens that reminder's own edit form, where Delete Reminder lives", async ({ page }) => {
+    await seedDemo(page);
+    await createOptic(page, 'RowDoor', 'Optic');
+    await expandOptic(page, 'RowDoor Optic');
+    const main = page.getByRole('main');
+    await main.getByRole('button', { name: 'Set a battery reminder' }).click();
+    await expect(main.getByRole('heading', { name: 'New Reminder' })).toBeVisible();
+    await main.getByLabel('Due date').fill(dayOffset(60));
+    await main.getByRole('button', { name: 'Save reminder' }).click();
+    await expect(main.getByRole('heading', { name: 'Optics' }).first()).toBeVisible();
+
+    // Session 138 (Michael's tap test, finding 2): this row used to be
+    // display-only — the one row in the battery block that answered no tap and
+    // offered no route to the reminder it reported. It now navigates to the
+    // reminder's own edit form, the one home that already owns change /
+    // mark-done / delete. On pre-change code there is no button with this
+    // accessible name at all, so this click fails — the test proves the fix.
+    await expandOptic(page, 'RowDoor Optic');
+    await main.getByRole('button', { name: /Battery reminder/ }).click();
+    await expect(main.getByRole('heading', { name: 'Edit Reminder' })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Delete Reminder' })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Mark done' })).toBeVisible();
+  });
+
   test('logging a battery change rolls a governing reminder forward and clears Home\'s Needs Attention', async ({ page }) => {
     await createGunAndDemo(page, 'E2E RollForward Gun');
     await createOptic(page, 'RollFwd', 'Optic', 'E2E RollForward Gun');

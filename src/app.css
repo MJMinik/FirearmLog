@@ -135,6 +135,18 @@ input, select, textarea, button { font-size: max(16px, 1rem); font-family: inher
   margin-bottom: 10px;
 }
 
+/* A section heading that starts PARTWAY DOWN a card (e.g. Battery Log on an
+   expanded optic). Session 138, from Michael's tap test: styled only by the
+   generic label above, it sat between look-alike rows with a sliver of space
+   and did not read as a section break. The hairline + breathing room make the
+   card visibly split into its sections; the label itself stays the app's
+   standard (HIG grouped-header) style so headings still match everywhere. */
+.card h2.card-section-break {
+  border-top: 0.5px solid var(--separator);
+  padding-top: 14px;
+  margin-top: 16px;
+}
+
 /* More screen (July 2026): grouped section headers sit above each inset card,
    so the menu reads as sensible categories instead of one flat list. */
 .menu-group-title {
