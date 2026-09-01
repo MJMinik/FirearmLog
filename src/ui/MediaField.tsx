@@ -5,7 +5,7 @@
 // this is the CR-11/CR-12 consolidation). The form keeps the draft state
 // (existing/removed/new) because only the form knows when its record is saved,
 // and calls commitMedia() at save time.
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { Media } from '../lib/types.ts';
 import { getMediaForOwner, putOne, deleteOne } from '../lib/db.ts';
 import { MAX_MEDIA_BYTES, humanBytes } from '../lib/inputLimits.ts';
@@ -69,6 +69,15 @@ export function MediaField({
   setNewFiles: (fn: (prev: StagedFile[]) => StagedFile[]) => void;
 }) {
   const [viewing, setViewing] = useState<Media | null>(null);
+  /* P-3 (Reports-media diagnosis memo, 2026-08-24; fixed session 138): staged
+     preview URLs were never revoked — not on remove, not on save, not on
+     cancel. The ref mirrors the live list so the unmount cleanup (which runs
+     once, whatever route closed the form) frees whatever is still staged;
+     the remove button frees its own URL immediately. Revoking a preview URL
+     never touches the picked file's bytes — saving reads the File, not the URL. */
+  const stagedUrlsRef = useRef<string[]>([]);
+  stagedUrlsRef.current = newFiles.map((nf) => nf.url);
+  useEffect(() => () => { stagedUrlsRef.current.forEach((u) => URL.revokeObjectURL(u)); }, []);
   const [editingNew, setEditingNew] = useState<number | null>(null);
   const [tooBig, setTooBig] = useState('');
   const fileRef = useRef<HTMLInputElement>(null);
@@ -122,7 +131,7 @@ export function MediaField({
                   : <img src={nf.url} alt="New photo" />}
               </button>
               <button className="thumb-x" aria-label="Remove new file"
-                onClick={() => setNewFiles((p) => p.filter((_, x) => x !== i))}><Icon name="close" size={16} /></button>
+                onClick={() => { URL.revokeObjectURL(nf.url); setNewFiles((p) => p.filter((_, x) => x !== i)); }}><Icon name="close" size={16} /></button>
               <span className="thumb-caption">{nf.name || 'Tap to name'}</span>
             </div>
           ))}

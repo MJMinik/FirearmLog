@@ -99,3 +99,58 @@ export async function seedDemo(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByText('Live-fire rounds')).toBeVisible();
 }
+
+/* Extracted session 138, paying the debt named at the s128 close (two specs
+ * carried diverging private copies of this; the picker spec's had already
+ * drifted to a bare-number return with no missing-selector guard). One copy
+ * lives here now; both hard-won details travel with it, in the comments
+ * below and inside. Returns { contrast, fg, bg } and THROWS when the
+ * selector matches nothing, so a typo'd selector is a loud red, never a
+ * comparison against null. */
+/** Contrast of resolved colours, walking up for a transparent background.
+ *  A real function, not a string: Playwright evaluates a STRING page function as
+ *  a bare expression and never passes the argument, so the first version of this
+ *  measured nothing and reported six contrast failures that did not exist. */
+export async function contrastOf(page: Page, sel: string) {
+  const out = await page.evaluate((s) => {
+    const el = document.querySelector(s);
+    if (!el) return null;
+    const lum = (c: number[]) => {
+      const [r, g, b] = c.map((v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
+      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+    };
+    // A computed colour is not always rgb(): color-mix() resolves to
+    // `color(srgb 0.99 0.95 0.9)`, whose channels run 0–1. Reading those as
+    // 0–255 made a pale amber wash measure as near-black, so black text on it
+    // came back at 1.01:1 — a contrast FAILURE reported against a design that
+    // was fine, and passing in dark mode purely by luck. Scale when the syntax
+    // says to.
+    const parse = (t: string) => {
+      const n = (t.match(/[\d.]+(?:e[-+]?\d+)?/gi) || []).slice(0, 4).map(Number);
+      if (/^color\(/i.test(t.trim())) {
+        return n.map((v, i) => (i < 3 ? Math.round(v * 255) : v));
+      }
+      return n;
+    };
+    const bgOf = (node: Element | null) => {
+      let n: Element | null = node;
+      while (n) {
+        const p = parse(getComputedStyle(n).backgroundColor);
+        if (p.length >= 3 && (p[3] === undefined || p[3] > 0)) return p.slice(0, 3);
+        n = n.parentElement;
+      }
+      return [255, 255, 255];
+    };
+    const fg = parse(getComputedStyle(el).color).slice(0, 3);
+    const bg = bgOf(el);
+    const l1 = lum(fg), l2 = lum(bg);
+    const [hi, lo] = l1 > l2 ? [l1, l2] : [l2, l1];
+    return { contrast: (hi + 0.05) / (lo + 0.05), fg, bg };
+  }, sel);
+  if (out === null) throw new Error(`nothing matched ${sel}`);
+  return out;
+}
+
+/* A computed colour is not always rgb(): color-mix() resolves to
+ * `color(srgb 0.99 0.95 0.9)`, whose channels run 0-1 — the scaling case is
+ * handled inside parse(), and the story is in the function's own comments. */

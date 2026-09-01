@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { Media, Mark } from '../lib/types.ts';
 import { deleteOne, putOne } from '../lib/db.ts';
 import { stampUpdate } from '../lib/stamps.ts';
-import { mediaUrl } from './media.ts';
+import { mediaUrl, revokeMediaUrl } from './media.ts';
 import { noAutofillProps } from './SuggestField.tsx';
 import { Sheet, ConfirmSheet, pushSheetToken, popSheetToken, isTopmost } from './Sheet.tsx';
 import { useDirtyTracker } from './useDirtyTracker.ts';
@@ -47,6 +47,9 @@ export function PhotoSheet({ media, onClose, onChanged, allowDelete = true }: {
 
   async function reallyDelete() {
     await deleteOne('media', media.id);
+    // P-2 (session 138): free the cached object URL with the record, or the
+    // browser keeps the photo's bytes alive after the shooter deleted it.
+    revokeMediaUrl(media.id);
     onChanged(media.id);
     onClose();
   }

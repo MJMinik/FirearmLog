@@ -19,7 +19,15 @@ import { rankSuggestions } from '../lib/suggest.ts';
    as one. The standing rule these props travel with: a text field's name
    attribute uses flog-* words that no contact card carries — never name,
    title, first, last, phone, email, organization, address. autoComplete='off'
-   alone does NOT stop the contact bar on iOS. */
+   alone does NOT stop the contact bar on iOS.
+
+   ROUND THREE, same day, and it closes the question (SETTLED.md, 1 Sep 2026):
+   Michael measured the live flog-* build field by field on his phone and the
+   bar shows on EVERY text field — including one whose placeholder is "9mm".
+   Current iOS puts the contact-AutoFill affordance on all web text fields,
+   system-wide, and Apple documents no web-side suppression. The flog-* names
+   stay as hygiene against the real name-attribute heuristics, but nothing in
+   this file can remove that bar, and nothing should try. */
 export const noAutofillProps = {
   autoComplete: 'off',
   autoCorrect: 'off',

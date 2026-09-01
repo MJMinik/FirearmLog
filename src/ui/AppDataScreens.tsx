@@ -13,6 +13,7 @@
 import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { SyncCard } from './SyncCard.tsx';
+import { clearMediaUrlCache } from './media.ts';
 import { PhotoCleanupCard } from './PhotoCleanupCard.tsx';
 import { getSettings, putSettings } from '../lib/db.ts';
 import type { AppSettings } from '../lib/types.ts';
@@ -39,7 +40,13 @@ function ScreenShell({ title, onBack, children }: {
 export function SyncScreen({ onBack, onImported }: { onBack: () => void; onImported: () => void }) {
   return (
     <ScreenShell title="Sync & Backup" onBack={onBack}>
-      <SyncCard onPulled={onImported} onBackedUp={onImported} />
+      <SyncCard
+        /* Session 138: a restore replaces every record without a page load, so
+           a cached photo URL could keep showing PRE-restore bytes for a reused
+           id. Clearing here (the safe-zone caller) frees the old URLs; screens
+           rebuild them on demand from the restored records. */
+        onPulled={() => { clearMediaUrlCache(); onImported(); }}
+        onBackedUp={onImported} />
       {/* Below Save to File on purpose: the card's own copy says to back up
           first, and this is the order that makes that sentence true. It renders
           nothing at all unless a photo is still full size. */}

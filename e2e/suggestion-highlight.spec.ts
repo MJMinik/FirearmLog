@@ -9,7 +9,7 @@
 // asserted as a CSS property — a property can be right while the rendered
 // contrast is not.
 import { test, expect, type Page } from '@playwright/test';
-import { seedDemo, gotoTab, gotoSection } from './helpers';
+import { seedDemo, gotoTab, gotoSection, contrastOf } from './helpers';
 
 const PASTE = [
   'Gun Craft Practical Shooters 1st Sunday August - 2026-08-02', '', 'Match Results - Combined',
@@ -42,49 +42,6 @@ async function toSuggestion(page: Page) {
   return main;
 }
 
-/** Contrast of resolved colours, walking up for a transparent background.
- *  A real function, not a string: Playwright evaluates a STRING page function as
- *  a bare expression and never passes the argument, so the first version of this
- *  measured nothing and reported six contrast failures that did not exist. */
-async function contrastOf(page: Page, sel: string) {
-  const out = await page.evaluate((s) => {
-    const el = document.querySelector(s);
-    if (!el) return null;
-    const lum = (c: number[]) => {
-      const [r, g, b] = c.map((v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
-      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    };
-    // A computed colour is not always rgb(): color-mix() resolves to
-    // `color(srgb 0.99 0.95 0.9)`, whose channels run 0–1. Reading those as
-    // 0–255 made a pale amber wash measure as near-black, so black text on it
-    // came back at 1.01:1 — a contrast FAILURE reported against a design that
-    // was fine, and passing in dark mode purely by luck. Scale when the syntax
-    // says to.
-    const parse = (t: string) => {
-      const n = (t.match(/[\d.]+(?:e[-+]?\d+)?/gi) || []).slice(0, 4).map(Number);
-      if (/^color\(/i.test(t.trim())) {
-        return n.map((v, i) => (i < 3 ? Math.round(v * 255) : v));
-      }
-      return n;
-    };
-    const bgOf = (node: Element | null) => {
-      let n: Element | null = node;
-      while (n) {
-        const p = parse(getComputedStyle(n).backgroundColor);
-        if (p.length >= 3 && (p[3] === undefined || p[3] > 0)) return p.slice(0, 3);
-        n = n.parentElement;
-      }
-      return [255, 255, 255];
-    };
-    const fg = parse(getComputedStyle(el).color).slice(0, 3);
-    const bg = bgOf(el);
-    const l1 = lum(fg), l2 = lum(bg);
-    const [hi, lo] = l1 > l2 ? [l1, l2] : [l2, l1];
-    return { contrast: (hi + 0.05) / (lo + 0.05), fg, bg };
-  }, sel);
-  if (out === null) throw new Error(`nothing matched ${sel}`);
-  return out;
-}
 
 for (const vp of [{ w: 320, h: 720 }, { w: 390, h: 844 }, { w: 1440, h: 900 }]) {
   for (const scheme of ['light', 'dark'] as const) {

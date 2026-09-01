@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { seedDemo, gotoTab, gotoSection } from './helpers';
+import { seedDemo, gotoTab, gotoSection, contrastOf } from './helpers';
 import { parseScsaForm, groupEntriesByPerson, type ScsaForm, type ScsaEntry } from '../src/lib/scsaForm.ts';
 import { Guncraft8stage } from '../tests/fixtures/scsa-guncraft-8stage.ts';
 import { RedbrushMultigun } from '../tests/fixtures/scsa-redbrush-multigun.ts';
@@ -89,46 +89,6 @@ const STRANGER = form.entries.find((e) =>
   && e.membership.toUpperCase() !== ME.membership.toUpperCase()
   && e.lastName !== ME.lastName) as ScsaEntry;
 
-/** Contrast of resolved colours, walking up for a transparent background.
- *  COPIED from e2e/suggestion-highlight.spec.ts, where it is a local function
- *  rather than an export. Copied rather than extracted on purpose (19 Aug
- *  2026): pulling it into helpers.ts would edit a spec whose whole job is
- *  machine-locking the suggestion block's measured contrast, at the end of a
- *  long build. The duplication is real debt and is named here rather than
- *  hidden; extracting it is queued, not forgotten. Its two hard-won details
- *  travel with it: Playwright evaluates a STRING page function as a bare
- *  expression and never passes the argument (so this must be a real
- *  function), and color-mix() resolves to `color(srgb 0.99 ...)` whose
- *  channels run 0-1, not 0-255. */
-async function contrastOf(page: Page, sel: string) {
-  const out = await page.evaluate((s) => {
-    const el = document.querySelector(s);
-    if (!el) return null;
-    const lum = (c: number[]) => {
-      const [r, g, b] = c.map((v) => { const x = v / 255; return x <= 0.03928 ? x / 12.92 : Math.pow((x + 0.055) / 1.055, 2.4); });
-      return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    };
-    const parse = (t: string) => {
-      const n = (t.match(/[\d.]+(?:e[-+]?\d+)?/gi) || []).slice(0, 4).map(Number);
-      if (/^color\(/i.test(t.trim())) return n.map((v, i) => (i < 3 ? Math.round(v * 255) : v));
-      return n;
-    };
-    const bgOf = (node: Element | null) => {
-      let n: Element | null = node;
-      while (n) {
-        const p = parse(getComputedStyle(n).backgroundColor);
-        if (p.length >= 3 && (p[3] === undefined || p[3] > 0)) return p.slice(0, 3);
-        n = n.parentElement;
-      }
-      return [255, 255, 255];
-    };
-    const fg = parse(getComputedStyle(el).color).slice(0, 3);
-    const bg = bgOf(el);
-    const l1 = lum(fg), l2 = lum(bg);
-    return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
-  }, sel);
-  return out;
-}
 
 /** A third importable, numbered shooter, so the bar's plural branch can be
  *  proved at a count no fixture reaches inside one group. steelPicked is a
@@ -258,9 +218,8 @@ test.describe('picker and correct number (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.
     // the CSS steps it up from --text-dim (3.8:1 light / 3.0:1 dark there) to
     // full --text; this measures the pixels rather than trusting the rule.
     await suggest.getByRole('button', { name: nameRe(ME) }).first().click();
-    const subContrast = await contrastOf(page, '.row-tap[aria-pressed="true"] .row-sub');
-    expect(subContrast, 'picked-row sub-line must resolve').toBeTruthy();
-    expect(subContrast as number, 'picked-row sub-line on the deeper wash').toBeGreaterThanOrEqual(4.5);
+    const subContrast = (await contrastOf(page, '.row-tap[aria-pressed="true"] .row-sub')).contrast;
+    expect(subContrast, 'picked-row sub-line on the deeper wash').toBeGreaterThanOrEqual(4.5);
   });
 
   test('"Not mine" with the box left blank still stores nothing — extends the shipped case, not a rewrite', async ({ page }) => {
@@ -469,17 +428,16 @@ test.describe('picker and correct number (IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.
     await main.getByPlaceholder('Search shooters by name').fill(ME.lastName);
     await main.getByRole('button', { name: nameRe(ME) }).first().click();
 
-    const rowText = await contrastOf(page, '.row-tap[aria-pressed="true"] .label');
-    expect(rowText, 'row text must resolve').toBeTruthy();
-    expect(rowText as number, 'picked-row text on its wash').toBeGreaterThanOrEqual(4.5);
-    const check = await contrastOf(page, '.row-check');
-    expect(check as number, 'the check glyph on the wash').toBeGreaterThanOrEqual(3);
+    const rowText = (await contrastOf(page, '.row-tap[aria-pressed="true"] .label')).contrast;
+    expect(rowText, 'picked-row text on its wash').toBeGreaterThanOrEqual(4.5);
+    const check = (await contrastOf(page, '.row-check')).contrast;
+    expect(check, 'the check glyph on the wash').toBeGreaterThanOrEqual(3);
 
     await main.getByRole('button', { name: 'Continue', exact: true }).click();
     await main.getByLabel('Which gun did you shoot?').selectOption({ index: 1 });
     await main.getByRole('button', { name: 'Not mine' }).click();
-    const btn = await contrastOf(page, '.button.choice[aria-pressed="true"]');
-    expect(btn as number, 'selected answer label on its fill').toBeGreaterThanOrEqual(4.5);
+    const btn = (await contrastOf(page, '.button.choice[aria-pressed="true"]')).contrast;
+    expect(btn, 'selected answer label on its fill').toBeGreaterThanOrEqual(4.5);
   });
 
   test('a stray tap on Yes and back to Not mine does not cost the shooter what he typed', async ({ page }) => {
