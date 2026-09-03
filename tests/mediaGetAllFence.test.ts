@@ -1,5 +1,5 @@
 // P-1 fence: getAll('media') must never appear in src/ outside the allowed
-// files. The allowed list is deliberately narrow, and is exactly two files:
+// files. The allowed list is deliberately narrow, and is exactly one file:
 //   - src/lib/db.ts            (the data layer itself. CORRECTED session 118:
 //                               it no longer owns "the whole-store export path",
 //                               because the export moved to a cursor in pass 2.
@@ -12,12 +12,13 @@
 //                               that, and it only started catching it in pass 2
 //                               after a cold auditor walked through both guards
 //                               at once.)
-//   - src/ui/reportLaunch.ts   (the multi-owner report bundle, which cannot use
-//                               the single-owner cursor — KNOWN OPEN ITEM: it
-//                               loads every photo AND retains them in React
-//                               state while the Reports screen is mounted, which
-//                               is a bigger memory hazard than anything P-4/7/8
-//                               fixed. Queued as its own item, session 114.)
+// src/ui/reportLaunch.ts WAS on this list (the multi-owner report bundle) and is
+// not any more: the reports/media-narrowing change (Sep 2026) dropped
+// getAllMediaWholeStore from loadReportBundle entirely — Insurance Inventory,
+// the only report that reads media, now fetches each gun's own images with
+// getMediaForOwner (the single-owner cursor) when it is built. Nothing in
+// reportLaunch.ts calls the whole-store escape hatch any more, so this fence
+// now fails if that pattern comes back.
 // PhotoCleanupCard.tsx WAS on this list and is not any more: P-7 replaced its two
 // whole-store loads with hasOversizedMedia (early-exit cursor probe) and
 // runPhotoCleanup (id scan, then one record at a time).
@@ -26,7 +27,9 @@
 //
 // A test that has never failed proves nothing. Proven on the pre-fix tree
 // (76bd058): with reportLaunch.ts not yet in ALLOWED it listed exactly the
-// 7 call sites the review named, and passed once they were swapped.
+// 7 call sites the review named, and passed once they were swapped. Re-proven
+// here (sabotage step) by putting getAllMediaWholeStore back into
+// loadReportBundle and confirming this test goes red, then reverting.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -38,13 +41,13 @@ import { join } from 'node:path';
 // pass 2: the backup is written one photo at a time and exportSnapshot is no
 // longer on any user-facing path. A stale justification for an escape hatch is
 // exactly what stops the next reader questioning the hatch.)
-// reportLaunch.ts loads the whole bundle for multi-record reports (P-1).
+// reportLaunch.ts was removed from this list (Sep 2026): the reports/media
+// bundle no longer loads the whole store — see the file header above.
 // PhotoCleanupCard.tsx was removed (P-7 fix): it imports hasOversizedMedia for
 // its mount probe and hands the run to runPhotoCleanup — the escape hatch is
 // gone from that file.
 const ALLOWED = new Set([
   'src/lib/db.ts',
-  'src/ui/reportLaunch.ts',
 ]);
 
 // Matches: getAll<...>('media') or getAll('media') — the string literal 'media'

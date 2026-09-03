@@ -8,11 +8,11 @@
 // photo-heavy insurance report, now applied uniformly.
 import type {
   Ammunition, Classifier, DrillDef, Firearm, Goal, Magazine, Match, MalfunctionEntry,
-  MaintenanceEntry, Media, Optic, Part, Purchase, Reference, Session
+  MaintenanceEntry, Optic, Part, Purchase, Reference, Session
 } from '../lib/types.ts';
 import { GUN_CATEGORIES } from '../lib/types.ts';
 import { canonicalDivision, formatClassPct } from '../lib/competition.ts';
-import { getAll, getAllMediaWholeStore } from '../lib/db.ts';
+import { getAll, getMediaForOwner } from '../lib/db.ts';
 import { activeOnly, activeMalfunctions, trashedIdSet } from '../lib/softDelete.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { roundsForFirearm, dryRepsForFirearm, totalRounds } from '../lib/stats.ts';
@@ -32,7 +32,7 @@ export interface ReportBundle {
   firearms: Firearm[]; sessions: Session[]; matches: Match[]; purchases: Purchase[];
   ammo: Ammunition[]; classifiers: Classifier[]; malfunctions: MalfunctionEntry[];
   maintenance: MaintenanceEntry[]; references: Reference[]; drills: DrillDef[];
-  goals: Goal[]; media: Media[]; parts: Part[]; magazines: Magazine[];
+  goals: Goal[]; parts: Part[]; magazines: Magazine[];
   // Optics joined the bundle 27 Aug 2026: the Costs report's gun & gear table
   // sums each gun's optic price, and nothing else here had ever needed them.
   optics: Optic[];
@@ -46,19 +46,19 @@ const money = (x: number) => '$' + x.toLocaleString(undefined, { minimumFraction
 /** Load everything the reports read — the same live-data-only rules the
  *  Reports screen applies (trashed sessions and their malfunctions excluded). */
 export async function loadReportBundle(): Promise<ReportBundle> {
-  const [firearms, sessions, matches, purchases, ammo, classifiers, malfunctions, maintenance, references, drills, goals, media, parts, magazines, optics] =
+  const [firearms, sessions, matches, purchases, ammo, classifiers, malfunctions, maintenance, references, drills, goals, parts, magazines, optics] =
     await Promise.all([
       getAll<Firearm>('firearms'), getAll<Session>('sessions'), getAll<Match>('matches'),
       getAll<Purchase>('purchases'), getAll<Ammunition>('ammunition'), getAll<Classifier>('classifiers'),
       getAll<MalfunctionEntry>('malfunctions'), getAll<MaintenanceEntry>('maintenance'),
       getAll<Reference>('references'), getAll<DrillDef>('drills'), getAll<Goal>('goals'),
-      getAllMediaWholeStore(), getAll<Part>('parts'), getAll<Magazine>('magazines'),
+      getAll<Part>('parts'), getAll<Magazine>('magazines'),
       getAll<Optic>('optics')
     ]);
   // App 7: every report works off live data only.
   const liveSessions = activeOnly(sessions);
   const liveMalfs = activeMalfunctions(malfunctions, trashedIdSet(sessions));
-  return { firearms, sessions: liveSessions, matches, purchases, ammo, classifiers, malfunctions: liveMalfs, maintenance, references, drills, goals, media, parts, magazines, optics };
+  return { firearms, sessions: liveSessions, matches, purchases, ammo, classifiers, malfunctions: liveMalfs, maintenance, references, drills, goals, parts, magazines, optics };
 }
 
 /** Open the report window NOW (inside the click, so it's never popup-blocked)
@@ -236,6 +236,11 @@ export async function insuranceReport(d: ReportBundle): Promise<ReportResult> {
   // Audit #10: insurance inventory lists guns you still own (active + retired),
   // not ones you've sold/lost/etc.
   for (const f of d.firearms.filter(isOwned)) {
+    // Fetched narrowly, per gun, when this report is built — not from the
+    // bundle (spec: reports/media narrowing, Sep 2026). getMediaForOwner is a
+    // cursor bounded to this one gun's records; the video filter happens here
+    // since reportImageUrls only ever wanted the images anyway.
+    const ownMedia = (await getMediaForOwner('firearm', f.id)).filter((m) => m.kind === 'image');
     sections.push({
       heading: f.name,
       rows: [
@@ -246,7 +251,7 @@ export async function insuranceReport(d: ReportBundle): Promise<ReportResult> {
         { label: 'Serial number', value: f.serialNumber || '—' },
         { label: 'Date acquired', value: f.dateAcquired ? formatDayKey(f.dateAcquired) : '—' }
       ],
-      images: await reportImageUrls(d.media, 'firearm', f.id)
+      images: await reportImageUrls(ownMedia, 'firearm', f.id)
     });
   }
   return { title: 'Insurance Inventory', subtitle: `As of ${formatDayKey(todayKey())}`, sections };
