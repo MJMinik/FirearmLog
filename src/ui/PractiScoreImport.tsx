@@ -24,7 +24,7 @@ import { getAll, getSettings, putMany, putOne, putSettings } from '../lib/db.ts'
 import { stampNew } from '../lib/stamps.ts';
 import { newId } from '../lib/id.ts';
 import { todayKey } from '../lib/dates.ts';
-import { MATCH_TYPES, DIVISIONS, STEEL_DIVISIONS, POWER_FACTORS, suggestDivision, divisionMismatchKind } from '../lib/competition.ts';
+import { MATCH_TYPES, DIVISIONS, STEEL_DIVISIONS, POWER_FACTORS, suggestDivision, suggestPowerFactor, divisionMismatchKind } from '../lib/competition.ts';
 import { divisionActuallyChanged } from '../lib/divisionNormalise.ts';
 import { fieldOptions } from '../lib/selectOptions.ts';
 import {
@@ -721,7 +721,11 @@ export function PractiScoreImport({ onCancel, onSaved }: {
         // stays in the preview row above. The "as scored" option in the
         // picker lets the user revert if the guess is wrong.
         setDivision(suggestDivision(c.division, DIVISIONS) ?? c.division);
-        setPowerFactor(c.powerFactor || POWER_FACTORS[0]);
+        // Same pre-selection as division, mirrored (power-factor-codes fix): if
+        // PractiScore stored "Maj" the picker starts on "Major", not the short
+        // code. The raw scored string stays in the preview row above, and "Maj
+        // (as scored)" stays reachable in the picker below via fieldOptions.
+        setPowerFactor(suggestPowerFactor(c.powerFactor) ?? (c.powerFactor || POWER_FACTORS[0]));
       }}>
         <span className="label">{c.name || '(no name)'}
           <div className="row-sub">

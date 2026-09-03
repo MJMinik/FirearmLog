@@ -20,7 +20,7 @@ import {
   type StageScoreResult, type StageReviewRow, type AcceptedStageScore,
 } from '../lib/stageScores.ts';
 import { commitStageScore, stageFilled, StageScoreWriteError } from '../lib/stageScoresWrite.ts';
-import { hasHitBreakdown, fmtHitFactor } from '../lib/competition.ts';
+import { hasHitBreakdown, fmtHitFactor, suggestPowerFactor } from '../lib/competition.ts';
 import type { View } from './nav.ts';
 import { ConfirmSheet } from './Sheet.tsx';
 import { ScreenLoading, ScreenError } from './ScreenState.tsx';
@@ -282,8 +282,21 @@ export function StageScoresScreen({ id, onBack, open }: {
                 `Stage ${activeStage}'s printed hit factor couldn't be read on this page, so nothing was saved. Try copying the page again.`}
               {result.code === 'hf-mismatch' &&
                 `Stage ${activeStage}'s numbers include something this app can't verify -- likely an extra penalty the range officer entered, or an edit on the official page. Nothing was saved for Stage ${activeStage}; the other stages are untouched.`}
-              {result.code === 'hf-mismatch' && result.powerFactorDisagrees &&
-                ` This match is logged as ${match.powerFactor} power factor, and this row's page shows a different one -- check the match's power factor under Edit Match if that's not right.`}
+              {/* Cold audit M-2 (power-factor-codes verify pass): match.powerFactor is the
+                  raw stored string, and it can be '' (a blank/unset field, not any real
+                  power factor) -- interpolating it directly used to read "logged as
+                  power factor" with the word simply missing. A blank match still scores
+                  Minor (isMajor('') is false), so a 'Maj'/'Major' row against a blank
+                  match IS a real disagreement (see rowPowerFactorDisagrees) and needs its
+                  own honest sentence, not a copy of the named-power-factor one with a
+                  gap in it. When the match value IS recognised, say the canonical word
+                  (suggestPowerFactor(match.powerFactor)) rather than the raw code, so
+                  'Maj' reads as "Major" here -- the same canonicalisation the rest of
+                  this fix applies everywhere else a stored power factor is shown. */}
+              {result.code === 'hf-mismatch' && result.powerFactorDisagrees && match.powerFactor.trim() === '' &&
+                ` This match has no power factor logged, and this row's page shows one -- check the match's power factor under Edit Match if that's not right.`}
+              {result.code === 'hf-mismatch' && result.powerFactorDisagrees && match.powerFactor.trim() !== '' &&
+                ` This match is logged as ${suggestPowerFactor(match.powerFactor) ?? match.powerFactor} power factor, and this row's page shows a different one -- check the match's power factor under Edit Match if that's not right.`}
             </p>
             {result.code === 'wrong-surface-combined' && <HowTo open={howtoOpen} onToggle={setHowtoOpen} stageNumber={activeStage} />}
             {result.code === 'unknown-header' && <HowTo open={howtoOpen} onToggle={setHowtoOpen} stageNumber={activeStage} />}

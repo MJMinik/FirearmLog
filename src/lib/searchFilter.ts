@@ -2,7 +2,7 @@
 // From/To dates, gun category OR individual gun, what-kind toggles, planned
 // handling, and a global search box. Pure functions — the UI just calls these.
 // This module is THE filtering brain the C4 standard search component reuses.
-import { canonicalDivision } from './competition.ts';
+import { canonicalDivision, suggestPowerFactor } from './competition.ts';
 import type { Firearm, GunCategory, Match, Session } from './types.ts';
 
 export type LogKind = 'practice' | 'dry' | 'class' | 'match';
@@ -124,8 +124,10 @@ export function matchMatchesFilter(m: Match, f: LogFilter, firearms: Firearm[]):
   return queryHits(
     // Search the canonical name so "optics" finds a match saved under the
     // retired "open" spelling; the raw string is kept alongside so the old
-    // term a shooter may remember typing still matches too.
-    [m.name, m.matchType, m.division, canonicalDivision(m.division), m.powerFactor, m.notes, gunName(m.firearmId, firearms)],
+    // term a shooter may remember typing still matches too. Power factor
+    // mirrors this (power-factor-codes fix): a match stored as 'Maj' is
+    // found by searching "major", not just "maj".
+    [m.name, m.matchType, m.division, canonicalDivision(m.division), m.powerFactor, suggestPowerFactor(m.powerFactor) ?? '', m.notes, gunName(m.firearmId, firearms)],
     f.query
   );
 }

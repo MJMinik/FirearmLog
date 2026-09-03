@@ -36,7 +36,7 @@
 // it writes none of the sentences itself.
 
 import { splitCsvLine, looseNum, findCol, DELIMITER_CANDIDATES } from './csv.ts';
-import { scoreStageHits, type StageScore } from './competition.ts';
+import { scoreStageHits, suggestPowerFactor, isMajor, type StageScore } from './competition.ts';
 import { isOwnName, memberNumberVerdict } from './shooterMatch.ts';
 
 // ---------------------------------------------------------------------------
@@ -412,18 +412,32 @@ export function hitFactorsAgree(derived: number | null, printed: number | null):
   return round4(derived) === round4(printed);
 }
 
-/** Cold audit M-3: whether a Review row's own PF cell ('Min'/'Maj', or the
- *  full word -- both observed) names a DIFFERENT power factor than the
- *  match's stored one. A disagreement here is a detectable, plain cause of
- *  an hf-mismatch refusal -- scoreStageHits scores against the match's power
- *  factor, never the row's own -- so hiding it sends the shooter looking for
- *  a phantom range-officer penalty instead of the match's own PF setting.
- *  Never a guess: an unrecognised PF cell (neither Min/Minor nor Maj/Major)
- *  returns false rather than claiming a disagreement it can't support. */
+/** Cold audit M-3 (original), corrected by cold audit M-2 (power-factor-codes
+ *  verify pass): whether a Review row's own PF cell ('Min'/'Maj', or the full
+ *  word -- both observed) names a DIFFERENT power factor than the one the
+ *  MATCH actually scores against. A disagreement here is a detectable, plain
+ *  cause of an hf-mismatch refusal -- scoreStageHits scores against the
+ *  match's power factor, never the row's own -- so hiding it sends the
+ *  shooter looking for a phantom range-officer penalty instead of the
+ *  match's own PF setting. Never a guess on the ROW side: an unrecognised PF
+ *  cell (neither Min/Minor nor Maj/Major) returns false rather than claiming
+ *  a disagreement it can't support.
+ *
+ *  M-2's fix: the match side is compared through isMajor -- what
+ *  scoreStageHits ACTUALLY does with the match's power factor -- rather than
+ *  requiring the match value to be independently recognised first. A blank
+ *  or unrecognised match value ('', '???', a hand-edited record) still
+ *  scores Minor in scoreStageHits (isMajor returns false for it), so a 'Maj'
+ *  row against such a match IS a real disagreement in effect and must be
+ *  reported as one; the earlier `matchPf !== null &&` guard silently hid
+ *  exactly that case. Both sides route through this module's single source
+ *  of truth for what a power-factor string means -- suggestPowerFactor for
+ *  the row, isMajor (itself suggestPowerFactor-based) for what the match
+ *  scores as -- so there is no private min/maj table here to drift from it
+ *  (decision 2a). */
 export function rowPowerFactorDisagrees(rowPowerFactor: string, matchPowerFactor: string): boolean {
-  const t = rowPowerFactor.trim().toLowerCase();
-  const rowPf = t === 'min' || t === 'minor' ? 'Minor' : t === 'maj' || t === 'major' ? 'Major' : null;
-  return rowPf !== null && rowPf !== matchPowerFactor;
+  const rowPf = suggestPowerFactor(rowPowerFactor);
+  return rowPf !== null && (rowPf === 'Major') !== isMajor(matchPowerFactor);
 }
 
 // ---------------------------------------------------------------------------
@@ -554,10 +568,14 @@ export type StageScoreResult =
   | { ok: false; code: 'hf-mismatch'; row: StageReviewRow; derived: StageScore; printedHitFactor: number; powerFactorDisagrees: boolean };
 
 export interface StageScoreContext {
-  /** The MATCH's stored power factor ('Major' | 'Minor', competition.ts
-   *  POWER_FACTORS) -- NOT the row's own PF cell. scoreStageHits scores
-   *  against this; a disagreement between the two shows up as a natural
-   *  hit-factor mismatch, with no special-case code needed for it. */
+  /** The MATCH's stored power factor -- NOT the row's own PF cell. Typed
+   *  `string`, not the 'Major' | 'Minor' this comment used to claim: by
+   *  design (decision 1a/2a, the power-factor-codes fix) any spelling is
+   *  accepted here -- 'Min'/'Maj' short codes, the full words, even '' or
+   *  something unrecognised -- and isMajor()/suggestPowerFactor() in
+   *  competition.ts are what decide what it means. scoreStageHits scores
+   *  against this via isMajor(); a disagreement between the two shows up as
+   *  a natural hit-factor mismatch, with no special-case code needed for it. */
   powerFactor: string;
   /** The shooter's own stored USPSA# (AppSettings.uspsaMemberNumber),
    *  confirmation-grade per shooterMatch.ts's memberNumberVerdict:

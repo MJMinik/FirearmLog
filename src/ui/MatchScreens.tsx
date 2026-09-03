@@ -9,7 +9,7 @@ import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { DIVISIONS, IDPA_DIVISIONS, STEEL_DIVISIONS, MATCH_TYPES, POWER_FACTORS, canonicalDivision, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown,
   scoringTypeFor, scoreSteelStage, steelMatchTotal, steelStringsExpected, STEEL_STAGES,
   scoreIdpaStage, idpaMatchTotal, reconcileTime, matchSpeedAccuracy, matchWhatItCost, coachingRead,
-  isMinorOnly, optionsWithStored, suggestDivision, divisionMismatchKind, fmtHitFactor } from '../lib/competition.ts';
+  isMinorOnly, optionsWithStored, suggestDivision, suggestPowerFactor, divisionMismatchKind, fmtHitFactor } from '../lib/competition.ts';
 import type { SpeedAccuracy, WhatItCost } from '../lib/competition.ts';
 import { MarkThumb } from './MarkThumb.tsx';
 import { mediaLabel } from './media.ts';
@@ -785,7 +785,20 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
         // A record with no division at all left the <select> uncontrolled, rendering
         // 'Carry Optics' and writing `undefined` back on save -- the exact untruth this
         // branch exists to remove, in the one field it is about.
-        setDivision(m.division ?? ''); setPowerFactor(m.powerFactor || 'Minor');
+        setDivision(m.division ?? '');
+        // Power factor exists for USPSA only -- IDPA and Steel score neither, and the
+        // Steel importer deliberately stores '' rather than a defaulted 'Minor'
+        // (scsaImport.ts's own comment says so). The unconditional `m.powerFactor ||
+        // 'Minor'` this replaces turned that deliberate '' into 'Minor' on load, so
+        // ANY edit of a Steel/IDPA match -- renaming it, fixing the date -- silently
+        // wrote a power factor into a field the discipline does not have (spec
+        // section 1.3). Default to 'Minor' only when the match is USPSA-scored; a
+        // Steel/IDPA match's '' stays '' unless the record itself carries something
+        // else. The raw value is kept as-is when present -- a 'Min'/'Maj' short code
+        // is NOT rewritten to the full word here; only the segmented control's
+        // pressed state (below) and the T3-6a guardrail read it canonically.
+        setPowerFactor(scoringTypeFor(m.matchType || MATCH_TYPES[0]) === 'uspsa'
+          ? (m.powerFactor || 'Minor') : (m.powerFactor || ''));
         setFirearmId(m.firearmId);
         setTotalRounds(m.totalRounds == null ? '' : String(m.totalRounds));
         // Loads exactly what is stored -- sticky preselection only offers on
@@ -934,8 +947,29 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
   // in the <select>) already marks the form touched via the screen-level onChange
   // handler below; this effect itself never calls setTouched, so a programmatic
   // correction on load can't falsely dirty an unopened form.
+  // suggestPowerFactor(powerFactor), not a raw `powerFactor !== 'Minor'` compare
+  // (power-factor-codes fix): a match stored as 'Min' already IS Minor, and the raw
+  // compare used to treat it as a mismatch and rewrite it to 'Minor' on every load
+  // of a Minor-only division -- a write nothing about the record needed, since 'Min'
+  // and 'Minor' mean the same thing. Canonicalising first means this effect only
+  // fires for a REAL correction (a stored Major, in any spelling, sitting in a
+  // division that can't score it), and nothing is written on an ordinary load.
+  // M-3 (cold audit, power-factor-codes verify pass): with the Steel rider
+  // (decision 4a) load leaves a non-USPSA match's powerFactor at '', switching
+  // an EXISTING Steel/IDPA match to a USPSA type IN THE FORM (matchType picked
+  // fresh, not loaded) left it at that same '' -- nothing else in the form ever
+  // wrote a real value into it, so neither segmented-control button pressed and
+  // an untouched Save would write '' onto a record now typed USPSA, which has
+  // no legal empty power factor. Narrowed to `powerFactor === ''` specifically,
+  // not "unrecognised" more broadly (suggestPowerFactor(powerFactor) === null
+  // would also match a hand-edited '???'): only a truly EMPTY value -- which no
+  // USPSA match should ever carry -- gets defaulted; a stored '???' is left
+  // alone exactly as before, visible on the segmented control as neither button
+  // pressed, so the shooter sees something is off rather than a silent fix.
   useEffect(() => {
-    if (scoringType === 'uspsa' && isMinorOnly(division) && powerFactor !== 'Minor') {
+    if (scoringType === 'uspsa' && powerFactor === '') {
+      setPowerFactor('Minor');
+    } else if (scoringType === 'uspsa' && isMinorOnly(division) && suggestPowerFactor(powerFactor) !== 'Minor') {
       setPowerFactor('Minor');
     }
   }, [division, scoringType, powerFactor]);
@@ -1301,10 +1335,15 @@ export function MatchForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange 
             <div className="seg" role="group" aria-label="Power factor">
               {POWER_FACTORS.map((pf) => {
                 const disabled = pf === 'Major' && isMinorOnly(division);
+                // Pressed state reads the CANONICAL form of what's stored (power-
+                // factor-codes fix), so a record already holding the short code
+                // 'Maj' shows Major pressed instead of neither button lighting up.
+                // Tapping still writes the full word, unchanged.
+                const pressed = suggestPowerFactor(powerFactor) === pf;
                 return (
-                  <button key={pf} type="button" aria-pressed={powerFactor === pf}
+                  <button key={pf} type="button" aria-pressed={pressed}
                     aria-disabled={disabled || undefined}
-                    className={powerFactor === pf ? 'on' : ''}
+                    className={pressed ? 'on' : ''}
                     onClick={() => { if (disabled) return; setPowerFactor(pf); setTouched(true); }}>{pf}</button>
                 );
               })}
