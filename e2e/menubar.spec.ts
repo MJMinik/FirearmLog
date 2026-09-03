@@ -55,7 +55,7 @@ test.describe('desktop menu bar', () => {
     await seedDemo(page);
     const go = await openMenu(page, 'Go');
     await go.getByRole('menuitem', { name: 'Log', exact: true }).click();
-    await expect(page.getByRole('main').getByRole('heading', { name: 'Log' })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('heading', { name: 'Log' }).first()).toBeVisible();
     await (await openMenu(page, 'Go')).getByRole('menuitem', { name: 'Progress', exact: true }).click();
     await expect(page.getByRole('main').getByRole('heading', { name: 'Progress', exact: true })).toBeVisible();
     await (await openMenu(page, 'Go')).getByRole('menuitem', { name: 'Home', exact: true }).click();
@@ -104,11 +104,15 @@ test.describe('desktop menu bar', () => {
   test('File > Open Recent orders by recency of edit, not record date (owner decision, session 75)', async ({ page }) => {
     await seedDemo(page);
     await gotoTab(page, 'Log');
-    // The oldest LOGGED (non-planned) session on screen — last row of the
-    // newest-first "All Sessions" list. The demo log runs many months back
-    // (e.g. its June 2026 sessions), so this row is nowhere near today.
-    const sessionsCard = page.locator('.card', { has: page.getByRole('heading', { name: 'All Sessions' }) });
-    const oldRow = sessionsCard.locator('.row-tap').filter({ hasNotText: 'Planned' }).last();
+    // The oldest LOGGED (non-planned) session on screen — last SESSION row of
+    // the newest-first merged timeline (decision 52, 3 Sep 2026, session 140,
+    // interleaves matches into the same list, heading "Everything logged").
+    // Scoped to `.swipe-row .row-tap` so this stays a session row even if the
+    // oldest row overall happens to be a match — only a SessionRow is wrapped
+    // in a SwipeRow. The demo log runs many months back (e.g. its June 2026
+    // sessions), so this row is nowhere near today.
+    const logCard = page.locator('.card', { has: page.getByRole('heading', { name: 'Everything logged' }) });
+    const oldRow = logCard.locator('.swipe-row .row-tap').filter({ hasNotText: 'Planned' }).last();
     const dateText = await oldRow.locator('.label').evaluate((el) => el.childNodes[0]?.textContent?.trim() ?? '');
     expect(dateText).toBeTruthy();
 
@@ -264,7 +268,7 @@ test.describe('desktop menu bar', () => {
     await expect(page.getByRole('menu', { name: 'Go', exact: true })).toBeVisible();
     await page.keyboard.press('ArrowDown');  // Log
     await page.keyboard.press('Enter');
-    await expect(page.getByRole('main').getByRole('heading', { name: 'Log' })).toBeVisible();
+    await expect(page.getByRole('main').getByRole('heading', { name: 'Log' }).first()).toBeVisible();
     await expect(page.getByRole('menu', { name: 'Go', exact: true })).toBeHidden();
   });
 });

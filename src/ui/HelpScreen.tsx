@@ -43,7 +43,7 @@ const QUICK_TOUR: TourStep[] = [
   {
     title: 'Log',
     view: { kind: 'session-form' },
-    body: 'Every range trip and dry-fire session, plus a calendar — tap a day to open it. Logging a session: pick the gun(s), add drills, rounds, timed skills, any malfunctions, photos or video, and notes. Tap any photo to caption it or draw labeled circles on it. You can edit anything later, forever — and to remove a session, swipe its row left in the list (it waits 30 days in Recently Deleted in case you change your mind).',
+    body: 'Every range trip, dry-fire session and match, plus a calendar — tap a day to open it. Logging a session: pick the gun(s), add drills, rounds, timed skills, any malfunctions, photos or video, and notes. Tap any photo to caption it or draw labeled circles on it. You can edit anything later, forever — and to remove a session, swipe its row left in the list (it waits 30 days in Recently Deleted in case you change your mind).',
   },
   {
     title: 'Compete',

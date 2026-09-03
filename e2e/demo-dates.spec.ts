@@ -51,18 +51,22 @@ test.describe('demo date shift reaches the app', () => {
     await expect(page.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();
     await expect(page.getByText(/at your recent pace/i)).toHaveCount(0);
 
-    // Step 4: the Log screen's newest entry (sessions render newest-first —
-    // see screens.tsx's "Newest first, like everywhere") reads as recent, not
-    // the bin's original fixed era. Asserted relatively (parses within 21
-    // days of the test's own clock — see the tolerance note below) rather
-    // than against a literal year, so this keeps passing regardless of what
-    // year it actually runs in.
+    // Step 4: the Log screen's newest entry reads as recent, not the bin's
+    // original fixed era. The list is now a merged timeline of sessions AND
+    // matches, newest first (decision 52, 3 Sep 2026, session 140), so this
+    // scopes to a session row specifically (`.swipe-row .row-tap` — only a
+    // SessionRow is wrapped in a SwipeRow; a MatchRow is a bare `.row-tap`
+    // with no leading date in its own label) to keep checking the same
+    // date-shift signal the original assertion checked. Asserted relatively
+    // (parses within 21 days of the test's own clock — see the tolerance
+    // note below) rather than against a literal year, so this keeps passing
+    // regardless of what year it actually runs in.
     await gotoTab(page, 'Log');
-    const sessionsCard = page.locator('.card').filter({
-      has: page.getByRole('heading', { name: 'All Sessions', exact: true }),
+    const logCard = page.locator('.card').filter({
+      has: page.getByRole('heading', { name: 'Everything logged', exact: true }),
     });
-    await expect(sessionsCard).toBeVisible();
-    const newestRow = sessionsCard.locator('.row-tap').first();
+    await expect(logCard).toBeVisible();
+    const newestRow = logCard.locator('.swipe-row .row-tap').first();
     await expect(newestRow).toBeVisible();
     const rowText = (await newestRow.innerText()).trim();
     const match = ROW_DATE_RE.exec(rowText);

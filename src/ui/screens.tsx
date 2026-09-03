@@ -898,15 +898,28 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
   const shownSessions = sessions.filter((s) => sessionMatchesFilter(s, filter, firearms));
   const shownMatches = matches.filter((m) => matchMatchesFilter(m, filter, firearms));
 
-  // F2a (stranger-test finding, July 13 2026): the filter counts matches, so the
-  // LIST must show them too when the shooter is narrowing — otherwise "Matches"
-  // promises what the list never delivers (the pilot tester called it broken).
-  // Default view (no filter active) stays sessions-only: matches live in Compete
-  // and on the calendar, which is the app's map. Newest first, like everywhere.
   const narrowing = filterCount(filter) > 0;
-  const listedMatches = narrowing
-    ? [...shownMatches].sort((a, b) => b.date.localeCompare(a.date))
-    : [];
+
+  // Decision 52 (Michael, 3 Sep 2026, session 140): every match is co-located
+  // with sessions in the Log's list, automatically — no flag, no second entry.
+  // This replaces the July 13 2026 (F2a) default, which kept the list
+  // sessions-only and showed matches only while a filter was active; that
+  // default is reversed. One merged timeline, newest first, the way the
+  // calendar already treats sessions and matches together. Tie-break for two
+  // rows on the same date: sessions sort before matches (a stable, explicit
+  // rule, not an accident of sort order) — chosen because a session is
+  // usually the day's live activity and a match its own separate record.
+  type LogRow =
+    | { kind: 'session'; date: string; session: Session }
+    | { kind: 'match'; date: string; match: Match };
+  const logRows: LogRow[] = [
+    ...shownSessions.map((s): LogRow => ({ kind: 'session', date: s.date, session: s })),
+    ...shownMatches.map((m): LogRow => ({ kind: 'match', date: m.date, match: m })),
+  ].sort((a, b) => {
+    if (a.date !== b.date) return b.date.localeCompare(a.date);
+    if (a.kind !== b.kind) return a.kind === 'session' ? -1 : 1;
+    return 0;
+  });
 
   const calItems = new Map<string, CalItem[]>();
   for (const s of shownSessions) {
@@ -930,12 +943,11 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
 
   return (
     <div className="screen">
-      <h1 className="large-title">Log <InfoTip title="Log">Every session, plus a calendar — tap a day to open it, or start a new session. Swipe a row left to delete it (hover it on a computer); deletions wait 30 days in Recently Deleted so you can restore them.</InfoTip></h1>
+      <h1 className="large-title">Log <InfoTip title="Log">Every session and every match, plus a calendar — tap a day to open it, or start a new session. Swipe a session row left to delete it (hover it on a computer); deletions wait 30 days in Recently Deleted so you can restore them. Matches are deleted from the match itself.</InfoTip></h1>
       <p className="report-note" style={{ marginTop: -8, marginBottom: 12 }}>
-        Your training record: live practice, dry fire, classes, and planned range
-        trips — with rounds, drills, ammo used, malfunctions, photos, and how it felt.
-        Matches and classifiers live in the Compete tab; they show up here on the
-        calendar, and in the list when your search includes them.
+        Your training record and your match record in one place: live practice,
+        dry fire, classes, planned range trips, and every match you've logged —
+        newest first. Matches are edited from their own page; tap one to open it.
       </p>
       <div style={{ display: 'flex', gap: 8 }}>
         <button className="button" style={{ flex: 1 }} onClick={() => open({ kind: 'session-form' })}>+ Log Session</button>
@@ -956,42 +968,35 @@ export function LogScreen({ refreshKey, open }: { refreshKey: number; open: (v: 
             ? { kind: 'match-detail', id: it.id }
             : { kind: 'session-form', id: it.id })}
           onEmptyDay={(dk) => open({ kind: 'session-form', date: dk })} />
-      ) : !narrowing && sessions.length === 0 ? (
+      ) : !narrowing && sessions.length === 0 && matches.length === 0 ? (
         <p className="empty">Nothing logged yet. Tap "Log Session" after your next range trip.</p>
-      ) : narrowing && shownSessions.length === 0 && listedMatches.length === 0 ? (
-        /* F2a follow-up (Michael, July 14 2026): filtering to Matches with none
-           logged at all gets a TEACHING answer, not a generic one — the pilot's
-           own confusion, answered in the app forever. */
+      ) : narrowing && logRows.length === 0 ? (
+        /* F2a follow-up (Michael, July 14 2026), copy updated per decision 52
+           (3 Sep 2026, session 140): filtering to Matches with none logged at
+           all gets a TEACHING answer, not a generic one — the pilot's own
+           confusion, answered in the app forever. */
         <p className="empty">
           {filter.kinds.includes('match') && matches.length === 0
-            ? 'No matches logged yet — matches live in the Compete tab. Tap Clear to see everything again.'
+            ? 'No matches logged yet. Tap Clear to see everything again.'
             : 'Nothing matches your search. Tap Clear to see everything again.'}
         </p>
       ) : (
-        <>
-          {shownSessions.length > 0 && (
-            <div className="card">
-              <h2>{shownSessions.length === sessions.length ? 'All Sessions' : 'Matching Sessions'}</h2>
-              {shownSessions.map((s) => (
-                <SessionRow key={s.id} s={s} firearms={firearms}
-                  onTap={() => open({ kind: 'session-form', id: s.id })}
-                  onDelete={() => onRowDelete(s)} />
-              ))}
-            </div>
-          )}
-          {/* F2a: matching matches render as real rows while narrowing — same row
-              shape as Compete's Matches card so the two read as one system, and
-              tapping one opens the match itself. No swipe here: match deletion
-              stays where matches are managed, in Compete. */}
-          {listedMatches.length > 0 && (
-            <div className="card">
-              <h2>Matches</h2>
-              {listedMatches.map((m) => (
-                <MatchRow key={m.id} match={m} onTap={() => open({ kind: 'match-detail', id: m.id })} />
-              ))}
-            </div>
-          )}
-        </>
+        /* Decision 52 (3 Sep 2026, session 140): one merged timeline — sessions
+           and matches interleaved by date, newest first. A match row is the
+           same MatchRow the Compete tab draws, so the two tabs read as one
+           system; tapping one opens the match detail. No swipe on a match
+           row: match deletion stays where matches are managed, on Compete. */
+        <div className="card">
+          <h2>{narrowing ? 'Matching entries' : 'Everything logged'}</h2>
+          {logRows.map((row) => row.kind === 'session' ? (
+            <SessionRow key={`s-${row.session.id}`} s={row.session} firearms={firearms}
+              onTap={() => open({ kind: 'session-form', id: row.session.id })}
+              onDelete={() => onRowDelete(row.session)} />
+          ) : (
+            <MatchRow key={`m-${row.match.id}`} match={row.match}
+              onTap={() => open({ kind: 'match-detail', id: row.match.id })} />
+          ))}
+        </div>
       )}
 
       <RecentlyDeleted trashed={trashed} firearms={firearms}
