@@ -1061,12 +1061,27 @@ function SkillSheet({ assessment, onClose, onSaved }: {
   const dirty = useDirtyTracker({ date, ratings, notes });
 
   async function save() {
-    const r: Record<string, number> = {};
+    // D8 fix (picker sweep, session 139): the validity check runs against the
+    // known SKILL_AREAS only, BEFORE anything is merged, so a stored key
+    // outside SKILL_AREAS can no longer disguise "nothing rated" as valid.
+    const anyRated = SKILL_AREAS.some((a) => {
+      const v = Number(ratings[a.key]);
+      return Number.isFinite(v) && v > 0;
+    });
+    if (!anyRated) { setProblem('Rate at least one area before saving.'); return; }
+    // Start from the STORED ratings, not an empty map: `putOne` replaces the
+    // whole ratings object, so rebuilding it from SKILL_AREAS alone silently
+    // deleted any key the app doesn't currently recognise (an older skill
+    // area, an imported one) the moment a shooter edited a single rating.
+    // Remove only the known keys, then re-add the ones just rated — an
+    // untouched or unknown key survives; a known key that was cleared to
+    // blank drops out, same as before.
+    const r: Record<string, number> = { ...(assessment?.ratings ?? {}) };
+    for (const a of SKILL_AREAS) delete r[a.key];
     for (const a of SKILL_AREAS) {
       const v = Number(ratings[a.key]);
       if (Number.isFinite(v) && v > 0) r[a.key] = v;
     }
-    if (Object.keys(r).length === 0) { setProblem('Rate at least one area before saving.'); return; }
     if (assessment) {
       await putOne('skills', stampUpdate({ ...assessment, date, ratings: r, notes: notes.trim() }, Date.now()));
     } else {

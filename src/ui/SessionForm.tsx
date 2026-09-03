@@ -51,6 +51,16 @@ const KINDS = [
   { value: 'class', label: 'Class' }
 ];
 
+/** D7 fix (picker sweep, session 139): a stored kind outside KINDS (a CSV
+ *  import keeps whatever the source column said, e.g. 'competition') pressed
+ *  none of the three chips, so the segmented control silently read as live
+ *  practice while the record said something else. Turns a raw id into a
+ *  readable chip label: 'competition' -> 'Competition'. */
+function kindLabel(kind: string): string {
+  const words = kind.replace(/_+/g, ' ').trim();
+  return words ? words.charAt(0).toUpperCase() + words.slice(1) : kind;
+}
+
 interface DrillRow {
   name: string; distance: string; time: string; score: string; maxScore: string; notes: string;
 }
@@ -521,7 +531,14 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       const next = prev.map((m) => {
         if (inSession.has(m.firearmId)) return m;
         changed = true;
-        return { ...m, firearmId: selectedGuns[0].id };
+        // D5 fix (picker sweep, session 139): the magazine belonged to the OLD
+        // gun, not the one this malfunction is being re-pointed to. Left alone,
+        // the magazine picker (scoped to the new gun's mags) had no option for
+        // it, so the field silently read "— Not sure —" while Save kept writing
+        // the old gun's magazine id underneath — gun A's malfunction carrying
+        // gun B's magazine, displayed as no magazine at all. Clearing it in the
+        // same patch makes the field's blank reading true.
+        return { ...m, firearmId: selectedGuns[0].id, magazineId: '' };
       });
       return changed ? next : prev;
     });
@@ -1127,6 +1144,16 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               {k.label}
             </button>
           ))}
+          {/* D7 fix: an unrecognised stored kind gets a fourth chip, shown
+              pressed, so an untouched Save keeps writing what the record
+              already said instead of the form silently defaulting to
+              practice. Tapping one of the three chips above still switches
+              away in the normal way. */}
+          {kind !== '' && !KINDS.some((k) => k.value === kind) && (
+            <button type="button" aria-pressed={true} className="on">
+              {kindLabel(kind)}
+            </button>
+          )}
         </div>
         <label className={`field${problem?.field === 'date' ? ' invalid' : ''}`}>Date <span className="field-required-marker">(required)</span>
           <input
@@ -1339,6 +1366,12 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               <select className="category-pick ammo-pick" aria-label={`Ammo ${i + 1}`} value={r.ammoId}
                 onChange={(e) => { setAmmoTouched(true); setAmmoRows((p) => p.map((x, n) => n === i ? { ...x, ammoId: e.target.value } : x)); if (problem?.field === 'ammo') setProblem(null); }}>
                 <option value="">Pick ammo…</option>
+                {/* D6 fix (picker sweep, session 139): a can this row references
+                    that's since been deleted used to fall through to "Pick
+                    ammo…", a false "nothing chosen" reading — the row still
+                    holds the id and an untouched Save still writes it back. */}
+                {r.ammoId !== '' && !ammoLib.some((a) => a.id === r.ammoId) &&
+                  <option value={r.ammoId}>(removed)</option>}
                 {ammoLib.map((a) => <option key={a.id} value={a.id}>{ammoLabel(a)}</option>)}
               </select>
               <input className="rounds-input" type="number" inputMode="numeric" min="0"
@@ -1562,7 +1595,18 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               )}
               <label className="field">Which gun
                 <select value={m.firearmId}
-                  onChange={(e) => updateMalf(i, { firearmId: e.target.value })}>
+                  onChange={(e) => {
+                    // D5 fix, second door (cold audit, session 140): the
+                    // effect at ~531 only clears magazineId when a gun is
+                    // re-pointed AUTOMATICALLY (its gun left the session). A
+                    // shooter switching this dropdown BY HAND hit the exact
+                    // same defect through a door the effect never covers —
+                    // Save wrote the OLD gun's magazine id under the NEW
+                    // gun's malfunction. A magazine chosen for one gun cannot
+                    // be the magazine for another, so any hand change clears
+                    // it too.
+                    updateMalf(i, { firearmId: e.target.value, magazineId: '' });
+                  }}>
                   {(selectedGuns.length ? selectedGuns : firearms).map((f) =>
                     <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select>
@@ -1586,6 +1630,10 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                   <select value={m.ammoId}
                     onChange={(e) => updateMalf(i, { ammoId: e.target.value })}>
                     <option value="">— Not sure —</option>
+                    {/* D6 fix: same reasoning as the session ammo picker above —
+                        a deleted can's id must not read as "— Not sure —". */}
+                    {m.ammoId !== '' && !ammoLib.some((a) => a.id === m.ammoId) &&
+                      <option value={m.ammoId}>(removed)</option>}
                     {ammoLib.map((a) => <option key={a.id} value={a.id}>{ammoLabel(a)}</option>)}
                   </select>
                 </label>
@@ -1595,6 +1643,28 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                   <select value={m.magazineId}
                     onChange={(e) => updateMalf(i, { magazineId: e.target.value })}>
                     <option value="">— Not sure —</option>
+                    {/* D5/D6 fix (picker sweep, session 139; third door closed in
+                        the session-140 cold audit): a stored magazineId can be
+                        wrong in two different ways, and each needs its own
+                        truthful option rather than falling through to
+                        "— Not sure —" while Save keeps writing the id back.
+                        (1) It resolves to nothing in the FULL magazines list
+                        (hard deleted, e.g. MagazinesScreen's forever-delete) —
+                        "(removed)". Checked against the full list, not just
+                        this gun's mags, because magazinesForFirearm falls back
+                        to every magazine when none are linked to the gun.
+                        (2) It still exists but is no longer linked to THIS
+                        malfunction's gun — unlinked from the gun after the
+                        malfunction was logged, or (D5's other two doors) the
+                        malfunction was re-pointed to a different gun without
+                        the field being touched — "(other gun)", the same idea
+                        as MatchMagPicker's ghost rows for the same shape. */}
+                    {m.magazineId !== '' && (() => {
+                      const stored = magazines.find((mag) => mag.id === m.magazineId);
+                      if (!stored) return <option value={m.magazineId}>(removed)</option>;
+                      const inScope = magazinesForFirearm(magazines, m.firearmId).some((mag) => mag.id === m.magazineId);
+                      return inScope ? null : <option value={m.magazineId}>{stored.label} (other gun)</option>;
+                    })()}
                     {magazinesForFirearm(magazines, m.firearmId).map((mag) =>
                       <option key={mag.id} value={mag.id}>{mag.label}{mag.active === false ? ' (retired)' : ''}</option>)}
                   </select>

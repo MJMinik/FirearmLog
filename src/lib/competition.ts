@@ -121,11 +121,22 @@ export const DIVISION_CODE_ALIASES: Readonly<Record<string, string>> = {
 
 /** The option list, plus the stored value when the list cannot represent it.
  *
- *  Returns the list UNCHANGED when the stored value is already in it (including via the
- *  Steel alias map), so the common path allocates nothing new and the picker is
- *  untouched for every record that was already fine. An empty or whitespace stored value
- *  is NOT injected: "no division chosen" is representable as an empty select, and adding
- *  a blank option would be inventing a choice.
+ *  Docstring corrected in the session-140 cold audit: this used to claim the
+ *  opposite of what the code below does, on both counts.
+ *
+ *  Returns the list UNCHANGED only when the stored value is already in it, by an EXACT,
+ *  literal, case-sensitive string match (`list.includes(stored)`) -- no alias resolution
+ *  happens in this function. STEEL_DIVISION_ALIASES above is a different population,
+ *  consulted by other callers (e.g. canonicalDivision) before or after this one, not by
+ *  this comparison itself: '  carry optics  ' is not 'Carry Optics' here, on purpose --
+ *  see the RAW-STRING note below. `undefined`/`null` are the ONLY values treated as
+ *  "genuinely absent" and passed through untouched; every other string, INCLUDING '', is
+ *  a real stored state and gets injected. A blank division is not "no division chosen" --
+ *  it is what the PractiScore importer writes when a results table has no division
+ *  column, and PractiScoreImport.tsx already branches on `me.division === ''` to say so.
+ *  Treating it as absence and leaving no option for it is the exact defect this function
+ *  exists to close: value='' would fall through to the first <option> and render as
+ *  whatever DIVISIONS[0] happens to be.
  *
  *  The caller renders the injected entry with its own label; this returns raw values so
  *  the SAVED STRING round-trips byte-for-byte. Anything that decorated the value here

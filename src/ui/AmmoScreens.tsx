@@ -12,6 +12,7 @@ import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { ammoCurrentCostPerRound, costPerRoundAfterBuy, lowAmmo } from '../lib/costing.ts';
 import { combinedCan, findSameAmmo, repointAmmoUsage, repointPurchaseIds } from '../lib/ammoMerge.ts';
+import { optionsWithStored } from '../lib/competition.ts';
 import { recentValues } from '../lib/suggest.ts';
 import { filterHidden } from '../lib/listEdits.ts';
 import { SuggestField } from './SuggestField.tsx';
@@ -167,7 +168,14 @@ export function AmmoForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }
         if (!alive || !a) return;
         setOriginal(a);
         setBrand(a.brand); setCaliber(a.caliber); setGrain(a.grain);
-        setBulletType(a.bulletType || 'FMJ');
+        // D2 fix (picker sweep, session 139): the stored value, unchanged — not
+        // `a.bulletType || 'FMJ'`. That substitution showed FMJ for a blank can
+        // (the migration reader writes '' when the source had no bullet type)
+        // and the "Discard changes?" baseline was taken AFTER it, so a plain
+        // quantity edit and Save wrote FMJ into a record that never said so.
+        // A NEW can still starts on 'FMJ' (the useState default above) — this
+        // only touches what an EXISTING can loads as.
+        setBulletType(a.bulletType);
         setQuantity(String(a.quantity || 0));
         setCostPerRound(a.costPerRound > 0 ? String(a.costPerRound) : '');
         setNotes(a.notes);
@@ -343,7 +351,12 @@ export function AmmoForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }
         </label>
         <label className="field">Bullet type
           <select value={bulletType} onChange={(e) => setBulletType(e.target.value)}>
-            {BULLET_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            {/* D2 fix: the stored value always gets an option, including a blank
+                one (an unlisted bullet type, or a can whose bullet type was never
+                recorded) — optionsWithStored injects it so the select never falls
+                through to BULLET_TYPES[0], FMJ, for a can that isn't FMJ. */}
+            {optionsWithStored(BULLET_TYPES, bulletType).map((t) =>
+              <option key={t === '' ? '__blank__' : t} value={t}>{t === '' ? 'Not recorded' : t}</option>)}
           </select>
         </label>
         {editing && (
@@ -511,7 +524,11 @@ export function AmmoForm({ id, onSaved, onCancel, onDirtyChange, onSaverChange }
         <ConfirmSheet
           title="Delete this ammo?"
           message={usedBy > 0
-            ? `${usedBy} session${usedBy === 1 ? ' used' : 's used'} this ammo — those will show "ammo deleted." There's no undo.`
+            // D6 fix: this used to promise those sessions "will show 'ammo
+            // deleted'," which nothing in the app renders — a grep found the
+            // words only in this promise. What the app actually shows for a
+            // deleted can, on every screen that reads it back, is "(removed)".
+            ? `${usedBy} session${usedBy === 1 ? '' : 's'} used this ammo and will show "(removed)" for it. There's no undo.`
             : "This removes the can from your inventory. There's no undo."}
           confirmLabel="Delete Ammo"
           onConfirm={() => void reallyDelete()}
