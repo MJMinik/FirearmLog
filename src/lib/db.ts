@@ -2,7 +2,7 @@
 // This module is the seam where a cloud sync service could plug in later.
 
 import type {
-  Ammunition, Classifier, CsvImportCounts, CsvImportHistoryEntry, CsvImportRowCounts, DataSet,
+  Ammunition, Classifier, CsvImportCounts, CsvImportHistoryEntry, CsvImportRowCounts,
   DrillDef, Firearm, Goal, Magazine, MaintenanceEntry, MalfunctionEntry, Match, Media, Optic,
   Part, Purchase, Reference, Reminder, Session, SkillAssessment, SkillSet, TrashItem,
 } from './types.ts';
@@ -241,8 +241,10 @@ export async function getAll<T>(store: Exclude<StoreName, 'media'>): Promise<T[]
  * are now false: the .flog is built one photo at a time. Corrected on contact,
  * because a comment asserting a whole-store load is JUSTIFIED is exactly what
  * stops the next session questioning it.)
- * The import commit path (P-8) uses scanMediaOwnerIds; the restore path uses
- * scanMediaKeys (primary keys only, no record deserialised at all).
+ * The restore path (P-8) uses scanMediaKeys (primary keys only, no record
+ * deserialised at all). (This used to also name commitDataSet's own
+ * scanMediaOwnerIds path here — commitDataSet had no live caller and was deleted,
+ * D-2, session 140, and scanMediaOwnerIds went with it as its only reader.)
  * localLastModified (P-4) now uses newestMediaStamp (stamp only).
  * The Free Up Space card (P-7) now uses hasOversizedMedia for its mount probe and
  * delegates the run to runPhotoCleanup (src/ui/photoCleanupRun.ts), which scans
@@ -390,46 +392,6 @@ async function scanStore<T>(store: StoreName, visit: (record: T) => void): Promi
     req.onerror = () => reject(req.error);
   });
   await txDone(tx);
-}
-
-/**
- * P-8: visit every media record with a cursor and keep only the two fields the
- * delete-stale passes need. The full record (its data ArrayBuffer included) is
- * deserialised one at a time by the cursor and dropped as soon as the visit
- * returns, so peak memory is one photo rather than the whole library.
- *
- * THE READ BOUNDARY IS NOT OPTIONAL HERE (audit finding 1, session 114). The
- * getAllMediaWholeStore call this replaced ran every record through
- * normalizeRecord, so this one must too. Be precise about what that does, because
- * the imprecise version of this sentence was itself an audit finding: stringFor in
- * recordShape.ts turns a missing or null value into '', and a number or boolean
- * into its text, but it leaves an object ALONE — so a badly damaged record can
- * still hand back an ownerId that is not a string, and this function's return type
- * is optimistic about that. It is harmless in the safe direction (an object never
- * matches an owner in the re-write set, so the photo is RETAINED, never deleted),
- * and it matches what the pre-fix code did. Reading cursor.value.ownerId raw and
- * skipping anything that wasn't a string was the defect: it silently dropped those
- * records from the delete pass, so an orphaned photo could never be cleaned up.
- * The id comes from cursor.primaryKey, which is the record's real key whatever its
- * type, so a delete by that key always matches.
- */
-async function scanMediaOwnerIds(): Promise<{ key: IDBValidKey; ownerId: string }[]> {
-  const db = await openDb();
-  const tx = db.transaction('media', 'readonly');
-  const out: { key: IDBValidKey; ownerId: string }[] = [];
-  await new Promise<void>((resolve, reject) => {
-    const req = tx.objectStore('media').openCursor();
-    req.onsuccess = () => {
-      const cursor = req.result;
-      if (!cursor) { resolve(); return; }
-      const m = normalizeRecord('media', cursor.value as Media);
-      out.push({ key: cursor.primaryKey, ownerId: m.ownerId });
-      cursor.continue();
-    };
-    req.onerror = () => reject(req.error);
-  });
-  await txDone(tx);
-  return out;
 }
 
 /**
@@ -594,104 +556,6 @@ export async function countAll(store: StoreName): Promise<number> {
   const req = tx.objectStore(store).count();
   await txDone(tx);
   return req.result;
-}
-
-/**
- * Write a whole imported data set. Small records go in one transaction;
- * photos/videos are saved ONE PER TRANSACTION because iPhone Safari chokes
- * on many megabytes in a single write. onProgress reports photo progress.
- */
-export async function commitDataSet(
-  data: DataSet,
-  settings: unknown,
-  onProgress?: (done: number, total: number) => void
-): Promise<void> {
-  return withIoGuard('the import', () => commitDataSetInner(data, settings, onProgress));
-}
-
-async function commitDataSetInner(
-  data: DataSet,
-  settings: unknown,
-  onProgress?: (done: number, total: number) => void
-): Promise<void> {
-  const db = await openDb();
-  // B4/M-4: derived from the ONE canonical list (STORE_NAMES), not hand-copied —
-  // three hand-maintained copies had drifted, and `references` was silently
-  // dropped on import. Exclusions are deliberate and local: media and drills are
-  // written in their own phases below.
-  const stores: StoreName[] = STORE_NAMES.filter((n) => n !== 'media' && n !== 'drills');
-  const tx = db.transaction(stores, 'readwrite');
-  const putAll = (store: StoreName, records: object[] | undefined) => {
-    const os = tx.objectStore(store);
-    for (const r of records ?? []) os.put(r); // a missing section means empty, never a crash
-  };
-  queueOrAbort(tx, () => {
-    putAll('firearms', data.firearms);
-    putAll('sessions', data.sessions);
-    putAll('ammunition', data.ammunition);
-    putAll('purchases', data.purchases);
-    putAll('maintenance', data.maintenance);
-    putAll('malfunctions', data.malfunctions);
-    putAll('magazines', data.magazines);
-    putAll('optics', data.optics);
-    putAll('parts', data.parts);
-    putAll('goals', data.goals);
-    putAll('skills', data.skills);
-    putAll('skillSets', data.skillSets);
-    putAll('matches', data.matches);
-    putAll('classifiers', data.classifiers);
-    putAll('references', data.references); // M-4: was silently dropped before
-    putAll('trash', data.trash);
-    if (settings !== undefined) {
-      tx.objectStore('meta').put({ key: 'settings', value: settings });
-    }
-  });
-  await txDone(tx);
-
-  // Imports replace import-derived drills (IDs starting 'dr-'). Custom drills
-  // made in the app use 'drx-' IDs and survive a re-import untouched.
-  // (Edits made to imported drills are reset by a re-import — by design.)
-  const existingDrills = await getAll<{ id: string }>('drills');
-  const dtx0 = db.transaction('drills', 'readwrite');
-  queueOrAbort(dtx0, () => {
-    for (const d of existingDrills) {
-      if (d.id.startsWith('dr-')) dtx0.objectStore('drills').delete(d.id);
-    }
-    for (const d of data.drills ?? []) dtx0.objectStore('drills').put(d);
-  });
-  await txDone(dtx0);
-
-  // Re-imports must never duplicate photos OR lose them mid-write (audit CR-2).
-  // Save the fresh set FIRST (one per transaction — iPhone Safari friendly)…
-  const total = data.media.length;
-  let done = 0;
-  onProgress?.(done, total);
-  for (const m of data.media) {
-    const mtx = db.transaction('media', 'readwrite');
-    mtx.objectStore('media').put(m);
-    await txDone(mtx);
-    done += 1;
-    onProgress?.(done, total);
-    await new Promise((r) => setTimeout(r, 0));
-  }
-  // …then remove superseded photos for the re-written owners (anything on those
-  // owners that isn't in the fresh set). Add-before-delete = never a gap.
-  // P-8: walk the store with a cursor, holding one record at a time instead of
-  // the whole library. (It still deserialises each photo to read ownerId; what
-  // changed is that none of them are retained.)
-  const newIds = new Set(data.media.map((m) => m.id));
-  const ownerIds = new Set<string>();
-  for (const f of data.firearms) ownerIds.add(f.id);
-  for (const sn of data.sessions) ownerIds.add(sn.id);
-  for (const m of data.matches) ownerIds.add(m.id);
-  const existing = await scanMediaOwnerIds();
-  for (const m of existing) {
-    if (ownerIds.has(m.ownerId) && !newIds.has(m.key as string)) {
-      const dtx = db.transaction('media', 'readwrite');
-      dtx.objectStore('media').delete(m.key);
-      await txDone(dtx);
-    }
-  }
 }
 
 export async function getSettings<T>(): Promise<T | undefined> {
@@ -959,10 +823,10 @@ async function openMediaBytes(key: IDBValidKey): Promise<Uint8Array<ArrayBuffer>
  * photos in the same sequence and produce the same archive. The round-trip
  * equivalence test is what holds that, not this sentence.
  *
- * THE READ BOUNDARY IS NOT OPTIONAL HERE, for the same reason it is not optional
- * in scanMediaOwnerIds: the whole-store load this replaces ran every record
- * through normalizeRecord, so the descriptions written into data.json would
- * otherwise differ between the two writers. `meta` is the normalised record with
+ * THE READ BOUNDARY IS NOT OPTIONAL HERE: the whole-store load this replaces ran
+ * every record through normalizeRecord, so the descriptions written into
+ * data.json would otherwise differ between the two writers. `meta` is the
+ * normalised record with
  * `data` removed — removed HERE rather than left to planFlog, because leaving it
  * on would retain every photo's bytes and undo the entire point.
  *
@@ -1425,9 +1289,9 @@ export interface CommitImportBatchInput {
 /**
  * Write one approved import: every planned session, every gun it creates, and
  * the history entry that makes it removable, in ONE transaction over
- * ['sessions', 'firearms', 'meta'].
+ * ['sessions', 'firearms', 'ammunition', 'meta'].
  *
- * Atomic by construction, the commitDataSet / seedGoalWithSettings shape: the
+ * Atomic by construction, the seedGoalWithSettings shape: the
  * history row is read, merged and written inside the same transaction as the
  * records, and any throw while queueing aborts the lot. A crash mid-commit
  * leaves the log exactly as it was, with no history entry pointing at records
@@ -1459,41 +1323,53 @@ async function commitImportBatchInner(input: CommitImportBatchInput): Promise<Cs
   const { batchId, filename, sessions, firearms, counts, now } = input;
   const db = await openDb();
 
-  // Read the cans BEFORE the transaction opens, the same shape as the undo's
-  // reference scan below and for the same reason: this write is one transaction,
-  // and a transaction cannot read a store it did not name until it has named it.
-  // withIoGuard keeps another import, restore or erase out of the way meanwhile.
-  const cans = await getAll<Ammunition>('ammunition');
-  const deduction = deductUsageFromStock(cans, usageThatMovedStock(sessions));
-  const newQuantities = deduction.quantities;
-
-  const entry: CsvImportHistoryEntry = {
-    batchId,
-    filename,
-    importedAt: now,
-    // The record counts are what actually went in, taken from the arrays rather
-    // than from the plan's own figures, so the history cannot overstate.
-    counts: { ...counts, sessions: sessions.length, firearms: firearms.length } as CsvImportCounts,
-    // And the same rule for the cans: what came off, not what was asked for.
-    // This is the number the undo hands back, so it is stored with the import
-    // rather than worked out again later from figures that cannot express it.
-    ammoDeducted: deduction.realised,
-  };
-
+  // D-3: the cans are read THROUGH the open transaction's own request, the same
+  // shape putSettings already uses (get, compute in the success handler, put in
+  // the same handler) — not before the transaction opens. The transaction below
+  // names 'ammunition', so it can read it; the comment this replaced said a
+  // transaction "cannot read a store it did not name until it has named it",
+  // which was already wrong the day it was written, since naming the store IS
+  // what opening the transaction with it does. withIoGuard still keeps another
+  // import, restore or erase out of the way meanwhile — that part was true and
+  // is unchanged — but it was never what stood between the read and the write.
   const tx = db.transaction(['sessions', 'firearms', 'ammunition', 'meta'], 'readwrite');
   const meta = tx.objectStore('meta');
+  const ammo = tx.objectStore('ammunition');
+  let entry!: CsvImportHistoryEntry;
   await new Promise<void>((resolve, reject) => {
-    const req = meta.get(CSV_IMPORT_HISTORY_KEY);
-    req.onsuccess = () => {
+    const historyReq = meta.get(CSV_IMPORT_HISTORY_KEY);
+    const cansReq = ammo.getAll();
+    let historyRow: unknown;
+    let cans: Ammunition[] | undefined;
+    let gotHistory = false;
+    let gotCans = false;
+    const proceed = () => {
+      if (!gotHistory || !gotCans) return;
       try {
+        const deduction = deductUsageFromStock(cans as Ammunition[], usageThatMovedStock(sessions));
+        const newQuantities = deduction.quantities;
+        entry = {
+          batchId,
+          filename,
+          importedAt: now,
+          // The record counts are what actually went in, taken from the arrays
+          // rather than from the plan's own figures, so the history cannot
+          // overstate.
+          counts: { ...counts, sessions: sessions.length, firearms: firearms.length } as CsvImportCounts,
+          // And the same rule for the cans: what came off, not what was asked
+          // for. This is the number the undo hands back, so it is stored with
+          // the import rather than worked out again later from figures that
+          // cannot express it.
+          ammoDeducted: deduction.realised,
+        };
         // Guns first: a session written here points at one of them.
         for (const f of firearms) tx.objectStore('firearms').put(f);
         for (const s of sessions) tx.objectStore('sessions').put(s);
         for (const [ammoId, quantity] of newQuantities) {
-          const previous = cans.find((a) => a.id === ammoId);
+          const previous = (cans as Ammunition[]).find((a) => a.id === ammoId);
           if (previous) tx.objectStore('ammunition').put(stampUpdate({ ...previous, quantity }, now));
         }
-        const history = historyFromRow(req.result).filter((e) => e.batchId !== batchId);
+        const history = historyFromRow(historyRow).filter((e) => e.batchId !== batchId);
         meta.put({
           key: CSV_IMPORT_HISTORY_KEY,
           value: [entry, ...history].slice(0, MAX_IMPORT_HISTORY),
@@ -1504,7 +1380,23 @@ async function commitImportBatchInner(input: CommitImportBatchInput): Promise<Cs
         reject(e); // e.g. an unstorable value: abort + reject, never a partial import
       }
     };
-    req.onerror = () => reject(req.error);
+    historyReq.onsuccess = () => { historyRow = historyReq.result; gotHistory = true; proceed(); };
+    historyReq.onerror = () => reject(historyReq.error);
+    cansReq.onsuccess = () => {
+      // Through the read boundary, exactly as getAll() would have done: the write-back
+      // below spreads the record, so an un-normalised read would ship a can missing
+      // the fields every other path fills in (cold audit, db-trio, finding 1). Inside
+      // its own try so that a throw here aborts and rejects like one inside proceed,
+      // instead of escaping the event handler and leaving the promise pending.
+      try {
+        cans = normalizeRecords('ammunition', cansReq.result as Ammunition[]);
+      } catch (e) {
+        try { tx.abort(); } catch { /* already aborting */ }
+        reject(e); return;
+      }
+      gotCans = true; proceed();
+    };
+    cansReq.onerror = () => reject(cansReq.error);
   });
   await txDone(tx);
   return entry;
@@ -1874,12 +1766,26 @@ async function firearmsStillReferenced(
  * would orphan them: unreachable from any screen, undeletable, and still
  * counted by every trend that reads them.
  *
- * Both scans read their stores BEFORE the write transaction opens, because the
- * write is ONE transaction and a transaction cannot span stores it did not
- * name. withIoGuard keeps another import, restore or erase out of the way
- * meanwhile; an ordinary save in the same tab between the scan and the write is
- * a window this deliberately accepts, and it can only ever mean a gun is
- * removed that was pointed at a fraction of a second earlier.
+ * The firearm and session reference scans (doomedRecordsFor,
+ * firearmsStillReferenced) read their stores BEFORE the write transaction
+ * opens, because working them out touches many stores at once and the result
+ * decides what the write transaction has to delete — the transaction cannot be
+ * opened until that is known. withIoGuard keeps another import, restore or
+ * erase out of the way meanwhile; an ordinary save in the same tab between the
+ * scan and the write is a window this deliberately accepts, and it can only
+ * ever mean a gun is removed that was pointed at a fraction of a second
+ * earlier.
+ *
+ * THE AMMO CAN READ IS DIFFERENT (D-3, session 140). The write transaction
+ * below always names 'ammunition', so nothing stopped that read from
+ * happening through the transaction itself — the comment this replaced said a
+ * transaction "cannot span stores it did not name," which was already wrong:
+ * naming the store is exactly what opening the transaction with it does. The
+ * cans are read through the transaction's own request now, in the success
+ * handler, the same shape putSettings uses elsewhere in this file, and
+ * wouldMoveAmmo / ammoLeftAlone are worked out there too — so both reflect the
+ * can's value as the transaction actually runs, not a value read a moment
+ * earlier.
  */
 export async function undoImportBatch(batchId: string): Promise<UndoImportResult> {
   return withIoGuard('removing this import', () => undoImportBatchInner(batchId));
@@ -1902,16 +1808,11 @@ async function undoImportBatchInner(batchId: string): Promise<UndoImportResult> 
   const candidateIds = new Set(batchFirearms.map((f) => f.id));
   const referencedBy = await firearmsStillReferenced(candidateIds, doomed);
 
-  // The rounds of this batch that are STILL off the cans, and which cans they
-  // are off NOW rather than which the import named. A session already in the
-  // Trash was refunded when it was trashed, and usageThatMovedStock knows it.
-  const cans = await getAll<Ammunition>('ammunition');
+  // The rounds of this batch that are STILL off the cans (pure — no db read: it
+  // only looks at batchSessions, already in hand). Which cans they are off NOW,
+  // rather than which the import named, is answered inside the transaction
+  // below, once the cans are actually read.
   const stillDeducted = usageThatMovedStock(batchSessions);
-  // Is there anything for the restore to do at all? Only then can declining to
-  // do it be worth saying, and only then is it worth saying.
-  const wouldMoveAmmo = stillDeducted.some(
-    (u) => (u.rounds || 0) > 0 && cans.some((c) => c.id === u.ammoId),
-  );
   let ammoLeftAlone = false;
   const now = Date.now();
 
@@ -1930,11 +1831,18 @@ async function undoImportBatchInner(batchId: string): Promise<UndoImportResult> 
   ];
   const tx = db.transaction(stores, 'readwrite');
   const meta = tx.objectStore('meta');
+  const ammo = tx.objectStore('ammunition');
   await new Promise<void>((resolve, reject) => {
-    const req = meta.get(CSV_IMPORT_HISTORY_KEY);
-    req.onsuccess = () => {
+    const historyReq = meta.get(CSV_IMPORT_HISTORY_KEY);
+    const cansReq = ammo.getAll();
+    let historyRow: unknown;
+    let cans: Ammunition[] | undefined;
+    let gotHistory = false;
+    let gotCans = false;
+    const proceed = () => {
+      if (!gotHistory || !gotCans) return;
       try {
-        const stored = historyFromRow(req.result);
+        const stored = historyFromRow(historyRow);
         // WHAT THE COMMIT ACTUALLY TOOK, read back rather than recomputed. A
         // figure worked out here from the rows would be what the import ASKED
         // for, and an import of 150 rounds against a can holding 100 only ever
@@ -1942,6 +1850,12 @@ async function undoImportBatchInner(batchId: string): Promise<UndoImportResult> 
         // (deductUsageFromStock), played back here, so the two directions are no
         // longer two calculations that have to agree.
         const ledger = stored.find((e) => e.batchId === batchId)?.ammoDeducted;
+        // Is there anything for the restore to do at all, against the cans as
+        // they stand right now? Only then can declining to do it be worth
+        // saying, and only then is it worth saying.
+        const wouldMoveAmmo = stillDeducted.some(
+          (u) => (u.rounds || 0) > 0 && (cans as Ammunition[]).some((c) => c.id === u.ammoId),
+        );
         // AN ENTRY WITH NO LEDGER RESTORES NOTHING, and the screen says so.
         //
         // Two entries have none: one written by a build from before this was
@@ -1959,7 +1873,7 @@ async function undoImportBatchInner(batchId: string): Promise<UndoImportResult> 
         // said out loud rather than left for the shooter to find.
         ammoLeftAlone = !ledger && wouldMoveAmmo;
         const newQuantities = ledger
-          ? restoreDeductedStock(cans, ledger, stillDeducted)
+          ? restoreDeductedStock(cans as Ammunition[], ledger, stillDeducted)
           : new Map<string, number>();
 
         // ONE list: the records excluded from the scan above are the records
@@ -1967,7 +1881,7 @@ async function undoImportBatchInner(batchId: string): Promise<UndoImportResult> 
         for (const row of doomed.records) tx.objectStore(row.store).delete(row.id);
         for (const id of firearmIdsToRemove) tx.objectStore('firearms').delete(id);
         for (const [ammoId, quantity] of newQuantities) {
-          const previous = cans.find((a) => a.id === ammoId);
+          const previous = (cans as Ammunition[]).find((a) => a.id === ammoId);
           if (previous) tx.objectStore('ammunition').put(stampUpdate({ ...previous, quantity }, now));
         }
         const history = stored.filter((e) => e.batchId !== batchId);
@@ -1979,7 +1893,23 @@ async function undoImportBatchInner(batchId: string): Promise<UndoImportResult> 
         reject(e); // abort + reject, never a half-removed import
       }
     };
-    req.onerror = () => reject(req.error);
+    historyReq.onsuccess = () => { historyRow = historyReq.result; gotHistory = true; proceed(); };
+    historyReq.onerror = () => reject(historyReq.error);
+    cansReq.onsuccess = () => {
+      // Through the read boundary, exactly as getAll() would have done: the write-back
+      // below spreads the record, so an un-normalised read would ship a can missing
+      // the fields every other path fills in (cold audit, db-trio, finding 1). Inside
+      // its own try so that a throw here aborts and rejects like one inside proceed,
+      // instead of escaping the event handler and leaving the promise pending.
+      try {
+        cans = normalizeRecords('ammunition', cansReq.result as Ammunition[]);
+      } catch (e) {
+        try { tx.abort(); } catch { /* already aborting */ }
+        reject(e); return;
+      }
+      gotCans = true; proceed();
+    };
+    cansReq.onerror = () => reject(cansReq.error);
   });
   await txDone(tx);
 

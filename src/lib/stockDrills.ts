@@ -8,14 +8,21 @@
 // imports from here (DRY — the library can never drift between the two).
 //
 // ID scheme — three prefixes, three owners (load-bearing, don't blur them):
-//   'dr-'  import-derived drills — a re-import DELETES and rewrites these
-//          (db.ts commitDataSet deletes ids startsWith('dr-')).
-//   'drx-' user-created drills — survive re-imports, clear with a wipe.
+//   'dr-'  import-derived drills. The prefix used to matter to a live write
+//          path — commitDataSet, which rewrote a CSV data set by deleting
+//          every 'dr-' id first and sparing 'drx-'/'drs-' — but commitDataSet
+//          had no live caller anywhere in the app and was deleted (D-2,
+//          session 140). Today the app's ONE "replace everything" path is
+//          restoreSnapshot / restoreFromFile (db.ts), and it clears and
+//          rewrites the WHOLE drills store from the backup's own drills
+//          section; it does not single out 'dr-' ids. The prefix survives
+//          here as the historical marker CSV-imported drills carried, not as
+//          a live behaviour.
+//   'drx-' user-created drills — ids only; no code branches on this prefix today.
 //   'drs-' STOCK drills (this module) — fixed ids, so seeding is idempotent
-//          (a crash-retry overwrites, never duplicates), and they survive a
-//          re-import untouched: 'drs-…'.startsWith('dr-') is FALSE (third
-//          character is 's', not '-') — verified in node, and pinned by a
-//          unit test so a future prefix change can't silently break it.
+//          (a crash-retry overwrites, never duplicates): 'drs-…'.startsWith('dr-')
+//          is FALSE (third character is 's', not '-') — verified in node, and
+//          pinned by a unit test so a future prefix change can't silently break it.
 //
 // Seeding rules, each earned (the northStar pattern, session 47–55):
 //  - AT MOST ONCE PER INSTALL: the `drillsSeeded` settings guard. Clear All

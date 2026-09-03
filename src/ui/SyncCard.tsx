@@ -6,8 +6,9 @@ import { useEffect, useRef, useState } from 'react';
 import { backupFileName, buildFlogBlob, parseFlogLazy } from '../lib/flog.ts';
 import type { LazyFlog } from '../lib/flog.ts';
 import {
-  exportSnapshotSources, getSettings, localLastModified, restoreFromFile, putSettings, withExclusiveIo,
+  countAll, exportSnapshotSources, getSettings, localLastModified, restoreFromFile, putSettings, withExclusiveIo,
 } from '../lib/db.ts';
+import { missingStoreWarning } from '../lib/restoreWarnings.ts';
 import type { AppSettings } from '../lib/types.ts';
 import { fileTooLargeMessage, storageShortfallMessage, MAX_FLOG_BYTES } from '../lib/inputLimits.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
@@ -266,10 +267,24 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
       const sessions = (source.stores.sessions ?? []).length;
       const guns = (source.stores.firearms ?? []).length;
       const summary = `The file holds ${guns} guns, ${sessions} sessions, and ${source.mediaCount} photos/videos (last changed ${stampWords(source.lastModified)}; this device last changed ${stampWords(localStamp)}).`;
-      const warning = source.lastModified < localStamp
+      let warning = source.lastModified < localStamp
         ? `Heads up — this device has NEWER work than the file. Loading it replaces everything on this device with the older file. ${summary}`
         : `Loading the file replaces everything on this device with it. ${summary}`;
-      setStage({ name: 'confirm', source, warning, label: source.lastModified < localStamp ? 'Load the Older File Anyway' : 'Load from File' });
+      let label = source.lastModified < localStamp ? 'Load the Older File Anyway' : 'Load from File';
+
+      // D-10: a store the file has no section for at all — saved by a version of
+      // the app from before that store existed — is silently treated as empty by
+      // the restore, which erases every record this device holds in it. The
+      // sheet's summary above only ever counted guns, sessions and photos, so
+      // that loss never showed up here until now.
+      const missing = await missingStoreWarning(Object.keys(source.stores), countAll);
+      if (missing) {
+        warning = `${missing} ${warning}`;
+        // Keep the stronger of the two warnings in the button when both apply.
+        if (label === 'Load from File') label = 'Load the File Anyway';
+      }
+
+      setStage({ name: 'confirm', source, warning, label });
     } catch (e) {
       setStage({ name: 'idle', message: e instanceof Error ? e.message : 'That file could not be read.' });
     }

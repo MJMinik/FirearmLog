@@ -559,6 +559,109 @@ test('a year of history against a small can does not multiply it', async () => {
   assert.equal(await quantityOf('am-1'), 100, '1500 rounds were asked for and 100 were there');
 });
 
+// ---------------------------------------------------------------------------
+// D-3: the ammo can read now happens THROUGH the open transaction (an
+// ammo.getAll() request issued after db.transaction([...]) opens, resolved in
+// the same success handler that does the writes), not a plain getAll('ammunition')
+// call that ran to completion before the transaction even existed.
+// ---------------------------------------------------------------------------
+//
+// HONEST LIMIT ON THIS PROOF. The defect D-3 fixed was a two-TAB race: another
+// tab changing a can in the instant between the old read and the write
+// transaction opening. fake-indexeddb runs on one thread with no second tab,
+// so that race cannot be reproduced here — tried it, by starting an import and
+// firing an unawaited putOne at it before awaiting either: the two versions of
+// db.ts DO produce different final numbers, but the difference is a
+// scheduling accident of a single-threaded test runner, not a demonstration
+// that one order is correct and the other is a lost update — with either
+// version, some real interleaving would make either number right. A number
+// that merely differs is not proof; it would only be theatre dressed as one.
+//
+// What a fake database CAN prove honestly is the SHAPE of the fix: the ammo
+// store is read via the SAME transaction that writes it, through that
+// transaction's own objectStore, rather than via a call that opens and closes
+// its own transaction first. The source guards below assert exactly that
+// shape, in both commitImportBatchInner and undoImportBatchInner — reverting
+// either function's read to the old getAll('ammunition')-before-the-transaction
+// shape turns one of these red immediately. The behavioural tests right after
+// them still pin the maths ("the numbers still come out right", the honest
+// half of the proof the spec asks for): a can changed by an ordinary,
+// sequential putOne right before the commit/undo call is read at its new
+// value, not some earlier one — true of both the old and new code when
+// nothing races, and worth pinning anyway because it is the property callers
+// actually depend on.
+
+function functionBody(src: string, decl: string): string {
+  const start = src.indexOf(decl);
+  assert.ok(start !== -1, `could not find "${decl}" in db.ts`);
+  const open = src.indexOf('{\n', start);
+  assert.ok(open !== -1, `could not find the opening brace for "${decl}"`);
+  let depth = 0;
+  for (let i = open; i < src.length; i++) {
+    if (src[i] === '{') depth++;
+    else if (src[i] === '}') {
+      depth--;
+      if (depth === 0) return src.slice(start, i + 1);
+    }
+  }
+  throw new Error(`could not scope "${decl}" — an unbalanced brace, or it was renamed`);
+}
+
+const DB_SRC = readFileSync(fileURLToPath(new URL('../src/lib/db.ts', import.meta.url)), 'utf8');
+
+for (const decl of [
+  'async function commitImportBatchInner(input: CommitImportBatchInput)',
+  'async function undoImportBatchInner(batchId: string)',
+]) {
+  test(`D-3 source guard: ${decl.split('(')[0].replace('async function ', '')} reads ammunition through its own open transaction`, () => {
+    const body = functionBody(DB_SRC, decl);
+    assert.equal(
+      body.includes("getAll<Ammunition>('ammunition')"),
+      false,
+      'still reads ammunition with the top-level getAll helper — that opens and closes its own transaction before this one exists',
+    );
+    const txIndex = body.indexOf('db.transaction(');
+    assert.ok(txIndex !== -1, 'no db.transaction( call found');
+    const ammoStoreIndex = body.indexOf("objectStore('ammunition')", txIndex);
+    assert.ok(ammoStoreIndex !== -1, "the ammunition object store must come from this function's own transaction");
+    const getAllOnStoreIndex = body.indexOf('.getAll()', ammoStoreIndex);
+    assert.ok(getAllOnStoreIndex !== -1, 'must issue a .getAll() request on the transaction\'s own ammunition store');
+  });
+}
+
+test('D-3: commitImportBatch deducts from the can\'s CURRENT quantity, not a value read earlier in the call', async () => {
+  await clearAllData();
+  await putOne('ammunition', can('am-d3', 100));
+  // Changed right before the import — the read this pins has to see 500, not
+  // the 100 the can held when it was first seeded.
+  await putOne('ammunition', can('am-d3', 500));
+  await commitImportBatch({
+    batchId: 'b-d3', filename: 'log.csv',
+    sessions: [sessionUsing('se-d3', 'b-d3', 'am-d3', 50)],
+    firearms: [gun('fa-b-d3', 'b-d3')],
+    counts: COUNTS, now: 1,
+  });
+  assert.equal(await quantityOf('am-d3'), 450, 'the deduction came off 500, the quantity when the transaction ran');
+});
+
+test('D-3: undoImportBatch restores against the can\'s CURRENT quantity, not a value read earlier in the call', async () => {
+  await clearAllData();
+  await putOne('ammunition', can('am-d3u', 1000));
+  await commitImportBatch({
+    batchId: 'b-d3u', filename: 'log.csv',
+    sessions: [sessionUsing('se-d3u', 'b-d3u', 'am-d3u', 200)],
+    firearms: [gun('fa-b-d3u', 'b-d3u')],
+    counts: COUNTS, now: 1,
+  });
+  assert.equal(await quantityOf('am-d3u'), 800);
+  // Changed right before the undo — restoreDeductedStock adds the ledgered 200
+  // back onto whatever the can holds when the undo's transaction runs, not
+  // onto the 800 read at some earlier moment.
+  await putOne('ammunition', can('am-d3u', 300));
+  await undoImportBatch('b-d3u');
+  assert.equal(await quantityOf('am-d3u'), 500, 'the 200 went back onto 300, the quantity when the transaction ran');
+});
+
 // THE CLASS, NOT THE TWO INSTANCES. Both defects in this area have been a
 // commit and an undo that disagreed by some amount, and both were shipped with
 // a test that could not reach the disagreement: the first because the two
