@@ -5,7 +5,6 @@ import 'fake-indexeddb/auto';
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  commitDataSet,
   restoreSnapshot,
   applyAmmoMerge,
   commitClassifiers,
@@ -25,19 +24,8 @@ import {
   hasOversizedMedia,
   scanMediaImageIds,
 } from '../src/lib/db.ts';
-import type { DataSet } from '../src/lib/types.ts';
 import { newestStamp } from '../src/lib/flog.ts';
 import type { Snapshot } from '../src/lib/flog.ts';
-
-// Minimal DataSet with every array commitDataSet reads (empty unless overridden).
-function dataSetWith(over: Record<string, unknown[]>): DataSet {
-  const base: Record<string, unknown[]> = {
-    firearms: [], sessions: [], drills: [], ammunition: [], purchases: [],
-    maintenance: [], malfunctions: [], magazines: [], optics: [], parts: [],
-    goals: [], skills: [], skillSets: [], matches: [], classifiers: [], references: [], trash: [], media: [],
-  };
-  return { ...base, ...over } as unknown as DataSet;
-}
 
 function snapshotWith(stores: Record<string, unknown[]>): Snapshot {
   return {
@@ -49,42 +37,6 @@ function snapshotWith(stores: Record<string, unknown[]>): Snapshot {
 }
 
 const has = (rows: { id: string }[], id: string) => rows.some((r) => r.id === id);
-
-test('commitDataSet writes records that getAll reads back', async () => {
-  await commitDataSet(dataSetWith({
-    firearms: [{ id: 'g-commit', name: 'Test Pistol' }],
-    classifiers: [{ id: 'cl-commit', code: '99-11' }],
-  }), { theme: 'dark' });
-  assert.ok(has(await getAll('firearms'), 'g-commit'));
-  assert.ok(has(await getAll('classifiers'), 'cl-commit'));
-});
-
-test('commitDataSet replaces imported (dr-) drills but keeps custom (drx-) drills', async () => {
-  // Seed one imported + one custom drill via a first import.
-  await commitDataSet(dataSetWith({ drills: [{ id: 'dr-old' }, { id: 'drx-custom' }] }), undefined);
-  assert.ok(has(await getAll('drills'), 'dr-old'));
-  assert.ok(has(await getAll('drills'), 'drx-custom'));
-  // A re-import brings a different imported drill; dr-old should be gone, drx-custom stays.
-  await commitDataSet(dataSetWith({ drills: [{ id: 'dr-new' }] }), undefined);
-  const drills = await getAll<{ id: string }>('drills');
-  assert.ok(has(drills, 'dr-new'), 'new imported drill present');
-  assert.ok(!has(drills, 'dr-old'), 'stale imported drill removed');
-  assert.ok(has(drills, 'drx-custom'), 'custom drill survived the re-import');
-});
-
-test('commitDataSet keeps stock (drs-) drills — the F4 prefix survives the dr- cleanup', async () => {
-  // Pin the fact the whole scheme leans on: 'drs-…' does NOT start with 'dr-'
-  // (third character is 's', not '-'), so the re-import cleanup spares it.
-  assert.equal('drs-bill-drill'.startsWith('dr-'), false);
-  await commitDataSet(dataSetWith({ drills: [{ id: 'dr-old' }] }), undefined);
-  const { seedDrillsWithSettings } = await import('../src/lib/db.ts');
-  await seedDrillsWithSettings([{ id: 'drs-bill-drill' }], { drillsSeeded: true });
-  // A re-import replaces dr- drills; the stock drill must ride through.
-  await commitDataSet(dataSetWith({ drills: [{ id: 'dr-new' }] }), undefined);
-  const drills = await getAll<{ id: string }>('drills');
-  assert.ok(has(drills, 'drs-bill-drill'), 'stock drill survived the re-import');
-  assert.ok(has(drills, 'dr-new') && !has(drills, 'dr-old'));
-});
 
 test('applyAmmoMerge lands the kept can and repointed rows atomically', async () => {
   await applyAmmoMerge({
@@ -145,7 +97,7 @@ test('validateSnapshotShape rejects a damaged file before any write', () => {
 });
 
 test('restoreSnapshot REPLACES device data (old gone, new present)', async () => {
-  await commitDataSet(dataSetWith({ firearms: [{ id: 'g-before-restore' }] }), undefined);
+  await putOne('firearms', { id: 'g-before-restore' });
   assert.ok(has(await getAll('firearms'), 'g-before-restore'));
   await restoreSnapshot(snapshotWith({ firearms: [{ id: 'g-from-file' }] }));
   const guns = await getAll<{ id: string }>('firearms');
@@ -167,12 +119,11 @@ test('a second restore/import running concurrently is refused, not interleaved (
 // Placed LAST: clearAllData wipes the shared in-memory DB, so it must not run
 // before the other tests that seed their own data above.
 test('clearAllData erases every store and the settings (hard-gate)', async () => {
-  await commitDataSet(dataSetWith({
-    firearms: [{ id: 'g-wipe' }],
-    sessions: [{ id: 's-wipe' }],
-    goals: [{ id: 'go-wipe' }],
-    media: [{ id: 'm-wipe' }],
-  }), { theme: 'dark' });
+  await putOne('firearms', { id: 'g-wipe' });
+  await putOne('sessions', { id: 's-wipe' });
+  await putOne('goals', { id: 'go-wipe' });
+  await putOne('media', { id: 'm-wipe' });
+  await putSettings({ theme: 'dark' });
   await putSettings({ goldenGoalId: 'go-wipe' });
   // Sanity: the data (and settings) are present before the wipe.
   assert.ok(has(await getAll('firearms'), 'g-wipe'));
@@ -200,15 +151,6 @@ test('B3/M-2: two near-simultaneous putSettings patches BOTH land', async () => 
   const settings = await getSettings<{ a?: number; b?: number }>();
   assert.equal(settings?.a, 1, 'first patch survived');
   assert.equal(settings?.b, 2, 'second patch survived');
-});
-
-test('B4/M-4: references travel through commitDataSet (were silently dropped)', async () => {
-  await clearAllData();
-  await commitDataSet(dataSetWith({
-    references: [{ id: 'ref-keep', name: 'Atlas' }],
-    firearms: [{ id: 'g-refs' }],
-  }), undefined);
-  assert.ok(has(await getAll('references'), 'ref-keep'), 'reference row landed');
 });
 
 test('B7: a mid-batch unstorable record rolls the WHOLE restore back (atomicity)', async () => {
@@ -297,7 +239,9 @@ test('B6/M-3: a lock held by ANOTHER TAB refuses the restore with the plain mess
 // decision 2a / R-4 — an analytics opt-out is a refusal that must survive a reset.
 test('2a/R-4: an analytics opt-out survives Clear All, and ONLY that flag does', async () => {
   await clearAllData();
-  await commitDataSet(dataSetWith({ firearms: [{ id: 'g-2a' }], goals: [{ id: 'go-2a' }] }), { theme: 'dark' });
+  await putOne('firearms', { id: 'g-2a' });
+  await putOne('goals', { id: 'go-2a' });
+  await putSettings({ theme: 'dark' });
   await putSettings({ analyticsOptOut: true, goldenGoalId: 'go-2a' });
 
   await clearAllData();
@@ -424,7 +368,7 @@ test('D-1 discriminator: trashSession — poisoned session rolls back the ammo u
   await clearAllData();
   const can = { id: 'can-d1-disc-t', label: '9mm', quantity: 100, caliber: '9mm', brand: '', grains: 0,
     type: '', purchased: 0, cost: 0, createdAt: 0, updatedAt: 0 };
-  // Seed via putOne (live path, not commitDataSet).
+  // Seed via putOne (the live write path).
   await putOne('ammunition', can);
   await putOne('sessions', { id: 'se-d1-disc-t', planned: false,
     ammoUsage: [{ ammoId: 'can-d1-disc-t', rounds: 50 }], createdAt: 0, updatedAt: 0 });
@@ -454,7 +398,7 @@ test('D-1 discriminator: untrashSession — poisoned session rolls back the ammo
   await clearAllData();
   const can = { id: 'can-d1-disc-u', label: '9mm', quantity: 150, caliber: '9mm', brand: '', grains: 0,
     type: '', purchased: 0, cost: 0, createdAt: 0, updatedAt: 0 };
-  // Seed via putOne (live path, not commitDataSet).
+  // Seed via putOne (the live write path).
   await putOne('ammunition', can);
   await putOne('sessions', { id: 'se-d1-disc-u', planned: false,
     ammoUsage: [{ ammoId: 'can-d1-disc-u', rounds: 50 }],
@@ -567,38 +511,6 @@ test('P-7: scanMediaImageIds returns ids of images and skips videos', async () =
   assert.equal(ids.length, 2, 'exactly 2 image ids returned');
 });
 
-// P-8: delete-stale-media path in commitDataSet removes the right photos and keeps the right ones.
-test('P-8: commitDataSet deletes stale media for re-imported owners and keeps media for other owners', async () => {
-  await clearAllData();
-  // Seed two guns each with one photo. Only gun-a is in the re-import.
-  const gunAPhoto = { id: 'md-gun-a-old', ownerType: 'firearm', ownerId: 'gun-a', kind: 'image',
-    name: 'old.jpg', annotations: [], mime: 'image/jpeg',
-    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 };
-  const gunBPhoto = { id: 'md-gun-b', ownerType: 'firearm', ownerId: 'gun-b', kind: 'image',
-    name: 'b.jpg', annotations: [], mime: 'image/jpeg',
-    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 };
-  await putOne('media', gunAPhoto);
-  await putOne('media', gunBPhoto);
-
-  // Re-import: gun-a with a NEW photo; gun-b not in the import at all.
-  const newAPhoto = { id: 'md-gun-a-new', ownerType: 'firearm', ownerId: 'gun-a', kind: 'image',
-    name: 'new.jpg', annotations: [], mime: 'image/jpeg',
-    data: new ArrayBuffer(4), updatedAt: 2, createdAt: 0 };
-  const ds = {
-    firearms: [{ id: 'gun-a', name: 'A' }], sessions: [], drills: [], ammunition: [],
-    purchases: [], maintenance: [], malfunctions: [], magazines: [], optics: [], parts: [],
-    goals: [], skills: [], skillSets: [], matches: [], classifiers: [], references: [], trash: [],
-    media: [newAPhoto],
-  };
-  await commitDataSet(ds as unknown as import('../src/lib/types.ts').DataSet, undefined);
-
-  const media = await getAllMediaWholeStore();
-  const ids = media.map((m) => m.id);
-  assert.ok(!ids.includes('md-gun-a-old'), 'stale photo for re-imported owner deleted');
-  assert.ok(ids.includes('md-gun-a-new'), 'new photo for re-imported owner kept');
-  assert.ok(ids.includes('md-gun-b'), 'photo for non-imported owner untouched');
-});
-
 // P-8: restoreSnapshot delete-stale path keeps the right photos and removes the rest.
 test('P-8: restoreSnapshot deletes media not in the snapshot and keeps media that is', async () => {
   await clearAllData();
@@ -688,22 +600,6 @@ test('audit-1: restore deletes a photo whose id is not a string', async () => {
 
   const all = await getAllMediaWholeStore();
   assert.equal(all.length, 0, 'a photo with a numeric id is deleted by key, not by a string comparison');
-});
-
-test('audit-1: the import commit deletes a superseded photo whose id is not a string', async () => {
-  await clearAllData();
-  await putOne('media', { id: 999, ownerType: 'firearm', ownerId: 'gun-a', kind: 'image',
-    name: 'old.jpg', annotations: [], mime: 'image/jpeg',
-    data: new ArrayBuffer(4), updatedAt: 1, createdAt: 0 });
-
-  const newPhoto = { id: 'md-new', ownerType: 'firearm', ownerId: 'gun-a', kind: 'image',
-    name: 'new.jpg', annotations: [], mime: 'image/jpeg',
-    data: new ArrayBuffer(4), updatedAt: 2, createdAt: 0 };
-  await commitDataSet(dataSetWith({ firearms: [{ id: 'gun-a', name: 'A' }], media: [newPhoto] }), undefined);
-
-  const ids = (await getAllMediaWholeStore()).map((m) => m.id);
-  assert.ok(!ids.includes(999 as unknown as string), 'the superseded photo is deleted by its real key');
-  assert.ok(ids.includes('md-new'), 'the replacement photo is kept');
 });
 
 // Observation 10 (session 114): hasOversizedMedia's comparison is `>`, so a photo

@@ -8,8 +8,8 @@ import {
   TIMED_SKILLS, activeSkillSets, coldVsWarm, formatRepTimes, formatSec, parseRepTimes,
   skillLabel, skillPR, skillSetsForSession, skillSetsFor, skillTrend, skillsWithData
 } from '../src/lib/skillSets.ts';
-import { commitDataSet, getAll, restoreSnapshot, validateSnapshotShape } from '../src/lib/db.ts';
-import type { DataSet, TimedSkill } from '../src/lib/types.ts';
+import { getAll, restoreSnapshot, validateSnapshotShape } from '../src/lib/db.ts';
+import type { TimedSkill } from '../src/lib/types.ts';
 import type { Snapshot } from '../src/lib/flog.ts';
 
 // ---------------------------------------------------------------------------
@@ -206,38 +206,14 @@ test('formatRepTimes round-trips through parseRepTimes and handles null/undefine
 });
 
 // ---------------------------------------------------------------------------
-// Storage: commitDataSet / restoreSnapshot / validateSnapshotShape
+// Storage: restoreSnapshot / validateSnapshotShape
 // ---------------------------------------------------------------------------
-
-function dataSetWith(over: Record<string, unknown[]>): DataSet {
-  const base: Record<string, unknown[]> = {
-    firearms: [], sessions: [], drills: [], ammunition: [], purchases: [],
-    maintenance: [], malfunctions: [], magazines: [], optics: [], parts: [],
-    goals: [], skills: [], skillSets: [], matches: [], classifiers: [], references: [], trash: [], media: [],
-  };
-  return { ...base, ...over } as unknown as DataSet;
-}
 
 function snapshotWith(stores: Record<string, unknown[]>): Snapshot {
   return { exportedAt: Date.now(), lastModified: Date.now(), stores, media: [] } as unknown as Snapshot;
 }
 
 const has = (rows: { id: string }[], id: string) => rows.some((r) => r.id === id);
-
-test('commitDataSet writes skillSets records that getAll reads back', async () => {
-  await commitDataSet(dataSetWith({
-    skillSets: [{ id: 'ss-commit', sessionId: 'se-1', skill: 'draw', bestSec: 1.4 }],
-  }), undefined);
-  assert.ok(has(await getAll('skillSets'), 'ss-commit'));
-});
-
-test('commitDataSet with skillSets OMITTED entirely (an older import shape) writes nothing for it, never throws', async () => {
-  // Simulates a DataSet built before this field existed reaching commitDataSet —
-  // `putAll` treats a missing section as empty (existing convention, see db.ts).
-  const partial = dataSetWith({});
-  delete (partial as unknown as Record<string, unknown>).skillSets;
-  await assert.doesNotReject(commitDataSet(partial, undefined));
-});
 
 test('restoreSnapshot round-trips skillSets like any other store', async () => {
   await restoreSnapshot(snapshotWith({

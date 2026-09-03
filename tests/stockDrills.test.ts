@@ -55,7 +55,7 @@ test('the library is the authored 14, ids all drs-, holster deliberate where the
   assert.equal(defs.length, 14);
   for (const d of defs) {
     assert.ok(d.id.startsWith('drs-'), `${d.id} carries the stock prefix`);
-    assert.equal(d.id.startsWith('dr-'), false, 'stock ids must not match the re-import cleanup');
+    assert.equal(d.id.startsWith('dr-'), false, 'stock ids stay out of the dr- range that imported drills use, so the two never collide');
     assert.ok(d.name && d.briefDescription && d.fullDescription, `${d.name} is fully authored`);
   }
   assert.equal(stockDrillId('Bill Drill'), 'drs-bill-drill');

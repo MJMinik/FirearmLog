@@ -89,7 +89,6 @@ function bodyOrNull(src: string, decl: string): string | null {
 // ---------------------------------------------------------------------------
 const CURSOR_HELPERS = [
   'async function newestMediaStamp()',
-  'async function scanMediaOwnerIds()',
   'async function scanMediaKeys()',
   'async function scanMediaExportSources()',
   'export async function scanMediaImageIds()',
@@ -246,20 +245,12 @@ test('P-7: the run loop scans ids and fetches one photo at a time', () => {
 });
 
 // ---------------------------------------------------------------------------
-// P-8 call sites: the two delete-stale-media paths. Both used to load every
-// photo blob just to read ids off the records.
+// P-8 call site: the restore delete-stale-media path. It used to load every
+// photo blob just to read ids off the records. (Its sibling, the import
+// commit's own delete-stale pass, lived in commitDataSetInner — deleted along
+// with commitDataSet, which had no live caller, D-2 session 140 — so the guard
+// for it went with it rather than pointing at code that no longer exists.)
 // ---------------------------------------------------------------------------
-test('P-8: the import commit delete-stale path reads ids, not blobs', () => {
-  const marker = '// …then remove superseded photos for the re-written owners';
-  const start = DB.indexOf(marker);
-  assert.ok(start !== -1, 'add-before-delete comment not found in db.ts');
-  const end = DB.indexOf('\nexport async function getSettings', start);
-  assert.ok(end !== -1, 'could not bound the import-commit delete block');
-  const block = DB.slice(start, end);
-  assert.equal(block.includes('getAllMediaWholeStore'), false, 'import commit still loads the whole media store');
-  assert.equal(block.includes('scanMediaOwnerIds'), true, 'import commit must use scanMediaOwnerIds');
-});
-
 test('P-8: the restore delete-stale path reads keys only', () => {
   // Scoped by FUNCTION rather than by a pair of comment strings. The previous
   // version bounded the block between a comment and the next `/**`, and pass 3
