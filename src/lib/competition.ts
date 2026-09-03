@@ -229,6 +229,37 @@ export function suggestDivision(stored: string, options: readonly string[]): str
   return null;
 }
 
+/** The power factor this stored value most likely means, or null when there is no
+ *  confident answer -- min/minor -> 'Minor', maj/major -> 'Major', case-insensitive
+ *  and trimmed. PractiScore's own pages write the short codes ('Min'/'Maj') far more
+ *  often than the full words (POWER_FACTOR_NORMALISATION_SPEC.md section 1), and unlike a division
+ *  short code this is not just a display mismatch: every scorer used to compare the
+ *  raw string to the literal 'Major', so a stored 'Maj' silently scored as Minor.
+ *
+ *  Cold audit M-1: the parameter is typed `string`, but recordShape.ts deliberately
+ *  passes a record's fields through UNCHANGED when they don't match the expected
+ *  shape (ADD, NEVER REPLACE) -- so a malformed .flog can hand this an object or an
+ *  array at runtime, past the type checker entirely. `(stored ?? '').trim()` threw
+ *  on that (objects/arrays have no `.trim`), which took the Log tab and Match detail
+ *  down behind the error boundary for a record that rendered fine on main. Guarded
+ *  with a runtime `typeof` check rather than trusting the type: anything that isn't
+ *  actually a string reads as '', which suggestPowerFactor already returns null for. */
+export function suggestPowerFactor(stored: string): 'Minor' | 'Major' | null {
+  const s = typeof stored === 'string' ? stored.trim().toLowerCase() : '';
+  if (s === 'min' || s === 'minor') return 'Minor';
+  if (s === 'maj' || s === 'major') return 'Major';
+  return null;
+}
+
+/** True when a stored power-factor value means Major, canonicalised through
+ *  suggestPowerFactor first so 'Maj' and 'Major' agree. The single source of truth
+ *  every scorer calls -- scoreStageHits below, and stageScores.ts's
+ *  rowPowerFactorDisagrees -- instead of each keeping its own comparison or table,
+ *  which is exactly how they had already diverged (decision 2a). */
+export function isMajor(powerFactor: string): boolean {
+  return suggestPowerFactor(powerFactor) === 'Major';
+}
+
 export const POWER_FACTORS = ['Minor', 'Major'];
 
 /** T3-6a guardrail: these four USPSA divisions score Minor power factor ONLY --
@@ -786,7 +817,10 @@ export function scoreStageHits(
   hits: StageHitFields, powerFactor: string, time: number | null
 ): StageScore | null {
   if (!hasHitBreakdown(hits)) return null;
-  const major = powerFactor === 'Major';
+  // isMajor(), not a raw `=== 'Major'` comparison: PractiScore's real pages store
+  // the short code 'Maj' far more often than the full word, and a strict compare
+  // silently scored every 'Maj' record as Minor (POWER_FACTOR_NORMALISATION_SPEC.md section 1).
+  const major = isMajor(powerFactor);
   const cVal = major ? 4 : 3;
   const dVal = major ? 2 : 1;
   const A = nonNeg(hits.alphas), C = nonNeg(hits.charlies), D = nonNeg(hits.deltas);

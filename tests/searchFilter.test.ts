@@ -94,6 +94,17 @@ test('global search reaches location, instructor, drills, gun names, match field
   assert.equal(matchMatchesFilter(mat({}), f({ query: 'zebra' }), guns), false);
 });
 
+// Power-factor-codes fix: searchFilter.ts mirrors canonicalDivision with
+// suggestPowerFactor, so a match stored under PractiScore's raw short code
+// is findable by the canonical word too, not only by the code itself.
+test('global search finds a "Maj"-stored match by "major", and "minor" does not match it', () => {
+  const majMatch = mat({ powerFactor: 'Maj' });
+  assert.equal(matchMatchesFilter(majMatch, f({ query: 'major' }), guns), true);
+  assert.equal(matchMatchesFilter(majMatch, f({ query: 'minor' }), guns), false);
+  // The raw code itself still matches too -- nothing about the raw string search is lost.
+  assert.equal(matchMatchesFilter(majMatch, f({ query: 'maj' }), guns), true);
+});
+
 test('filterCount tallies one per active criterion', () => {
   assert.equal(filterCount(f({ from: '2026-01-01' })), 1);
   assert.equal(filterCount(f({ firearmId: 'g1', category: 'Pistol' })), 1); // gun wins, counts once

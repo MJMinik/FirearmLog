@@ -9,6 +9,7 @@
 // matters most: it proves the record carries what the screen showed.
 import { test, expect, type Page } from '@playwright/test';
 import { seedDemo, gotoTab } from './helpers';
+import { GUN_CRAFT_2026_08_02 } from '../tests/fixtures/practiscore-guncraft-2026-08-02.ts';
 
 // A small real-shaped capture: PractiScore's own shorthand in the Div and PF
 // columns ("O", "Min"), which is what makes the starting value fall outside our
@@ -87,11 +88,16 @@ test.describe('PractiScore import — the as-scored value stays reachable', () =
   test('power factor can be changed away and back too', async ({ page }) => {
     const main = await reachPreview(page);
     const sel = pfField(main).locator('select');
-    await expect(sel).toHaveValue('Min');
-    await sel.selectOption('Major');
-    await expect(pfField(main).locator('option[value="Min"]')).toHaveCount(1);
+    // Changed deliberately by the power-factor-codes fix, mirroring the division
+    // assertion above: the picker now STARTS on the canonical word ('Minor') for
+    // a 'Min' row, not the raw code -- the raw "Min" stays reachable as "as
+    // scored" (fieldOptions), and picking it and coming back both still work.
+    await expect(sel).toHaveValue('Minor');
+    await expect(pfField(main).locator('option', { hasText: 'as scored' })).toHaveCount(1);
     await sel.selectOption('Min');
     await expect(sel).toHaveValue('Min');
+    await sel.selectOption('Minor');
+    await expect(sel).toHaveValue('Minor');
   });
 
   test('going away and back RESTORES the division placing rather than leaving it blanked', async ({ page }) => {
@@ -144,5 +150,44 @@ test.describe('PractiScore import — the as-scored value stays reachable', () =
     const divisionRow = matchCard.locator('.row').filter({ has: page.getByText('Division', { exact: true }) });
     await expect(divisionRow).toContainText('Open');
     await expect(divisionRow).not.toContainText('Carry Optics');
+  });
+});
+
+// power-factor-codes fix (POWER_FACTOR_NORMALISATION_SPEC.md): the mirror of the
+// division fix above, run against a real Major shooter. GUN_CRAFT_2026_08_02 is
+// the real Overall/Combined page (tests/fixtures) -- "Alder, Robin" placed 1st,
+// Open division, PF cell 'Maj', the exact real-file shape the spec's §1 inventory
+// counted (Maj x9 on this page).
+test.describe('PractiScore import — Major power factor starts selected (power-factor-codes fix)', () => {
+  test('a "Maj"-scored shooter: the picker starts on Major, the preview row still reads "Maj", and "Maj (as scored)" stays selectable after switching away', async ({ page }) => {
+    await seedDemo(page);
+    await gotoTab(page, 'Compete');
+    const main = page.getByRole('main');
+    await main.getByRole('button', { name: 'Import…' }).click();
+    await page.getByRole('dialog', { name: 'Import' }).getByRole('button', { name: 'Import from PractiScore' }).click();
+    await main.locator('textarea').first().fill(GUN_CRAFT_2026_08_02);
+    await main.getByRole('button', { name: 'Read results' }).click();
+    await main.getByRole('button', { name: 'Alder, Robin' }).click();
+
+    // The "Your result" preview keeps showing exactly what the results said --
+    // 'Maj', never the canonical word -- same honesty shape as the division
+    // preview a few rows above it.
+    const previewPowerFactorRow = main.locator('.row').filter({ has: page.getByText('Power factor', { exact: true }) });
+    await expect(previewPowerFactorRow).toContainText('Maj');
+
+    const sel = pfField(main).locator('select');
+    // Since the power-factor-codes fix, the picker STARTS on the canonical word
+    // for a Major shooter -- the raw "Maj" stays reachable as "as scored".
+    await expect(sel).toHaveValue('Major');
+    await expect(pfField(main).locator('option', { hasText: 'as scored' })).toHaveCount(1);
+
+    await sel.selectOption('Maj');
+    await expect(sel).toHaveValue('Maj');
+    // Switch away and confirm "Maj (as scored)" is still there -- the exact
+    // defect this whole file exists to catch, now proven for power factor too.
+    await sel.selectOption('Major');
+    await expect(pfField(main).locator('option[value="Maj"]')).toHaveCount(1);
+    await sel.selectOption('Maj');
+    await expect(sel).toHaveValue('Maj');
   });
 });

@@ -157,3 +157,145 @@ test.describe('Power factor guardrail (T3-6a)', () => {
     }).toPass();
   });
 });
+
+// power-factor-codes fix (POWER_FACTOR_NORMALISATION_SPEC.md): PractiScore's own
+// pages write the short codes 'Min'/'Maj', not the full words, and a record
+// imported before this fix stores exactly that short code -- the "pre-fix shape"
+// these tests seed directly into IndexedDB, the same way seedLegacyMatch above
+// reproduces a record from before the T3-6a guardrail.
+test.describe('Power factor short codes (power-factor-codes fix)', () => {
+  test('a match seeded with the short code "Maj" shows Major pressed on Edit Match, and Save leaves it unchanged', async ({ page }) => {
+    await seedDemo(page);
+    await seedLegacyMatch(page, {
+      id: 'legacy-maj-open', name: 'Legacy Maj Open', matchType: 'USPSA Level 1 (club match)',
+      division: 'Open', powerFactor: 'Maj',
+    });
+    await page.reload();
+    await gotoTab(page, 'Compete');
+
+    await page.getByRole('main').getByRole('button', { name: /Legacy Maj Open/ }).click();
+    await expect(page.getByRole('heading', { name: 'Legacy Maj Open' })).toBeVisible();
+    await page.getByRole('button', { name: 'Edit' }).click();
+    await expect(page.getByRole('heading', { name: 'Edit Match' })).toBeVisible();
+
+    // The pressed state reads the CANONICAL form of what's stored -- a record
+    // holding 'Maj' shows Major pressed, not neither button lit (the exact
+    // defect spec section 1.2 step 4 describes: "nothing on the screen tells
+    // them what the record holds").
+    const major = page.getByRole('button', { name: 'Major', exact: true });
+    const minor = page.getByRole('button', { name: 'Minor', exact: true });
+    await expect(major).toHaveAttribute('aria-pressed', 'true');
+    await expect(minor).toHaveAttribute('aria-pressed', 'false');
+
+    // Saving without touching the control leaves the stored short code exactly
+    // as it was -- nothing is written on load, and an untouched field is never
+    // silently rewritten to the full word.
+    await page.getByRole('button', { name: 'Save changes' }).click();
+    await expect(page.getByRole('heading', { name: 'Legacy Maj Open' })).toBeVisible();
+    await expect(async () => {
+      expect(await readMatchPowerFactor(page, 'legacy-maj-open')).toBe('Maj');
+    }).toPass();
+  });
+
+  test('a match seeded with powerFactor "Min" in a Minor-only division survives an untouched Save as "Min" (Michael\'s own data shape)', async ({ page }) => {
+    // Michael shoots Minor, and PractiScore's real pages write 'Min', not
+    // 'Minor' -- so this is what every one of his own imported matches
+    // actually looks like on disk. Before this branch, the T3-6a guardrail
+    // effect compared the raw string to the literal 'Minor', so a stored
+    // 'Min' in a Minor-only division ('Min' !== 'Minor') rewrote itself to
+    // 'Minor' on every single Edit Match, whether the shooter touched the
+    // power factor control or not.
+    await seedDemo(page);
+    await seedLegacyMatch(page, {
+      id: 'legacy-min-co', name: 'Legacy Min Carry Optics', matchType: 'USPSA Level 1 (club match)',
+      division: 'Carry Optics', powerFactor: 'Min',
+    });
+    await page.reload();
+    await gotoTab(page, 'Compete');
+
+    await page.getByRole('main').getByRole('button', { name: /Legacy Min Carry Optics/ }).click();
+    await expect(page.getByRole('heading', { name: 'Legacy Min Carry Optics' })).toBeVisible();
+    await page.getByRole('button', { name: 'Edit' }).click();
+    await expect(page.getByRole('heading', { name: 'Edit Match' })).toBeVisible();
+
+    // 'Min' already reads as Minor -- the guardrail recognises it as already
+    // correct for this Minor-only division and has nothing to fix.
+    const minor = page.getByRole('button', { name: 'Minor', exact: true });
+    await expect(minor).toHaveAttribute('aria-pressed', 'true');
+
+    // Saving untouched must leave the exact short code on disk -- 'Min', not
+    // a silently "corrected" 'Minor'.
+    await page.getByRole('button', { name: 'Save changes' }).click();
+    await expect(page.getByRole('heading', { name: 'Legacy Min Carry Optics' })).toBeVisible();
+    await expect(async () => {
+      expect(await readMatchPowerFactor(page, 'legacy-min-co')).toBe('Min');
+    }).toPass();
+  });
+
+  test('switching an existing Steel match to a USPSA type in the form presses Minor and Save writes "Minor" (cold audit M-3)', async ({ page }) => {
+    // The Steel rider (decision 4a) leaves powerFactor at '' when a non-USPSA
+    // match loads. Before M-3's fix, nothing in the form ever moved it off ''
+    // again -- so picking a USPSA match type for an EXISTING Steel record left
+    // neither segmented-control button pressed, and an untouched Save would
+    // write '' onto a record now typed USPSA, which has no legal empty power
+    // factor.
+    await seedDemo(page);
+    await seedLegacyMatch(page, {
+      id: 'legacy-steel-to-uspsa', name: 'Legacy Steel To USPSA', matchType: 'Steel Challenge',
+      division: 'Open', powerFactor: '',
+    });
+    await page.reload();
+    await gotoTab(page, 'Compete');
+
+    await page.getByRole('main').getByRole('button', { name: /Legacy Steel To USPSA/ }).click();
+    await expect(page.getByRole('heading', { name: 'Legacy Steel To USPSA' })).toBeVisible();
+    await page.getByRole('button', { name: 'Edit' }).click();
+    await expect(page.getByRole('heading', { name: 'Edit Match' })).toBeVisible();
+
+    // Still Steel on open -- no power-factor control at all.
+    await expect(page.getByRole('group', { name: 'Power factor' })).toHaveCount(0);
+
+    await page.getByLabel('Match type').selectOption('USPSA Level 1 (club match)');
+
+    // The moment the type becomes USPSA, the empty power factor gets a real
+    // default -- Minor pressed, not neither button lit.
+    const minor = page.getByRole('button', { name: 'Minor', exact: true });
+    await expect(minor).toHaveAttribute('aria-pressed', 'true');
+
+    await page.getByRole('button', { name: 'Save changes' }).click();
+    await expect(page.getByRole('heading', { name: 'Legacy Steel To USPSA' })).toBeVisible();
+    await expect(async () => {
+      expect(await readMatchPowerFactor(page, 'legacy-steel-to-uspsa')).toBe('Minor');
+    }).toPass();
+  });
+
+  test('a Steel match seeded with powerFactor "" keeps it "" through an unrelated edit (the Steel rider, decision 4a)', async ({ page }) => {
+    await seedDemo(page);
+    await seedLegacyMatch(page, {
+      id: 'legacy-steel-blank-pf', name: 'Legacy Steel Blank PF', matchType: 'Steel Challenge',
+      division: 'Open', powerFactor: '',
+    });
+    await page.reload();
+    await gotoTab(page, 'Compete');
+
+    await page.getByRole('main').getByRole('button', { name: /Legacy Steel Blank PF/ }).click();
+    await expect(page.getByRole('heading', { name: 'Legacy Steel Blank PF' })).toBeVisible();
+    await page.getByRole('button', { name: 'Edit' }).click();
+    await expect(page.getByRole('heading', { name: 'Edit Match' })).toBeVisible();
+
+    // Steel has no power-factor concept -- the segmented control doesn't even
+    // render for it, so there is nothing on this screen that could have
+    // written a value into the field.
+    await expect(page.getByRole('group', { name: 'Power factor' })).toHaveCount(0);
+
+    // An edit with nothing to do with power factor -- renaming the match --
+    // used to default the empty field to 'Minor' on load and write that back
+    // on Save. It must still be '' after this save.
+    await page.getByLabel('What this match is called').fill('Legacy Steel Blank PF Renamed');
+    await page.getByRole('button', { name: 'Save changes' }).click();
+    await expect(page.getByRole('heading', { name: 'Legacy Steel Blank PF Renamed' })).toBeVisible();
+    await expect(async () => {
+      expect(await readMatchPowerFactor(page, 'legacy-steel-blank-pf')).toBe('');
+    }).toPass();
+  });
+});
