@@ -203,6 +203,13 @@ export function MaintenanceForm({ gunId, id, onSaved, onCancel, onDirtyChange, o
         <label className="field">What was done
           <select value={type} onChange={(e) => setType(e.target.value)}>
             <option value="">Choose what was done…</option>
+            {/* D3 fix (picker sweep, session 139): a legacy/imported type not in
+                MAINT_TYPES (e.g. 'spring_change') used to fall through to the
+                placeholder, so the list screen said "Spring change" (maintLabel
+                humanises it there) while Edit showed no selection at all. Same
+                label, same value, on both screens now. */}
+            {type !== '' && !MAINT_TYPES.some((t) => t.value === type) &&
+              <option value={type}>{maintLabel(type)}</option>}
             {MAINT_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
           </select>
         </label>

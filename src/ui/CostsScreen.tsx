@@ -311,7 +311,13 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
         if (!alive || !p) return;
         setOriginal(p);
         setDate(p.date || todayKey());
-        setCategory(p.category || 'Other');
+        // D4 fix, second door (cold audit, session 140): the stored value,
+        // unchanged — not `p.category || 'Other'`. That substitution wrote
+        // 'Other' into the dirty-tracker baseline for a purchase whose
+        // category was never recorded, so editing the vendor or amount for
+        // any unrelated reason and hitting Save wrote 'Other' into a record
+        // that never said so. Same shape as D2's ammo bullet-type fix.
+        setCategory(p.category);
         setItem(p.item); setVendor(p.vendor);
         setCost(p.cost ? String(p.cost) : '');
         const link = purchaseAmmoLink(p);
@@ -435,6 +441,24 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
         </label>
         <label className="field">Category
           <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            {/* D4 fix (picker sweep, session 139; blank case closed in the
+                session-140 cold audit): an imported purchase with an unlisted
+                category (e.g. from an older category list) used to fall
+                through to CATEGORIES[0], Firearm, while the gun-link and ammo
+                sections below stayed keyed on the TRUE category — the form
+                disagreeing with itself on screen. A blank category (never
+                recorded) used to fall through the same way to 'Other', via a
+                `p.category || 'Other'` load-time substitution — Save doesn't
+                require a category (see saveProblem below), so nothing forced
+                that write; it happened only because the field had nowhere
+                truthful to land. Both cases get their own option now: a
+                blank category renders as "Not recorded" (key '__blank__',
+                since '' can't be a React key), any other unlisted value
+                renders as itself. */}
+            {category === '' &&
+              <option key="__blank__" value="">Not recorded</option>}
+            {category !== '' && !CATEGORIES.includes(category) &&
+              <option value={category}>{category}</option>}
             {CATEGORIES.map((cat) => <option key={cat} value={cat}>{cat}</option>)}
           </select>
         </label>
@@ -467,6 +491,14 @@ export function PurchaseForm({ id, onSaved, onCancel, onDirtyChange, onSaverChan
           <label className="field">Which ammo can
             <select value={ammoId} onChange={(e) => setAmmoId(e.target.value)}>
               <option value="">— Not linked —</option>
+              {/* D6 fix (picker sweep, session 139): a linked can that's since been
+                  deleted used to fall through to "— Not linked —", which is a
+                  different, false statement — the purchase still holds the id,
+                  Save still writes it back, and untouched this is a no-op either
+                  way. "(removed)" is the same word labelOrRemoved already shows
+                  on the read-only Malfunctions list for the same situation. */}
+              {ammoId !== '' && !ammo.some((a) => a.id === ammoId) &&
+                <option value={ammoId}>(removed)</option>}
               {ammo.map((a) => <option key={a.id} value={a.id}>{ammoLabel(a)}</option>)}
             </select>
           </label>

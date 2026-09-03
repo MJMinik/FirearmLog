@@ -9,7 +9,7 @@ import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import {
   classificationProgress, classificationWindow, DIVISIONS, formatClassPct, unclassifiedReason,
-  nextClassifierNeeded,
+  nextClassifierNeeded, optionsWithStored,
 } from '../lib/competition.ts';
 import { allClassifications } from '../lib/dashboard.ts';
 import { matchFee } from '../lib/costing.ts';
@@ -412,7 +412,13 @@ export function ClassifierForm({ id, onSaved, onCancel, onDirtyChange, onSaverCh
         </label>
         <label className="field">Division
           <select value={division} onChange={(e) => setDivision(e.target.value)}>
-            {DIVISIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+            {/* D1 fix (picker sweep, session 139): the literal session-106 defect
+                in a file that fix never touched. optionsWithStored injects a
+                blank or unlisted stored division as its own option, so the
+                select shows what the record holds instead of falling through to
+                DIVISIONS[0], Carry Optics. */}
+            {optionsWithStored(DIVISIONS, division).map((d) =>
+              <option key={d === '' ? '__blank__' : d} value={d}>{d === '' ? 'Not recorded' : d}</option>)}
           </select>
         </label>
         <label className="field">Hit factor
