@@ -11,6 +11,7 @@ import {
 import { missingStoreWarning } from '../lib/restoreWarnings.ts';
 import type { AppSettings } from '../lib/types.ts';
 import { fileTooLargeMessage, storageShortfallMessage, MAX_FLOG_BYTES } from '../lib/inputLimits.ts';
+import { backupSummary, lastBackupLine, tallySources } from '../lib/backupSize.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { deliverFile, isIOS, isStandalone } from './deliverFile.ts';
 import type { DeliveryOutcome } from './deliverFile.ts';
@@ -39,7 +40,7 @@ function stampWords(ms: number): string {
 
 type Stage =
   | { name: 'idle'; message?: string }
-  | { name: 'save-ready'; blob: Blob; summary: string }
+  | { name: 'save-ready'; blob: Blob; summary: string; videoBytes: number }
   // The lazy source is held, not a loaded Snapshot — which is the point: this
   // stage can sit open for minutes while he reads it, and it used to sit there
   // holding his entire backup in memory. Holding the source also keeps the File
@@ -55,10 +56,19 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
   // Nielsen: visibility of system status). Reads the same lastBackupAt stamp
   // the Home reminder uses; 0 = never saved on this device, show nothing.
   const [lastSavedAt, setLastSavedAt] = useState(0);
+  // The size half of the same line (spec §3.2). Undefined on any install that
+  // has never completed a save since this field shipped — even one with a
+  // lastBackupAt from before — so the "Last backup" line shows nothing about
+  // size rather than guess (lastBackupLine is only called when this is set).
+  const [lastBackupSizes, setLastBackupSizes] = useState<{ bytes: number; videoBytes: number } | undefined>(undefined);
   useEffect(() => {
     let alive = true;
     void getSettings<AppSettings>().then((st) => {
-      if (alive && st?.lastBackupAt) setLastSavedAt(st.lastBackupAt);
+      if (!alive) return;
+      if (st?.lastBackupAt) setLastSavedAt(st.lastBackupAt);
+      if (st?.lastBackupBytes !== undefined) {
+        setLastBackupSizes({ bytes: st.lastBackupBytes, videoBytes: st.lastBackupVideoBytes ?? 0 });
+      }
     }).catch(() => { /* the line is informational — never block the card */ });
     return () => { alive = false; };
   }, []);
@@ -142,9 +152,15 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
       const packed = await withExclusiveIo('the backup', async () => {
         const parts = await exportSnapshotSources();
         const photos = parts.media.length;
+        // The library's size, where the cost is felt (spec §3.2): wrap each
+        // source so its bytes are tallied AS THEY'RE READ — the same pass
+        // buildFlogBlob already makes to write the archive, so this costs
+        // nothing extra and needs no second read of the library.
+        const tallied = tallySources(parts.media);
         setStage({ name: 'working', message: 'Packing your data…' });
         const blob = await buildFlogBlob({
           ...parts,
+          media: tallied.sources,
           onProgress: (done, total) => {
             // Only once photos start: data.json is entry zero and reports (0, N)
             // twice, and "Packing photos: 0 of 31" reads like a failure rather
@@ -154,19 +170,22 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
             }
           },
         });
-        return { blob, sessions: (parts.stores.sessions ?? []).length, photos };
+        return {
+          blob, sessions: (parts.stores.sessions ?? []).length, photos, videoBytes: tallied.sizes().video,
+        };
       });
       setStage({
         name: 'save-ready',
         blob: packed.blob,
-        summary: `${packed.sessions} sessions and ${packed.photos} photos/videos, packed and ready.`
+        summary: backupSummary(packed.sessions, packed.photos, packed.blob.size, packed.videoBytes),
+        videoBytes: packed.videoBytes,
       });
     } catch (e) {
       setStage({ name: 'idle', message: e instanceof Error ? e.message : 'The save did not finish.' });
     }
   }
 
-  function afterDelivery(outcome: DeliveryOutcome, filename: string) {
+  function afterDelivery(outcome: DeliveryOutcome, filename: string, bytes: number, videoBytes: number) {
     // The user cancelled the Share sheet on iOS — treat as "backed out without
     // saving." The Home reminder stays up (honest); no time stamped.
     if (outcome.kind === 'share' && !outcome.shared) {
@@ -180,9 +199,13 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
     // backup we couldn't record (a charter §1 honesty bug). On failure the
     // reminder stays up (honest) and the card says so; the file itself has
     // already reached the user either way.
-    void putSettings<AppSettings>({ lastBackupAt: now })
+    // ONE settings write (spec §3.2), not two: the size fields land in the
+    // SAME putSettings call as the timestamp, so the three can never disagree
+    // about which backup they describe.
+    void putSettings<AppSettings>({ lastBackupAt: now, lastBackupBytes: bytes, lastBackupVideoBytes: videoBytes })
       .then(() => {
         setLastSavedAt(now);
+        setLastBackupSizes({ bytes, videoBytes });
         onBackedUp?.();
       })
       .catch(() => setStage({
@@ -212,7 +235,7 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
       : `File saved — ${filename} is in your Downloads folder, unless you chose another spot. Put it where your other device can see it, then load it there.`;
   }
 
-  async function handleSaveNow(blob: Blob) {
+  async function handleSaveNow(blob: Blob, videoBytes: number) {
     try {
       // DATED NAME (Michael, 10 August 2026, decision 3 of the pass 3 spec).
       // Every save used to be called FirearmLog.flog, and iOS does not overwrite
@@ -223,7 +246,7 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
       // sight. Loading is unaffected: he picks the file either way.
       const filename = backupFileName();
       const outcome = await deliverFile(blob, filename, 'application/octet-stream');
-      afterDelivery(outcome, filename);
+      afterDelivery(outcome, filename, blob.size, videoBytes);
     } catch (e) {
       setStage({
         name: 'idle',
@@ -344,9 +367,21 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
               if (f) void filePicked(f);
               e.target.value = '';
             }} />
+          {/* F3 (cold audit, session 141 fix pass 1): an install with
+              lastBackupAt but no recorded size — anyone who saved before
+              this feature shipped — used to LOSE the line entirely once the
+              size-aware version replaced it outright. That's a real
+              regression, not a wash: "when did I last back up" is the whole
+              point of this line, and it went from always-shown to
+              conditionally-shown for no reason that install did anything
+              wrong. So: the size-aware signed line when a size was actually
+              recorded; otherwise the ORIGINAL date-only sentence, unchanged,
+              rather than nothing. */}
           {lastSavedAt > 0 && (
             <p className="report-note" style={{ marginTop: 10 }}>
-              Last saved to the file from this device: {stampWords(lastSavedAt)}.
+              {lastBackupSizes
+                ? lastBackupLine(lastBackupSizes.bytes, lastBackupSizes.videoBytes, lastSavedAt)
+                : `Last saved to the file from this device: ${stampWords(lastSavedAt)}.`}
             </p>
           )}
           {stage.name === 'idle' && stage.message && (
@@ -409,7 +444,7 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
             Heads up: your "back up your data" reminder on the Home screen only clears once you've
             actually saved the file. If you back out without saving, the reminder stays — on purpose.
           </p>
-          <button className="button" onClick={() => void handleSaveNow(stage.blob)}>
+          <button className="button" onClick={() => void handleSaveNow(stage.blob, stage.videoBytes)}>
             Save the File Now
           </button>
         </Sheet>

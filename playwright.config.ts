@@ -77,8 +77,13 @@ export default defineConfig({
   // Playwright starts the server for us and waits until it answers.
   // On CI that means building first, so the timeout has to cover the build.
   webServer: {
+    // FL_E2E=1 on the CI build only: vite.config.ts's `define` makes
+    // __FL_E2E__ true for it (dev mode is already true by default), so the
+    // video-guards E2E spec can override the 100 MB ask line on a built app.
+    // The deploy workflow's plain `npm run build` never sets this, so real
+    // users' bundle never carries the override branch at all.
     command: process.env.CI
-      ? `npm run build && npm run preview -- --port ${PORT} --strictPort`
+      ? `FL_E2E=1 npm run build && npm run preview -- --port ${PORT} --strictPort`
       : `npm run dev -- --port ${PORT} --strictPort`,
     url: BASE_URL,
     reuseExistingServer: !process.env.CI,

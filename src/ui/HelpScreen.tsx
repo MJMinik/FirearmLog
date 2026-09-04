@@ -11,6 +11,7 @@ import { InstallCard } from './InstallCard.tsx';
 import { SampleLogButton } from './SampleLogButton.tsx';
 import { ClearAllSheet } from './ClearAllSheet.tsx';
 import { APP_VERSION } from '../version.ts';
+import { humanBytes, VIDEO_ASK_BYTES } from '../lib/inputLimits.ts';
 
 interface TourStep { title: string; body: string; view?: View }
 
@@ -92,7 +93,10 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Photos, captions & markup',
-      body: 'Any photo or video you add — on a session, match, classifier, or gun — opens with a tap. Give it a caption (it shows under the photo everywhere) and notes. Tap the photo again in the panel to fill the screen with it (any labeled circles come along); tap the X or anywhere on the backdrop to close. On a photo, tap "Mark Up Photo" to draw labeled circles in different colors — say 1 "Bill Drill," 2 "Left hand only" — and the labels list underneath. The circles show on the thumbnails too, and they print on your reports. New photos shrink automatically so they don\'t fill up your phone.',
+      // F5 (cold audit, session 141 fix pass 1): the two ask-line figures
+      // below used to be hard-coded — now derived, so a future change to
+      // VIDEO_ASK_BYTES updates this sentence for free instead of going stale.
+      body: `Any photo or video you add — on a session, match, classifier, or gun — opens with a tap. Give it a caption (it shows under the photo everywhere) and notes. Tap the photo again in the panel to fill the screen with it (any labeled circles come along); tap the X or anywhere on the backdrop to close. On a photo, tap "Mark Up Photo" to draw labeled circles in different colors — say 1 "Bill Drill," 2 "Left hand only" — and the labels list underneath. The circles show on the thumbnails too, and they print on your reports. New photos shrink automatically so they don't fill up your phone. Pick a video over ${humanBytes(VIDEO_ASK_BYTES)} and FirearmLog asks first: keep the video, or keep a still frame and your notes instead (a still frame costs far less to store and back up). Under ${humanBytes(VIDEO_ASK_BYTES)}, a video is added right away, same as a photo.`,
     },
     {
       title: 'Drills',
@@ -167,7 +171,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Sync — phone & desktop',
-      body: `Sync (under ${at('Sync & Backup')}) moves a single file between your devices through iCloud Drive or the Files app. Save to the file from the device you just used, then load it on the other one. The app tells you plainly when one copy is newer. If any of your photos are still full size, a Compress Photos card appears on that same screen offering to make smaller copies of them. ${at('Export as CSV')} saves your sessions, drill results, timed skills, guns, ammunition, costs and more as files you can open in Numbers, Excel or Google Sheets, or hand to another program. Each one saves separately, and the screen lists what it can do. A CSV holds numbers and words, so it is not a backup: Save to File is. ${at('Import from CSV')} goes the other way: pick a spreadsheet or another app's export, say which of your columns holds the date, the gun and the round count, see exactly what would be added, and take the whole import back out afterwards if it is not what you wanted.`,
+      body: `Sync (under ${at('Sync & Backup')}) moves a single file between your devices through iCloud Drive or the Files app. Save to the file from the device you just used, then load it on the other one. The app tells you plainly when one copy is newer, and once a save finishes it shows the file's size right there, with the video part shown separately when there is any. If any of your photos are still full size, a Compress Photos card appears on that same screen offering to make smaller copies of them. ${at('Export as CSV')} saves your sessions, drill results, timed skills, guns, ammunition, costs and more as files you can open in Numbers, Excel or Google Sheets, or hand to another program. Each one saves separately, and the screen lists what it can do. A CSV holds numbers and words, so it is not a backup: Save to File is. ${at('Import from CSV')} goes the other way: pick a spreadsheet or another app's export, say which of your columns holds the date, the gun and the round count, see exactly what would be added, and take the whole import back out afterwards if it is not what you wanted.`,
     },
     {
       title: 'Setup & sample data',

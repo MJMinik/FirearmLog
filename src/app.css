@@ -437,6 +437,13 @@ input, select, textarea, button { font-size: max(16px, 1rem); font-family: inher
    they read as buttons, not links. */
 .button.secondary { background: var(--bg-card); color: var(--accent-ink); border: 1px solid color-mix(in srgb, var(--accent) 40%, transparent); }
 .button:disabled { opacity: 0.5; }
+/* V2 (cold audit, session 141 fix pass 2): aria-disabled (used where a button
+   must stay focusable — MediaField.tsx's capture-time sheet, F4) carries none
+   of the browser's own "unavailable" styling that native :disabled gets for
+   free. Same visual treatment, same specificity shape as the rule above, so
+   it wins over .button.secondary/.button.danger's own color/background the
+   same way. */
+.button[aria-disabled='true'] { opacity: 0.5; cursor: default; }
 
 /* IMPORT_PICKER_AND_CORRECT_NUMBER_SPEC.md §1 (19 Aug 2026): the Steel
    adoption question's two answer buttons. Before this, "Yes — it's mine"
