@@ -104,6 +104,23 @@ test('P-7 run: the record keeps its id and every other field, so references surv
   assert.equal(m.createdAt, 0, 'created stamp preserved');
 });
 
+// F6(e) (cold audit, session 141 fix pass 1): the rewrite spreads the whole
+// record ({ ...m, data, mime }), so Media's two video-guards fields
+// (origin/libraryId — src/lib/types.ts, deliberately absent from
+// recordShape.ts's shape map) should ride along like any other field. Proven
+// directly rather than assumed.
+test('P-7 run: origin and libraryId survive the rewrite, when present', async () => {
+  await clearAllData();
+  await putOne('media', photo('md-origin', 1_000, { origin: 'stored', libraryId: 'lib-99' }));
+
+  await runPhotoCleanup(shrinkBy(0.5), noProgress, () => 55);
+
+  const m = await getOne<Media>('media', 'md-origin');
+  assert.equal(m?.data.byteLength, 500, 'sanity: the rewrite actually ran');
+  assert.equal(m?.origin, 'stored', 'origin survives the rewrite');
+  assert.equal(m?.libraryId, 'lib-99', 'libraryId survives the rewrite');
+});
+
 test('P-7 run: a photo deleted between the scan and its turn is skipped, not a crash', async () => {
   await clearAllData();
   // Ids come back from the scan in key order, so md-a is processed first and

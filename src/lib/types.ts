@@ -454,6 +454,22 @@ export interface Media extends BaseRecord {
   data: ArrayBuffer;
   /** Drawn circle markups on the image (optional). Coordinates are 0..1 of the image. */
   marks?: Mark[];
+  /** Where the bytes live (session 141, video-guards spec §3.3): 'stored' means
+   *  the bytes above are the whole record, which is every record today — no
+   *  writer sets this field yet. It exists now so a future native build can add
+   *  'library', meaning the bytes live in the phone's own photo/video library
+   *  and `libraryId` below names which one, without a later migration. No
+   *  screen reads either field yet; the .flog carries them like any other.
+   *  DELIBERATELY ABSENT FROM src/lib/recordShape.ts's shape map: an optional
+   *  field is never listed there (see that file's header) — listing it would
+   *  make every read fill in `origin: ''`, contradicting "absent means
+   *  stored" above, and would fail tsc against PlainStringKeys, which excludes
+   *  optional fields by construction. */
+  origin?: 'stored' | 'library';
+  /** Which library item the bytes come from, when `origin === 'library'`.
+   *  Empty/absent today — see `origin` above for why it stays out of the
+   *  shape map. */
+  libraryId?: string;
 }
 
 /** A labeled circle drawn on a photo. Position/size are fractions (0..1) of the
@@ -644,6 +660,18 @@ export interface AppSettings {
   /** When the user last saved a backup file (Save to File). Drives the Home
    *  backup reminder. Optional — undefined means never backed up. */
   lastBackupAt?: number;
+  /** The finished .flog's true size (blob.size) from that same save, in bytes
+   *  (session 141, video-guards spec §3.2). Written in the SAME putSettings
+   *  call as lastBackupAt, so the two can never disagree about which backup
+   *  they describe. Undefined on any install that has never completed a save
+   *  since this field shipped, even if lastBackupAt is set (an older backup
+   *  stamp with no recorded size) — Sync & Backup shows nothing about size in
+   *  that case rather than guess. */
+  lastBackupBytes?: number;
+  /** The video subset of lastBackupBytes, from the same save. 0 means the
+   *  backup held no video; undefined follows lastBackupBytes's own rule
+   *  above. */
+  lastBackupVideoBytes?: number;
   /** The one "golden" north-star goal — pinned atop Goals and echoed on Home.
    *  Holds a Goal id; empty or undefined means none is set. */
   goldenGoalId?: string;

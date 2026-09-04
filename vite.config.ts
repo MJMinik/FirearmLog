@@ -4,8 +4,28 @@ import { VitePWA } from 'vite-plugin-pwa';
 
 // base './' makes the build work from any URL path, including
 // GitHub Pages project sites like https://<user>.github.io/<repo>/
-export default defineConfig({
+export default defineConfig(({ mode }) => ({
   base: './',
+  // __FL_E2E__ (session 141, video-guards spec §5): true in dev and in a CI
+  // build run with FL_E2E=1, false in a real production build. Lets E2E trip
+  // the large-video sheet's 100 MB line on a tiny fixture (window.__flVideoAskBytes,
+  // set only when this is true — see MediaField.tsx) without that override
+  // branch shipping. playwright.config.ts's CI webServer command sets
+  // FL_E2E=1 because CI runs the BUILT app; the deploy workflow's plain
+  // `npm run build` does not, so the live site's bundle drops the branch
+  // entirely — PROVEN, not asserted (F7, cold audit fix pass 1 — the prior
+  // wording here cited "the builder's report", which no reader of this file
+  // can open):
+  //   npm run build            && grep -c flVideoAskBytes dist/assets/*.js   -> 0 in every file
+  //   FL_E2E=1 npm run build   && grep -c flVideoAskBytes dist/assets/*.js   -> >0 in the main bundle
+  // dist is cleared between the two builds by Vite's own build.emptyOutDir
+  // (defaults to true whenever outDir sits inside the project root, which
+  // dist does here) — an explicit `rm -rf dist` first is belt and braces,
+  // not a workaround for Vite leaving stale files behind (V6, cold audit
+  // fix pass 2 — the prior wording here claimed the opposite and was untrue:
+  // asset filenames are content-hashed and emptyOutDir already clears the
+  // directory on every build).
+  define: { __FL_E2E__: JSON.stringify(mode !== 'production' || process.env.FL_E2E === '1') },
   plugins: [
     react(),
     // ---------------------------------------------------------------------------
@@ -108,4 +128,4 @@ export default defineConfig({
     // the need, and say so out loud.
     target: ['es2020', 'edge88', 'firefox78', 'chrome87', 'safari15.4'],
   },
-});
+}));

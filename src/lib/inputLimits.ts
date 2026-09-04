@@ -37,6 +37,13 @@ export const MAX_FLOG_BYTES = GB; // 1 GB
  *  short range clip can be larger; this rejects only the truly outsized file. */
 export const MAX_MEDIA_BYTES = 500 * MB;
 
+/** A video over this size (and at or under MAX_MEDIA_BYTES) offers the shooter
+ *  a choice — keep the video, or keep a still frame and the notes instead —
+ *  rather than being staged silently. Photos never hit this line; the video
+ *  still loads either way, this is about backup size, not a hard refusal
+ *  (that stays at MAX_MEDIA_BYTES). See src/lib/videoGuard.ts. */
+export const VIDEO_ASK_BYTES = 100 * MB;
+
 /** A byte count in the roundest human words we show a shooter — MB, or GB once
  *  it's a gigabyte or more. */
 export function humanBytes(bytes: number): string {
