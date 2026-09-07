@@ -41,6 +41,7 @@ import { InfoTip } from './InfoTip.tsx';
 import { openSessionReport } from './sessionReport.ts';
 import { Reveal } from './Reveal.tsx';
 import { ScreenError } from './ScreenState.tsx';
+import { removedOption } from './removedOption.ts';
 
 export function ProgressScreen({ refreshKey, open }: { refreshKey: number; open: (v: View) => void }) {
   const [goals, setGoals] = useState<Goal[]>([]);
@@ -635,6 +636,10 @@ function TrendsCard({ sessions, matches, firearms, drills, classifiers, malfunct
           <select aria-label="Gun" value={filter.firearmId ?? ''}
             onChange={(e) => setFilter({ category: '', firearmId: e.target.value })}>
             <option value="">All guns</option>
+            {/* D9 fix (session 141): a filter naming a deleted gun must not
+                silently read "All guns" while it keeps filtering by the dead
+                id -- see removedOption.ts. */}
+            {removedOption(filter.firearmId ?? '', firearms).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             {firearms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
           <select aria-label="Time span" value={span} onChange={(e) => setSpan(e.target.value === 'all' ? 'all' : Number(e.target.value))}>

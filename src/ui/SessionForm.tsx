@@ -42,6 +42,7 @@ import { pickableGuns } from '../lib/gunStatus.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { DrillForm } from './DrillsScreen.tsx';
 import { TIMED_SKILLS, formatSec, parseRepTimes, formatRepTimes } from '../lib/skillSets.ts';
+import { removedOption } from './removedOption.ts';
 import { Stepper } from './Stepper.tsx';
 import { useDirtyTracker } from './useDirtyTracker.ts';
 
@@ -1596,6 +1597,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               <label className="field">Which gun
                 <select value={m.firearmId}
                   onChange={(e) => {
+                    const newGunId = e.target.value;
                     // D5 fix, second door (cold audit, session 140): the
                     // effect at ~531 only clears magazineId when a gun is
                     // re-pointed AUTOMATICALLY (its gun left the session). A
@@ -1605,10 +1607,52 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                     // gun's malfunction. A magazine chosen for one gun cannot
                     // be the magazine for another, so any hand change clears
                     // it too.
-                    updateMalf(i, { firearmId: e.target.value, magazineId: '' });
+                    // Extended (picker-branch LOW (a), session 141): "cannot
+                    // be the magazine for another" is only true when the
+                    // magazine ISN'T actually linked to the new gun too. A
+                    // magazine can name more than one firearmId, so keep it
+                    // when the new gun is genuinely one of them — checked
+                    // against the magazine's OWN firearmIds, never against
+                    // magazinesForFirearm's offered list, because that list
+                    // falls back to every magazine when a gun has none linked
+                    // and that fallback must not count as "linked."
+                    const stored = magazines.find((mag) => mag.id === m.magazineId);
+                    const trulyLinked = !!stored && Array.isArray(stored.firearmIds) && stored.firearmIds.includes(newGunId);
+                    updateMalf(i, { firearmId: newGunId, magazineId: trulyLinked ? m.magazineId : '' });
                   }}>
-                  {(selectedGuns.length ? selectedGuns : firearms).map((f) =>
-                    <option key={f.id} value={f.id}>{f.name}</option>)}
+                  {/* Picker-branch LOW (session 139/141): the offered list is
+                      the session's own guns, falling back to every gun only
+                      when the session has none. A stored firearmId absent
+                      from BOTH -- every session gun since deleted -- used to
+                      render blank; now it gets a truthful "(removed)"
+                      option, and an offered list that's itself empty (every
+                      gun in the app deleted) says so instead of rendering
+                      nothing.
+                      Cold audit F1 (session 141): an empty gunList used to
+                      render ONLY the disabled placeholder -- true for a
+                      genuinely blank row, but every malfunction the app
+                      itself ever wrote has a real (if now possibly stale)
+                      firearmId, so THAT shape rendered blank (selectedIndex
+                      -1: the disabled placeholder is the only option, and a
+                      value that matches nothing selects nothing) instead of
+                      "(removed)". The ghost option goes first when the
+                      stored id is non-empty; the placeholder stays so an
+                      actually-blank row still reads as one. */}
+                  {(() => {
+                    const gunList = selectedGuns.length ? selectedGuns : firearms;
+                    if (gunList.length === 0) {
+                      return <>
+                        {removedOption(m.firearmId, gunList).map((o) =>
+                          <option key={o.value} value={o.value}>{o.label}</option>)}
+                        <option value="" disabled>No guns to choose from</option>
+                      </>;
+                    }
+                    return <>
+                      {removedOption(m.firearmId, gunList).map((o) =>
+                        <option key={o.value} value={o.value}>{o.label}</option>)}
+                      {gunList.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                    </>;
+                  })()}
                 </select>
               </label>
               <label className="field">How you cleared it
@@ -1638,38 +1682,66 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                   </select>
                 </label>
               )}
-              {magazines.length > 0 && (
-                <label className="field">Magazine <span className="field-optional">(optional)</span>
-                  <select value={m.magazineId}
-                    onChange={(e) => updateMalf(i, { magazineId: e.target.value })}>
-                    <option value="">— Not sure —</option>
-                    {/* D5/D6 fix (picker sweep, session 139; third door closed in
-                        the session-140 cold audit): a stored magazineId can be
-                        wrong in two different ways, and each needs its own
-                        truthful option rather than falling through to
-                        "— Not sure —" while Save keeps writing the id back.
-                        (1) It resolves to nothing in the FULL magazines list
-                        (hard deleted, e.g. MagazinesScreen's forever-delete) —
-                        "(removed)". Checked against the full list, not just
-                        this gun's mags, because magazinesForFirearm falls back
-                        to every magazine when none are linked to the gun.
-                        (2) It still exists but is no longer linked to THIS
-                        malfunction's gun — unlinked from the gun after the
-                        malfunction was logged, or (D5's other two doors) the
-                        malfunction was re-pointed to a different gun without
-                        the field being touched — "(other gun)", the same idea
-                        as MatchMagPicker's ghost rows for the same shape. */}
-                    {m.magazineId !== '' && (() => {
-                      const stored = magazines.find((mag) => mag.id === m.magazineId);
-                      if (!stored) return <option value={m.magazineId}>(removed)</option>;
-                      const inScope = magazinesForFirearm(magazines, m.firearmId).some((mag) => mag.id === m.magazineId);
-                      return inScope ? null : <option value={m.magazineId}>{stored.label} (other gun)</option>;
-                    })()}
-                    {magazinesForFirearm(magazines, m.firearmId).map((mag) =>
-                      <option key={mag.id} value={mag.id}>{mag.label}{mag.active === false ? ' (retired)' : ''}</option>)}
-                  </select>
-                </label>
-              )}
+              {magazines.length > 0 && (() => {
+                // Picker-branch LOW (c) (session 141): magazinesForFirearm used
+                // to be called twice per row (the ghost-option check below, and
+                // the real options list) -- compute it once here. A local const
+                // inside the row, not useMemo: this render already runs inside
+                // malfs.map(), and a hook can't live in a loop.
+                const rowMagazines = magazinesForFirearm(magazines, m.firearmId);
+                return (
+                  <label className="field">Magazine <span className="field-optional">(optional)</span>
+                    <select value={m.magazineId}
+                      onChange={(e) => updateMalf(i, { magazineId: e.target.value })}>
+                      <option value="">— Not sure —</option>
+                      {/* D5/D6 fix (picker sweep, session 139; third door closed in
+                          the session-140 cold audit): a stored magazineId can be
+                          wrong in two different ways, and each needs its own
+                          truthful option rather than falling through to
+                          "— Not sure —" while Save keeps writing the id back.
+                          (1) It resolves to nothing in the FULL magazines list
+                          (hard deleted, e.g. MagazinesScreen's forever-delete) —
+                          "(removed)". Checked against the full list, not just
+                          this gun's mags, because magazinesForFirearm falls back
+                          to every magazine when none are linked to the gun.
+                          (2) It still exists but is no longer linked to THIS
+                          malfunction's gun — unlinked from the gun after the
+                          malfunction was logged, or (D5's other two doors) the
+                          malfunction was re-pointed to a different gun without
+                          the field being touched — the same idea as
+                          MatchMagPicker's ghost rows for the same shape.
+                          Picker-branch LOW (b) (session 141): that second case's
+                          label now says what's actually true instead of always
+                          "(other gun)" -- retired if the mag itself is off
+                          duty, and "(gun removed)" rather than the misleading
+                          "(other gun)" when its OWN gun no longer exists at all
+                          (there's no "other gun"; there's no gun). An empty
+                          label falls back to the app's existing "Unnamed ..."
+                          convention (AmmoScreens.tsx's ammoLabel fallback,
+                          OpticsScreen's "Unnamed optic") rather than a new one. */}
+                      {m.magazineId !== '' && (() => {
+                        const stored = magazines.find((mag) => mag.id === m.magazineId);
+                        if (!stored) return <option value={m.magazineId}>(removed)</option>;
+                        const inScope = rowMagazines.some((mag) => mag.id === m.magazineId);
+                        if (inScope) return null;
+                        const base = stored.label || 'Unnamed magazine';
+                        const retired = stored.active === false ? ' (retired)' : '';
+                        const storedGunIds = Array.isArray(stored.firearmIds) ? stored.firearmIds : [];
+                        const gunGone = storedGunIds.length > 0 && !storedGunIds.some((id) => firearms.some((f) => f.id === id));
+                        const scope = gunGone ? ' (gun removed)' : ' (other gun)';
+                        return <option value={m.magazineId}>{base}{retired}{scope}</option>;
+                      })()}
+                      {/* Cold audit (session 141): an empty label used to render
+                          blank here while the ghost option above already falls
+                          back to "Unnamed magazine" for the same case -- the same
+                          record reading two different ways depending on which
+                          branch rendered it. Match the ghost's fallback. */}
+                      {rowMagazines.map((mag) =>
+                        <option key={mag.id} value={mag.id}>{mag.label || 'Unnamed magazine'}{mag.active === false ? ' (retired)' : ''}</option>)}
+                    </select>
+                  </label>
+                );
+              })()}
               <label className="field">Round number <span className="field-optional">(optional)</span>
                 <input type="number" inputMode="numeric" min="0" value={m.roundCount} placeholder="e.g. 47"
                   autoComplete="off"

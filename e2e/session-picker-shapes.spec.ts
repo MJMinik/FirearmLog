@@ -395,3 +395,273 @@ test.describe('D7: an unrecognised session kind gets its own chip', () => {
     expect(rows[0].type).toBe('competition');
   });
 });
+
+test.describe('Picker-branch LOW (a) (session 141): a magazine truly linked to the NEW gun survives a hand gun-change', () => {
+  const GUN_A_ID = 'e2e-picker-141-two-gun-a';
+  const GUN_B_ID = 'e2e-picker-141-two-gun-b';
+  const MAG_ID = 'e2e-picker-141-two-gun-mag'; // linked to BOTH A and B
+  const SESSION_ID = 'e2e-picker-141-two-gun-session';
+  const MALF_ID = 'e2e-picker-141-two-gun-malf';
+  const LOCATION = 'E2E Picker Two-Gun Mag Session';
+
+  test.beforeEach(async ({ page }) => {
+    await seedDemo(page);
+    await seedRaw(page, 'firearms', gunRecord(GUN_A_ID, 'E2E Two-Gun Mag Alpha', 1));
+    await seedRaw(page, 'firearms', gunRecord(GUN_B_ID, 'E2E Two-Gun Mag Bravo', 2));
+    // Genuinely linked to BOTH guns -- the D5 fix above clears the magazine on
+    // any hand gun-change unconditionally; this batch's fix keeps it when the
+    // NEW gun is really one of the magazine's own firearmIds, not merely one
+    // magazinesForFirearm happens to offer through its every-magazine fallback.
+    await seedRaw(page, 'magazines', { ...magRecord(MAG_ID, 'Two-Gun Mag', GUN_A_ID), firearmIds: [GUN_A_ID, GUN_B_ID] });
+    await seedRaw(page, 'sessions', {
+      id: SESSION_ID, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000,
+      date: '2026-08-01', type: 'practice',
+      guns: [{ firearmId: GUN_A_ID, rounds: 50 }, { firearmId: GUN_B_ID, rounds: 30 }],
+      location: LOCATION, distances: '', notes: '', ammoUsage: [], drills: [],
+      targetMediaIds: [], malfunctions: [], selfRating: null, rangeFee: null,
+      planned: false, checklist: null,
+    });
+    await seedRaw(page, 'malfunctions', {
+      id: MALF_ID, sessionId: SESSION_ID, date: '2026-08-01', firearmId: GUN_A_ID,
+      type: 'Stovepipe', resolution: '', notes: '', ammoId: null, magazineId: MAG_ID, roundCount: null,
+    });
+    await page.reload();
+  });
+
+  test('switching "Which gun" to B by hand keeps the magazine', async ({ page }) => {
+    await openTheSession(page, LOCATION);
+    const whichGun = page.locator('label', { hasText: 'Which gun' }).locator('select');
+    const magazine = page.getByLabel('Magazine (optional)');
+    await expect(whichGun).toHaveValue(GUN_A_ID);
+    await expect(magazine).toHaveValue(MAG_ID);
+
+    await whichGun.selectOption(GUN_B_ID);
+    // The assertion this test exists to prove: unlike a magazine only linked
+    // to the OLD gun (the D5 test above), one that also names the NEW gun
+    // must survive the switch instead of being cleared unconditionally.
+    await expect(magazine).toHaveValue(MAG_ID);
+
+    await saveAndReturnToLog(page);
+    const rows = (await getAllFrom<{ sessionId: string; firearmId: string; magazineId: string | null }>(page, 'malfunctions'))
+      .filter((m) => m.sessionId === SESSION_ID);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].firearmId).toBe(GUN_B_ID);
+    expect(rows[0].magazineId, 'a magazine truly linked to the new gun must survive a hand gun-change').toBe(MAG_ID);
+  });
+});
+
+test.describe('Picker-branch LOW (b) (session 141): the out-of-scope magazine ghost label says what is true', () => {
+  test('a retired magazine still linked to a real (other) gun reads "(retired) (other gun)"', async ({ page }) => {
+    const GUN_A_ID = 'e2e-picker-141-ghostlabel-a';
+    const GUN_OWNER_ID = 'e2e-picker-141-ghostlabel-owner';
+    const MAG_RETIRED_ID = 'e2e-picker-141-ghostlabel-retired-mag';
+    const SESSION_ID = 'e2e-picker-141-ghostlabel-retired-session';
+    const LOCATION = 'E2E Ghost Retired Mag Session';
+    await seedDemo(page);
+    await seedRaw(page, 'firearms', gunRecord(GUN_A_ID, 'E2E Ghost Label Gun A', 1));
+    await seedRaw(page, 'firearms', gunRecord(GUN_OWNER_ID, 'E2E Ghost Label Owner', 2));
+    await seedRaw(page, 'magazines', { ...magRecord(MAG_RETIRED_ID, 'Ghost Retired Mag', GUN_OWNER_ID), active: false });
+    // Gun A needs its own real magazine, or magazinesForFirearm falls back to
+    // offering every magazine on file (same reasoning as the D5 beforeEach).
+    await seedRaw(page, 'magazines', magRecord('e2e-picker-141-ghostlabel-a-own', 'Ghost A Own Mag', GUN_A_ID));
+    await seedRaw(page, 'sessions', {
+      id: SESSION_ID, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000,
+      date: '2026-08-01', type: 'practice', guns: [{ firearmId: GUN_A_ID, rounds: 20 }],
+      location: LOCATION, distances: '', notes: '', ammoUsage: [], drills: [],
+      targetMediaIds: [], malfunctions: [], selfRating: null, rangeFee: null,
+      planned: false, checklist: null,
+    });
+    await seedRaw(page, 'malfunctions', {
+      id: 'e2e-picker-141-ghostlabel-retired-malf', sessionId: SESSION_ID, date: '2026-08-01', firearmId: GUN_A_ID,
+      type: 'Failure to feed', resolution: '', notes: '', ammoId: null, magazineId: MAG_RETIRED_ID, roundCount: null,
+    });
+    await page.reload();
+
+    await openTheSession(page, LOCATION);
+    const magazine = page.getByLabel('Magazine (optional)');
+    await expect(magazine.locator('option:checked')).toHaveText('Ghost Retired Mag (retired) (other gun)');
+  });
+
+  test('a magazine whose own gun no longer exists reads "(gun removed)", not "(other gun)"', async ({ page }) => {
+    const GUN_A_ID = 'e2e-picker-141-ghostlabel-a2';
+    const MAG_GUNGONE_ID = 'e2e-picker-141-ghostlabel-gungone-mag';
+    const SESSION_ID = 'e2e-picker-141-ghostlabel-gungone-session';
+    const LOCATION = 'E2E Ghost Gungone Mag Session';
+    await seedDemo(page);
+    await seedRaw(page, 'firearms', gunRecord(GUN_A_ID, 'E2E Ghost Label Gun A2', 1));
+    // firearmIds names a gun that was never created (equivalent, for this
+    // code's purposes, to one that was created and then hard-deleted).
+    await seedRaw(page, 'magazines', magRecord(MAG_GUNGONE_ID, 'Ghost Gungone Mag', 'e2e-does-not-exist-owner-gun'));
+    await seedRaw(page, 'magazines', magRecord('e2e-picker-141-ghostlabel-a2-own', 'Ghost A2 Own Mag', GUN_A_ID));
+    await seedRaw(page, 'sessions', {
+      id: SESSION_ID, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000,
+      date: '2026-08-01', type: 'practice', guns: [{ firearmId: GUN_A_ID, rounds: 20 }],
+      location: LOCATION, distances: '', notes: '', ammoUsage: [], drills: [],
+      targetMediaIds: [], malfunctions: [], selfRating: null, rangeFee: null,
+      planned: false, checklist: null,
+    });
+    await seedRaw(page, 'malfunctions', {
+      id: 'e2e-picker-141-ghostlabel-gungone-malf', sessionId: SESSION_ID, date: '2026-08-01', firearmId: GUN_A_ID,
+      type: 'Failure to feed', resolution: '', notes: '', ammoId: null, magazineId: MAG_GUNGONE_ID, roundCount: null,
+    });
+    await page.reload();
+
+    await openTheSession(page, LOCATION);
+    const magazine = page.getByLabel('Magazine (optional)');
+    await expect(magazine.locator('option:checked')).toHaveText('Ghost Gungone Mag (gun removed)');
+  });
+
+  test('a blank magazine label falls back to "Unnamed magazine"', async ({ page }) => {
+    const GUN_A_ID = 'e2e-picker-141-ghostlabel-a3';
+    const GUN_OWNER_ID = 'e2e-picker-141-ghostlabel-owner3';
+    const MAG_BLANK_ID = 'e2e-picker-141-ghostlabel-blank-mag';
+    const SESSION_ID = 'e2e-picker-141-ghostlabel-blank-session';
+    const LOCATION = 'E2E Ghost Blank Label Mag Session';
+    await seedDemo(page);
+    await seedRaw(page, 'firearms', gunRecord(GUN_A_ID, 'E2E Ghost Label Gun A3', 1));
+    await seedRaw(page, 'firearms', gunRecord(GUN_OWNER_ID, 'E2E Ghost Label Owner3', 2));
+    await seedRaw(page, 'magazines', { ...magRecord(MAG_BLANK_ID, '', GUN_OWNER_ID) });
+    await seedRaw(page, 'magazines', magRecord('e2e-picker-141-ghostlabel-a3-own', 'Ghost A3 Own Mag', GUN_A_ID));
+    // Cold audit (session 141): a real, in-scope magazine (linked to GUN_A,
+    // so it renders in the ordinary list, not the ghost branch) with the
+    // same blank label -- the ghost branch already fell back to "Unnamed
+    // magazine" for a blank label; the real list's own .map() didn't, so
+    // the same underlying record read two different ways depending on
+    // which branch rendered it.
+    await seedRaw(page, 'magazines', { ...magRecord('e2e-picker-141-blank-real-mag', '', GUN_A_ID) });
+    await seedRaw(page, 'sessions', {
+      id: SESSION_ID, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000,
+      date: '2026-08-01', type: 'practice', guns: [{ firearmId: GUN_A_ID, rounds: 20 }],
+      location: LOCATION, distances: '', notes: '', ammoUsage: [], drills: [],
+      targetMediaIds: [], malfunctions: [], selfRating: null, rangeFee: null,
+      planned: false, checklist: null,
+    });
+    await seedRaw(page, 'malfunctions', {
+      id: 'e2e-picker-141-ghostlabel-blank-malf', sessionId: SESSION_ID, date: '2026-08-01', firearmId: GUN_A_ID,
+      type: 'Failure to feed', resolution: '', notes: '', ammoId: null, magazineId: MAG_BLANK_ID, roundCount: null,
+    });
+    await page.reload();
+
+    await openTheSession(page, LOCATION);
+    const magazine = page.getByLabel('Magazine (optional)');
+    await expect(magazine.locator('option:checked')).toHaveText('Unnamed magazine (other gun)');
+    await expect(magazine.locator('option', { hasText: 'Unnamed magazine' })).toHaveCount(2);
+  });
+});
+
+test.describe('Picker-branch LOW (session 139/141): "Which gun" never renders blank', () => {
+  test('a malfunction pointed at a gun absent from the session AND deleted from firearms shows "(removed)"', async ({ page }) => {
+    const GUN_KEPT_ID = 'e2e-picker-141-nogun-kept';
+    const SESSION_ID = 'e2e-picker-141-nogun-session';
+    const MALF_ID = 'e2e-picker-141-nogun-malf';
+    const LOCATION = 'E2E Picker No-Gun Session';
+    await seedDemo(page);
+    // GUN_KEPT is a REAL gun, but NOT one of this session's own guns -- it's
+    // only here so the fallback-to-every-firearm list (selectedGuns.length ?
+    // selectedGuns : firearms) has something real to fall back to.
+    await seedRaw(page, 'firearms', gunRecord(GUN_KEPT_ID, 'E2E No-Gun Kept', 1));
+    // The session's OWN gun was hard-deleted -- never seeded as a firearm at
+    // all here, which reads the same to selectedGuns as one that used to
+    // exist and is now gone. selectedGuns is `firearms` filtered by "this
+    // session has rounds for it" (~430), so with the session's only gun
+    // absent from firearms, selectedGuns comes out EMPTY -- the ~527 effect
+    // that auto-repoints a stranded malfunction returns early on an empty
+    // selectedGuns, so it never fires and can't repoint this row itself.
+    // That's the "every session gun deleted" shape item 5 is about, distinct
+    // from D5's effect (a session gun removed while OTHER session guns remain).
+    await seedRaw(page, 'sessions', {
+      id: SESSION_ID, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000,
+      date: '2026-08-01', type: 'practice', guns: [{ firearmId: 'e2e-picker-141-nogun-session-gun', rounds: 20 }],
+      location: LOCATION, distances: '', notes: '', ammoUsage: [], drills: [],
+      targetMediaIds: [], malfunctions: [], selfRating: null, rangeFee: null,
+      planned: false, checklist: null,
+    });
+    await seedRaw(page, 'malfunctions', {
+      id: MALF_ID, sessionId: SESSION_ID, date: '2026-08-01', firearmId: 'e2e-does-not-exist-gun',
+      type: 'Failure to feed', resolution: '', notes: '', ammoId: null, magazineId: null, roundCount: null,
+    });
+    await page.reload();
+
+    await openTheSession(page, LOCATION);
+    const whichGun = page.locator('label', { hasText: 'Which gun' }).locator('select');
+    // Pre-fix: neither the (empty) selectedGuns nor the fallback firearms
+    // list has this id, so the browser falls back to the first REAL option
+    // -- a silent, wrong re-point (the row would look like it's on Gun Kept).
+    await expect(whichGun).toHaveValue('e2e-does-not-exist-gun');
+    await expect(whichGun.locator('option:checked')).toHaveText('(removed)');
+    await expect(whichGun.locator('option', { hasText: 'E2E No-Gun Kept' })).toHaveCount(1);
+  });
+
+  test('a session with no guns, and no guns anywhere in the app, shows "No guns to choose from"', async ({ page }) => {
+    const SESSION_ID = 'e2e-picker-141-empty-session';
+    const MALF_ID = 'e2e-picker-141-empty-malf';
+    const LOCATION = 'E2E Picker Empty Gun List Session';
+    // No seedDemo here -- the point is an app with literally zero firearms,
+    // which the bundled demo data never leaves you with. "Skip for now"
+    // reaches Home without loading it.
+    await page.goto('/');
+    await page.getByRole('button', { name: "Skip for now — I'm just looking around" }).click();
+    await expect(page.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();
+    await seedRaw(page, 'sessions', {
+      id: SESSION_ID, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000,
+      date: '2026-08-01', type: 'practice', guns: [],
+      location: LOCATION, distances: '', notes: '', ammoUsage: [], drills: [],
+      targetMediaIds: [], malfunctions: [], selfRating: null, rangeFee: null,
+      planned: false, checklist: null,
+    });
+    await seedRaw(page, 'malfunctions', {
+      id: MALF_ID, sessionId: SESSION_ID, date: '2026-08-01', firearmId: '',
+      type: 'Failure to feed', resolution: '', notes: '', ammoId: null, magazineId: null, roundCount: null,
+    });
+    await page.reload();
+
+    await openTheSession(page, LOCATION);
+    const whichGun = page.locator('label', { hasText: 'Which gun' }).locator('select');
+    await expect(whichGun.locator('option')).toHaveCount(1);
+    await expect(whichGun.locator('option').first()).toHaveText('No guns to choose from');
+    // Not toBeDisabled() -- Playwright's own disabled-state check doesn't
+    // recognise a bare <option disabled> the way it does form controls
+    // (confirmed against the raw DOM property, which IS true here); the JS
+    // property is the actual truth the browser -- and the shooter -- act on.
+    await expect(whichGun.locator('option').first()).toHaveJSProperty('disabled', true);
+  });
+
+  // Cold audit F1 (session 141): the shape above -- a genuinely blank row --
+  // isn't the only way to land on an empty gun list. Every malfunction the
+  // app itself ever writes has a real firearmId, so a malfunction with a
+  // STALE (non-empty, but matching nothing) firearmId, on a session with no
+  // guns of its own and no firearms left in the app at all, used to render
+  // blank (selectedIndex -1) instead of surfacing the stale id.
+  test('a session with no guns, and a stale firearmId, shows "(removed)" not blank', async ({ page }) => {
+    const SESSION_ID = 'e2e-picker-141-f1-session';
+    const MALF_ID = 'e2e-picker-141-f1-malf';
+    const LOCATION = 'E2E Picker F1 Stale Gun Empty List Session';
+    const STALE_GUN_ID = 'e2e-picker-141-f1-does-not-exist-gun';
+    // Same "no firearms anywhere in the app" setup as the case above --
+    // the point is that BOTH selectedGuns (the session's own guns) and the
+    // firearms fallback are empty, so the select's option list is empty
+    // except for whatever removedOption() contributes.
+    await page.goto('/');
+    await page.getByRole('button', { name: "Skip for now — I'm just looking around" }).click();
+    await expect(page.getByRole('heading', { name: 'FirearmLog', exact: true })).toBeVisible();
+    await seedRaw(page, 'sessions', {
+      id: SESSION_ID, createdAt: 1_700_000_000_000, updatedAt: 1_700_000_000_000,
+      date: '2026-08-01', type: 'practice', guns: [],
+      location: LOCATION, distances: '', notes: '', ammoUsage: [], drills: [],
+      targetMediaIds: [], malfunctions: [], selfRating: null, rangeFee: null,
+      planned: false, checklist: null,
+    });
+    await seedRaw(page, 'malfunctions', {
+      id: MALF_ID, sessionId: SESSION_ID, date: '2026-08-01', firearmId: STALE_GUN_ID,
+      type: 'Failure to feed', resolution: '', notes: '', ammoId: null, magazineId: null, roundCount: null,
+    });
+    await page.reload();
+
+    await openTheSession(page, LOCATION);
+    const whichGun = page.locator('label', { hasText: 'Which gun' }).locator('select');
+    await expect(whichGun).toHaveValue(STALE_GUN_ID);
+    await expect(whichGun.locator('option:checked')).toHaveText('(removed)');
+    await expect(whichGun.locator('option')).toHaveCount(2);
+    await expect(whichGun.locator('option').last()).toHaveText('No guns to choose from');
+  });
+});

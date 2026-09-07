@@ -43,6 +43,7 @@ import type { MonthBucket, RoundsFilter } from '../lib/dashboard.ts';
 import { magsNeedingCleaning } from '../lib/magCleaning.ts';
 import type { MagCleaningItem } from '../lib/magCleaning.ts';
 import { stampUpdate } from '../lib/stamps.ts';
+import { removedOption } from './removedOption.ts';
 
 function useData(refreshKey: number) {
   const [firearms, setFirearms] = useState<Firearm[]>([]);
@@ -791,6 +792,10 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
                     <select value={chartFilter.firearmId ?? ''}
                       onChange={(e) => setChartFilter({ category: '', firearmId: e.target.value })}>
                       <option value="">All guns</option>
+                      {/* D9 fix (session 141): a filter naming a deleted gun
+                          must not silently read "All guns" while it keeps
+                          filtering by the dead id -- see removedOption.ts. */}
+                      {removedOption(chartFilter.firearmId ?? '', firearms).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                       {firearms.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
                     </select>
                   </label>

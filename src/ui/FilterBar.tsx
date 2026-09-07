@@ -11,6 +11,7 @@ import type { LogFilter, LogKind } from '../lib/searchFilter.ts';
 import { competeFilterCount, emptyCompeteFilter } from '../lib/competeFilter.ts';
 import type { CompeteFilter } from '../lib/competeFilter.ts';
 import { Sheet } from './Sheet.tsx';
+import { removedOption } from './removedOption.ts';
 
 export function LogFilterBar({ value, onChange, firearms, shown, total }: {
   value: LogFilter;
@@ -82,6 +83,10 @@ export function LogFilterBar({ value, onChange, firearms, shown, total }: {
           <label className="field">One gun
             <select value={value.firearmId} onChange={(e) => set('firearmId', e.target.value)}>
               <option value="">All guns</option>
+              {/* D9 fix (session 141): a filter naming a gun that's since been
+                  deleted must not silently read "All guns" while it keeps
+                  filtering by the dead id -- see removedOption.ts. */}
+              {removedOption(value.firearmId, firearms).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               {firearms.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </label>
@@ -160,18 +165,27 @@ export function CompeteFilterBar({ value, onChange, firearms, matchTypes, divisi
           <label className="field">Match type
             <select value={value.matchType} onChange={(e) => set('matchType', e.target.value)}>
               <option value="">All types</option>
+              {/* Cold audit F2 (session 141): the same D9 shape as the Gun
+                  select below, but the list here IS the value -- no {id}
+                  record to look an id up in -- so this uses removedOption's
+                  string overload. See removedOption.ts. */}
+              {removedOption(value.matchType, matchTypes).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               {matchTypes.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
           <label className="field">Division
             <select value={value.division} onChange={(e) => set('division', e.target.value)}>
               <option value="">All divisions</option>
+              {removedOption(value.division, divisions).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               {divisions.map((d) => <option key={d} value={d}>{d}</option>)}
             </select>
           </label>
           <label className="field">Gun
             <select value={value.firearmId} onChange={(e) => set('firearmId', e.target.value)}>
               <option value="">All guns</option>
+              {/* D9 fix (session 141): same reasoning as the Log filter's "One
+                  gun" select above -- see removedOption.ts. */}
+              {removedOption(value.firearmId, firearms).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               {firearms.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </label>

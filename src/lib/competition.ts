@@ -121,7 +121,7 @@ export const DIVISION_CODE_ALIASES: Readonly<Record<string, string>> = {
 
 /** The option list, plus the stored value when the list cannot represent it.
  *
- *  Docstring corrected in the session-140 cold audit: this used to claim the
+ *  Docstring corrected in the session-139 cold audit: this used to claim the
  *  opposite of what the code below does, on both counts.
  *
  *  Returns the list UNCHANGED only when the stored value is already in it, by an EXACT,

@@ -16,6 +16,7 @@ import {
 } from '../lib/malfunctionFilter.ts';
 import { labelOrRemoved } from '../lib/lookup.ts';
 import { ScreenError } from './ScreenState.tsx';
+import { removedOption } from './removedOption.ts';
 
 export function MalfunctionsScreen({ refreshKey, onBack, openSession, openMatch }: {
   refreshKey: number;
@@ -152,6 +153,10 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession, openMatch 
           <label className="field">Gun
             <select value={filter.firearmId} onChange={(e) => setField('firearmId', e.target.value)}>
               <option value="">All guns</option>
+              {/* D9 fix (session 141): a filter naming a deleted gun/ammo/
+                  magazine must not silently read "All ..." while it keeps
+                  filtering by the dead id -- see removedOption.ts. */}
+              {removedOption(filter.firearmId, firearms).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               {firearms.map((g) => <option key={g.id} value={g.id}>{g.name}</option>)}
             </select>
           </label>
@@ -161,18 +166,34 @@ export function MalfunctionsScreen({ refreshKey, onBack, openSession, openMatch 
               {types.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </label>
-          {ammo.length > 0 && (
+          {/* D9 fix (session 141): the field used to be wrapped in only
+              `ammo.length > 0`, so a stale filter id whose can is now hard-
+              deleted -- possibly the LAST one, emptying ammo entirely --
+              hid the select while the filter went on applying. Render it
+              whenever there's something to show: real ammo to pick from, or
+              a stale id that needs its "(removed)" option.
+              Cold audit F3 (session 141): the `filter.ammoId !== ''` half
+              of this OR has no e2e test -- this screen's filter is plain
+              useState (resets to empty on every mount) and ammo only loads
+              on mount, so there's no in-page way to make ammo.length go to
+              0 while filter.ammoId stays non-empty without a remount that
+              would reset the filter first. See the matching note in
+              e2e/filter-removed.spec.ts rather than trusting a comment
+              claiming a browser test covers it. */}
+          {(ammo.length > 0 || filter.ammoId !== '') && (
             <label className="field">Ammo
               <select value={filter.ammoId} onChange={(e) => setField('ammoId', e.target.value)}>
                 <option value="">All ammo</option>
+                {removedOption(filter.ammoId, ammo).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 {ammo.map((a) => <option key={a.id} value={a.id}>{ammoLabel(a)}</option>)}
               </select>
             </label>
           )}
-          {magazines.length > 0 && (
+          {(magazines.length > 0 || filter.magazineId !== '') && (
             <label className="field">Magazine
               <select value={filter.magazineId} onChange={(e) => setField('magazineId', e.target.value)}>
                 <option value="">All magazines</option>
+                {removedOption(filter.magazineId, magazines).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
                 {magazines.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
               </select>
             </label>
