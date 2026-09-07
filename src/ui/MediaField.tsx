@@ -14,6 +14,7 @@ import { stampNew } from '../lib/stamps.ts';
 import { newId } from '../lib/id.ts';
 import { prepareUploadBytes } from './shrinkImage.ts';
 import { captureStill } from './videoStill.ts';
+import { isIOS } from './deliverFile.ts';
 import { Icon } from './Icon.tsx';
 import { MarkThumb } from './MarkThumb.tsx';
 import { VideoFrame } from './VideoFrame.tsx';
@@ -111,6 +112,43 @@ export function MediaField({
   const [askQueue, setAskQueue] = useState<QueuedAsk[]>([]);
   const [decodeFailed, setDecodeFailed] = useState(false);
   const [capturingStill, setCapturingStill] = useState(false);
+  // WAITING FOR THE PICKED FILE (Michael's tap test, session 143, 7 Sep 2026:
+  // "crazy slow with no indicator"). Between tapping Add and the `change`
+  // event there can be a long, silent gap that is NOT ours: Safari on iPhone
+  // converts a video picked from the camera roll before it hands the File to
+  // the page at all (Apple Developer Forums thread 731042 — no web page can
+  // switch it off), and a large clip takes real time. The page cannot see
+  // that conversion, but it does know the moment Add was tapped, so it says
+  // so — honestly, as a wait, never as progress it cannot measure. Cleared by
+  // `change` (a file arrived), by the input's `cancel` event (the picker was
+  // dismissed; Safari 16.4+, Chrome 113+), and by unmount.
+  const [picking, setPicking] = useState(false);
+  useEffect(() => {
+    const input = fileRef.current;
+    if (!input) return;
+    const onCancel = (): void => setPicking(false);
+    input.addEventListener('cancel', onCancel);
+    return () => input.removeEventListener('cancel', onCancel);
+  }, []);
+  // Belt and braces for the note above (cold audit, session 143, HIGH): a
+  // browser that never fires `cancel` (older Safari; some dismissal
+  // gestures) would leave "Waiting for your file…" on screen for ever, which
+  // is a false statement. A person touching the page is not in the picker,
+  // so any pointer or key on the document clears the wait. This errs on the
+  // safe side: the worst case is the note vanishing a few seconds early
+  // while a video is still converting, never a claim that stays true past
+  // its time. `capture: true` so a tap on a control that stops propagation
+  // still counts.
+  useEffect(() => {
+    if (!picking) return;
+    const clear = (): void => setPicking(false);
+    document.addEventListener('pointerdown', clear, true);
+    document.addEventListener('keydown', clear, true);
+    return () => {
+      document.removeEventListener('pointerdown', clear, true);
+      document.removeEventListener('keydown', clear, true);
+    };
+  }, [picking]);
   const currentAsk = askQueue[0] ?? null;
   // Mirrors askQueue for the async continuation in keepStill to read the
   // LATEST head against, not the stale one closed over when it started —
@@ -256,8 +294,22 @@ export function MediaField({
         </div>
       )}
       <input ref={fileRef} type="file" accept="image/*,video/*" multiple style={{ display: 'none' }}
-        onChange={(e) => { filesPicked(e.target.files); e.target.value = ''; }} />
-      <button className="button secondary" onClick={() => fileRef.current?.click()}>{addLabel}</button>
+        onChange={(e) => { setPicking(false); filesPicked(e.target.files); e.target.value = ''; }} />
+      <button className="button secondary" onClick={() => { setPicking(true); fileRef.current?.click(); }}>{addLabel}</button>
+      {/* Mounted permanently and empty when idle, for the same reason as the
+          "Making the still…" note in the sheet below (V3): a live region that
+          appears already populated is commonly not announced. */}
+      {/* A static margin: an empty block's margin collapses into the next
+          note's, so idle costs no space, and nothing shifts when the note
+          fills. */}
+      <p className="report-note" aria-live="polite" style={{ marginTop: 8 }}>
+        {picking && (
+          <>
+            <span className="spinner-inline" aria-hidden="true" />
+            {`Waiting for your file… A large video can take a while to arrive${isIOS() ? '; the phone usually converts a video before handing it over.' : '.'}`}
+          </>
+        )}
+      </p>
       {tooBig && <p className="report-note" style={{ color: 'var(--danger)' }}>{tooBig}</p>}
       <p className="report-note">Removals only happen when you Save — Cancel really cancels.</p>
       {viewing && (
@@ -328,7 +380,13 @@ export function MediaField({
               state for the mutation observer to diff against. Present from
               the sheet's first render, its text changes when capture starts,
               which IS a mutation and so IS announced. */}
+          {/* Session 143 (Michael's tap test): the dimmed buttons plus this
+              small grey line did not read as "busy" on a phone — "no
+              indicator that something is going on". The app's spinner now
+              sits beside the text; the text itself is unchanged, and still
+              appears exactly once (V3). */}
           <p className="report-note" aria-live="polite" style={{ marginTop: 8 }}>
+            {capturingStill && <span className="spinner-inline" aria-hidden="true" />}
             {capturingStill ? 'Making the still…' : ''}
           </p>
         </Sheet>

@@ -410,6 +410,74 @@ test.describe('Large video capture-time choice', () => {
     await expect(card.locator('.thumb-tap')).toHaveCount(0);
   });
 
+  test('(13) session 143: the wait for a picked file is visible, and clears on arrival or cancel', async ({ page }) => {
+    // Michael's phone tap test (7 Sep 2026): between tapping Add and the
+    // file arriving, Safari on iPhone converts a camera-roll video and the
+    // page saw nothing for many seconds — "crazy slow with no indicator".
+    // The page cannot see the conversion, so it shows the WAIT: from the Add
+    // tap until `change` (a file arrived) or `cancel` (the picker was
+    // dismissed). Playwright's file chooser holds the pick open, which is
+    // exactly the gap this note fills.
+    await withAskOverride(page);
+    await seedDemo(page);
+    await openFirstMatchEdit(page);
+    const card = mediaCard(page);
+    const waitNote = card.locator('p[aria-live="polite"]').filter({ hasText: 'Waiting for your file' });
+    await expect(waitNote).toHaveCount(0);
+
+    // (a) Add tapped, picker open: the note and its spinner are showing.
+    const [chooser] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      card.getByRole('button', { name: '+ Add Videos or Photos' }).click(),
+    ]);
+    await expect(waitNote).toBeVisible();
+    await expect(waitNote).toContainText('Waiting for your file… A large video can take a while to arrive');
+    await expect(waitNote.locator('.spinner-inline')).toHaveCount(1);
+
+    // (b) The file arrives: the note clears and the normal flow continues
+    // (the Large-video sheet, because the override trips on tiny.webm).
+    await chooser.setFiles({ name: 'tiny.webm', mimeType: 'video/webm', buffer: FIXTURE });
+    await expect(waitNote).toHaveCount(0);
+    const sheet = page.getByRole('dialog', { name: 'Large video' });
+    await expect(sheet).toBeVisible();
+
+    // (c) While the still is being made, the spinner sits beside the text —
+    // and the text still appears exactly once (V3).
+    await sheet.getByRole('button', { name: 'Keep a still instead' }).click();
+    const liveNote = sheet.locator('[aria-live="polite"]');
+    await expect(liveNote.locator('.spinner-inline')).toHaveCount(1);
+    await expect(liveNote).toHaveText('Making the still…');
+    await expect(sheet).toHaveCount(0, { timeout: 20_000 });
+    await expect(liveNote).toHaveCount(0);
+
+    // (d) Add tapped, then the picker dismissed with nothing chosen: the
+    // input's `cancel` event clears the note. HONEST LIMIT (cold audit,
+    // session 143): this dispatches the event by hand, so it proves the
+    // listener is wired, not that every real phone fires `cancel` for every
+    // dismissal gesture. Step (e) is the guard that does not depend on it.
+    const [chooser2] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      card.getByRole('button', { name: '+ Add Videos or Photos' }).click(),
+    ]);
+    await expect(waitNote).toBeVisible();
+    void chooser2; // held open on purpose; the page fires cancel below
+    await card.locator('input[type="file"]').dispatchEvent('cancel');
+    await expect(waitNote).toHaveCount(0);
+
+    // (e) Add tapped, then a real touch anywhere on the page (here: the
+    // form's heading), with no cancel event at all: the note clears, because
+    // a person touching the page is not in the picker. This is the path that
+    // guards a browser that never fires `cancel`.
+    const [chooser3] = await Promise.all([
+      page.waitForEvent('filechooser'),
+      card.getByRole('button', { name: '+ Add Videos or Photos' }).click(),
+    ]);
+    await expect(waitNote).toBeVisible();
+    void chooser3;
+    await page.getByRole('heading', { name: 'Edit Match' }).click();
+    await expect(waitNote).toHaveCount(0);
+  });
+
   test('(11) V5: the too-big note reads as two sentences, and names what actually happened', async ({ page }) => {
     await withAskOverride(page);
     await seedDemo(page);

@@ -508,6 +508,13 @@ input, select, textarea, button { font-size: max(16px, 1rem); font-family: inher
   border: 3px solid var(--separator); border-top-color: var(--accent);
   border-radius: 50%; animation: fl-spin 0.8s linear infinite;
 }
+/* Session 143: the same spinner, sized to sit inline before a line of text
+   (the "Waiting for your file…" and "Making the still…" notes in MediaField). */
+.spinner-inline {
+  display: inline-block; width: 14px; height: 14px; margin: 0 6px -2px 0;
+  border: 2px solid var(--separator); border-top-color: var(--accent);
+  border-radius: 50%; animation: fl-spin 0.8s linear infinite;
+}
 /* Visually-hidden but read aloud — for status text behind an icon/spinner. */
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
