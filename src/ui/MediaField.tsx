@@ -302,11 +302,12 @@ export function MediaField({
       {/* A static margin: an empty block's margin collapses into the next
           note's, so idle costs no space, and nothing shifts when the note
           fills. */}
-      <p className="report-note" aria-live="polite" style={{ marginTop: 8 }}>
+      <p className="report-note busy-line" aria-live="polite" style={{ marginTop: 8 }}>
         {picking && (
           <>
             <span className="spinner-inline" aria-hidden="true" />
-            {`Waiting for your file… A large video can take a while to arrive${isIOS() ? '; the phone usually converts a video before handing it over.' : '.'}`}
+            <strong>Waiting for your file…</strong>
+            {` A large video can take a while to arrive${isIOS() ? '; the phone usually converts a video before handing it over.' : '.'}`}
           </>
         )}
       </p>
@@ -385,9 +386,9 @@ export function MediaField({
               indicator that something is going on". The app's spinner now
               sits beside the text; the text itself is unchanged, and still
               appears exactly once (V3). */}
-          <p className="report-note" aria-live="polite" style={{ marginTop: 8 }}>
+          <p className="report-note busy-line" aria-live="polite" style={{ marginTop: 8 }}>
             {capturingStill && <span className="spinner-inline" aria-hidden="true" />}
-            {capturingStill ? 'Making the still…' : ''}
+            {capturingStill ? <strong>Making the still…</strong> : ''}
           </p>
         </Sheet>
       )}
