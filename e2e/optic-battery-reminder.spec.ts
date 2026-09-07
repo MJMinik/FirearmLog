@@ -214,7 +214,7 @@ test.describe('one battery verdict — the optic badge and the battery reminder 
     // templateKey, not just title — the other half of "battery-shaped").
     await gotoSection(page, 'Reminders');
     const main = page.getByRole('main');
-    await main.getByRole('button', { name: 'Browse templates' }).click();
+    await main.getByRole('button', { name: 'Common reminders' }).click();
     await page.getByRole('dialog').getByRole('button', { name: /Optic battery/ }).click();
     await expect(main.getByRole('heading', { name: 'New Reminder' })).toBeVisible();
     await main.getByLabel('Due date').fill(dayOffset(0));

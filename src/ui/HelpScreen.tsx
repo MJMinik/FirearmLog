@@ -157,7 +157,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Reminders',
       view: { kind: 'reminders' },
-      body: `Reminders (under ${at('Reminders')}) nudge you about the things that run on a schedule — a red-dot battery once a year, a recoil spring by round count on a specific gun, a membership or classifier-currency renewal. Start from a template or write your own: set a date (it can repeat every year or every few months) or a round count on one gun, and add a note. There's no push notification while the app is closed, but a date reminder has an Add to Calendar button that hands it to your phone's calendar to do the alerting. What's near shows on Home under Coming up, and the full list here is grouped Overdue, Coming up, and Later. Mark one done and a repeating date rolls forward, a round-count one re-anchors to the gun's current rounds, and a one-off moves to Done.`,
+      body: `Reminders (under ${at('Reminders')}) nudge you about the things that run on a schedule — a red-dot battery once a year, a recoil spring by round count on a specific gun, a membership or classifier-currency renewal. Pick a common reminder or write your own: set a date (it can repeat every year or every few months) or a round count on one gun, and add a note. There's no push notification while the app is closed, but a date reminder has an Add to Calendar button that hands it to your phone's calendar to do the alerting. What's near shows on Home under Coming up, and the full list here is grouped Overdue, Coming up, and Later. Mark one done and a repeating date rolls forward, a round-count one re-anchors to the gun's current rounds, and a one-off moves to Done.`,
     },
     {
       title: 'Malfunctions',

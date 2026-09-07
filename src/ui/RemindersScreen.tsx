@@ -106,13 +106,13 @@ export function RemindersScreen({ refreshKey, onBack, open }: {
         <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Reminders <InfoTip title="Reminders">Nudges for the things that run on a schedule — a red-dot battery, a recoil spring by round count, a membership renewal. You'll see them here and on Home when they're coming up; there's no push notification, but you can add a date reminder to your calendar. Start from a template or add your own.</InfoTip></h1>
+      <h1 className="large-title">Reminders <InfoTip title="Reminders">Nudges for the things that run on a schedule — a red-dot battery, a recoil spring by round count, a membership renewal. You'll see them here and on Home when they're coming up; there's no push notification, but you can add a date reminder to your calendar. Pick a common reminder or add your own.</InfoTip></h1>
 
       {reminders.length === 0 ? (
         <>
-          <p className="empty">No reminders yet. Start from a template — a battery, a spring, a renewal — or add your own.</p>
+          <p className="empty">No reminders yet. Pick a common reminder (a battery, a spring, a renewal) or add your own.</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            <button className="button" onClick={() => setPicking(true)}>Browse templates</button>
+            <button className="button" onClick={() => setPicking(true)}>Common reminders</button>
             <button className="button secondary" onClick={() => openForm()}>+ Add your own</button>
           </div>
         </>
@@ -120,7 +120,7 @@ export function RemindersScreen({ refreshKey, onBack, open }: {
         <>
           <div style={{ display: 'flex', gap: 8 }}>
             <button className="button" style={{ flex: 1 }} onClick={() => openForm()}>+ Add reminder</button>
-            <button className="button secondary" style={{ flex: 1 }} onClick={() => setPicking(true)}>From a template</button>
+            <button className="button secondary" style={{ flex: 1 }} onClick={() => setPicking(true)}>Common reminders</button>
           </div>
 
           {activeCount === 0 && done.length > 0 && (
@@ -175,7 +175,7 @@ export function RemindersScreen({ refreshKey, onBack, open }: {
       )}
 
       {picking && (
-        <Sheet title="Start from a template" onClose={() => setPicking(false)}>
+        <Sheet title="Common reminders" onClose={() => setPicking(false)}>
           <p className="report-note" style={{ marginBottom: 12 }}>
             Each one is a starting point you can edit — the intervals are manufacturer
             or community figures, not rules. Nothing is saved until you tap Save.

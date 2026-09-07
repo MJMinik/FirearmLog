@@ -53,7 +53,7 @@ test('empty state does the discovery — template library or your own', async ({
   await openReminders(page);
   const main = page.getByRole('main');
   await expect(main.getByText('No reminders yet.')).toBeVisible();
-  await expect(main.getByRole('button', { name: 'Browse templates' })).toBeVisible();
+  await expect(main.getByRole('button', { name: 'Common reminders' })).toBeVisible();
   await expect(main.getByRole('button', { name: '+ Add your own' })).toBeVisible();
 });
 
@@ -62,9 +62,9 @@ test('a template prefills the form and saves a reminder', async ({ page }) => {
   await openReminders(page);
   const main = page.getByRole('main');
 
-  await main.getByRole('button', { name: 'Browse templates' }).click();
+  await main.getByRole('button', { name: 'Common reminders' }).click();
   const sheet = page.getByRole('dialog');
-  await expect(sheet.getByRole('heading', { name: 'Start from a template' })).toBeVisible();
+  await expect(sheet.getByRole('heading', { name: 'Common reminders' })).toBeVisible();
   await sheet.getByRole('button', { name: /Optic battery/ }).click();
 
   await expect(main.getByRole('heading', { name: 'New Reminder' })).toBeVisible();
