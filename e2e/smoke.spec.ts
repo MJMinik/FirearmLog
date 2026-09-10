@@ -20,7 +20,7 @@ test.describe('Smoke', () => {
     await seedDemo(page);
     // Home shows the headline stats and at least one gun in Firearm Status.
     await expect(page.getByText('Live-fire rounds')).toBeVisible();
-    await expect(page.getByText('Sessions', { exact: true })).toBeVisible();
+    await expect(page.getByText('Logged sessions', { exact: true })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Firearm Status' })).toBeVisible();
     // No render crash: the error boundary fallback must not be on screen.
     await expect(page.getByText('Something went wrong')).toHaveCount(0);

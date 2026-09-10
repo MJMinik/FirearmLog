@@ -3,7 +3,7 @@ import { seedDemo, gotoTab } from './helpers';
 
 // MATCHES RIDE BESIDE THE SESSION COUNT (Michael, 27 Aug 2026).
 //
-// Home's Sessions tile counts practices and classes. It never counted matches,
+// Home's Logged sessions tile counts practices and classes. It never counted matches,
 // and nothing on screen said so -- a month of three matches and one practice
 // read as "1 session". The board's answer was to carry matches alongside rather
 // than merge them, the way dry fire already is, because every convention looked
@@ -14,9 +14,9 @@ import { seedDemo, gotoTab } from './helpers';
 // move when a match is added. "A rider appeared" alone would still pass if the
 // count had quietly absorbed it too.
 
-/** The Sessions tile's whole readout, e.g. "12 +3 dry +2 matches". */
+/** The Logged sessions tile's whole readout, e.g. "12 +3 dry +2 matches". */
 async function sessionsTile(page: Page): Promise<string> {
-  const tile = page.locator('.stat').filter({ has: page.locator('.cap', { hasText: 'Sessions' }) });
+  const tile = page.locator('.stat').filter({ has: page.locator('.cap', { hasText: 'Logged sessions' }) });
   return (await tile.locator('.num').innerText()).replace(/\s+/g, ' ').trim();
 }
 
@@ -110,7 +110,7 @@ interface RiderBox { text: string; top: number; left: number; lines: number; }
 async function riderBoxes(page: Page): Promise<RiderBox[]> {
   return page.evaluate(() => {
     const tile = Array.from(document.querySelectorAll('.stat')).find((el) =>
-      /Sessions/.test(el.querySelector('.cap')?.textContent || ''));
+      /Logged sessions/.test(el.querySelector('.cap')?.textContent || ''));
     const row = tile?.querySelector('.stat-riders');
     return Array.from(row?.querySelectorAll(':scope > span') || []).map((el) => {
       const rects = Array.from(el.getClientRects());
@@ -128,7 +128,7 @@ async function riderBoxes(page: Page): Promise<RiderBox[]> {
 async function numberTop(page: Page): Promise<number> {
   return page.evaluate(() => {
     const tile = Array.from(document.querySelectorAll('.stat')).find((el) =>
-      /Sessions/.test(el.querySelector('.cap')?.textContent || ''));
+      /Logged sessions/.test(el.querySelector('.cap')?.textContent || ''));
     const num = tile?.querySelector('.num');
     const first = num?.firstChild as Text | null;
     if (!first) return -1;
@@ -237,7 +237,7 @@ test('when the riders cannot share a row, the second lines up under the first', 
   // is the smallest change that overflows the row. Measured, not guessed.
   await page.evaluate(() => {
     const tile = Array.from(document.querySelectorAll('.stat')).find((el) =>
-      /Sessions/.test(el.querySelector('.cap')?.textContent || ''));
+      /Logged sessions/.test(el.querySelector('.cap')?.textContent || ''));
     const first = tile?.querySelector('.stat-riders > span:first-child');
     if (first) first.textContent = '+1,282 dry';
   });

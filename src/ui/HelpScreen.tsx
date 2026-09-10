@@ -84,7 +84,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     },
     {
       title: 'Home',
-      body: 'Home is your dashboard. Up top is Needs Attention — a gun due for cleaning, a reminder that\'s come due, ammo running low, goals you\'re chasing — and you can tap any item to jump to it. Just below sits Coming up: reminders you\'ve set that are near, like a battery swap or a spring change by round count. Below those are recent sessions, quick stats, and a big Log Session button. The Live-fire rounds and Sessions tiles have a range you can set to the last 6 or 12 months or all time. Tap a month on the rounds chart to see that month\'s sessions.',
+      body: 'Home is your dashboard. Up top is Needs Attention — a gun due for cleaning, a reminder that\'s come due, ammo running low, goals you\'re chasing — and you can tap any item to jump to it. Just below sits Coming up: reminders you\'ve set that are near, like a battery swap or a spring change by round count. Below those are recent sessions, quick stats, and a big Log Session button. The Live-fire rounds and Logged sessions tiles have a range you can set to the last 6 or 12 months or all time. Tap a month on the rounds chart to see that month\'s sessions.',
     },
     {
       title: 'Logging a session',

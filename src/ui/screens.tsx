@@ -637,7 +637,7 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
                   </div>
                 )}
               </div>
-              <div className="cap">Sessions{rangeLabel}</div>
+              <div className="cap">Logged sessions{rangeLabel}</div>
             </div>
             <div className="stat">
               <div className="num">{stats.ammoInventory.toLocaleString()}</div>
