@@ -10,8 +10,10 @@ import { Sheet } from './Sheet.tsx';
 import { InstallCard } from './InstallCard.tsx';
 import { SampleLogButton } from './SampleLogButton.tsx';
 import { ClearAllSheet } from './ClearAllSheet.tsx';
+import { Reveal } from './Reveal.tsx';
 import { APP_VERSION } from '../version.ts';
 import { humanBytes, VIDEO_ASK_BYTES } from '../lib/inputLimits.ts';
+import { telemetryState } from '../lib/telemetry.ts';
 
 interface TourStep { title: string; body: string; view?: View }
 
@@ -101,7 +103,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Drills',
       view: { kind: 'drills' },
-      body: `The drill library lives under ${at('Drills')}. FirearmLog starts you with a set of common pistol drills — Bill Drill, Dot Torture, El Presidente, and more — which you can edit, delete, or add to. Each drill knows which gun types it's for and whether it's dry-fire, live-fire, or both — that's how the session picker filters them. A drill has a short and an expandable full description, a scoring type, and a par or max score. When a session has drills, "Print Drills" makes a score sheet of them — a planned session prints blank boxes to fill in at the range, and a logged session prints the same table with your recorded results.`,
+      body: `The drill library lives under ${at('Drills')}. FirearmLog starts you with a set of common pistol drills — Bill Drill, Dot Torture, El Presidente, and more — which you can edit, delete, or add to. Each drill knows which gun types it's for and whether it's dry-fire, live-fire, or both — that's how the session picker filters them. A drill has a short and an expandable full description, a scoring type, and a par or max score. When a session has drills, "Print Drills" makes a score sheet of them — a planned session prints blank boxes to fill in at the range, and a logged session prints the same table with your recorded results. Open any drill and tap "View your history" to see your best, a trend chart, and every run you've logged — newest first.`,
     },
     {
       title: 'Compete — matches',
@@ -111,7 +113,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Compete — classifiers',
       view: { kind: 'classifier-form' },
-      body: 'Log classifier scores with their code, division, hit factor, and percent. You can attach photos and videos to a classifier too — handy if you film your run. The classification view shows every division you hold a class in at a glance — tap one to see its current percent and what you need for the next class (your C-toward-B progress), using best-6-of-8 style math. Tap "Show the scores that count" to see the actual window — which scores counted, which one drops with your next classifier, and the exact percent that would move you up.',
+      body: 'Log classifier scores with their code, division, hit factor, and percent. You can attach photos and videos to a classifier too — handy if you film your run. The classification view shows every division you hold a class in at a glance — tap one to see its current percent and what you need for the next class (your C-toward-B progress), using best-6-of-8 style math. Tap "Show the scores that count" to see the actual window — which scores counted, which one drops with your next classifier, and the exact percent that would move you up. Every number here links straight to How the numbers work — the exact math and the official rule in its own words — and it\'s also its own stop under Training, reachable from More on a phone, the sidebar on a computer, or the Help menu.',
     },
     {
       title: 'Importing results (PractiScore, USPSA & Steel Challenge)',
@@ -142,12 +144,12 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Optics, magazines & spare parts',
       view: { kind: 'optics' },
-      body: `Optics, magazines, and spare parts each have their own section — ${at('Optics')}, ${at('Magazines')}, and ${at('Parts')}. Parts and optics you buy feed into Costs & Purchases, and unassigned optics are grouped so you can see what's on the shelf. A magazine's round count is its starting count plus every round your logged sessions and matches attribute to it — pick the mags you ran when logging a session or a match and the counts keep themselves.`,
+      body: `Optics, magazines, and spare parts each have their own section — ${at('Optics')}, ${at('Magazines')}, and ${at('Parts')}. Parts and optics you buy feed into Costs & Purchases, and unassigned optics are grouped so you can see what's on the shelf. A magazine's round count is its starting count plus every round your logged sessions and matches attribute to it — pick the mags you ran when logging a session or a match and the counts keep themselves. Parts also prints — a Parts Report, a plain shelf list handy for insurance or for reordering.`,
     },
     {
       title: 'Ammo & costs',
       view: { kind: 'ammo' },
-      body: `Ammo (under ${at('Ammo')}) tracks your inventory with first-in-first-out cost basis, so the cost of rounds you shoot is figured from what you actually paid; when you add ammo you choose whether you're logging a purchase (it lands in Costs & Purchases) or just counting rounds you already own. ${at('Costs & Purchases')} pulls everything together — ammo, range fees, match fees, gear, travel — by category and month, with cost per round and spend by gun. Because a range fee lives on its session and a match fee lives on its match, each fee is stored in exactly one place and counted exactly once.`,
+      body: `Ammo (under ${at('Ammo')}) tracks your inventory with first-in-first-out cost basis, so the cost of rounds you shoot is figured from what you actually paid; when you add ammo you choose whether you're logging a purchase (it lands in Costs & Purchases) or just counting rounds you already own. ${at('Costs & Purchases')} pulls everything together — ammo, range fees, match fees, gear, travel — by category and month, with cost per round and spend by gun. Because a range fee lives on its session and a match fee lives on its match, each fee is stored in exactly one place and counted exactly once. Costs & Purchases isn't only where ammo purchases land — tap "+ Add Purchase" there to log a gear, training, or travel cost directly, same as ammo feeds in on its own.`,
     },
     {
       title: 'Gun maintenance & care guides',
@@ -174,15 +176,111 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
       body: `Sync (under ${at('Sync & Backup')}) moves a single file between your devices through iCloud Drive or the Files app. Save to the file from the device you just used, then load it on the other one. The app tells you plainly when one copy is newer, and once a save finishes it shows the file's size right there, with the video part shown separately when there is any. If any of your photos are still full size, a Compress Photos card appears on that same screen offering to make smaller copies of them. ${at('Export as CSV')} saves your sessions, drill results, timed skills, guns, ammunition, costs and more as files you can open in Numbers, Excel or Google Sheets, or hand to another program. Each one saves separately, and the screen lists what it can do. A CSV holds numbers and words, so it is not a backup: Save to File is. ${at('Import from CSV')} goes the other way: pick a spreadsheet or another app's export, say which of your columns holds the date, the gun and the round count, see exactly what would be added, and take the whole import back out afterwards if it is not what you wanted.`,
     },
     {
+      title: 'Settings',
+      view: { kind: 'settings' },
+      body: `Settings (${at('Settings')}${isDesktop ? ', or ⌘,' : ''}) holds the coaching-remarks switch, the names and member numbers you shoot under so an import can find you, and Manage lists — where you rename or tidy the location, brand, and vendor names your log has been suggesting as you type.`,
+    },
+    {
       title: 'Setup & sample data',
       view: { kind: 'setup' },
-      body: `The first time you open the app it walks you through setup in three steps — add a gun, pick a goal (or skip it), then log your first session from Home — or load a ready-made sample log so you can explore everything the app does. While the sample is loaded, "Start my own log" at the top of every screen clears it and starts yours; you can re-run setup any time from Tour & Setup.`,
+      body: `The first time you open the app it walks you through setup in three steps — add a gun, pick a goal (or skip it), then log your first session from Home — or load a ready-made sample log so you can explore everything the app does. While the sample is loaded, "Start my own log" at the top of every screen clears it and starts yours; you can re-run setup any time from Tour & Setup. This screen also holds a "Where do I find…" index — a quick answer if you know FirearmLog does something but can't recall where.`,
     },
     {
       title: 'Your data & privacy',
       body: 'Everything stays on your own devices — no account, no server, no subscription. Photos and videos are stored right alongside the records they belong to, and your sync file is yours to keep or move.',
     },
   ];
+}
+
+/** Static "Where do I find…" index (findability memo, option c — 10 Sep 2026):
+ *  one row per screen, grouped exactly the way the app's own navigation groups
+ *  them — the four main tabs, then the same four More/sidebar groups the Full
+ *  Tour and TabBar use. Built to mirror TabBar's own GROUPS and nav.ts, so it
+ *  can never name a screen that doesn't exist. A row with a `view` reuses the
+ *  tours' own jump mechanism (the same `open` this screen already gets passed)
+ *  — tapping it lands you right there. The four main tabs have no `view` of
+ *  their own to jump to (the tab bar switches tabs; this screen only pushes a
+ *  View onto the stack), so those four rows stay plain text. */
+interface FindRow { name: string; phone: string; desktop: string; view?: View; sub?: string }
+interface FindGroup { label: string; rows: FindRow[] }
+
+function findGroups(): FindGroup[] {
+  const appData: FindRow[] = [
+    { name: 'Tour & Setup', phone: 'More → Tour & Setup', desktop: 'sidebar → App & Data → Tour & Setup', view: { kind: 'help' } },
+    { name: 'Settings', phone: 'More → Settings', desktop: 'sidebar → App & Data → Settings, or ⌘,', view: { kind: 'settings' }, sub: 'Coaching remarks, who you are, Manage lists' },
+    { name: 'Sync & Backup', phone: 'More → Sync & Backup', desktop: 'sidebar → App & Data → Sync & Backup', view: { kind: 'sync' } },
+    { name: 'Export as CSV', phone: 'More → Export as CSV', desktop: 'sidebar → App & Data → Export as CSV', view: { kind: 'export-csv' } },
+    { name: 'Import from CSV', phone: 'More → Import from CSV', desktop: 'sidebar → App & Data → Import from CSV', view: { kind: 'import-csv' } },
+  ];
+  // Mirrors TabBar's own `when: () => telemetryState().wired` gate exactly —
+  // this row appears the day that one does, and not before.
+  if (telemetryState().wired) {
+    appData.push({ name: 'Your Data', phone: 'More → Your Data', desktop: 'sidebar → App & Data → Your Data', view: { kind: 'your-data' } });
+  }
+  return [
+    {
+      label: 'Home, Log, Compete & Progress',
+      rows: [
+        { name: 'Home', phone: 'tab bar → Home', desktop: 'sidebar → Home' },
+        { name: 'Log', phone: 'tab bar → Log', desktop: 'sidebar → Log' },
+        { name: 'Compete', phone: 'tab bar → Compete', desktop: 'sidebar → Compete' },
+        { name: 'Progress', phone: 'tab bar → Progress', desktop: 'sidebar → Progress' },
+      ],
+    },
+    {
+      label: 'Your Gear',
+      rows: [
+        { name: 'Guns', phone: 'More → Guns', desktop: 'sidebar → Your Gear → Guns', view: { kind: 'guns' } },
+        { name: 'Optics', phone: 'More → Optics', desktop: 'sidebar → Your Gear → Optics', view: { kind: 'optics' } },
+        { name: 'Magazines', phone: 'More → Magazines', desktop: 'sidebar → Your Gear → Magazines', view: { kind: 'magazines' } },
+        { name: 'Ammo', phone: 'More → Ammo', desktop: 'sidebar → Your Gear → Ammo', view: { kind: 'ammo' } },
+        { name: 'Parts', phone: 'More → Parts', desktop: 'sidebar → Your Gear → Parts', view: { kind: 'parts' } },
+        { name: 'Care Guides', phone: 'More → Care Guides', desktop: 'sidebar → Your Gear → Care Guides', view: { kind: 'references' } },
+      ],
+    },
+    {
+      label: 'Training',
+      rows: [
+        { name: 'Drills', phone: 'More → Drills', desktop: 'sidebar → Training → Drills', view: { kind: 'drills' } },
+        { name: 'How the numbers work', phone: 'More → The numbers', desktop: 'sidebar → Training → The numbers, or the Help menu', view: { kind: 'numbers' } },
+      ],
+    },
+    {
+      label: 'Records',
+      rows: [
+        { name: 'Gun Maintenance', phone: 'More → Gun Maintenance', desktop: 'sidebar → Records → Gun Maintenance', view: { kind: 'maintenance' } },
+        { name: 'Reminders', phone: 'More → Reminders', desktop: 'sidebar → Records → Reminders', view: { kind: 'reminders' } },
+        { name: 'Malfunctions', phone: 'More → Malfunctions', desktop: 'sidebar → Records → Malfunctions', view: { kind: 'malfunctions' } },
+        { name: 'Costs & Purchases', phone: 'More → Costs & Purchases', desktop: 'sidebar → Records → Costs & Purchases', view: { kind: 'costs' } },
+        { name: 'Reports', phone: 'More → Reports', desktop: "sidebar → Records → Reports, or the menu bar's Reports menu", view: { kind: 'reports' } },
+      ],
+    },
+    { label: 'App & Data', rows: appData },
+  ];
+}
+
+/** One index row: tappable (reuses the tours' jump mechanism) when it names a
+ *  real View, plain text otherwise (audit note in findGroups() above). */
+function FindRowLine({ row, open }: { row: FindRow; open: (v: View) => void }) {
+  const sub = (
+    <div className="row-sub">
+      {row.sub ? `${row.sub} · ` : ''}Phone: {row.phone} · Computer: {row.desktop}
+    </div>
+  );
+  if (row.view) {
+    const view = row.view;
+    return (
+      <button className="row-tap" onClick={() => open(view)}>
+        <span className="label">{row.name}{sub}</span>
+        <span className="value">›</span>
+      </button>
+    );
+  }
+  return (
+    <div className="row">
+      <span className="label">{row.name}{sub}</span>
+    </div>
+  );
 }
 
 function TourModal({ steps, onClose, onGo }: { steps: TourStep[]; onClose: () => void; onGo: (v: View) => void }) {
@@ -268,6 +366,18 @@ export function HelpScreen({ onBack, open, initialTour, onDemoLoaded }: {
           <button className="button secondary" style={{ flex: 1, minWidth: 100 }} onClick={() => setActive('full')}>Full Tour</button>
           <button className="button secondary" style={{ flex: 1, minWidth: 100 }} onClick={() => open({ kind: 'setup' })}>Set Up</button>
         </div>
+      </div>
+
+      <div className="card">
+        <h2>Where do I find…</h2>
+        <p className="report-note" style={{ marginBottom: 10 }}>
+          Every screen in FirearmLog, and the tap or click that gets you there.
+        </p>
+        {findGroups().map((g) => (
+          <Reveal key={g.label} label={g.label}>
+            {g.rows.map((r) => <FindRowLine key={r.name} row={r} open={open} />)}
+          </Reveal>
+        ))}
       </div>
 
       <div className="card">

@@ -32,3 +32,46 @@ test('the Sync tour step no longer claims the video clause only shows when video
   assert.doesNotMatch(src, /bigger part of it/, 'the false qualifier must be gone, not just softened');
   assert.match(src, /the video part shown separately when there is any/);
 });
+
+// Findability memo (10 Sep 2026), decision 60 (4): the six Full Tour gaps.
+// Each assertion checks a fragment specific enough that only the intended
+// sentence can match, so a future edit that reworded the surrounding step
+// without touching the new sentence would still pass.
+test('Full Tour: a new Settings step covers the coaching switch, member numbers, and Manage lists', () => {
+  assert.match(src, /title: 'Settings',/);
+  assert.match(src, /view: \{ kind: 'settings' \}/);
+  assert.match(src, /holds the coaching-remarks switch, the names and member numbers you shoot under so an import can find you, and Manage lists/);
+});
+
+test('Full Tour: "Compete — classifiers" points to How the numbers work as its own stop', () => {
+  assert.match(src, /also its own stop under Training, reachable from More on a phone, the sidebar on a computer, or the Help menu/);
+});
+
+test('Full Tour: "Drills" covers Drill History\'s "View your history" entry point', () => {
+  assert.match(src, /Open any drill and tap "View your history" to see your best, a trend chart, and every run you've logged — newest first\./);
+});
+
+test('Full Tour: "Optics, magazines & spare parts" covers the Parts Report', () => {
+  assert.match(src, /Parts also prints — a Parts Report, a plain shelf list handy for insurance or for reordering\./);
+});
+
+test('Full Tour: "Ammo & costs" covers the general (non-ammo) purchase form', () => {
+  assert.match(src, /tap "\+ Add Purchase" there to log a gear, training, or travel cost directly, same as ammo feeds in on its own\./);
+});
+
+test('Full Tour: the Setup & sample data step tells shooters the "Where do I find…" index exists', () => {
+  assert.match(src, /This screen also holds a "Where do I find…" index/);
+});
+
+// Findability memo, decision 60 (3): the static "Where do I find…" index.
+test('HelpScreen has a "Where do I find…" section listing every nav group', () => {
+  assert.match(src, /<h2>Where do I find…<\/h2>/);
+  for (const label of ['Home, Log, Compete & Progress', 'Your Gear', 'Training', 'Records', 'App & Data']) {
+    assert.match(src, new RegExp(`label: '${label.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}'`),
+      `missing find-index group: ${label}`);
+  }
+});
+
+test('every tappable "Where do I find…" row reuses the tours\' own jump mechanism (open)', () => {
+  assert.match(src, /onClick=\{\(\) => open\(view\)\}/);
+});
