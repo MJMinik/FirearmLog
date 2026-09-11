@@ -59,13 +59,15 @@ test('the built-in 22 land in the board\'s §1 bucket counts exactly', () => {
   assert.deepEqual(counts, EXPECTED_COUNTS);
 });
 
-test('the seven-plus-Custom section order is fixed: SKILL_ORDER is the board\'s §1 order, Custom last', () => {
+test('the eight-plus-Custom section order is fixed: the board\'s §1 order with Movement after Transitions, Custom last', () => {
   assert.deepEqual(SKILL_ORDER, [
-    'draw', 'reloads', 'transitions', 'recoilSplits',
+    'draw', 'reloads', 'transitions', 'movement', 'recoilSplits',
     'accuracyTrigger', 'stageSkills', 'steelChallenge',
   ]);
   const defs = stockDrillDefs(1234);
-  const withCustom = [...defs, customDrill('drx-x', 'Zzz Custom Drill')];
+  // No built-in maps to Movement, so one movement-tagged custom drill is
+  // needed for every section to be present; the untagged one lands in Custom.
+  const withCustom = [...defs, customDrill('drx-m', 'Footwork', 'movement'), customDrill('drx-x', 'Zzz Custom Drill')];
   const sections = groupDrills(withCustom);
   assert.deepEqual(sections.map((s) => s.key), [...SKILL_ORDER, 'custom']);
 });
@@ -78,6 +80,18 @@ test('every non-empty section\'s drills sort alphabetically (localeCompare)', ()
     const sorted = [...names].sort((a, b) => a.localeCompare(b));
     assert.deepEqual(names, sorted, `${s.label} is not alphabetical: ${names.join(', ')}`);
   }
+});
+
+test('no built-in drill maps to Movement, so a fresh install shows the seven board sections only', () => {
+  const sections = groupDrills(stockDrillDefs(1234));
+  assert.equal(sections.some((s) => s.key === 'movement'), false);
+  assert.equal(sections.length, 7);
+});
+
+test('a custom drill with skill "movement" lands in Movement, between Transitions and Recoil control / Splits', () => {
+  const mine = customDrill('drx-move', 'Position Entry / Exit', 'movement');
+  const keys = groupDrills([...stockDrillDefs(1234), mine]).map((s) => s.key);
+  assert.deepEqual(keys, ['draw', 'reloads', 'transitions', 'movement', 'recoilSplits', 'accuracyTrigger', 'stageSkills', 'steelChallenge']);
 });
 
 test('empty sections are omitted entirely', () => {

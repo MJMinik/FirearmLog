@@ -15,22 +15,27 @@ import type { DrillDef, DrillSkill } from './types.ts';
 interface SkillGroupInfo { label: string; sub: string }
 
 /** Labels and sub-lines, the memo's §1 table verbatim (board memo 10 Sep
- *  2026). Words a newcomer already half-knows from the range (Seat 9's point,
+ *  2026) plus Movement (session 145). Words a newcomer already half-knows from the range (Seat 9's point,
  *  §4), never house terms invented for this screen. */
 export const SKILL_GROUPS: Readonly<Record<DrillSkill, SkillGroupInfo>> = {
   draw: { label: 'Draw', sub: 'First shot off the beep' },
   reloads: { label: 'Reloads', sub: 'Keeping the gun fed' },
   transitions: { label: 'Transitions', sub: 'Target to target, fast and clean' },
+  movement: { label: 'Movement', sub: 'Into and out of positions' },
   recoilSplits: { label: 'Recoil control / Splits', sub: 'Follow-up shots, flat and fast' },
   accuracyTrigger: { label: 'Accuracy / Trigger control', sub: 'Fundamentals under pressure' },
   stageSkills: { label: 'Stage skills / Match simulation', sub: 'Putting it all together' },
   steelChallenge: { label: 'Steel Challenge stages', sub: 'The eight official plate stages' },
 };
 
-/** Section order, decision 5: seven sections as the board placed them. Custom
- *  (below) is always shown after these, never among them. */
+/** Section order, decision 5: the board's seven, with Movement (added 11 Sep
+ *  2026, session 145, Michael's "3a": his library has a footwork drill, so the
+ *  section the board dropped for lack of one exists after all) slotted after
+ *  Transitions, moving the gun then moving the shooter. Custom (below) is
+ *  always shown after these, never among them. None of the built-in 22 maps
+ *  to Movement, so a fresh install still shows seven sections. */
 export const SKILL_ORDER: readonly DrillSkill[] = [
-  'draw', 'reloads', 'transitions', 'recoilSplits',
+  'draw', 'reloads', 'transitions', 'movement', 'recoilSplits',
   'accuracyTrigger', 'stageSkills', 'steelChallenge',
 ];
 

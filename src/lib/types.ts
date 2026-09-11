@@ -134,15 +134,17 @@ export interface Session extends BaseRecord, Imported {
 }
 
 /**
- * The seven skills the built-in drill library trains, used to group the
- * Drills screen (board memo DRILL_GROUPING_BOARD_MEMO_2026-09-10, decisions
- * 1-5 all (a)). This type only names the keys a shooter's own drill may pick
+ * The skills the drill library is grouped by: the board's seven (board memo
+ * DRILL_GROUPING_BOARD_MEMO_2026-09-10, decisions 1-5 all (a)) plus
+ * 'movement', added 11 Sep 2026 (session 145, Michael's "3a") because his own
+ * library carries a footwork drill (Position Entry / Exit) that none of the
+ * built-in 22 isolates; the board had dropped Movement only for that reason. This type only names the keys a shooter's own drill may pick
  * from on the add/edit form — the labels, sub-lines, section order, the
  * built-in 22's fixed id-to-skill lookup, and the grouping logic itself all
  * live in lib/drillGroups.ts, so there is exactly one place to update either.
  */
 export type DrillSkill =
-  | 'draw' | 'reloads' | 'transitions' | 'recoilSplits'
+  | 'draw' | 'reloads' | 'transitions' | 'movement' | 'recoilSplits'
   | 'accuracyTrigger' | 'stageSkills' | 'steelChallenge';
 
 export interface DrillDef extends BaseRecord, Imported {
