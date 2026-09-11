@@ -30,7 +30,8 @@ const customDrill = (id: string, name: string, skill?: DrillSkill): DrillDef =>
 
 // Board memo §1's own bucket counts for the 22 built-ins, used below to
 // confirm groupDrills reproduces that table exactly, not just "some" grouping.
-const EXPECTED_COUNTS: Record<DrillSkill, number> = {
+// Partial: Movement has no built-in drill, so it is absent here on purpose.
+const EXPECTED_COUNTS: Partial<Record<DrillSkill, number>> = {
   draw: 1, reloads: 2, transitions: 6, recoilSplits: 2,
   accuracyTrigger: 2, stageSkills: 1, steelChallenge: 8,
 };
