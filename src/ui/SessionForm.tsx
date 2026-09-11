@@ -8,6 +8,7 @@ import type {
 } from '../lib/types.ts';
 import { splitRounds } from '../lib/mags.ts';
 import { CONDITION_TAGS } from '../lib/magConditions.ts';
+import { groupDrills } from '../lib/drillGroups.ts';
 import { deleteOne, getAll, getMediaForOwner, getOne, getSettings, putOne, putSettings, rewriteSessionSkillSets } from '../lib/db.ts';
 import { dayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
@@ -1994,20 +1995,30 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           {!quickAdding && pickable.length > 0 && (
             <p className="report-note">Tap to select one or more, then Add — or make a new one below.</p>
           )}
-          {!quickAdding && pickable.map((d) => {
-            const on = picked.has(d.id);
-            return (
-              <button key={d.id} className="drill-pick-row" aria-pressed={on}
-                onClick={() => { setTouched(true); setPicked((prev) => {
-                  const next = new Set(prev);
-                  if (next.has(d.id)) next.delete(d.id); else next.add(d.id);
-                  return next;
-                }); }}>
-                <strong><span aria-hidden="true">{on ? '☑' : '☐'}</span> {d.name}</strong>
-                {d.briefDescription && <span>{d.briefDescription}</span>}
-              </button>
-            );
-          })}
+          {/* Grouped by the skill each drill trains, the same sections and
+              order as the Drills screen (board memo 10 Sep 2026; Michael,
+              11 Sep 2026: the picker "should also be categorized"). Empty
+              sections are hidden, alphabetical within a section; the rows
+              themselves are unchanged. */}
+          {!quickAdding && groupDrills(pickable).map((section) => (
+            <Fragment key={section.key}>
+              <h2 className="menu-group-title drill-pick-group">{section.label}</h2>
+              {section.drills.map((d) => {
+                const on = picked.has(d.id);
+                return (
+                  <button key={d.id} className="drill-pick-row" aria-pressed={on}
+                    onClick={() => { setTouched(true); setPicked((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(d.id)) next.delete(d.id); else next.add(d.id);
+                      return next;
+                    }); }}>
+                    <strong><span aria-hidden="true">{on ? '☑' : '☐'}</span> {d.name}</strong>
+                    {d.briefDescription && <span>{d.briefDescription}</span>}
+                  </button>
+                );
+              })}
+            </Fragment>
+          ))}
           {!quickAdding && pickable.length > 0 && (
             <>
               <button className="button" style={{ marginTop: 12 }} disabled={picked.size === 0} onClick={addPickedDrills}>

@@ -649,6 +649,11 @@ select.category-pick {
    identically with or without it. */
 .seg.wrap { flex-wrap: wrap; }
 .seg.wrap button { flex: 1 1 120px; }
+/* Section heading inside the Pick Drills sheet (11 Sep 2026): the Drills
+   screen's group title, tightened so a sheet of eight sections stays
+   scannable; the first one sits flush under the sheet's instruction line. */
+.drill-pick-group { margin: 14px 0 4px; }
+.drill-pick-group:first-of-type { margin-top: 6px; }
 
 .gun-toggle {
   flex: 1; text-align: left; background: none; border: none; color: var(--text);

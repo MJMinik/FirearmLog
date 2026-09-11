@@ -112,6 +112,40 @@ test.describe('Drill library grouping (board memo 10 Sep 2026)', () => {
   });
 });
 
+test.describe('Pick Drills sheet grouping (11 Sep 2026)', () => {
+  test('the session form picker shows the same skill sections, in order, with empty ones hidden', async ({ page }) => {
+    await addFirstGun(page);
+    const main = page.getByRole('main');
+    // Same race guard as stock-drills.spec.ts: confirm the seed landed before
+    // opening the session form, which reads its drill list on mount.
+    await gotoSection(page, 'Drills');
+    await expect(main.getByRole('button', { name: 'Bill Drill' })).toBeVisible();
+    await gotoTab(page, 'Home');
+    await main.getByRole('button', { name: '3. Log your first session' }).click();
+
+    const gunsCard = page.getByTestId('session-guns-card');
+    await gunsCard.locator('button.gun-toggle').first().click();
+    const drillsCard = page.getByTestId('session-drills-card');
+    await drillsCard.getByRole('button', { name: '+ Add Drill' }).click();
+    const sheet = page.getByRole('dialog', { name: 'Pick Drills' });
+    await expect(sheet).toBeVisible();
+
+    // A live-fire pistol session offers 21 of the 22 built-ins (Reload
+    // Practice is dry-fire only), so every one of the seven sections still
+    // has at least one drill and appears, in the Drills screen's order.
+    await expect(sheet.locator('h2.drill-pick-group')).toHaveText([
+      'Draw', 'Reloads', 'Transitions', 'Recoil control / Splits',
+      'Accuracy / Trigger control', 'Stage skills / Match simulation',
+      'Steel Challenge stages',
+    ]);
+    await expect(sheet.getByRole('button', { name: '1-Reload-1' })).toBeVisible();
+    await expect(sheet.getByRole('button', { name: 'Reload Practice' })).toHaveCount(0);
+    // Rows still toggle: picking one enables the Add button with a count.
+    await sheet.getByRole('button', { name: 'Bill Drill' }).click();
+    await expect(sheet.getByRole('button', { name: 'Add 1 Drill' })).toBeEnabled();
+  });
+});
+
 test.describe('Drill library grouping — desktop-independent smoke via tab nav', () => {
   test('the grouped headings survive a round trip through another tab and back', async ({ page }) => {
     await addFirstGun(page);
