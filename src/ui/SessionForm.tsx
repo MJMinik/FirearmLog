@@ -2002,7 +2002,13 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               the same day: headings alone were "not as visually distinct as
               the Drills area"). Empty sections are hidden, alphabetical
               within a section; the rows themselves are unchanged. */}
-          {!quickAdding && groupDrills(pickable).map((section) => (
+          {/* The sections sit on a page-coloured panel so the white cards
+              read as cards: the sheet itself is card-coloured, and a card on
+              a card is invisible (his second look, 11 Sep 2026: "still
+              unsatisfactory"). This wrapper is the Drills page's grey
+              background, brought inside the sheet. */}
+          {!quickAdding && pickable.length > 0 && <div className="drill-pick-body">
+          {groupDrills(pickable).map((section) => (
             <Fragment key={section.key}>
               <h2 className="menu-group-title drill-pick-group">{section.label}</h2>
               <p className="menu-group-sub">{section.sub}</p>
@@ -2024,6 +2030,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
               </div>
             </Fragment>
           ))}
+          </div>}
           {!quickAdding && pickable.length > 0 && (
             <>
               <button className="button" style={{ marginTop: 12 }} disabled={picked.size === 0} onClick={addPickedDrills}>

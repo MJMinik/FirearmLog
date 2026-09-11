@@ -652,6 +652,12 @@ select.category-pick {
 /* Section heading inside the Pick Drills sheet (11 Sep 2026): the Drills
    screen's group title, tightened so a sheet of eight sections stays
    scannable; the first one sits flush under the sheet's instruction line. */
+/* The Pick Drills sheet is card-coloured, so its section cards would vanish
+   against it. .drill-pick-body is the Drills page's grey ground brought
+   inside the sheet, bleeding to the sheet's edges (the sheet pads 16px), so
+   heading / sub-line / white card read exactly as they do on the Drills
+   screen, in both colour schemes. */
+.drill-pick-body { background: var(--bg); margin: 8px -16px 0; padding: 4px 16px 4px; }
 .drill-pick-group { margin: 14px 4px 2px; }
 .drill-pick-group:first-of-type { margin-top: 6px; }
 /* The card of rows under each heading: the Drills screen's card, with the
