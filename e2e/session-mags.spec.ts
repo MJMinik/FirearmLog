@@ -374,4 +374,63 @@ test.describe('Per-session magazine tracking', () => {
     await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
     expect(await dr91Lifetime(page)).toBe(before + 20);
   });
+
+  // Condition tags on a session's picked mags (SESSION_MAG_CONDITIONS_SPEC_2026-09-11
+  // §3/4/5) — the same one-tap tag the match form already offers, now on a
+  // session too, and Home's Needs Attention card reads it as a second source
+  // alongside matches.
+  test('setting a Condition tag on a session mag round-trips, surfaces on Home, and Mark cleaned clears it', async ({ page }) => {
+    await seedDemo(page);
+    await startSessionWithGun(page, '50');
+
+    const magSection = page.locator('.session-mags');
+    await magSection.locator('.checklist-disclosure').click();
+    await pickMags(page, ALL_MAGS, ['DR9-1']);
+    // Exactly one mag is picked, so exactly one Condition <select> exists —
+    // there is no accessible way to scope it to "DR9-1's" specifically
+    // (mirrors match-mags.spec.ts), which is why this test only ever picks
+    // one mag.
+    await magSection.locator('select').selectOption({ label: 'Mud' });
+
+    await page.locator('.navbar-action').click();
+    await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
+
+    // Reopen the saved session: the Condition select shows Mud back.
+    await page.getByRole('main').locator('.row-tap').first().click();
+    await expect(page.getByRole('heading', { name: 'Edit Session' })).toBeVisible();
+    await openGunsSection(page);
+    await magSection.locator('.checklist-disclosure').click();
+    await expect(magSection.locator('select')).toHaveValue('mud');
+    await page.getByRole('button', { name: '‹ Cancel' }).click();
+    await expect(page.getByRole('heading', { name: 'Log' }).first()).toBeVisible();
+
+    // Home's Needs Attention card picks up the tag as a "needs cleaning" row,
+    // with a session-flavoured detail line (no match name).
+    await gotoTab(page, 'Home');
+    const cleaningRow = page.locator('.alert-row', { hasText: 'DR9-1: needs cleaning' });
+    await expect(cleaningRow).toBeVisible();
+    await expect(cleaningRow).toContainText('Mud — Session');
+
+    // "Mark cleaned" via the row's Options menu: the row disappears, exactly
+    // as it does for a match-tagged mag.
+    await cleaningRow.locator('.alert-dismiss-btn').click();
+    await cleaningRow.getByRole('menuitem', { name: 'Mark cleaned' }).click();
+    await expect(page.locator('.alert-row', { hasText: 'DR9-1: needs cleaning' })).toHaveCount(0);
+  });
+
+  test('a dry-fire session offers no Condition select', async ({ page }) => {
+    await seedDemo(page);
+    await startSessionWithGun(page, '25');
+
+    // Live fire: pick a mag and confirm its Condition select is there.
+    await page.locator('.session-mags .checklist-disclosure').click();
+    await pickMags(page, ALL_MAGS, ['DR9-1']);
+    await expect(page.locator('.session-mags select')).toHaveCount(1);
+
+    // Dry fire: the whole Magazines disclosure disappears (existing rule),
+    // so there is no Condition select to offer either.
+    await page.getByRole('button', { name: 'Dry fire' }).click();
+    await expect(page.locator('.session-mags')).toHaveCount(0);
+    await expect(page.locator('.session-mags select')).toHaveCount(0);
+  });
 });

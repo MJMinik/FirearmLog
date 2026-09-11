@@ -7,6 +7,7 @@ import type {
   Magazine, MalfunctionEntry, Media, Session, SessionChecklist, SessionGun, SkillSet, TimedSkill
 } from '../lib/types.ts';
 import { splitRounds } from '../lib/mags.ts';
+import { CONDITION_TAGS } from '../lib/magConditions.ts';
 import { deleteOne, getAll, getMediaForOwner, getOne, getSettings, putOne, putSettings, rewriteSessionSkillSets } from '../lib/db.ts';
 import { dayKey, todayKey } from '../lib/dates.ts';
 import { newId } from '../lib/id.ts';
@@ -169,6 +170,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   // time" button and never applied on its own (see magSuggestion).
   const [magPick, setMagPick] = useState<Record<string, string[]>>({});
   const [magOverride, setMagOverride] = useState<Record<string, Record<string, string>>>({});
+  // magCondition = the Condition tag per picked mag, keyed [firearmId][magId]
+  // (session-mags spec, 11 Sep 2026, SESSION_MAG_CONDITIONS_SPEC_2026-09-11
+  // §3) -- the same tag MatchMagPicker already tracks, one select per picked
+  // mag row rather than per gun.
+  const [magCondition, setMagCondition] = useState<Record<string, Record<string, string>>>({});
   const [magOpen, setMagOpen] = useState<Record<string, boolean>>({});
   const [lastMags, setLastMags] = useState<Record<string, string[]>>({});
   const [drills, setDrills] = useState<DrillRow[]>([]);
@@ -362,14 +368,18 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
         // earlier "mirrors the ratings Reveal defaultOpen" choice).
         const mp: Record<string, string[]> = {};
         const mo: Record<string, Record<string, string>> = {};
+        const mc: Record<string, Record<string, string>> = {};
         for (const g of s.guns) {
           if (!g.magIds?.length) continue;
           mp[g.firearmId] = g.magIds;
           if (g.magOverrides?.length) {
             mo[g.firearmId] = Object.fromEntries(g.magOverrides.map((o) => [o.magId, String(o.rounds)]));
           }
+          if (g.magConditions?.length) {
+            mc[g.firearmId] = Object.fromEntries(g.magConditions.map((c) => [c.magId, c.tag]));
+          }
         }
-        setMagPick(mp); setMagOverride(mo);
+        setMagPick(mp); setMagOverride(mo); setMagCondition(mc);
         // Change 1: existing session loads Guns & Rounds collapsed — summary
         // shows the selection; one tap opens it (mirrors the Magazines choice).
         setGunsOpen(false);
@@ -497,6 +507,16 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       if (!p[fid]) return p;
       const next = { ...p }; delete next[fid]; return next;
     });
+    // A condition tag describes a mag that ran with this gun; drop it the
+    // moment the mag is unpicked rather than leave an orphaned tag behind
+    // (mirrors MatchMagPicker's toggleMag rule, SESSION_MAG_CONDITIONS_SPEC_2026-09-11 §3).
+    setMagCondition((p) => {
+      const cur = p[fid];
+      if (!cur || !(magId in cur)) return p;
+      const nextForGun = { ...cur };
+      delete nextForGun[magId];
+      return { ...p, [fid]: nextForGun };
+    });
     if (problem?.field === 'mags') setProblem(null);
   };
 
@@ -504,6 +524,15 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
     setTouched(true);
     setMagOverride((p) => ({ ...p, [fid]: { ...(p[fid] ?? evenSplitFor(fid)), [magId]: value } }));
     if (problem?.field === 'mags') setProblem(null);
+  };
+
+  const editMagCondition = (fid: string, magId: string, tag: string) => {
+    setTouched(true);
+    setMagCondition((p) => {
+      const next = { ...(p[fid] ?? {}) };
+      if (tag) next[magId] = tag; else delete next[magId];
+      return { ...p, [fid]: next };
+    });
   };
 
   const resetMagSplit = (fid: string) => {
@@ -908,6 +937,14 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           const even = splitRounds(g.rounds, ids.length);
           if (!counts.every((c, i) => c.rounds === even[i])) g.magOverrides = counts;
         }
+        // Condition tags (SESSION_MAG_CONDITIONS_SPEC_2026-09-11 §2): written
+        // only when at least one currently-picked mag on this gun carries a
+        // tag -- same rule the match form applies at MatchScreens.tsx ~1138.
+        const cond = magCondition[firearmId];
+        if (cond) {
+          const tags = ids.filter((magId) => cond[magId]).map((magId) => ({ magId, tag: cond[magId] }));
+          if (tags.length) g.magConditions = tags;
+        }
       }
       return g;
     });
@@ -1285,34 +1322,59 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                           {gunMags.map((m) => {
                             const magOn = picked.includes(m.id);
                             return (
-                              <div className="row" key={m.id}>
-                                <button className={`gun-toggle ${magOn ? 'on' : ''}`} aria-pressed={magOn}
-                                  onClick={() => toggleMag(f.id, m.id)}>
-                                  {m.label}{m.active ? '' : ' (retired)'}
-                                </button>
+                              <Fragment key={m.id}>
+                                <div className="row">
+                                  <button className={`gun-toggle ${magOn ? 'on' : ''}`} aria-pressed={magOn}
+                                    onClick={() => toggleMag(f.id, m.id)}>
+                                    {m.label}{m.active ? '' : ' (retired)'}
+                                  </button>
+                                  {magOn && (
+                                    <input className="rounds-input" type="number" inputMode="numeric" min="0"
+                                      aria-label={`Rounds through ${m.label} with ${f.name}`}
+                                      value={magCount(f.id, m.id)}
+                                      onChange={(e) => editMagCount(f.id, m.id, e.target.value)} />
+                                  )}
+                                </div>
                                 {magOn && (
-                                  <input className="rounds-input" type="number" inputMode="numeric" min="0"
-                                    aria-label={`Rounds through ${m.label} with ${f.name}`}
-                                    value={magCount(f.id, m.id)}
-                                    onChange={(e) => editMagCount(f.id, m.id, e.target.value)} />
+                                  <label className="field small">Condition
+                                    {/* Named per mag+gun -- two bare "Condition" selects would
+                                        be indistinguishable to a screen reader (and to a test)
+                                        the moment two mags are picked, or a mag is shared by
+                                        two guns in the same session; same pattern as the
+                                        "Rounds through X with Y" input above. */}
+                                    <select aria-label={`Condition for ${m.label} with ${f.name}`}
+                                      value={magCondition[f.id]?.[m.id] ?? ''}
+                                      onChange={(e) => editMagCondition(f.id, m.id, e.target.value)}>
+                                      {CONDITION_TAGS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                    </select>
+                                  </label>
                                 )}
-                              </div>
+                              </Fragment>
                             );
                           })}
                           {ghostIds.map((id) => {
                             const m = magazines.find((x) => x.id === id);
                             const label = m ? `${m.label} (no longer linked)` : 'Deleted magazine';
                             return (
-                              <div className="row" key={id}>
-                                <button className="gun-toggle on" aria-pressed={true}
-                                  onClick={() => toggleMag(f.id, id)}>
-                                  {label}
-                                </button>
-                                <input className="rounds-input" type="number" inputMode="numeric" min="0"
-                                  aria-label={`Rounds through ${m?.label ?? 'a deleted magazine'} with ${f.name}`}
-                                  value={magCount(f.id, id)}
-                                  onChange={(e) => editMagCount(f.id, id, e.target.value)} />
-                              </div>
+                              <Fragment key={id}>
+                                <div className="row">
+                                  <button className="gun-toggle on" aria-pressed={true}
+                                    onClick={() => toggleMag(f.id, id)}>
+                                    {label}
+                                  </button>
+                                  <input className="rounds-input" type="number" inputMode="numeric" min="0"
+                                    aria-label={`Rounds through ${m?.label ?? 'a deleted magazine'} with ${f.name}`}
+                                    value={magCount(f.id, id)}
+                                    onChange={(e) => editMagCount(f.id, id, e.target.value)} />
+                                </div>
+                                <label className="field small">Condition
+                                  <select aria-label={`Condition for ${m?.label ?? 'a deleted magazine'} with ${f.name}`}
+                                    value={magCondition[f.id]?.[id] ?? ''}
+                                    onChange={(e) => editMagCondition(f.id, id, e.target.value)}>
+                                    {CONDITION_TAGS.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                                  </select>
+                                </label>
+                              </Fragment>
                             );
                           })}
                           {picked.length > 0 && (magOverride[f.id] ? (
