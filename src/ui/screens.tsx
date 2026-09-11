@@ -351,12 +351,13 @@ function AlertRow({ alert, onTap, onDismiss, onComplete }: {
   );
 }
 
-// A "needs cleaning" row on Home's Needs Attention card (21 Aug 2026 spec).
+// A "needs cleaning" row on Home's Needs Attention card (21 Aug 2026 spec;
+// sessions added 11 Sep 2026, SESSION_MAG_CONDITIONS_SPEC_2026-09-11).
 // Copies AlertRow's structure/classes/menu wiring EXACTLY -- it isn't an
-// Alert (it's derived from magazines + matches, not the maintenance
-// schedule), so it can't reuse AlertRow's Alert-typed props, but it must
-// look and behave identically. Always a "Due" badge -- lib/magCleaning.ts has
-// no "soon" tier, a mag either needs cleaning or it doesn't.
+// Alert (it's derived from magazines + matches + sessions, not the
+// maintenance schedule), so it can't reuse AlertRow's Alert-typed props, but
+// it must look and behave identically. Always a "Due" badge -- lib/magCleaning.ts
+// has no "soon" tier, a mag either needs cleaning or it doesn't.
 function MagCleaningRow({ item, onTap, onDismiss, onMarkCleaned }: {
   item: MagCleaningItem;
   onTap: () => void;
@@ -512,7 +513,11 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
   // gives the "un-dismiss when the underlying detail changes" behavior for
   // free -- a new/different tagging match after dismissal changes `detail`,
   // which makes the stored dismissal stale and the row reappears.
-  const magCleaning = magsNeedingCleaning(magazines, matches).filter((item) => {
+  // Sessions added 11 Sep 2026 (SESSION_MAG_CONDITIONS_SPEC_2026-09-11 §4):
+  // `sessions` here is what useData already loads for Home (all live,
+  // non-trashed sessions — see the load effect above), so this needs no
+  // separate read.
+  const magCleaning = magsNeedingCleaning(magazines, matches, sessions).filter((item) => {
     const key = `magclean:${item.magId}`;
     return !isAlertDismissed(key, dismissed, item.detail);
   });
@@ -702,8 +707,13 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
                   onDismiss={() => handleDismiss(a)}
                   onComplete={() => open({ kind: 'maint-form', gunId: a.firearmId })} />
               ))}
-              {/* Mags needing cleaning (21 Aug 2026 spec) -- right after the
-                  maintenance alerts, before due reminders. */}
+              {/* Mags needing cleaning (21 Aug 2026 spec; sessions added
+                  11 Sep 2026, SESSION_MAG_CONDITIONS_SPEC_2026-09-11 §4) --
+                  right after the maintenance alerts, before due reminders.
+                  The tap opens the MAGAZINE's own edit form, keyed by
+                  item.magId -- it never opened the tagging match (or now,
+                  session) at all, for either source, so a session-sourced
+                  item needs no separate branch here. */}
               {magCleaning.map((item) => (
                 <MagCleaningRow key={item.magId} item={item}
                   onTap={() => open({ kind: 'magazine-form', id: item.magId })}

@@ -174,3 +174,107 @@ test('moreCount counts only QUALIFYING matches — one disqualified by the clean
   assert.equal(out[0].moreCount, 0); // the pre-cleaning match must not count
   assert.equal(out[0].detail, 'Mud — After Cleaning, 2026-08-10'); // and no "(+1 more)"
 });
+
+// ---- Sessions as a second source (SESSION_MAG_CONDITIONS_SPEC_2026-09-11 §4/5) ----
+
+// Minimal Session shape — only the fields magsNeedingCleaning reads: a
+// session's tag lives per gun, so `guns` carries bare `{firearmId, rounds,
+// magConditions}` rows rather than a real SessionGun.
+const session = (over: object = {}) =>
+  ({ id: 's1', date: '2026-08-10', planned: false, location: '', guns: [] as unknown[], ...over }) as never;
+
+test('a tagged session qualifies', () => {
+  const mags = [mag()];
+  const sessions = [session({ guns: [{ firearmId: 'f1', rounds: 50, magConditions: [{ magId: 'mg-a', tag: 'mud' }] }] })];
+  const out = magsNeedingCleaning(mags, [], sessions);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].tag, 'mud');
+  assert.equal(out[0].source, 'session');
+  assert.equal(out[0].sessionId, 's1');
+});
+
+test('a planned session never qualifies', () => {
+  const mags = [mag()];
+  const sessions = [session({
+    planned: true,
+    guns: [{ firearmId: 'f1', rounds: 50, magConditions: [{ magId: 'mg-a', tag: 'mud' }] }],
+  })];
+  assert.deepEqual(magsNeedingCleaning(mags, [], sessions), []);
+});
+
+test('a soft-deleted session never qualifies', () => {
+  const mags = [mag()];
+  const sessions = [session({
+    deletedAt: Date.now(),
+    guns: [{ firearmId: 'f1', rounds: 50, magConditions: [{ magId: 'mg-a', tag: 'mud' }] }],
+  })];
+  assert.deepEqual(magsNeedingCleaning(mags, [], sessions), []);
+});
+
+test('a session dated the SAME DAY as lastCleanedAt does NOT qualify (accepted edge)', () => {
+  const mags = [mag({ lastCleanedAt: '2026-08-10' })];
+  const sessions = [session({
+    date: '2026-08-10',
+    guns: [{ firearmId: 'f1', rounds: 50, magConditions: [{ magId: 'mg-a', tag: 'mud' }] }],
+  })];
+  assert.deepEqual(magsNeedingCleaning(mags, [], sessions), []);
+});
+
+test('a session dated AFTER lastCleanedAt qualifies', () => {
+  const mags = [mag({ lastCleanedAt: '2026-08-05' })];
+  const sessions = [session({
+    date: '2026-08-10',
+    guns: [{ firearmId: 'f1', rounds: 50, magConditions: [{ magId: 'mg-a', tag: 'mud' }] }],
+  })];
+  const out = magsNeedingCleaning(mags, [], sessions);
+  assert.equal(out.length, 1);
+});
+
+test('a match and a session on the same mag order by date -- the later one is the pick, and moreCount is 1', () => {
+  const mags = [mag()];
+  const matches = [match({ id: 'm1', date: '2026-08-01', magConditions: [{ magId: 'mg-a', tag: 'sand' }] })];
+  const sessions = [session({
+    id: 's1',
+    date: '2026-08-10',
+    guns: [{ firearmId: 'f1', rounds: 50, magConditions: [{ magId: 'mg-a', tag: 'mud' }] }],
+  })];
+  const out = magsNeedingCleaning(mags, matches, sessions);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].source, 'session');
+  assert.equal(out[0].tag, 'mud');
+  assert.equal(out[0].moreCount, 1);
+});
+
+test('an empty tag on a session never counts', () => {
+  const mags = [mag()];
+  const sessions = [session({ guns: [{ firearmId: 'f1', rounds: 50, magConditions: [{ magId: 'mg-a', tag: '' }] }] })];
+  assert.deepEqual(magsNeedingCleaning(mags, [], sessions), []);
+});
+
+test('a session with no magConditions field on any gun is simply skipped', () => {
+  const mags = [mag()];
+  const sessions = [session({ guns: [{ firearmId: 'f1', rounds: 50 }] })];
+  assert.deepEqual(magsNeedingCleaning(mags, [], sessions), []);
+});
+
+test('session detail string WITH a location', () => {
+  const mags = [mag()];
+  const sessions = [session({
+    date: '2026-08-16',
+    location: 'Wyoming Antelope Club',
+    guns: [{ firearmId: 'f1', rounds: 50, magConditions: [{ magId: 'mg-a', tag: 'mud' }] }],
+  })];
+  const out = magsNeedingCleaning(mags, [], sessions);
+  assert.equal(out[0].detail, 'Mud — Session at Wyoming Antelope Club, 2026-08-16');
+});
+
+test('session detail string WITHOUT a location', () => {
+  const mags = [mag()];
+  const sessions = [session({
+    date: '2026-08-16',
+    location: '',
+    guns: [{ firearmId: 'f1', rounds: 50, magConditions: [{ magId: 'mg-a', tag: 'mud' }] }],
+  })];
+  const out = magsNeedingCleaning(mags, [], sessions);
+  assert.equal(out[0].detail, 'Mud — Session, 2026-08-16');
+});

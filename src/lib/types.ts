@@ -70,6 +70,17 @@ export interface SessionGun {
    */
   magIds?: string[];
   magOverrides?: { magId: string; rounds: number }[];
+  /**
+   * Condition tag per picked mag on this gun (session-mags spec, 11 Sep
+   * 2026, "SESSION_MAG_CONDITIONS_SPEC_2026-09-11") — the same optional
+   * "needs cleaning" tag Match.magConditions already carries, now available
+   * on a session too. Derived reads only: no Magazine record is ever written
+   * by a session save, and cleaning a mag never edits or clears this tag —
+   * the session keeps its history, exactly as a match does. Optional +
+   * additive; written only when at least one picked mag on this gun carries
+   * a tag, the key deleted (not written empty) once every tag is cleared.
+   */
+  magConditions?: { magId: string; tag: string }[];
 }
 
 /** A single gear-checklist item (default or custom). */

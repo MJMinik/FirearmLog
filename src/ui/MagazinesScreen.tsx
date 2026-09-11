@@ -53,9 +53,12 @@ export function MagazinesScreen({ refreshKey, onBack, openForm }: {
   const gunNames = (ids: string[]) =>
     ids.map((id) => firearms.find((f) => f.id === id)?.name ?? '—').join(', ');
 
-  // 21 Aug 2026 spec: same derivation Home's Needs Attention card uses.
-  // magsNeedingCleaning already excludes retired mags, so this never badges one.
-  const needsCleaningIds = new Set(magsNeedingCleaning(mags, matches).map((i) => i.magId));
+  // 21 Aug 2026 spec: same derivation Home's Needs Attention card uses --
+  // including sessions since 11 Sep 2026 (SESSION_MAG_CONDITIONS_SPEC_2026-09-11
+  // §4), so a mag tagged on a session badges here exactly as one tagged on a
+  // match does. magsNeedingCleaning already excludes retired mags, so this
+  // never badges one.
+  const needsCleaningIds = new Set(magsNeedingCleaning(mags, matches, sessions).map((i) => i.magId));
 
   return (
     <div className="screen">
