@@ -14,10 +14,17 @@ import { seedDemo, gotoTab } from './helpers';
 // move when a match is added. "A rider appeared" alone would still pass if the
 // count had quietly absorbed it too.
 
-/** The Logged sessions tile's whole readout, e.g. "12 +3 dry +2 matches". */
+/** The Logged sessions tile's whole readout, e.g. "12 +3 dry +2 matches".
+ *  Since 11 Sep 2026 (session 145) the riders sit BELOW the caption rather
+ *  than inside the number box, so the readout is the number plus the riders
+ *  row, joined here. */
 async function sessionsTile(page: Page): Promise<string> {
   const tile = page.locator('.stat').filter({ has: page.locator('.cap', { hasText: 'Logged sessions' }) });
-  return (await tile.locator('.num').innerText()).replace(/\s+/g, ' ').trim();
+  const num = (await tile.locator('.num').innerText()).replace(/\s+/g, ' ').trim();
+  const riders = await tile.locator('.stat-riders').count()
+    ? (await tile.locator('.stat-riders').innerText()).replace(/\s+/g, ' ').trim()
+    : '';
+  return riders ? `${num} ${riders}` : num;
 }
 
 const leadingNumber = (s: string): number => Number(s.match(/^\d+/)?.[0] ?? -1);

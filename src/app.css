@@ -652,8 +652,11 @@ select.category-pick {
 /* Section heading inside the Pick Drills sheet (11 Sep 2026): the Drills
    screen's group title, tightened so a sheet of eight sections stays
    scannable; the first one sits flush under the sheet's instruction line. */
-.drill-pick-group { margin: 14px 0 4px; }
+.drill-pick-group { margin: 14px 4px 2px; }
 .drill-pick-group:first-of-type { margin-top: 6px; }
+/* The card of rows under each heading: the Drills screen's card, with the
+   row's own separators doing the work inside it. */
+.drill-pick-card { padding: 4px 12px; margin-bottom: 12px; }
 
 .gun-toggle {
   flex: 1; text-align: left; background: none; border: none; color: var(--text);

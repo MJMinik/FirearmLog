@@ -1997,12 +1997,16 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           )}
           {/* Grouped by the skill each drill trains, the same sections and
               order as the Drills screen (board memo 10 Sep 2026; Michael,
-              11 Sep 2026: the picker "should also be categorized"). Empty
-              sections are hidden, alphabetical within a section; the rows
-              themselves are unchanged. */}
+              11 Sep 2026: the picker "should also be categorized"), and the
+              same look: heading, sub-line, then a card of rows (his tap test
+              the same day: headings alone were "not as visually distinct as
+              the Drills area"). Empty sections are hidden, alphabetical
+              within a section; the rows themselves are unchanged. */}
           {!quickAdding && groupDrills(pickable).map((section) => (
             <Fragment key={section.key}>
               <h2 className="menu-group-title drill-pick-group">{section.label}</h2>
+              <p className="menu-group-sub">{section.sub}</p>
+              <div className="card drill-pick-card">
               {section.drills.map((d) => {
                 const on = picked.has(d.id);
                 return (
@@ -2017,6 +2021,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                   </button>
                 );
               })}
+              </div>
             </Fragment>
           ))}
           {!quickAdding && pickable.length > 0 && (

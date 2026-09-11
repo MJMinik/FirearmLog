@@ -629,20 +629,23 @@ export function HomeScreen({ refreshKey, open, onGoBackup }: {
               <div className="cap">Live-fire rounds{rangeLabel}</div>
             </div>
             <div className="stat">
-              <div className="num">
-                {activity.liveSessions}
-                {(activity.drySessions > 0 || activity.matches > 0) && (
-                  <div className="stat-riders">
-                    {activity.drySessions > 0 && (
-                      <span>+{activity.drySessions} dry</span>
-                    )}
-                    {activity.matches > 0 && (
-                      <span>+{activity.matches} {activity.matches === 1 ? 'match' : 'matches'}</span>
-                    )}
-                  </div>
-                )}
-              </div>
+              {/* Michael's Quick Capture, 11 Sep 2026 (session 145): the riders
+                  used to sit INSIDE the number box, pushing "Logged sessions"
+                  away from the 43 it names. Now the caption sits directly
+                  under the number, exactly as the other tiles read, and the
+                  dry / matches riders come third. */}
+              <div className="num">{activity.liveSessions}</div>
               <div className="cap">Logged sessions{rangeLabel}</div>
+              {(activity.drySessions > 0 || activity.matches > 0) && (
+                <div className="stat-riders">
+                  {activity.drySessions > 0 && (
+                    <span>+{activity.drySessions} dry</span>
+                  )}
+                  {activity.matches > 0 && (
+                    <span>+{activity.matches} {activity.matches === 1 ? 'match' : 'matches'}</span>
+                  )}
+                </div>
+              )}
             </div>
             <div className="stat">
               <div className="num">{stats.ammoInventory.toLocaleString()}</div>
