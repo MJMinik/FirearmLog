@@ -212,7 +212,7 @@ for (const d of STOCK_DRILLS) {
   if (d.fire === 'dry') void chance(0.5);
   stores.drills.push({
     id: stockDrillId(d.name),
-    ...stamp('2025-01-04'), name: d.name, gunCategories: ['Pistol'], fire: d.fire,
+    ...stamp('2025-01-04'), name: d.name, gunCategories: d.categories ?? ['Pistol'], fire: d.fire,
     briefDescription: d.brief, fullDescription: d.full, scoring: d.scoring,
     requiresHolster: d.holster, tags: [],
   });

@@ -1,12 +1,13 @@
 import { test, expect, type Page } from '@playwright/test';
 import { seedDemo, gotoSection, gotoTab } from './helpers';
 
-// F4 + F5, end to end: the app ships the 14-drill stock library. It seeds
-// once the log is real (first gun), shows up in Drills and the session form's
-// picker, re-seeds after Clear All while custom drills clear (Q1), never
-// duplicates on top of the demo's own copy, and the Drills screen has a real
-// empty state behind it all. Unit tests prove the seeding rules; these prove
-// the wiring on the live app.
+// F4 + F5, end to end: the app ships the 22-drill stock library (the
+// original 14 plus, as of stock library version 2, the eight Steel
+// Challenge stage drills). It seeds once the log is real (first gun), shows
+// up in Drills and the session form's picker, re-seeds after Clear All while
+// custom drills clear (Q1), never duplicates on top of the demo's own copy,
+// and the Drills screen has a real empty state behind it all. Unit tests
+// prove the seeding rules; these prove the wiring on the live app.
 //
 // Selector notes (from the pre-push fresh-eyes audit): drill rows are BUTTONS
 // whose accessible name contains the drill name plus sub-text, so we match by
@@ -37,6 +38,18 @@ test.describe('Stock drill library (F4) + Drills empty state (F5)', () => {
     await expect(main.getByRole('button', { name: 'Dot Torture' })).toBeVisible();
     await expect(main.getByRole('button', { name: 'El Presidente' })).toBeVisible();
     await expect(main.getByRole('button', { name: 'Wide Transitions' })).toBeVisible();
+  });
+
+  test('the first gun also seeds the eight Steel Challenge stage drills (stock library version 2)', async ({ page }) => {
+    await addFirstGun(page);
+    await gotoSection(page, 'Drills');
+    const main = page.getByRole('main');
+    await expect(main.getByRole('button', { name: 'Steel Challenge: Five to Go' })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Steel Challenge: Showdown' })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Steel Challenge: Roundabout' })).toBeVisible();
+    // The unrelated pre-existing generic drill stays distinct from the real stage.
+    await expect(main.getByRole('button', { name: 'Accelerator (Steel)' })).toBeVisible();
+    await expect(main.getByRole('button', { name: 'Steel Challenge: Accelerator' })).toBeVisible();
   });
 
   test('the session form drill picker offers the stock drills', async ({ page }) => {

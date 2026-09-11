@@ -642,6 +642,13 @@ select.category-pick {
    Minor-only USPSA division) -- visually dimmed, but still focusable/announced
    via aria-disabled (not the native attribute) so screen readers say why. */
 .seg button[aria-disabled='true'] { opacity: 0.4; cursor: default; }
+/* The Drills form's Skill chooser (board memo 10 Sep 2026) has eight options
+   where every other .seg has two or three — a single unwrapped row would
+   squeeze illegibly at phone width. `.wrap` only changes that one control:
+   plain `.seg` rows elsewhere always fit on one line already, so they render
+   identically with or without it. */
+.seg.wrap { flex-wrap: wrap; }
+.seg.wrap button { flex: 1 1 120px; }
 
 .gun-toggle {
   flex: 1; text-align: left; background: none; border: none; color: var(--text);

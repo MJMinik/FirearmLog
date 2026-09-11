@@ -133,6 +133,18 @@ export interface Session extends BaseRecord, Imported {
   deletedAt?: number | null;
 }
 
+/**
+ * The seven skills the built-in drill library trains, used to group the
+ * Drills screen (board memo DRILL_GROUPING_BOARD_MEMO_2026-09-10, decisions
+ * 1-5 all (a)). This type only names the keys a shooter's own drill may pick
+ * from on the add/edit form — the labels, sub-lines, section order, the
+ * built-in 22's fixed id-to-skill lookup, and the grouping logic itself all
+ * live in lib/drillGroups.ts, so there is exactly one place to update either.
+ */
+export type DrillSkill =
+  | 'draw' | 'reloads' | 'transitions' | 'recoilSplits'
+  | 'accuracyTrigger' | 'stageSkills' | 'steelChallenge';
+
 export interface DrillDef extends BaseRecord, Imported {
   name: string;
   gunCategories: GunCategory[]; // spec req. 19
@@ -142,6 +154,17 @@ export interface DrillDef extends BaseRecord, Imported {
   scoring: string;
   requiresHolster: boolean;
   tags: string[];
+  /**
+   * Which skill this drill trains, set only when a shooter picks one on their
+   * own custom drill's add/edit form (board memo 10 Sep 2026, decisions 1-5
+   * all (a)). Optional and additive: absent on every existing drill and needs
+   * no migration. The built-in 22 NEVER carry this field — their section is
+   * looked up from their fixed, permanent id in lib/drillGroups.ts at render
+   * time, so writing it here would assert a choice nobody made. Left blank on
+   * the form, a custom drill defaults to the Custom section rather than
+   * forcing an answer just to save a drill.
+   */
+  skill?: DrillSkill;
 }
 
 export interface Ammunition extends BaseRecord, Imported {
@@ -684,6 +707,18 @@ export interface AppSettings {
    *  library was found and respected) — see lib/stockDrills.ts. Clear All
    *  wipes settings, so "Start fresh" re-seeds the stock set (Q1). */
   drillsSeeded?: boolean;
+  /** Stock library version 2 (the eight Steel Challenge stage drills, session
+   *  built same day as SCSA_DRILLS_SPEC.md): true once this install's v2
+   *  top-up check has run to completion — see stockDrillsV2Action in
+   *  lib/stockDrills.ts. A fresh install gets all 22 stock drills at first
+   *  seed and this is set alongside `drillsSeeded` in that same write; an
+   *  install that already carried `drillsSeeded` from before v2 shipped gets
+   *  the eight new drills added once (by fixed id, so a retry never
+   *  duplicates them) the next time it opens, and this flag is set the
+   *  moment that top-up (or the decision that no top-up is owed) completes.
+   *  Clear All wipes settings, so "Start fresh" re-seeds all 22 like any
+   *  other fresh install. */
+  drillsSeededV2?: boolean;
   /** Whether to show the optional coaching remarks (e.g. the match-debrief
    *  "room to push?" question). Undefined = on; set false to hide them. */
   coachingRemarks?: boolean;
