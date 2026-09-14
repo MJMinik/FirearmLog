@@ -160,3 +160,28 @@ test('the phone ranking helper caps results at 8 (query "log")', () => {
   const ranked = searchFindEntries('log', findEntries());
   assert.equal(ranked.length, 8, `expected exactly 8 results for "log"; got ${ranked.length}`);
 });
+
+// Decision 76 (14 Sep 2026, s147): the filtered desktop sidebar shows a grey
+// path line under each "inside" row — the entry's `desktop` path minus what
+// the sidebar already shows. Pin the rule on every row, and on the three
+// shapes Michael was shown when he chose option 1.
+import { sidebarPathFor } from '../src/ui/findSearch.ts';
+
+test('sidebarPathFor: every "inside" row gets a path that names neither the sidebar nor its own group label', () => {
+  for (const e of FIND_INDEX) {
+    const p = sidebarPathFor(e);
+    if (e.kind === 'screen') { assert.equal(p, undefined, `${e.id} is a screen row and should have no path line`); continue; }
+    assert.ok(p, `${e.id} is an inside row with no path line`);
+    assert.ok(!p.startsWith('sidebar'), `${e.id}: "${p}" still says sidebar`);
+    if (e.group !== 'Home, Log, Compete & Progress') assert.ok(!p.startsWith(e.group), `${e.id}: "${p}" repeats its group label`);
+    assert.ok(p.includes('→'), `${e.id}: "${p}" is not a path`);
+    assert.notEqual(p, e.name, `${e.id}: the path only repeats the name`);
+  }
+});
+
+test('sidebarPathFor: the three examples from decision 76', () => {
+  const byId = (id: string) => FIND_INDEX.find((e) => e.id === id)!;
+  assert.equal(sidebarPathFor(byId('compete-log-classifier')), 'Compete → + Log Classifier');
+  assert.equal(sidebarPathFor(byId('log-search')), 'Log → Search & Filter');
+  assert.equal(sidebarPathFor(byId('costs-purchase')), 'Costs & Purchases → + Purchase');
+});

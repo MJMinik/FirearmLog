@@ -23,7 +23,7 @@ import type { IconName } from './Icon.tsx';
 import { FIND_INDEX, FIND_GROUP_ORDER, findEntries } from './findIndex.ts';
 import type { FindEntry, FindGroupLabel } from './findIndex.ts';
 import { FindBox } from './FindBox.tsx';
-import { goToFindTarget, matchesEntry, parentIconFor, MAIN_GROUP } from './findSearch.ts';
+import { goToFindTarget, matchesEntry, parentIconFor, sidebarPathFor, MAIN_GROUP } from './findSearch.ts';
 
 export type TabId = 'home' | 'log' | 'compete' | 'progress' | 'more';
 
@@ -134,6 +134,31 @@ export function TabBar({ active, onChange, view, onOpen, findInputRef }: {
     if (already) setQ('');
   };
 
+  // An "inside" result row (the training grid, Log a classifier…): the same
+  // button as a section row, plus the grey path line under the name (decision
+  // 76, 14 Sep 2026). The path is aria-hidden AND the button's aria-describedby
+  // target: hidden so the button's accessible NAME stays exactly `e.name` (a
+  // second text node inside a button would otherwise join the name — the
+  // class of red that took E2E #398 down on Saturday), describedby so a
+  // screen reader still hears the path as the row's description.
+  const insideButton = (e: FindEntry) => {
+    const path = sidebarPathFor(e);
+    const subId = path ? `find-sub-${e.id}` : undefined;
+    return (
+      <button key={e.id} data-find-id={e.id} className="sidebar-only"
+        aria-describedby={subId}
+        onClick={() => jump(e)}>
+        <span className="glyph" aria-hidden="true">
+          <Icon name={parentIconFor(e) ?? 'chevronRight'} />
+        </span>
+        <span className="side-text">
+          <span>{e.name}</span>
+          {path && <span className="side-sub" id={subId} aria-hidden="true">{path}</span>}
+        </span>
+      </button>
+    );
+  };
+
   const tabButton = (t: { id: TabId; label: string; icon: IconName; entry?: FindEntry }, extraClass = '') => (
     <button
       key={t.id}
@@ -151,15 +176,7 @@ export function TabBar({ active, onChange, view, onOpen, findInputRef }: {
       <div className="side-title" aria-hidden="true">FirearmLog</div>
       <FindBox query={q} onChange={setQ} resultCount={resultCount} inputRef={findInputRef} visibleCount />
       {visibleTabs.map((t) => tabButton(t))}
-      {mainInsideMatches.map((e) => (
-        <button key={e.id} data-find-id={e.id} className="sidebar-only"
-          onClick={() => jump(e)}>
-          <span className="glyph" aria-hidden="true">
-            <Icon name={parentIconFor(e) ?? 'chevronRight'} />
-          </span>
-          {e.name}
-        </button>
-      ))}
+      {mainInsideMatches.map(insideButton)}
       {groupsView.map((g) => {
         if (g.visibleSections.length === 0 && g.insideMatches.length === 0) return null;
         return (
@@ -174,15 +191,7 @@ export function TabBar({ active, onChange, view, onOpen, findInputRef }: {
                 {s.label}
               </button>
             ))}
-            {g.insideMatches.map((e) => (
-              <button key={e.id} data-find-id={e.id} className="sidebar-only"
-                onClick={() => jump(e)}>
-                <span className="glyph" aria-hidden="true">
-                  <Icon name={parentIconFor(e) ?? 'chevronRight'} />
-                </span>
-                {e.name}
-              </button>
-            ))}
+            {g.insideMatches.map(insideButton)}
           </Fragment>
         );
       })}

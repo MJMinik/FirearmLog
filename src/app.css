@@ -1215,6 +1215,14 @@ h2.disclosure-h2 { margin: 0; font-size: inherit; font-weight: inherit; }
   }
   .tabbar .find-box { display: block; padding: 0 14px 14px; margin-bottom: 0; }
   .tabbar .find-box .field { margin-bottom: 0; }
+  /* Decision 76 (14 Sep 2026, s147 tap test item 11): a filtered "inside"
+     row stacks its name over a grey path line ("Compete → + Log Classifier"),
+     the way Spotlight shows a result's location — the phone More tab already
+     did this and the sidebar did not. min-width: 0 lets the block shrink and
+     wrap inside the 220px sidebar instead of pushing the row wider. .side-sub
+     is --text-dim, which already clears 4.5:1 in both schemes (see .row-sub). */
+  .tabbar .side-text { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+  .tabbar .side-sub { font-size: var(--fs-footnote); font-weight: 400; color: var(--text-dim); line-height: 1.25; }
   .nav-group-label {
     display: block; font-size: var(--fs-caption); font-weight: 600; text-transform: uppercase;
     letter-spacing: 0.05em; color: var(--text-dim); padding: 18px 14px 6px;

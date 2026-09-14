@@ -45,7 +45,11 @@ export interface FindEntry {
   group: FindGroupLabel;
   kind: 'screen' | 'inside';
   go: FindTarget;
-  /** The path lines the "Where do I find…" index already shows. */
+  /** The path lines the "Where do I find…" index shows. The More tab shows
+   *  `phone` under each result; the desktop sidebar derives its own grey
+   *  line from `desktop` via `sidebarPathFor` (findSearch.ts, decision 76),
+   *  which strips the leading "sidebar → " and the group name — so keep
+   *  that "sidebar → <group> → …" shape on every `inside` row. */
   phone: string;
   desktop: string;
   /** Exact title text on the screen the jump lands on (asserted by E2E). */

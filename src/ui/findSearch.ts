@@ -101,3 +101,22 @@ export function goToFindTarget(target: FindTarget, open: (v: View) => void, onGo
 export function parentIconFor(entry: FindEntry): IconName | undefined {
   return screenById(entry.parent)?.icon;
 }
+
+/** The grey path line under an "inside" row in the FILTERED desktop sidebar
+ *  (decision 76, 14 Sep 2026 — Michael's tap test, s147 item 11: the phone's
+ *  More tab showed "tab bar → Compete → + Log Classifier" under each result
+ *  and the sidebar showed nothing). It is the entry's own `desktop` path with
+ *  the parts the sidebar already shows removed: the leading "sidebar → "
+ *  (you are in it), and — for the four labelled groups — the group name,
+ *  whose label sits directly above the row. Screen rows get nothing: their
+ *  path would only repeat their own name. The sidebar is 220px wide, which is
+ *  why the phone's full line is not simply copied (his option 1 over 2). */
+export function sidebarPathFor(entry: FindEntry): string | undefined {
+  if (entry.kind !== 'inside') return undefined;
+  let path = entry.desktop;
+  const inSidebar = 'sidebar → ';
+  if (path.startsWith(inSidebar)) path = path.slice(inSidebar.length);
+  const inGroup = `${entry.group} → `;
+  if (entry.group !== MAIN_GROUP && path.startsWith(inGroup)) path = path.slice(inGroup.length);
+  return path || undefined;
+}

@@ -106,6 +106,27 @@ test.describe('Find a screen — desktop-only behavior', () => {
     await expect(findInput(page)).toHaveValue('');
   });
 
+  // Decision 76 (14 Sep 2026, s147 tap test item 11): a filtered "inside" row
+  // carries a grey path line under its name, like the phone More tab — and the
+  // line is the row's DESCRIPTION, not part of its NAME (the s146 lesson: a
+  // second text node inside a button joins its accessible name). A section
+  // row (Optics) is its own destination and shows no line.
+  test('a filtered "inside" row shows its path under the name; a section row does not', async ({ page }) => {
+    await seedDemo(page);
+    await findInput(page).fill('log');
+    const classifier = nav(page).getByRole('button', { name: 'Log a classifier', exact: true });
+    await expect(classifier).toBeVisible();
+    await expect(classifier).toHaveAccessibleDescription('Compete → + Log Classifier');
+    await expect(classifier.locator('.side-sub')).toHaveText('Compete → + Log Classifier');
+    await findInput(page).fill('purchase');
+    const purchase = nav(page).getByRole('button', { name: 'Log a purchase (gear, fees, parts)', exact: true });
+    await expect(purchase.locator('.side-sub')).toHaveText('Costs & Purchases → + Purchase');
+    await findInput(page).fill('optics');
+    const optics = nav(page).getByRole('button', { name: 'Optics', exact: true });
+    await expect(optics).toBeVisible();
+    await expect(optics.locator('.side-sub')).toHaveCount(0);
+  });
+
   test('the Help menu\'s "Find a Screen…" item focuses the sidebar box', async ({ page }) => {
     await seedDemo(page);
     // Hide the sidebar first — the item must show it again before focusing.
