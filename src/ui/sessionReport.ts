@@ -66,11 +66,16 @@ export async function openSessionReport(
       label: firearms.find((f) => f.id === g.firearmId)?.name ?? '—',
       value: `${g.rounds} ${reps ? 'reps' : 'rds'}`,
     }));
+    // s147, Michael: "drill notes do not appear on session report. All notes
+    // should be printed on session reports." The drill table now carries its
+    // Notes column, the way Timed Skills and Malfunctions already did — a
+    // note typed under a drill is part of the day's record, not a form aside.
     const drillRows = session.drills.map((dr) => [
       dr.name,
       dr.distance || '—',
       dr.time != null ? `${dr.time}s` : '—',
       dr.score != null ? `${dr.score}${dr.maxScore != null ? '/' + dr.maxScore : ''}` : '—',
+      dr.notes || '',
     ]);
     const malfRows = allMalf
       .filter((m) => m.sessionId === session.id)
@@ -107,7 +112,7 @@ export async function openSessionReport(
         ...(session.rangeFee != null ? [{ label: 'Range fee', value: '$' + session.rangeFee.toFixed(2) }] : []),
       ] },
       { heading: 'Guns', rows: gunRows },
-      ...(drillRows.length ? [{ heading: 'Drills', table: { headers: ['Drill', 'Distance', 'Time', 'Score'], rows: drillRows } }] : []),
+      ...(drillRows.length ? [{ heading: 'Drills', table: { headers: ['Drill', 'Distance', 'Time', 'Score', 'Notes'], rows: drillRows } }] : []),
       ...(skillRows.length ? [{ heading: 'Timed Skills', table: { headers: ['Skill', 'Gun', 'Reps', 'Best', 'Typical', 'Cold', 'Notes'], rows: skillRows } }] : []),
       ...(malfRows.length ? [{ heading: 'Malfunctions', table: { headers: ['Type', 'Gun', 'Round', 'Cleared', 'Notes'], rows: malfRows } }] : []),
       ...(session.notes ? [{ heading: 'Notes', rows: [{ label: '', value: session.notes }] }] : []),

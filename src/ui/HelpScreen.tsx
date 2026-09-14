@@ -228,14 +228,24 @@ function visibleGroups(query: string): { label: FindGroupLabel; entries: FindEnt
  *  `open`, exactly like the Find box on the sidebar and the More tab. */
 function FindRowLine({ entry, open, onGoTab }: { entry: FindEntry; open: (v: View) => void; onGoTab: (t: TabId) => void }) {
   return (
-    <button className="row-tap" data-find-id={entry.id} onClick={() => goToFindTarget(entry.go, open, onGoTab)}>
+    <button className="row-tap" data-find-id={entry.id} aria-describedby={`find-index-sub-${entry.id}`}
+      onClick={() => goToFindTarget(entry.go, open, onGoTab)}>
       <span className="label">
         {entry.name}
         {/* L6: the one-line description FIND_INDEX carries for a few screens
             (e.g. Settings' "Coaching remarks, who you are, Manage lists") —
-            shown only when the row has one. */}
-        {entry.sub && <div className="row-sub">{entry.sub}</div>}
-        <div className="row-sub">Phone: {entry.phone} · Computer: {entry.desktop}</div>
+            shown only when the row has one.
+            s147 (the decision-76 cold read): both grey lines sit in one
+            aria-hidden block that is the button's aria-describedby target,
+            so the row's spoken NAME stays "<name> ›" and the description
+            carries the paths — the same split as the sidebar and the More
+            tab. The id prefix differs from the sidebar's (`find-sub-`)
+            because on desktop this index and the sidebar are on screen at
+            the same time. */}
+        <div id={`find-index-sub-${entry.id}`} aria-hidden="true">
+          {entry.sub && <div className="row-sub">{entry.sub}</div>}
+          <div className="row-sub">Phone: {entry.phone} · Computer: {entry.desktop}</div>
+        </div>
       </span>
       <span className="value">›</span>
     </button>

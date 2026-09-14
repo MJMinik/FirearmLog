@@ -1162,12 +1162,20 @@ export function MoreScreen({ refreshKey, open, onGoTab }: {
             </p>
           ) : results.map((r) => (
             <button className="row-tap" key={r.id} data-find-id={r.id}
+              aria-describedby={`find-more-sub-${r.id}`}
               onClick={() => goToFindTarget(r.go, open, onGoTab)}>
               <span className="label">
                 {r.name}
                 {/* L4: the composite main group's own name is noise here — the
-                    phone/desktop path already says which tab it's under. */}
-                <div className="row-sub">{r.group === MAIN_GROUP ? r.phone : `${r.group} · ${r.phone}`}</div>
+                    phone/desktop path already says which tab it's under.
+                    s147 (the decision-76 cold read): the path is aria-hidden
+                    and the button's aria-describedby target, so the row's
+                    spoken NAME is its name (plus the chevron, as every
+                    row-tap's is) and the path is read as its description,
+                    not run into the name. Same split as the sidebar. */}
+                <div className="row-sub" id={`find-more-sub-${r.id}`} aria-hidden="true">
+                  {r.group === MAIN_GROUP ? r.phone : `${r.group} · ${r.phone}`}
+                </div>
               </span>
               <span className="value">›</span>
             </button>

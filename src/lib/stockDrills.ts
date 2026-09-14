@@ -86,8 +86,12 @@ export const STOCK_DRILLS_V1: readonly StockDrillEntry[] = [
     brief: 'Classic 12-round test with a turn and reload.',
     full: 'Back to targets, turn, 2 each on 3 targets, reload, 2 each again. 10 yd. The all-around test.' },
   { name: 'Dot Torture', fire: 'live', scoring: 'points', holster: true,
-    brief: '50 rounds, 50 dots, fundamentals under pressure.',
-    full: 'Slow-fire accuracy standard across draws, one-hand, and transitions. Score out of 50.' },
+    // s147 copy check (Action Queue): the brief said "50 dots". The drill is
+    // ten dots for fifty rounds, from 3 yards, and only 50 of 50 passes —
+    // read at the source, pistol-training.com/shooting-drills/dot-torture
+    // (the drill's own home; it credits David Blinder as the originator).
+    brief: '50 rounds on 10 dots at 3 yards; all 50 to pass.',
+    full: 'Ten dots, 50 rounds at 3 yards: draws, strong- and weak-hand-only strings, and a reload. Only 50 of 50 passes; once it is clean, move back or shoot the whole thing under 5 minutes.' },
   { name: 'Doubles / Hammers', fire: 'both', scoring: 'time', holster: false,
     brief: 'Controlled pairs, recoil management.',
     full: 'Pairs on one target — hammers (one sight picture) and doubles (two). Chase flat, fast splits.' },

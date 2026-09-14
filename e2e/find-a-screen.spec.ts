@@ -83,6 +83,33 @@ test.describe('Find a screen — clearing restores the normal view', () => {
   });
 });
 
+test.describe('Find a screen — a result row\'s path is its description, not part of its name', () => {
+  // s147, from the decision-76 cold read: the sidebar got this split first;
+  // the phone More results and the Help index rows carried their grey path
+  // INSIDE the button's accessible name. Now all three surfaces agree: the
+  // name is the row name (row-tap rows keep their "›"), the path is the
+  // accessible description. Proved red on the old code on both surfaces.
+  test('phone: a More result\'s spoken name is its name, the path is its description', async ({ page }) => {
+    test.skip(isDesktop(page), 'the More tab is a phone surface');
+    await seedDemo(page);
+    await goToFindBox(page);
+    await findInput(page).fill('heatmap');
+    const row = page.getByRole('button', { name: /^Training grid ›$/ });
+    await expect(row).toBeVisible();
+    await expect(row).toHaveAccessibleDescription('tab bar → Progress → Training grid');
+  });
+
+  test('the Help index row\'s spoken name is its name, the two paths are its description', async ({ page }) => {
+    await seedDemo(page);
+    await gotoSection(page, 'Tour & Setup');
+    await indexInput(page).fill('heatmap');
+    const row = page.getByRole('main').getByRole('button', { name: /^Training grid ›$/ });
+    await expect(row).toBeVisible();
+    await expect(row).toHaveAccessibleDescription(
+      'Phone: tab bar → Progress → Training grid · Computer: sidebar → Progress → Training grid');
+  });
+});
+
 test.describe('Find a screen — the Help index filters in place', () => {
   // H2: Reveal defaults its groups closed, so a query that only matched
   // because of an "inside" row used to hide its own match behind a
