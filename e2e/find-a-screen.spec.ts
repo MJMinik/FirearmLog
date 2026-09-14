@@ -176,6 +176,10 @@ test.describe('Find a screen — jumping to where you already are', () => {
     test.skip(isDesktop(page), 'phone-only surface');
     await seedDemo(page);
     await goToFindBox(page);
-    await expect(page.getByRole('button', { name: 'The numbers', exact: true })).toBeVisible();
+    // The row's accessible name is the label plus its chevron ("The numbers ›");
+    // CI runs the BUILT app and computed it exactly that way (E2E #398, the
+    // only red). Assert the whole name so dev and build agree.
+    await expect(page.getByRole('button', { name: /^The numbers ›$/ })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^How the numbers work/ })).toHaveCount(0);
   });
 });
