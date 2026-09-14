@@ -63,15 +63,21 @@ test('Full Tour: the Setup & sample data step tells shooters the "Where do I fin
   assert.match(src, /This screen also holds a "Where do I find…" index/);
 });
 
-// Findability memo, decision 60 (3): the static "Where do I find…" index.
-test('HelpScreen has a "Where do I find…" section listing every nav group', () => {
+// Findability memo, decision 60 (3), superseded by decision 75 (12 Sep 2026,
+// build 2): the "Where do I find…" index is no longer a second hand-written
+// copy of the nav groups — it's DERIVED from FIND_INDEX (src/ui/findIndex.ts),
+// which carries its own FIND_GROUP_ORDER (the same five group labels this
+// test used to assert as literal strings here). These two tests now check
+// the derivation itself, not a repeated literal table.
+test('HelpScreen has a "Where do I find…" section built from FIND_INDEX/FIND_GROUP_ORDER', () => {
   assert.match(src, /<h2>Where do I find…<\/h2>/);
-  for (const label of ['Home, Log, Compete & Progress', 'Your Gear', 'Training', 'Records', 'App & Data']) {
-    assert.match(src, new RegExp(`label: '${label.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&')}'`),
-      `missing find-index group: ${label}`);
-  }
+  assert.match(src, /import \{ FIND_GROUP_ORDER, findEntries \} from '\.\/findIndex\.ts';/);
+  assert.match(src, /FIND_GROUP_ORDER\s*\n?\s*\.map\(\(label\) => /);
 });
 
-test('every tappable "Where do I find…" row reuses the tours\' own jump mechanism (open)', () => {
-  assert.match(src, /onClick=\{\(\) => open\(view\)\}/);
+test('every "Where do I find…" row is tappable, routed through goToFindTarget (open/onGoTab)', () => {
+  // Build 2: every FIND_INDEX entry has a `go` (tab or view), so the four
+  // main tabs are tappable now too — no more plain-text fallback rows.
+  assert.match(src, /onClick=\{\(\) => goToFindTarget\(entry\.go, open, onGoTab\)\}/);
+  assert.doesNotMatch(src, /<div className="row">/, 'no row should fall back to plain, untappable text anymore');
 });

@@ -3,24 +3,26 @@
 // (drills, ammo, magazines, parts, purchases, guns) had no way to narrow down.
 // This is a plain controlled text input styled like the app's other fields —
 // the screen owns the query state and does the filtering.
-export function ListSearch({ value, onChange, placeholder }: {
+//
+// matchesQuery itself now lives in matchQuery.ts (see that file for why) —
+// re-exported here so every existing `import { matchesQuery } from
+// './ListSearch.tsx'` keeps working unchanged.
+import { matchesQuery } from './matchQuery.ts';
+export { matchesQuery };
+
+export function ListSearch({ value, onChange, placeholder, inputRef, onKeyDown }: {
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
+  /** Lets a caller (the Find-a-screen box) focus this input programmatically. */
+  inputRef?: React.Ref<HTMLInputElement>;
+  onKeyDown?: React.KeyboardEventHandler<HTMLInputElement>;
 }) {
   return (
     <label className="field">
-      <input type="search" value={value} placeholder={placeholder ?? 'Search…'}
+      <input ref={inputRef} type="search" value={value} placeholder={placeholder ?? 'Search…'}
         aria-label={placeholder ?? 'Search this list'} enterKeyHint="search"
-        onChange={(e) => onChange(e.target.value)} />
+        onChange={(e) => onChange(e.target.value)} onKeyDown={onKeyDown} />
     </label>
   );
-}
-
-/** Case-insensitive "do all typed words appear somewhere in the text?" match. */
-export function matchesQuery(query: string, ...fields: (string | null | undefined)[]): boolean {
-  const q = query.trim().toLowerCase();
-  if (!q) return true;
-  const hay = fields.filter(Boolean).join(' ').toLowerCase();
-  return q.split(/\s+/).every((word) => hay.includes(word));
 }

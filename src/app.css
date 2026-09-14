@@ -575,6 +575,20 @@ select.category-pick {
 .tabbar button.active { color: var(--accent-ink); }
 .tabbar .glyph { font-size: 22px; line-height: 1; }
 
+/* Find a screen (decision 75, 12 Sep 2026, build 2): the shared search box
+   atop the phone More screen, the sidebar, and Tour & Setup's "Where do I
+   find…" index. Reuses .field's own look — this only adds spacing. */
+.find-box { margin-bottom: 16px; }
+.find-box .field { margin-bottom: 0; }
+/* The sidebar's copy lives inside .tabbar, which the phone breakpoint also
+   renders as the bottom tab bar — hidden there exactly like .side-title
+   below, and shown only once the sidebar layout kicks in (same breakpoint). */
+.tabbar .find-box { display: none; }
+/* The unlabeled cold-audit fix (session 79): the sidebar's own visible
+   result-count line ("3 screens found · Esc to clear") — dim text, same
+   token .row-sub/.report-note already clear 4.5:1 with in both schemes. */
+.find-box .find-count { margin: 6px 0 0; font-size: var(--fs-footnote); color: var(--text-dim); min-height: 1em; }
+
 .report-note { font-size: var(--fs-subhead); line-height: 1.45; color: var(--text-dim); margin-top: 10px; }
 .report-note.warn { color: var(--warn-text); font-weight: 600; }
 
@@ -1173,6 +1187,13 @@ h2.disclosure-h2 { margin: 0; font-size: inherit; font-weight: inherit; }
   .tabbar button {
     flex: none; width: 100%; flex-direction: row; justify-content: flex-start;
     gap: 12px; padding: 10px 14px; font-size: var(--fs-subhead); border-radius: 10px; min-height: 44px;
+    /* M5 (cold audit, session 79): native <button> defaults to centered text —
+       harmless for a one-line label, but a wrapped two-line one (e.g. "How
+       the numbers work" before it got a `short` label) centered its second
+       line under the whole row instead of lining up under the first. The
+       phone breakpoint above never sets text-align, so its own centered,
+       under-the-icon labels are untouched. */
+    text-align: left;
   }
   .tabbar button.active { background: color-mix(in srgb, var(--accent) 12%, transparent); }
   .tabbar .glyph { font-size: 18px; width: 22px; text-align: center; }
@@ -1192,6 +1213,8 @@ h2.disclosure-h2 { margin: 0; font-size: inherit; font-weight: inherit; }
     display: block; font-size: 20px; font-weight: 700; color: var(--text);
     padding: 0 14px 14px;
   }
+  .tabbar .find-box { display: block; padding: 0 14px 14px; margin-bottom: 0; }
+  .tabbar .find-box .field { margin-bottom: 0; }
   .nav-group-label {
     display: block; font-size: var(--fs-caption); font-weight: 600; text-transform: uppercase;
     letter-spacing: 0.05em; color: var(--text-dim); padding: 18px 14px 6px;

@@ -36,12 +36,15 @@ type Item = Action | { submenu: string; items: Item[] } | 'divider';
 // set actually works here. (iPadOS reports itself as MacIntel — correct: an
 // attached keyboard there is Apple-labelled.)
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+// Find a Screen… (decision 75, build 2): ⌘⇧/ — displayed the Mac way as ⌘?
+// (Shift+/ types "?" on a US keyboard, the same convention Mac apps use for
+// their Help menu's own ⌘? shortcut).
 const HINTS = IS_MAC
-  ? { newSession: '⌥⌘N', save: '⌘S', load: '⌘O', settings: '⌘,' }
-  : { newSession: 'Ctrl+Alt+N', save: 'Ctrl+S', load: 'Ctrl+O', settings: 'Ctrl+,' };
+  ? { newSession: '⌥⌘N', save: '⌘S', load: '⌘O', settings: '⌘,', findScreen: '⌘?' }
+  : { newSession: 'Ctrl+Alt+N', save: 'Ctrl+S', load: 'Ctrl+O', settings: 'Ctrl+,', findScreen: 'Ctrl+Shift+/' };
 const KEYS = IS_MAC
-  ? { newSession: 'Alt+Meta+N', save: 'Meta+S', load: 'Meta+O', settings: 'Meta+Comma' }
-  : { newSession: 'Control+Alt+N', save: 'Control+S', load: 'Control+O', settings: 'Control+Comma' };
+  ? { newSession: 'Alt+Meta+N', save: 'Meta+S', load: 'Meta+O', settings: 'Meta+Comma', findScreen: 'Meta+Shift+Slash' }
+  : { newSession: 'Control+Alt+N', save: 'Control+S', load: 'Control+O', settings: 'Control+Comma', findScreen: 'Control+Shift+Slash' };
 
 /** The desktop shell's exact media gate — the shortcut layer only lives where
  *  the menu bar is actually on screen (audit #1: an iPad below 900px with a
@@ -58,11 +61,15 @@ function sessionLabel(s: Session): string {
   return `${formatDayKey(s.date)} — ${kind}`;
 }
 
-export function MenuBar({ onGoTab, onOpenView, sidebarHidden, onToggleSidebar }: {
+export function MenuBar({ onGoTab, onOpenView, sidebarHidden, onToggleSidebar, onFindScreen }: {
   onGoTab: (t: TabId) => void;
   onOpenView: (v: View) => void;
   sidebarHidden: boolean;
   onToggleSidebar: () => void;
+  /** Find a Screen… (decision 75, build 2): shows the sidebar if it's hidden
+   *  and focuses its Find box — wired by App through a ref, since the box
+   *  itself lives inside TabBar. */
+  onFindScreen: () => void;
 }) {
   const [open, setOpen] = useState<number | null>(null);
   const [subOpen, setSubOpen] = useState<string | null>(null);
@@ -116,10 +123,11 @@ export function MenuBar({ onGoTab, onOpenView, sidebarHidden, onToggleSidebar }:
       else if (!e.altKey && !e.shiftKey && e.code === 'KeyS') { e.preventDefault(); act(openSync); }
       else if (!e.altKey && !e.shiftKey && e.code === 'KeyO') { e.preventDefault(); act(openSync); }
       else if (!e.altKey && !e.shiftKey && e.code === 'Comma') { e.preventDefault(); act(openSettings); }
+      else if (!e.altKey && e.shiftKey && e.code === 'Slash') { e.preventDefault(); act(onFindScreen); }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [act, newSession, openSync, openSettings]);
+  }, [act, newSession, openSync, openSettings, onFindScreen]);
 
   // ---- Click outside closes. ----
   useEffect(() => {
@@ -178,6 +186,8 @@ export function MenuBar({ onGoTab, onOpenView, sidebarHidden, onToggleSidebar }:
       { label: 'All Reports…', onSelect: () => onOpenView({ kind: 'reports' }) }
     ] },
     { label: 'Help', items: [
+      { label: 'Find a Screen…', hint: HINTS.findScreen, keyshortcuts: KEYS.findScreen, onSelect: onFindScreen },
+      'divider',
       { label: 'Quick Tour', onSelect: () => onOpenView({ kind: 'help', tour: 'quick' }) },
       { label: 'Full Tour', onSelect: () => onOpenView({ kind: 'help', tour: 'full' }) },
       { label: 'Set Up…', onSelect: () => onOpenView({ kind: 'setup' }) },

@@ -267,6 +267,18 @@ export function App() {
     return next;
   });
 
+  // Find a screen (decision 75, build 2): the desktop Help menu's "Find a
+  // Screen…" item shows the sidebar if it's hidden, then focuses its box —
+  // a ref, since the box lives inside TabBar, not here. requestAnimationFrame
+  // gives the sidebar's display:none-to-block flip (triggered by
+  // toggleSidebar's state update) a beat to land before focusing it — the
+  // same pattern scrollTop() above uses to wait for a render.
+  const findInputRef = useRef<HTMLInputElement>(null);
+  const focusFind = () => {
+    if (sidebarHidden) toggleSidebar();
+    requestAnimationFrame(() => findInputRef.current?.focus());
+  };
+
   // F1: a failed boot replaces everything — there is nothing useful to render
   // when no screen can reach its data. Recovery re-checks the wizard/goal
   // effects' work via refresh so the app resumes exactly as a normal open.
@@ -476,7 +488,7 @@ export function App() {
     // Keyed per tour request so Help > Quick Tour re-launches even when the
     // Tour & Setup screen is already open (a fresh mount re-reads initialTour).
     content = <HelpScreen key={view.tour ? `${view.tour}-${tourSeq.current}` : ''}
-      onBack={back} open={push} initialTour={view.tour}
+      onBack={back} open={push} onGoTab={setTab} initialTour={view.tour}
       onDemoLoaded={() => { refresh(); setTabState('home'); replace(null); scrollTop(); }} />;
   } else if (view?.kind === 'numbers') {
     content = <NumbersGuide onBack={back} section={view.section} />;
@@ -515,7 +527,7 @@ export function App() {
   } else if (tab === 'progress') {
     content = <ProgressScreen refreshKey={refreshKey} open={push} />;
   } else {
-    content = <MoreScreen refreshKey={refreshKey} open={push} />;
+    content = <MoreScreen refreshKey={refreshKey} open={push} onGoTab={setTab} />;
   }
 
   // Key the error boundary to the current screen so navigating away from a
@@ -528,7 +540,7 @@ export function App() {
           its shortcut listener re-checks the same media gate per keystroke —
           so even a hardware keyboard on a small viewport stays untouched. */}
       <MenuBar onGoTab={setTab} onOpenView={menuOpen}
-        sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} />
+        sidebarHidden={sidebarHidden} onToggleSidebar={toggleSidebar} onFindScreen={focusFind} />
       {/* Session 59: while the log IS the sample, the exit stays pinned on
           every screen — the converted explorer must never have to hunt for
           the way to start their own log. */}
@@ -537,7 +549,7 @@ export function App() {
           Audit CR-17/#D16: an error boundary turns a render crash into a friendly reload.
           T1-2: keyed to the current view so navigation recovers from a crash. */}
       <main><ErrorBoundary key={boundaryKey}>{content}</ErrorBoundary></main>
-      <TabBar active={tab} onChange={setTab} view={view} onOpen={openSection} />
+      <TabBar active={tab} onChange={setTab} view={view} onOpen={openSection} findInputRef={findInputRef} />
       {/* F3: the parked navigation's Discard-changes? sheet — same component
           and wording as the form's own Cancel guard. Keep editing stays put;
           Discard disarms the guard and runs the parked navigation.

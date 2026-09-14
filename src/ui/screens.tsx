@@ -1,6 +1,6 @@
 // Tab screens. Home and Log are live against the database; Compete and
 // Progress arrive in M5 and M7 and say so in plain language.
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { Fragment, useEffect, useRef, useState, useCallback } from 'react';
 import type { Ammunition, AppSettings, Classifier, DrillDef, Firearm, Goal, GunCategory, Magazine, MaintenanceEntry, Match, Purchase, Reference, Reminder, Session } from '../lib/types.ts';
 import { goldenGoal } from '../lib/goals.ts';
 import { buildReminderContext, reminderViews, dueReminders, homeComingUp } from '../lib/reminders.ts';
@@ -16,7 +16,6 @@ import { buildRefLookup } from '../lib/referenceData.ts';
 import type { ReferenceEntry } from '../lib/referenceData.ts';
 import { formatDayKey, todayKey } from '../lib/dates.ts';
 import { sessionRounds, roundsForFirearm, dryRepsForFirearm } from '../lib/stats.ts';
-import { telemetryState } from '../lib/telemetry.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { Reveal } from './Reveal.tsx';
 import { Icon } from './Icon.tsx';
@@ -24,6 +23,11 @@ import { ClassificationGrid } from './ClassificationGrid.tsx';
 import { SetupSteps } from './SetupWizard.tsx';
 import { ScreenError, ScreenLoading } from './ScreenState.tsx';
 import { ListSearch, matchesQuery } from './ListSearch.tsx';
+import type { TabId } from './TabBar.tsx';
+import { FIND_INDEX, FIND_GROUP_ORDER, findEntries } from './findIndex.ts';
+import type { FindEntry, FindGroupLabel } from './findIndex.ts';
+import { FindBox } from './FindBox.tsx';
+import { searchFindEntries, goToFindTarget, MAIN_GROUP } from './findSearch.ts';
 import { isActive, isOwned, isFormer, isRetired, statusBadge } from '../lib/gunStatus.ts';
 import { MonthCalendar } from './Calendar.tsx';
 import type { CalItem } from './Calendar.tsx';
@@ -1100,137 +1104,98 @@ function RecentlyDeleted({ trashed, firearms, onRestore, onForget }: {
 }
 
 
-export function MoreScreen({ refreshKey, open }: {
+// M2 (cold audit, session 79): the More screen was the third hand-copied
+// surface — its four groups and every row were typed out separately from
+// FIND_INDEX, so a row could (and did) drift from what the sidebar and the
+// Find box show. Derived here instead: every `kind: 'screen'` entry outside
+// the composite main group (the four tabs don't appear under More — the tab
+// bar already reaches them), grouped by FIND_GROUP_ORDER, in table order.
+// Subtitles aren't part of FIND_INDEX (they're a More-screen-only flourish),
+// so they stay a small lookup keyed by group label.
+const MORE_SCREEN_GROUPS: { label: FindGroupLabel; entries: FindEntry[] }[] = FIND_GROUP_ORDER
+  .filter((label) => label !== MAIN_GROUP)
+  .map((label) => ({
+    label,
+    entries: FIND_INDEX.filter((e) => e.kind === 'screen' && e.group === label),
+  }));
+
+const MORE_GROUP_SUB: Record<string, string> = {
+  'Your Gear': 'The things you own',
+  Training: 'Getting better',
+  Records: 'Your history',
+  'App & Data': 'Setup, sync, and backups',
+};
+
+export function MoreScreen({ refreshKey, open, onGoTab }: {
   refreshKey: number; open: (v: View) => void;
+  /** Find-a-screen (decision 75, build 2): a result can name one of the four
+   *  main tabs, which the More tab itself can't open — routed through App's
+   *  guarded setTab, same as the tab bar and the sidebar. */
+  onGoTab: (t: TabId) => void;
 }) {
   const { loaded, error, reload } = useData(refreshKey);
+  const [q, setQ] = useState('');
+  // L1 (cold audit, session 79): navigating away unmounts MoreScreen entirely
+  // (App only renders it on the 'more' tab-fallback branch), which resets
+  // this state for free on a real navigation — so the fix here is simply to
+  // NOT clear the box eagerly before a guarded jump might get parked behind
+  // the Discard-changes? sheet instead of landing.
   if (error) return <ScreenError onRetry={reload} />;
   if (!loaded) return <ScreenLoading />;
+  const query = q.trim();
+  const results = query ? searchFindEntries(query, findEntries()) : [];
+  const gatedIds = new Set(findEntries().map((e) => e.id));
   return (
     <div className="screen">
       <h1 className="large-title">More</h1>
 
-      <h2 className="menu-group-title">Your Gear</h2>
-      <p className="menu-group-sub">The things you own</p>
-      <div className="card">
-        <button className="row-tap" onClick={() => open({ kind: 'guns' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="gun" size={20} /></span>
-          <span className="label">Guns</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'optics' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="optic" size={20} /></span>
-          <span className="label">Optics</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'magazines' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="magazine" size={20} /></span>
-          <span className="label">Magazines</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'ammo' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="ammo" size={20} /></span>
-          <span className="label">Ammo</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'parts' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="parts" size={20} /></span>
-          <span className="label">Parts</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'references' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="reference" size={20} /></span>
-          <span className="label">Care Guides</span>
-          <span className="value">›</span>
-        </button>
-      </div>
+      <FindBox query={q} onChange={setQ} resultCount={results.length} />
 
-      <h2 className="menu-group-title">Training</h2>
-      <p className="menu-group-sub">Getting better</p>
-      <div className="card">
-        <button className="row-tap" onClick={() => open({ kind: 'drills' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="drills" size={20} /></span>
-          <span className="label">Drills</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'numbers' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="info" size={20} /></span>
-          <span className="label">The numbers</span>
-          <span className="value">›</span>
-        </button>
-      </div>
-
-      <h2 className="menu-group-title">Records</h2>
-      <p className="menu-group-sub">Your history</p>
-      <div className="card">
-        <button className="row-tap" onClick={() => open({ kind: 'maintenance' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="maintenance" size={20} /></span>
-          <span className="label">Gun Maintenance</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'reminders' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="reminder" size={20} /></span>
-          <span className="label">Reminders</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'malfunctions' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="malfunction" size={20} /></span>
-          <span className="label">Malfunctions</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'costs' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="costs" size={20} /></span>
-          <span className="label">Costs &amp; Purchases</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'reports' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="reports" size={20} /></span>
-          <span className="label">Reports</span>
-          <span className="value">›</span>
-        </button>
-      </div>
-
-      <h2 className="menu-group-title">App &amp; Data</h2>
-      <p className="menu-group-sub">Setup, sync, and backups</p>
-      <div className="card">
-        <button className="row-tap" onClick={() => open({ kind: 'help' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="help" size={20} /></span>
-          <span className="label">Tour &amp; Setup</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'settings' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="settings" size={20} /></span>
-          <span className="label">Settings</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'sync' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="sync" size={20} /></span>
-          <span className="label">Sync &amp; Backup</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'export-csv' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="reports" size={20} /></span>
-          <span className="label">Export as CSV</span>
-          <span className="value">›</span>
-        </button>
-        <button className="row-tap" onClick={() => open({ kind: 'import-csv' })}>
-          <span className="row-ico" aria-hidden="true"><Icon name="reports" size={20} /></span>
-          <span className="label">Import from CSV</span>
-          <span className="value">›</span>
-        </button>
-        {/* Rung-1 transparency surface — hidden while telemetry ships dark
-            (no provider wired, nothing can be sent), so users never meet a
-            control for a pipe that doesn't exist. The activation step makes
-            this row appear with the pipe itself. Deep links stay honest: the
-            screen is state-aware. */}
-        {telemetryState().wired && (
-          <button className="row-tap" onClick={() => open({ kind: 'your-data' })}>
-            <span className="row-ico" aria-hidden="true"><Icon name="shield" size={20} /></span>
-            <span className="label">Your Data</span>
-            <span className="value">›</span>
-          </button>
-        )}
-      </div>
+      {query ? (
+        <div className="card">
+          {results.length === 0 ? (
+            <p className="report-note">
+              Nothing called that. Try another word, or open the{' '}
+              <button className="link-btn" onClick={() => open({ kind: 'help' })}>
+                Where do I find… index.
+              </button>
+            </p>
+          ) : results.map((r) => (
+            <button className="row-tap" key={r.id} data-find-id={r.id}
+              onClick={() => goToFindTarget(r.go, open, onGoTab)}>
+              <span className="label">
+                {r.name}
+                {/* L4: the composite main group's own name is noise here — the
+                    phone/desktop path already says which tab it's under. */}
+                <div className="row-sub">{r.group === MAIN_GROUP ? r.phone : `${r.group} · ${r.phone}`}</div>
+              </span>
+              <span className="value">›</span>
+            </button>
+          ))}
+        </div>
+      ) : (
+      <>
+      {MORE_SCREEN_GROUPS.map((g) => {
+        const rows = g.entries.filter((e) => gatedIds.has(e.id));
+        if (rows.length === 0) return null;
+        return (
+          <Fragment key={g.label}>
+            <h2 className="menu-group-title">{g.label}</h2>
+            <p className="menu-group-sub">{MORE_GROUP_SUB[g.label]}</p>
+            <div className="card">
+              {rows.map((e) => (
+                <button className="row-tap" key={e.id} onClick={() => open((e.go as { view: View }).view)}>
+                  <span className="row-ico" aria-hidden="true"><Icon name={e.icon!} size={20} /></span>
+                  <span className="label">{e.short ?? e.name}</span>
+                  <span className="value">›</span>
+                </button>
+              ))}
+            </div>
+          </Fragment>
+        );
+      })}
+      </>
+      )}
     </div>
   );
 }

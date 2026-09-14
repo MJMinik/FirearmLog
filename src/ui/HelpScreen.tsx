@@ -13,7 +13,11 @@ import { ClearAllSheet } from './ClearAllSheet.tsx';
 import { Reveal } from './Reveal.tsx';
 import { APP_VERSION } from '../version.ts';
 import { humanBytes, VIDEO_ASK_BYTES } from '../lib/inputLimits.ts';
-import { telemetryState } from '../lib/telemetry.ts';
+import { FIND_GROUP_ORDER, findEntries } from './findIndex.ts';
+import type { FindEntry, FindGroupLabel } from './findIndex.ts';
+import { goToFindTarget, matchesEntry } from './findSearch.ts';
+import { FindBox } from './FindBox.tsx';
+import type { TabId } from './TabBar.tsx';
 
 interface TourStep { title: string; body: string; view?: View }
 
@@ -81,8 +85,8 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Getting around',
       body: isDesktop
-        ? 'On a computer, the left sidebar lists Home, Log, Compete, and Progress at the top, then your sections grouped into Your Gear, Training, Records, and App & Data — each one click away. Across the very top runs a menu bar with the commands: File holds New (session, match, classifier), Save to File, Load from File, your recent records, and the importers; Reports opens any report; Help is where these tours live. A few commands have keyboard shortcuts, shown right on their menu items. Want more room? View → Hide Sidebar tucks the sidebar away, and View → Show Sidebar brings it back. To search your log, open Log and click Search & Filter — it hunts across places, guns, drills, instructors, match names, and notes. Long lists elsewhere (drills, ammo, costs, and more) grow their own search box once they pass a handful of entries. Almost anything on screen — a number, a chart bar, a list row — can be clicked to open what\'s behind it.'
-        : 'On a phone, the bar along the bottom has Home, Log, Compete, and Progress, plus More for everything else. To search your log, open Log and tap Search & Filter — it hunts across places, guns, drills, instructors, match names, and notes. Long lists elsewhere (drills, ammo, costs, and more) grow their own search box once they pass a handful of entries. Almost anything on screen — a number, a chart bar, a list row — can be tapped to open what\'s behind it.',
+        ? 'On a computer, the left sidebar lists Home, Log, Compete, and Progress at the top, then your sections grouped into Your Gear, Training, Records, and App & Data — each one click away. A Find a screen box sits at the top of the sidebar: type a plain word like "heatmap" or "who am I" to see the matches, then click one to jump there. Across the very top runs a menu bar with the commands: File holds New (session, match, classifier), Save to File, Load from File, your recent records, and the importers; Reports opens any report; Help is where these tours live (and where Find a Screen… lives too). A few commands have keyboard shortcuts, shown right on their menu items. Want more room? View → Hide Sidebar tucks the sidebar away, and View → Show Sidebar brings it back. To search your log, open Log and click Search & Filter — it hunts across places, guns, drills, instructors, match names, and notes. Long lists elsewhere (drills, ammo, costs, and more) grow their own search box once they pass a handful of entries. Almost anything on screen — a number, a chart bar, a list row — can be clicked to open what\'s behind it.'
+        : 'On a phone, the bar along the bottom has Home, Log, Compete, and Progress, plus More for everything else. A Find a screen box sits at the top of More: type a plain word like "heatmap" or "who am I" to see matches, then tap one to jump there. To search your log, open Log and tap Search & Filter — it hunts across places, guns, drills, instructors, match names, and notes. Long lists elsewhere (drills, ammo, costs, and more) grow their own search box once they pass a handful of entries. Almost anything on screen — a number, a chart bar, a list row — can be tapped to open what\'s behind it.',
     },
     {
       title: 'Home',
@@ -183,7 +187,7 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
     {
       title: 'Setup & sample data',
       view: { kind: 'setup' },
-      body: `The first time you open the app it walks you through setup in three steps — add a gun, pick a goal (or skip it), then log your first session from Home — or load a ready-made sample log so you can explore everything the app does. While the sample is loaded, "Start my own log" at the top of every screen clears it and starts yours; you can re-run setup any time from Tour & Setup. This screen also holds a "Where do I find…" index — a quick answer if you know FirearmLog does something but can't recall where.`,
+      body: `The first time you open the app it walks you through setup in three steps — add a gun, pick a goal (or skip it), then log your first session from Home — or load a ready-made sample log so you can explore everything the app does. While the sample is loaded, "Start my own log" at the top of every screen clears it and starts yours; you can re-run setup any time from Tour & Setup. This screen also holds a "Where do I find…" index — a quick answer if you know FirearmLog does something but can't recall where. The Find a screen box at the top of More on a phone, or the sidebar on a computer, does the same thing by typing.`,
     },
     {
       title: 'Your data & privacy',
@@ -192,94 +196,49 @@ function buildFullTour(isDesktop: boolean): TourStep[] {
   ];
 }
 
-/** Static "Where do I find…" index (findability memo, option c — 10 Sep 2026):
- *  one row per screen, grouped exactly the way the app's own navigation groups
- *  them — the four main tabs, then the same four More/sidebar groups the Full
- *  Tour and TabBar use. Built to mirror TabBar's own GROUPS and nav.ts, so it
- *  can never name a screen that doesn't exist. A row with a `view` reuses the
- *  tours' own jump mechanism (the same `open` this screen already gets passed)
- *  — tapping it lands you right there. The four main tabs have no `view` of
- *  their own to jump to (the tab bar switches tabs; this screen only pushes a
- *  View onto the stack), so those four rows stay plain text. */
-interface FindRow { name: string; phone: string; desktop: string; view?: View; sub?: string }
-interface FindGroup { label: string; rows: FindRow[] }
-
-function findGroups(): FindGroup[] {
-  const appData: FindRow[] = [
-    { name: 'Tour & Setup', phone: 'More → Tour & Setup', desktop: 'sidebar → App & Data → Tour & Setup', view: { kind: 'help' } },
-    { name: 'Settings', phone: 'More → Settings', desktop: 'sidebar → App & Data → Settings, or ⌘,', view: { kind: 'settings' }, sub: 'Coaching remarks, who you are, Manage lists' },
-    { name: 'Sync & Backup', phone: 'More → Sync & Backup', desktop: 'sidebar → App & Data → Sync & Backup', view: { kind: 'sync' } },
-    { name: 'Export as CSV', phone: 'More → Export as CSV', desktop: 'sidebar → App & Data → Export as CSV', view: { kind: 'export-csv' } },
-    { name: 'Import from CSV', phone: 'More → Import from CSV', desktop: 'sidebar → App & Data → Import from CSV', view: { kind: 'import-csv' } },
-  ];
-  // Mirrors TabBar's own `when: () => telemetryState().wired` gate exactly —
-  // this row appears the day that one does, and not before.
-  if (telemetryState().wired) {
-    appData.push({ name: 'Your Data', phone: 'More → Your Data', desktop: 'sidebar → App & Data → Your Data', view: { kind: 'your-data' } });
-  }
-  return [
-    {
-      label: 'Home, Log, Compete & Progress',
-      rows: [
-        { name: 'Home', phone: 'tab bar → Home', desktop: 'sidebar → Home' },
-        { name: 'Log', phone: 'tab bar → Log', desktop: 'sidebar → Log' },
-        { name: 'Compete', phone: 'tab bar → Compete', desktop: 'sidebar → Compete' },
-        { name: 'Progress', phone: 'tab bar → Progress', desktop: 'sidebar → Progress' },
-      ],
-    },
-    {
-      label: 'Your Gear',
-      rows: [
-        { name: 'Guns', phone: 'More → Guns', desktop: 'sidebar → Your Gear → Guns', view: { kind: 'guns' } },
-        { name: 'Optics', phone: 'More → Optics', desktop: 'sidebar → Your Gear → Optics', view: { kind: 'optics' } },
-        { name: 'Magazines', phone: 'More → Magazines', desktop: 'sidebar → Your Gear → Magazines', view: { kind: 'magazines' } },
-        { name: 'Ammo', phone: 'More → Ammo', desktop: 'sidebar → Your Gear → Ammo', view: { kind: 'ammo' } },
-        { name: 'Parts', phone: 'More → Parts', desktop: 'sidebar → Your Gear → Parts', view: { kind: 'parts' } },
-        { name: 'Care Guides', phone: 'More → Care Guides', desktop: 'sidebar → Your Gear → Care Guides', view: { kind: 'references' } },
-      ],
-    },
-    {
-      label: 'Training',
-      rows: [
-        { name: 'Drills', phone: 'More → Drills', desktop: 'sidebar → Training → Drills', view: { kind: 'drills' } },
-        { name: 'How the numbers work', phone: 'More → The numbers', desktop: 'sidebar → Training → The numbers, or the Help menu', view: { kind: 'numbers' } },
-      ],
-    },
-    {
-      label: 'Records',
-      rows: [
-        { name: 'Gun Maintenance', phone: 'More → Gun Maintenance', desktop: 'sidebar → Records → Gun Maintenance', view: { kind: 'maintenance' } },
-        { name: 'Reminders', phone: 'More → Reminders', desktop: 'sidebar → Records → Reminders', view: { kind: 'reminders' } },
-        { name: 'Malfunctions', phone: 'More → Malfunctions', desktop: 'sidebar → Records → Malfunctions', view: { kind: 'malfunctions' } },
-        { name: 'Costs & Purchases', phone: 'More → Costs & Purchases', desktop: 'sidebar → Records → Costs & Purchases', view: { kind: 'costs' } },
-        { name: 'Reports', phone: 'More → Reports', desktop: "sidebar → Records → Reports, or the menu bar's Reports menu", view: { kind: 'reports' } },
-      ],
-    },
-    { label: 'App & Data', rows: appData },
-  ];
+/** The "Where do I find…" index is now DERIVED from FIND_INDEX (decision 75,
+ *  12 Sep 2026, build 2) instead of a second hand-written copy of the nav
+ *  tree — it can never name a screen the sidebar/More/Find box don't have.
+ *  With the box empty, only `kind: 'screen'` entries show, grouped exactly
+ *  as before (unchanged look and rows). Typing filters in place AND brings
+ *  in `kind: 'inside'` entries too — a named thing that lives inside a
+ *  screen (the training grid, Manage lists) — as extra rows in their group,
+ *  so a search can surface something this index never listed as its own row.
+ *  Every row is now tappable: the four main tabs used to render as plain
+ *  text (they had no View to open), but FIND_INDEX gives them `go.tab`, and
+ *  goToFindTarget routes a tab target through `onGoTab` (App's guarded
+ *  setTab) the same way a view target routes through `open`. The gate on
+ *  the "Your Data" row (`when`) is FIND_INDEX's own — findEntries() applies
+ *  it, same as the sidebar and the Find box. */
+function visibleGroups(query: string): { label: FindGroupLabel; entries: FindEntry[] }[] {
+  const q = query.trim();
+  const gated = findEntries();
+  return FIND_GROUP_ORDER
+    .map((label) => ({
+      label,
+      entries: gated
+        .filter((e) => e.group === label && (e.kind === 'screen' || !!q))
+        .filter((e) => !q || matchesEntry(q, e)),
+    }))
+    .filter((g) => g.entries.length > 0);
 }
 
-/** One index row: tappable (reuses the tours' jump mechanism) when it names a
- *  real View, plain text otherwise (audit note in findGroups() above). */
-function FindRowLine({ row, open }: { row: FindRow; open: (v: View) => void }) {
-  const sub = (
-    <div className="row-sub">
-      {row.sub ? `${row.sub} · ` : ''}Phone: {row.phone} · Computer: {row.desktop}
-    </div>
-  );
-  if (row.view) {
-    const view = row.view;
-    return (
-      <button className="row-tap" onClick={() => open(view)}>
-        <span className="label">{row.name}{sub}</span>
-        <span className="value">›</span>
-      </button>
-    );
-  }
+/** One index row: always tappable now (every FIND_INDEX entry has a `go`
+ *  target) — a tab target goes through `onGoTab`, a view target through
+ *  `open`, exactly like the Find box on the sidebar and the More tab. */
+function FindRowLine({ entry, open, onGoTab }: { entry: FindEntry; open: (v: View) => void; onGoTab: (t: TabId) => void }) {
   return (
-    <div className="row">
-      <span className="label">{row.name}{sub}</span>
-    </div>
+    <button className="row-tap" data-find-id={entry.id} onClick={() => goToFindTarget(entry.go, open, onGoTab)}>
+      <span className="label">
+        {entry.name}
+        {/* L6: the one-line description FIND_INDEX carries for a few screens
+            (e.g. Settings' "Coaching remarks, who you are, Manage lists") —
+            shown only when the row has one. */}
+        {entry.sub && <div className="row-sub">{entry.sub}</div>}
+        <div className="row-sub">Phone: {entry.phone} · Computer: {entry.desktop}</div>
+      </span>
+      <span className="value">›</span>
+    </button>
   );
 }
 
@@ -314,8 +273,12 @@ function TourModal({ steps, onClose, onGo }: { steps: TourStep[]; onClose: () =>
   );
 }
 
-export function HelpScreen({ onBack, open, initialTour, onDemoLoaded }: {
+export function HelpScreen({ onBack, open, onGoTab, initialTour, onDemoLoaded }: {
   onBack: () => void; open: (v: View) => void;
+  /** Find-a-screen (decision 75, build 2): the four main tabs now have a
+   *  `go.tab` in FIND_INDEX, so their "Where do I find…" rows are tappable
+   *  too — routed through App's guarded setTab, same as the tab bar. */
+  onGoTab: (t: TabId) => void;
   /** Wired by App to the same land-on-Home contract as finishing the setup
    *  wizard — after the sample log loads, the payoff is Home showing it. */
   onDemoLoaded: () => void;
@@ -327,7 +290,10 @@ export function HelpScreen({ onBack, open, initialTour, onDemoLoaded }: {
   const isDesktop = useIsDesktop();
   const [active, setActive] = useState<null | 'quick' | 'full'>(initialTour ?? null);
   const [clearing, setClearing] = useState(false);
+  const [findQ, setFindQ] = useState('');
   const fullSteps = useMemo(() => buildFullTour(isDesktop), [isDesktop]);
+  const findGroupsShown = visibleGroups(findQ);
+  const findResultCount = findQ.trim() ? findGroupsShown.reduce((n, g) => n + g.entries.length, 0) : 0;
 
   return (
     <div className="screen">
@@ -370,14 +336,26 @@ export function HelpScreen({ onBack, open, initialTour, onDemoLoaded }: {
 
       <div className="card">
         <h2>Where do I find…</h2>
+        <FindBox query={findQ} onChange={setFindQ} resultCount={findResultCount} label="Find in this index" />
         <p className="report-note" style={{ marginBottom: 10 }}>
-          Every screen in FirearmLog, and the tap or click that gets you there.
+          Every screen in FirearmLog, and the tap or click that gets you there. Or type in the box
+          above to jump straight there.
         </p>
-        {findGroups().map((g) => (
-          <Reveal key={g.label} label={g.label}>
-            {g.rows.map((r) => <FindRowLine key={r.name} row={r} open={open} />)}
+        {/* H2 (cold audit, session 79): Reveal defaults closed, so a group
+            that only matched because of the query used to hide its own
+            match — force every shown group open for as long as there's a
+            query; Reveal only ever forces OPEN, so a manual collapse before
+            typing still collapses first, same as everywhere else it's used. */}
+        {findGroupsShown.map((g) => (
+          <Reveal key={g.label} label={g.label} defaultOpen={!!findQ.trim()}>
+            {g.entries.map((e) => <FindRowLine key={e.id} entry={e} open={open} onGoTab={onGoTab} />)}
           </Reveal>
         ))}
+        {/* M4: the phone card's no-match line, minus the link — we're
+            already on the screen its link would have opened. */}
+        {findQ.trim() && findGroupsShown.length === 0 && (
+          <p className="report-note">Nothing called that. Try another word.</p>
+        )}
       </div>
 
       <div className="card">
