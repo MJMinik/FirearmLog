@@ -47,6 +47,7 @@ export interface Env {
 /** Origins that may call this API from a browser. Overridable via env so the
  *  domain cut-over never needs a code change. */
 const DEFAULT_ALLOWED_ORIGINS = [
+  'https://app.firearmlog.com',
   'https://mjminik.github.io',
   'https://firearmlog.com',
   'https://www.firearmlog.com',

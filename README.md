@@ -18,7 +18,7 @@ and deploys it to GitHub Pages.
   GitHub Desktop watches. The GitHub copy is `MJMinik/FirearmLog`.
 - One-time Pages setup: on github.com, repo **Settings -> Pages** -> under
   "Build and deployment", set **Source: GitHub Actions**.
-- The live app: `https://mjminik.github.io/FirearmLog/` (follows the repo name).
+- The live app: `https://app.firearmlog.com/` (GitHub Pages behind a custom domain since 15 Sep 2026). The old address, `https://mjminik.github.io/FirearmLog/`, is retired: a browser keeps the log under the address it was opened at, so never open the app there again.
 
 ## Every update after that
 
