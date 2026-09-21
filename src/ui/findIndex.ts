@@ -221,6 +221,9 @@ export const FIND_INDEX: FindEntry[] = [
   { id: 'your-data', kind: 'screen', name: 'Your Data', group: G.app, go: { view: { kind: 'your-data' } }, icon: 'shield', also: [], when: () => telemetryState().wired,
     words: ['your data', 'privacy', 'what is collected', 'usage stats', 'crash reports', 'opt out', 'compare with shooters like you', 'anonymous'],
     phone: 'More → Your Data', desktop: 'sidebar → App & Data → Your Data', landing: 'Your Data' },
+  { id: 'help-feedback', kind: 'inside', parent: 'help', name: 'Send Feedback', group: G.app, go: { view: { kind: 'help' } },
+    words: ['send feedback', 'feedback', 'support', 'email support', 'contact', 'contact us', 'report a bug', 'report a problem', 'something broken', 'something missing', 'get help', 'email the developer'],
+    phone: 'More → Tour & Setup → Send Feedback', desktop: 'sidebar → App & Data → Tour & Setup → Send Feedback', landing: 'Tour & Setup' },
 ];
 
 /** Entries that should render right now (the `when` gate applied). */

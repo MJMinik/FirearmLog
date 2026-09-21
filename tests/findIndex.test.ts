@@ -36,8 +36,8 @@ test('every kind: "screen" entry is a main tab or has a view target, and has an 
 // fewer thing. Pinning the raw count catches that class of change directly.
 // Adding, removing, or renaming a FIND_INDEX row is expected to change this
 // number — update it right alongside the row change, deliberately.
-test('FIND_INDEX has exactly 44 entries (a deliberate change to the table changes this number)', () => {
-  assert.equal(FIND_INDEX.length, 44);
+test('FIND_INDEX has exactly 45 entries (a deliberate change to the table changes this number)', () => {
+  assert.equal(FIND_INDEX.length, 45);
 });
 
 test('every entry lists at least 2 words', () => {

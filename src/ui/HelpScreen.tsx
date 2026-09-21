@@ -389,6 +389,25 @@ export function HelpScreen({ onBack, open, onGoTab, initialTour, onDemoLoaded }:
         <button className="button danger" onClick={() => setClearing(true)}>Clear all data…</button>
       </div>
 
+      {/* Send Feedback (Michael's yes on 18 Sep 2026 to the board's build-gap memo; the row had waited since July because support@ had no mailbox until decision 58): a plain mailto
+          anchor, not deliverFile's blob-download router — that router exists
+          for a Blob download navigating the installed iOS PWA's webview away
+          (src/ui/deliverFile.ts), which a mailto: link never does; MatchScreens'
+          "Results on PractiScore" row already uses a plain <a target="_blank">
+          with no PWA-specific handling for exactly the same reason. Needs
+          Michael's iPhone tap test to confirm Mail opens as expected from the
+          installed app. */}
+      <div className="card">
+        <h2>Send Feedback</h2>
+        <p className="report-note" style={{ marginBottom: 10 }}>
+          Something broken, or something missing? Write to support@firearmlog.com.
+        </p>
+        <a className="button secondary" style={{ textDecoration: 'none' }}
+          href="mailto:support@firearmlog.com?subject=FirearmLog%20feedback">
+          Email support@firearmlog.com
+        </a>
+      </div>
+
       <p className="report-note" style={{ textAlign: 'center', marginTop: 24 }}>
         FirearmLog v{APP_VERSION}
       </p>

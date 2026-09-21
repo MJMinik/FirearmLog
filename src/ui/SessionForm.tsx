@@ -1506,7 +1506,7 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
                 </div>
                 <div className="drill-edit-fields">
                   <label className="field small">Distance
-                    <input value={d.distance} placeholder="7 yd"
+                    <input value={d.distance} placeholder="7 yd" inputMode="decimal"
                       onChange={(e) => setDrills((p) => p.map((x, n) => n === i ? { ...x, distance: e.target.value } : x))} />
                   </label>
                   <label className="field small">Time (s)
