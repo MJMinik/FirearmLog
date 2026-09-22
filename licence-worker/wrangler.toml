@@ -1,0 +1,61 @@
+# FirearmLog signing Worker -- Cloudflare Worker configuration.
+#
+# STATUS: INERT. Not deployed. This Worker is a separate deployment from
+# App/worker/ (the benchmark Worker) and from the app itself; nothing calls
+# it yet (ENTITLEMENT_SPEC_2026-09-18.md §11, build-order step 2). Deployment
+# is Michael's, at the key ceremony, with his own Cloudflare account.
+
+name = "firearmlog-licence"
+main = "index.ts"
+compatibility_date = "2026-07-08"
+
+# ── Deployment checklist (do not fill in before the key ceremony) ───────────
+#
+# 1. Create the database and apply the schema:
+#      wrangler d1 create firearmlog-licence
+#      wrangler d1 execute firearmlog-licence --file=schema.sql
+#    then uncomment, pasting the database_id wrangler prints:
+#
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "firearmlog-licence"
+# database_id = "<from wrangler d1 create>"
+#
+# 2. Generate the signing key pair ONCE (see README.md, "The key ceremony").
+#    The private key becomes a Worker secret, never a file in this repo:
+#      wrangler secret put SIGNING_KEY_JWK
+#      wrangler secret put WEBHOOK_SECRET
+#      wrangler secret put MERCHANT_API_KEY
+#
+# 3. The key's id, matching a `kid` this Worker signs with and the app's
+#    src/lib/licence.ts LICENCE_KEYS will carry once the key is added there.
+#    The placeholder value below is deliberate: index.ts refuses to start a
+#    request at all when KEY_ID is unset or empty, but a real-looking
+#    placeholder like this one is not caught by that check, so the Worker
+#    would sign licences under a kid nothing in LICENCE_KEYS recognizes yet.
+#    That is intentional: nothing is accidentally trusted before the
+#    ceremony. Replace this value with the real kid chosen at the key
+#    ceremony, and add the matching public key to LICENCE_KEYS at the same
+#    time.
+
+[vars]
+KEY_ID = "unset-placeholder"
+
+# 3a. Optional overrides for the webhook's event-type gate (defaults live in
+#     index.ts; both are section 9 placeholders, confirmed against Paddle's
+#     documentation on the day):
+# WEBHOOK_EVENT_FIELD = "event_type"
+# WEBHOOK_PAID_EVENT = "transaction.completed"
+#
+# 4. Per-IP rate limiting on GET /v1/licence, the same fail-safe pattern as
+#    App/worker/wrangler.toml's RATE_LIMITER (R-8 there):
+#
+# [[unsafe.bindings]]
+# name = "RATE_LIMITER"
+# type = "ratelimit"
+# namespace_id = "1002"           # any unique id, distinct from worker/'s
+# simple = { limit = 30, period = 60 }   # tune at deploy
+#
+# 5. `wrangler deploy`. Wiring the app to call this Worker (the success page,
+#    the lost-licence page, the Paddle webhook URL in Paddle's dashboard) is
+#    spec §11 step 4, after Paddle approves.

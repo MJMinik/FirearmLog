@@ -15,5 +15,5 @@
     "skipLibCheck": true,
     "types": ["node", "vite/client"]
   },
-  "include": ["src", "tests", "scripts", "worker"]
+  "include": ["src", "tests", "scripts", "worker", "licence-worker"]
 }
