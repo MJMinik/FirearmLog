@@ -18,6 +18,7 @@ import {
 import type { LicencePayload } from '../src/lib/licence.ts';
 import {
   countLiveFireSessions,
+  isSampleSession,
   wallBlocksNewLiveSession,
   FREE_LIVE_FIRE_SESSIONS,
 } from '../src/lib/trialGate.ts';
@@ -355,10 +356,40 @@ test('a plain live-fire session is counted', () => {
   assert.equal(countLiveFireSessions(sessions, undefined), 1);
 });
 
-test('the sample log makes the count zero regardless of the records', () => {
-  const sessions = [ses({ id: 's1' }), ses({ id: 's2' }), ses({ id: 's3' })];
-  const settings: Pick<AppSettings, 'sampleLogLoaded'> = { sampleLogLoaded: true };
-  assert.equal(countLiveFireSessions(sessions, settings), 0);
+// Decision 83 (28 Sep 2026): "the sample log never counts; his own sessions
+// always do". The sample's sessions are the ones with ids of the exact form
+// `se-` and three digits, and only while `sampleLogLoaded` is true.
+const SAMPLE_ON: Pick<AppSettings, 'sampleLogLoaded'> = { sampleLogLoaded: true };
+
+test('decision 83: sample loaded with only the sample sessions counts zero', () => {
+  const sessions = [ses({ id: 'se-001' }), ses({ id: 'se-042' }), ses({ id: 'se-999' })];
+  assert.equal(countLiveFireSessions(sessions, SAMPLE_ON), 0);
+});
+
+test('decision 83: sample loaded plus ten of his own live sessions counts exactly ten', () => {
+  const sample = Array.from({ length: 40 }, (_, i) => ses({ id: `se-${String(i + 1).padStart(3, '0')}` }));
+  const own = Array.from({ length: 10 }, (_, i) => ses({ id: `se-mfg1a2b3-x${i}` }));
+  assert.equal(countLiveFireSessions([...sample, ...own], SAMPLE_ON), 10);
+});
+
+test('decision 83: his first own session counts even while the sample is loaded', () => {
+  const sessions = [ses({ id: 'se-001' }), ses({ id: 'se-mfg1a2b3-abc1' })];
+  assert.equal(countLiveFireSessions(sessions, SAMPLE_ON), 1);
+});
+
+test('decision 83: sample NOT loaded, a session with a three-digit id is his and counts', () => {
+  const sessions = [ses({ id: 'se-042' })];
+  assert.equal(countLiveFireSessions(sessions, undefined), 1);
+  assert.equal(countLiveFireSessions(sessions, { sampleLogLoaded: false }), 1);
+});
+
+test('decision 83: isSampleSession needs the flag AND the id form', () => {
+  assert.equal(isSampleSession({ id: 'se-042' }, SAMPLE_ON), true);
+  assert.equal(isSampleSession({ id: 'se-042' }, undefined), false);
+  assert.equal(isSampleSession({ id: 'se-42' }, SAMPLE_ON), false);
+  assert.equal(isSampleSession({ id: 'se-0420' }, SAMPLE_ON), false);
+  assert.equal(isSampleSession({ id: 'xse-042' }, SAMPLE_ON), false);
+  assert.equal(isSampleSession({ id: 'se-mfg1a2b3-abc1' }, SAMPLE_ON), false);
 });
 
 test('mixed sessions: only the eligible ones count', () => {

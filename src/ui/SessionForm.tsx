@@ -47,6 +47,8 @@ import { TIMED_SKILLS, formatSec, parseRepTimes, formatRepTimes } from '../lib/s
 import { removedOption } from './removedOption.ts';
 import { Stepper } from './Stepper.tsx';
 import { useDirtyTracker } from './useDirtyTracker.ts';
+import { useTrialStatus } from './useTrialStatus.ts';
+import { LicenceWall } from './LicenceWall.tsx';
 
 const KINDS = [
   { value: 'practice', label: 'Live practice' },
@@ -276,6 +278,42 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   // from the old flow still restores as a convert view.
   const [convertingNow, setConvertingNow] = useState(false);
   const converting = !!convert || convertingNow;
+
+  // THE FREE-LIMIT GATE (ENTITLEMENT_SPEC_2026-09-18.md §5.3). It can only ever
+  // refuse to START a new live-fire session. Three things start one: a new log,
+  // converting a plan, and (round 1 audit H2) changing an already-logged DRY
+  // FIRE session to Live practice or Class, which is the same act as logging a
+  // live session and would otherwise be a way round the wall. Everything else
+  // is never touched: editing any other logged session (a Live session stays
+  // editable in full, and one changed TO dry fire is fine), making a plan, dry
+  // fire, and every read or export. `trial.blocked` is false until the count
+  // and the license check have both answered, so a slow read never walls
+  // anyone. The wall is a sheet OVER this form: nothing on the form is changed
+  // by opening or closing it.
+  // The saved record is a logged dry-fire session (its own type, as loaded).
+  const originalDry = editing && !!original && !original.planned && original.type === 'dry_fire';
+  // Reads are skipped for edits that can never be gated, so that form's own
+  // load is not made to wait behind them.
+  const trial = useTrialStatus(undefined, !editing || original?.planned === true || originalDry);
+  const [wallOpen, setWallOpen] = useState(false);
+  // True once the shooter has picked a kind himself, so the "open on Dry fire"
+  // default below never overrides a choice he made.
+  const kindPicked = useRef(false);
+  /** The live chips are locked at or past the wall: a new session, a plan being converted, or a logged dry-fire session being edited. */
+  const liveLocked = trial.blocked && !planned && (!editing || converting || originalDry);
+  useEffect(() => {
+    if (liveLocked && !editing && !kindPicked.current && kind !== 'dry_fire') {
+      // Opened on Live practice before the check answered: move to Dry fire.
+      // Not a shooter edit, so it does not mark the form as touched.
+      setKind('dry_fire');
+    }
+  }, [liveLocked, editing, kind]);
+  function pickKind(value: string) {
+    if (liveLocked && value !== 'dry_fire') { setWallOpen(true); return; }
+    kindPicked.current = true;
+    setKind(value);
+    setTouched(true);
+  }
 
   // F3: keep App's dirty flag in step with `touched`, and clear it on unmount so
   // a stale flag can never guard a navigation after this form is gone.
@@ -924,6 +962,16 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
   // owns navigation so the guard path (persistForm) can't double-navigate.
   async function doPersist(): Promise<string | null> {
     if (saving) return null;
+    // Same gate, at the last moment: a new live session, or a plan turned into
+    // one, is not saved at or past the wall (the chips and the Convert button
+    // already stop it earlier; this closes any route that got around them).
+    // Editing a logged session is never gated, except a logged dry-fire one
+    // being turned into Live practice or Class (round 1 audit H2).
+    if (trial.blocked && !planned && kind !== 'dry_fire'
+      && (!original || original.planned || original.type === 'dry_fire')) {
+      setWallOpen(true);
+      return null;
+    }
     const guns = Object.entries(rounds).map(([firearmId, text]) => {
       const g: SessionGun = { firearmId, rounds: text.trim() === '' ? 0 : Number(text) };
       // Mag attribution rides on the gun (optional + additive). Overrides are
@@ -1158,9 +1206,20 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
           onSave={saveProblem() === null ? () => void save() : undefined} />
       )}
 
+      {wallOpen && (
+        // Stop the form's own change listener (which marks the form as edited)
+        // from seeing keystrokes typed into the wall's paste field.
+        <div onChange={(e) => e.stopPropagation()}>
+          <LicenceWall count={trial.count} rounds={trial.rounds} onClose={() => setWallOpen(false)} />
+        </div>
+      )}
+
       {editing && original?.planned && !converting && (
         <button className="button"
           onClick={() => {
+            // The wall, as a sheet over the form: the plan stays exactly as it
+            // is (a dry-fire plan is not a live-fire start and is not gated).
+            if (trial.blocked && kind !== 'dry_fire') { setWallOpen(true); return; }
             setConvertingNow(true); setPlanned(false); setTouched(true);
             // Cold-audit fix (High): the in-place convert button flips
             // planned→false on an ALREADY-LOADED form, so the rounds map
@@ -1177,12 +1236,19 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
       <div className="card">
         <h2>What Kind of Work</h2>
         <div className="seg" role="group" aria-label="Session kind">
-          {KINDS.map((k) => (
-            <button key={k.value} type="button" aria-pressed={kind === k.value}
-              className={kind === k.value ? 'on' : ''} onClick={() => { setKind(k.value); setTouched(true); }}>
-              {k.label}
-            </button>
-          ))}
+          {KINDS.map((k) => {
+            const locked = liveLocked && k.value !== 'dry_fire';
+            return (
+              <button key={k.value} type="button" aria-pressed={kind === k.value}
+                className={`${kind === k.value ? 'on' : ''}${locked ? ' locked' : ''}`.trim()}
+                aria-label={locked ? `${k.label}, locked` : undefined}
+                aria-describedby={locked ? 'session-kind-locked-note' : undefined}
+                onClick={() => pickKind(k.value)}>
+                {locked && <Icon name="lock" size={14} />}
+                {k.label}
+              </button>
+            );
+          })}
           {/* D7 fix: an unrecognised stored kind gets a fourth chip, shown
               pressed, so an untouched Save keeps writing what the record
               already said instead of the form silently defaulting to
@@ -1194,6 +1260,11 @@ export function SessionForm({ id, initialPlanned, convert, initialDate, onSaved,
             </button>
           )}
         </div>
+        {liveLocked && (
+          <span id="session-kind-locked-note" className="sr-only">
+            Locked. You have used your free live-fire sessions. Tap to see how to unlock it.
+          </span>
+        )}
         <label className={`field${problem?.field === 'date' ? ' invalid' : ''}`}>Date <span className="field-required-marker">(required)</span>
           <input
             ref={dateFieldRef}

@@ -656,6 +656,10 @@ select.category-pick {
    Minor-only USPSA division) -- visually dimmed, but still focusable/announced
    via aria-disabled (not the native attribute) so screen readers say why. */
 .seg button[aria-disabled='true'] { opacity: 0.4; cursor: default; }
+/* A session-kind chip the free limit has locked: still tappable (a tap opens
+   the license sheet over the form), so it is marked by a small lock rather
+   than dimmed like a rule-disabled choice. */
+.seg button.locked { color: var(--text-dim); display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
 /* The Drills form's Skill chooser (board memo 10 Sep 2026) has eight options
    where every other .seg has two or three — a single unwrapped row would
    squeeze illegibly at phone width. `.wrap` only changes that one control:

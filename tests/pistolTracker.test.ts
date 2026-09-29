@@ -144,3 +144,55 @@ test('every record carries id, createdAt, updatedAt', () => {
     assert.equal(r.updatedAt, NOW);
   }
 });
+
+// The migration reader marks EVERY migrated session (entitlement build, 28 Sep
+// 2026, decision 12.6): the free-trial count treats any session carrying a
+// `legacy` object as brought in rather than logged here, and a session whose
+// old record had no unmapped keys used to come out with `legacy` undefined.
+import { countLiveFireSessions } from '../src/lib/trialGate.ts';
+
+test('every migrated session carries the migration marker, even with no unmapped keys', () => {
+  const old = parseOldFile(fixtureText);
+  const { data } = importPistolTracker(old, {}, NOW);
+  assert.ok(data.sessions.length > 0);
+  for (const s of data.sessions) {
+    assert.ok(s.legacy, `session ${s.id} has no legacy object`);
+    assert.equal(s.legacy!.importSource, 'migration', `session ${s.id} lacks the marker`);
+  }
+});
+
+test('the marker is merged with the rest keys: nothing is lost or renamed', () => {
+  const old = parseOldFile(fixtureText);
+  (old.sessions![0] as Record<string, unknown>)._dropdownFirearmId = 'fa-1';
+  (old.sessions![0] as Record<string, unknown>).someOtherOldField = { nested: [1, 2] };
+  const { data } = importPistolTracker(old, {}, NOW);
+  const first = data.sessions.find((s) => s.id === String(old.sessions![0].id))!;
+  assert.equal(first.legacy!.importSource, 'migration');
+  assert.equal(first.legacy!._dropdownFirearmId, 'fa-1');
+  assert.deepEqual(first.legacy!.someOtherOldField, { nested: [1, 2] });
+});
+
+test('an old record that already holds an importSource key keeps its own value (zero loss wins)', () => {
+  const old = parseOldFile(fixtureText);
+  (old.sessions![0] as Record<string, unknown>).importSource = 'the old value';
+  const { data } = importPistolTracker(old, {}, NOW);
+  const first = data.sessions.find((s) => s.id === String(old.sessions![0].id))!;
+  assert.ok(first.legacy, 'still marked as brought in');
+  assert.equal(first.legacy!.importSource, 'the old value');
+});
+
+test('the trial count over the real migration output counts none of the migrated sessions', () => {
+  const old = parseOldFile(fixtureText);
+  const { data } = importPistolTracker(old, {}, NOW);
+  assert.ok(data.sessions.some((s) => s.type !== 'dry_fire' && !s.planned), 'the fixture has live sessions');
+  assert.equal(countLiveFireSessions(data.sessions, undefined), 0);
+});
+
+test('migration marker: other record types are unchanged (no legacy added where takeRest found nothing)', () => {
+  const old = parseOldFile(fixtureText);
+  const { data } = importPistolTracker(old, {}, NOW);
+  // Guns and the rest keep whatever takeRest returned; only sessions gained a marker.
+  for (const g of data.firearms) {
+    if (g.legacy !== undefined) assert.equal(g.legacy.importSource, undefined);
+  }
+});

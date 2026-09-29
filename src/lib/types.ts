@@ -708,6 +708,20 @@ export interface AppSettings {
    *  backup held no video; undefined follows lastBackupBytes's own rule
    *  above. */
   lastBackupVideoBytes?: number;
+  /** When the last Load from File happened, in ms since 1970 (same unit as
+   *  lastBackupAt). Written by restoreInner in db.ts together with
+   *  lastRestoreFileMadeAt and the lastBackupAt stamp, in the one restore
+   *  transaction. Save to File never touches it (backup-line spec §2). */
+  lastRestoreAt?: number;
+  /** When the file that last Load from File brought in was itself made (its
+   *  `exportedAt`), in ms. Lets the Sync card say both dates in one sentence
+   *  even after a later save moves lastBackupAt on. */
+  lastRestoreFileMadeAt?: number;
+  /** The licence text the shooter pasted (entitlement spec §5.6), exactly as
+   *  verified, trimmed. Whether it is genuine is decided by verifyLicence at
+   *  every app start, never assumed from this field being present. It rides
+   *  in every backup; Clear All removes it. */
+  licence?: string;
   /** The one "golden" north-star goal — pinned atop Goals and echoed on Home.
    *  Holds a Goal id; empty or undefined means none is set. */
   goldenGoalId?: string;

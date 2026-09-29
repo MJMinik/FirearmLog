@@ -268,7 +268,15 @@ export function importPistolTracker(
       rangeFee: numOrNull(s.rangeFee),
       planned: s.planned === true,
       checklist: normalizeChecklist(s.checklist),
-      legacy: takeRest(s, mapped)
+      // Every migrated session carries a `legacy` object, even when the old
+      // record had no unmapped keys (takeRest then returns undefined). The
+      // free-trial count (src/lib/trialGate.ts, decision 12.6) tells "logged
+      // here" from "brought in" by the presence of `legacy`, so a bare
+      // migrated session must not look logged here. The marker goes FIRST so
+      // that an old record which itself happened to hold an `importSource` key
+      // keeps its own value: zero loss beats a tidy marker, and the gate only
+      // asks whether `legacy` exists.
+      legacy: { importSource: 'migration', ...(takeRest(s, mapped) ?? {}) }
     }, id, now);
   });
 

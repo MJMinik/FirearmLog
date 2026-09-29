@@ -11,7 +11,7 @@ import {
 import { missingStoreWarning } from '../lib/restoreWarnings.ts';
 import type { AppSettings } from '../lib/types.ts';
 import { fileTooLargeMessage, storageShortfallMessage, MAX_FLOG_BYTES } from '../lib/inputLimits.ts';
-import { backupSummary, lastBackupLine, tallySources } from '../lib/backupSize.ts';
+import { backupSummary, lastBackupLine, loadedBackupLine, tallySources } from '../lib/backupSize.ts';
 import { ConfirmSheet, Sheet } from './Sheet.tsx';
 import { deliverFile, isIOS, isStandalone } from './deliverFile.ts';
 import type { DeliveryOutcome } from './deliverFile.ts';
@@ -61,17 +61,27 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
   // lastBackupAt from before — so the "Last backup" line shows nothing about
   // size rather than guess (lastBackupLine is only called when this is set).
   const [lastBackupSizes, setLastBackupSizes] = useState<{ bytes: number; videoBytes: number } | undefined>(undefined);
-  useEffect(() => {
-    let alive = true;
+  // The last Load from File (backup-line spec §3): when it happened and when
+  // the loaded file was made. Written by restoreInner in db.ts; null on a
+  // device that has never loaded a file, and after Clear All.
+  const [restored, setRestored] = useState<{ at: number; madeAt: number } | null>(null);
+  const aliveRef = useRef(true);
+  useEffect(() => { aliveRef.current = true; return () => { aliveRef.current = false; }; }, []);
+  // Read the backup lines from settings. Runs when the card opens and again
+  // right after a load, because a load replaces the settings the lines come from.
+  function readBackupLines() {
     void getSettings<AppSettings>().then((st) => {
-      if (!alive) return;
-      if (st?.lastBackupAt) setLastSavedAt(st.lastBackupAt);
-      if (st?.lastBackupBytes !== undefined) {
-        setLastBackupSizes({ bytes: st.lastBackupBytes, videoBytes: st.lastBackupVideoBytes ?? 0 });
-      }
+      if (!aliveRef.current) return;
+      setLastSavedAt(st?.lastBackupAt ?? 0);
+      setLastBackupSizes(st?.lastBackupBytes !== undefined
+        ? { bytes: st.lastBackupBytes, videoBytes: st.lastBackupVideoBytes ?? 0 }
+        : undefined);
+      setRestored(typeof st?.lastRestoreAt === 'number' && typeof st.lastRestoreFileMadeAt === 'number'
+        ? { at: st.lastRestoreAt, madeAt: st.lastRestoreFileMadeAt }
+        : null);
     }).catch(() => { /* the line is informational — never block the card */ });
-    return () => { alive = false; };
-  }, []);
+  }
+  useEffect(readBackupLines, []);
   const fileRef = useRef<HTMLInputElement>(null);
 
   // Backup memory pass 2, session 118. This used to load every photo and video
@@ -326,6 +336,7 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
         if (total > 0) setStage({ name: 'working', message: `Saving photos: ${done} of ${total}…` });
       });
       setStage({ name: 'idle', message: 'Done — this device now matches the file.' });
+      readBackupLines();
       onPulled();
     } catch (e) {
       // SAY WHAT THE DEVICE STILL HOLDS. Every refusal before pass 3 ended
@@ -377,12 +388,29 @@ export function SyncCard({ onPulled, onBackedUp }: { onPulled: () => void; onBac
               wrong. So: the size-aware signed line when a size was actually
               recorded; otherwise the ORIGINAL date-only sentence, unchanged,
               rather than nothing. */}
-          {lastSavedAt > 0 && (
-            <p className="report-note" style={{ marginTop: 10 }}>
-              {lastBackupSizes
-                ? lastBackupLine(lastBackupSizes.bytes, lastBackupSizes.videoBytes, lastSavedAt)
-                : `Last saved to the file from this device: ${stampWords(lastSavedAt)}.`}
+          {restored && lastSavedAt <= restored.madeAt ? (
+            // A load, and no save since: the loaded file IS the last backup of
+            // this data, so this line replaces "Last backup" (backup-line spec §3).
+            <p className="report-note" data-testid="backup-loaded-line" style={{ marginTop: 10 }}>
+              {loadedBackupLine(restored.at, restored.madeAt, false)}
             </p>
+          ) : (
+            <>
+              {lastSavedAt > 0 && (
+                <p className="report-note" data-testid="backup-last-line" style={{ marginTop: 10 }}>
+                  {lastBackupSizes
+                    ? lastBackupLine(lastBackupSizes.bytes, lastBackupSizes.videoBytes, lastSavedAt)
+                    : `Last saved to the file from this device: ${stampWords(lastSavedAt)}.`}
+                </p>
+              )}
+              {restored && (
+                // A load, then a save: the save line above, the load beneath it, smaller.
+                <p className="report-note" data-testid="backup-loaded-line"
+                  style={{ marginTop: 4, fontSize: 'var(--fs-caption)' }}>
+                  {loadedBackupLine(restored.at, restored.madeAt, true)}
+                </p>
+              )}
+            </>
           )}
           {stage.name === 'idle' && stage.message && (
             <p className="report-note" style={{ marginTop: 10 }}>{stage.message}</p>

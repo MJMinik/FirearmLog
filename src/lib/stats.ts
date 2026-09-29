@@ -5,7 +5,12 @@ import type { Session } from './types.ts';
 
 /** Rounds fired in one session, all guns combined. */
 export function sessionRounds(s: Pick<Session, 'guns'>): number {
-  return s.guns.reduce((sum, g) => sum + (g.rounds || 0), 0);
+  // Null-safe on purpose: a record that reached the store without a guns array
+  // (an old or hand-edited file) counts as zero rounds instead of throwing.
+  return (s.guns ?? []).reduce((sum, g) => {
+    const r = g?.rounds;
+    return sum + (typeof r === 'number' && Number.isFinite(r) ? r : 0);
+  }, 0);
 }
 
 interface FirearmLike { id: string; startingRoundCount: number; }

@@ -72,17 +72,29 @@ export async function swipeRowLeft(row: Locator): Promise<void> {
 export async function openGunsSection(page: Page): Promise<void> {
   const disclosure = page.getByTestId('session-guns-disclosure');
   await expect(disclosure).toBeVisible();
-  // The load effect that seeds an existing session (and collapses this
-  // section) can still be settling when this runs — React StrictMode
-  // double-invokes it, and a contended IndexedDB can leave it resolving
-  // after our click, re-closing the section a beat later. Retry the
-  // click-then-verify until the open state actually holds, not just a
-  // single instant.
-  await expect(async () => {
-    if ((await disclosure.getAttribute('aria-expanded')) === 'false') await disclosure.click();
-    await new Promise((r) => setTimeout(r, 50));
-    expect(await disclosure.getAttribute('aria-expanded')).toBe('true');
-  }).toPass({ timeout: 10_000 });
+  // An EXISTING session (Edit Session, or a plan being logged) ALWAYS ends up
+  // collapsed: the form's load effect calls setGunsOpen(false) exactly once,
+  // when the saved record arrives. Before that the section still shows its
+  // new-form default (open), so "expanded" on its own proves nothing. Wait for
+  // the collapsed (loaded) state first, then click, then assert it opened and
+  // stays open. Nothing re-collapses it after that: the load runs once.
+  // PRECONDITION, enforced here: the form's own heading is on screen before we
+  // decide new-versus-existing, so a call made before it renders cannot take
+  // the wrong branch (an unrendered heading would read as "new").
+  const formHeading = page.getByRole('heading', {
+    name: /^(Edit Session|Log Session \(from Plan\)|Log Session|Plan Session)$/,
+  }).first();
+  await expect(formHeading).toBeVisible();
+  const existing = /^(Edit Session|Log Session \(from Plan\))$/.test(((await formHeading.textContent()) ?? '').trim());
+  if (existing) {
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false', { timeout: 15_000 });
+    await disclosure.click();
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
+    return;
+  }
+  // A NEW session starts open; open it only if something closed it.
+  if ((await disclosure.getAttribute('aria-expanded')) === 'false') await disclosure.click();
+  await expect(disclosure).toHaveAttribute('aria-expanded', 'true');
 }
 
 /**
