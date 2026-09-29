@@ -8,8 +8,12 @@
 // arithmetic on the device, never a request"; scripts/check-imports.mjs fails
 // the build if this file ever names one of the five disallowed words).
 //
-// Nothing in the app imports this file yet (this is build-order step 1 of
-// spec §11: the module and its tests, wired to nothing).
+// The app reaches this file through src/lib/licenceState.ts, which holds the
+// runtime state (the stored licence, its verdict, paste and remove).
+//
+// A licence's identity is its payload, never the full text: ECDSA allows more
+// than one valid signature for the same payload, so never compare or dedupe
+// licences on the whole string.
 
 /** The format tag on every licence (spec §3.1). A later format can change the
  *  tag without breaking a licence already issued under this one. */
@@ -65,6 +69,22 @@ export type LicenceResult =
  * Passwords.
  */
 export const LICENCE_KEYS: Readonly<Record<string, JsonWebKey>> = {};
+
+/**
+ * The keys the app checks a licence against: the built-in list, plus ONE
+ * test-only key when this build was made with FL_E2E_LICENCE_PUBKEY set (a
+ * public key generated at run time by playwright.config.ts so the browser
+ * tests can sign licences without any key being committed). In every real
+ * build the constant is null and this returns LICENCE_KEYS unchanged (the very
+ * same object); the production bundle carries no test key (proved by grep in
+ * the build report). Lives here, not in licenceState.ts, so db.ts (which checks
+ * a restored file's licence) can use it without importing the run-time store.
+ */
+export function appLicenceKeys(): Readonly<Record<string, JsonWebKey>> {
+  const e2e = typeof __FL_E2E_LICENCE_KEY__ === 'undefined' ? null : __FL_E2E_LICENCE_KEY__;
+  if (!e2e) return LICENCE_KEYS;
+  return { ...LICENCE_KEYS, [e2e.kid]: e2e.jwk };
+}
 
 // --- base64url (RFC 4648 §5) -------------------------------------------------
 //
@@ -236,8 +256,12 @@ export async function verifyLicence(
   if (!r.ok) return r;
   const { payloadB64, sigB64, payload } = r.value;
 
+  // Own properties only: a `kid` such as "constructor" or "__proto__" must
+  // read as an unknown key, not pick up something inherited from Object.
+  if (!Object.prototype.hasOwnProperty.call(keys, payload.kid)) {
+    return { ok: false, reason: 'unknown-key' };
+  }
   const jwk = keys[payload.kid];
-  if (jwk === undefined) return { ok: false, reason: 'unknown-key' };
 
   try {
     const key = await globalThis.crypto.subtle.importKey(

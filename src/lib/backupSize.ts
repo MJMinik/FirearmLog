@@ -59,7 +59,7 @@ const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', '
  *  copy exactly. Same reasoning as backupFileName in flog.ts: a hand-built
  *  date rather than toLocaleString keeps this testable without depending on
  *  the runtime's ICU data. */
-function shortDate(atMs: number): string {
+export function shortDate(atMs: number): string {
   const d = new Date(atMs);
   return `${d.getDate()} ${MONTHS[d.getMonth()]}`;
 }
@@ -71,4 +71,20 @@ function shortDate(atMs: number): string {
 export function lastBackupLine(bytes: number, videoBytes: number, atMs: number): string {
   const videoPart = videoBytes > 0 ? ` (${humanBytes(videoBytes)} video)` : '';
   return `Last backup: ${humanBytes(bytes)}${videoPart}, ${shortDate(atMs)}.`;
+}
+
+/** THE SYNC & BACKUP "LOADED" LINE (backup-line spec §3). After Load from File
+ *  the card names both dates: when the load happened and when the loaded file
+ *  was made. `saveSince` is true once a Save to File has happened after the
+ *  load: then only the two dates are said (it sits under the newer "Last
+ *  backup" line); until then it also says how to make a newer backup.
+ *
+ *  It does NOT quote a file size, unlike the spec's example line. The sizes
+ *  kept in settings after a load are the ones the file itself carried, and a
+ *  file carries the sizes of the save BEFORE it (the same one-save-old effect
+ *  as its date stamp, spec §1), so quoting them here could state a wrong
+ *  number about this file. */
+export function loadedBackupLine(loadedAtMs: number, madeAtMs: number, saveSince: boolean): string {
+  const base = `Loaded ${shortDate(loadedAtMs)} from a backup made ${shortDate(madeAtMs)}.`;
+  return saveSince ? base : `${base} Save to File from this device to make a newer one.`;
 }

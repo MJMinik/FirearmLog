@@ -13,6 +13,7 @@ import {
 } from './costing.ts';
 import { stampUpdate } from './stamps.ts';
 import { normalizeRecord, normalizeRecords } from './recordShape.ts';
+import { appLicenceKeys, verifyLicence } from './licence.ts';
 
 const DB_NAME = 'firearmlog';
 // v3 (T3-1, Timed Skills): adds the additive 'skillSets' object store. Same
@@ -1007,6 +1008,14 @@ export interface RestoreSource {
   /** Descriptions only — enough to validate ids and decide what to keep. */
   mediaMeta: Record<string, unknown>[];
   readMedia(index: number): Promise<Media>;
+  /** When the file was made (its `exportedAt`, ms). Present on a `LazyFlog`
+   *  (Load from File), which is the one path that stamps the backup line
+   *  (backup-line spec §2). Absent on `sourceFromSnapshot` (the sample log,
+   *  the setup wizard, tests): those are not "a backup made on date X" and
+   *  must not claim to be. A value that is not a positive finite number
+   *  (`parseFlogLazy` reports 0 for a file with no `exportedAt`) counts as
+   *  absent. */
+  exportedAt?: number;
 }
 
 function sourceFromSnapshot(snapshot: Snapshot): RestoreSource {
@@ -1032,6 +1041,74 @@ export async function restoreFromFile(
     validateMediaIds(source.mediaMeta);
     return restoreInner(source, onProgress);
   });
+}
+
+function isPlainRecord(x: unknown): x is Record<string, unknown> {
+  return typeof x === 'object' && x !== null && !Array.isArray(x);
+}
+
+function hasLicenceText(settings: Record<string, unknown> | null | undefined): settings is Record<string, unknown> & { licence: string } {
+  return !!settings && typeof settings.licence === 'string' && settings.licence.trim() !== '';
+}
+
+/**
+ * True when the file's own licence text (in its settings row) verifies against
+ * the app's key list. Runs BEFORE phase 2's transaction opens, because a
+ * signature check is asynchronous and nothing inside that transaction may
+ * await. Never throws: any failure reads as "did not verify".
+ */
+async function fileLicenceVerdict(source: RestoreSource): Promise<boolean> {
+  try {
+    const row = (source.stores.meta ?? []).find(
+      (r) => isPlainRecord(r) && r.key === 'settings',
+    ) as { value?: unknown } | undefined;
+    const settings = isPlainRecord(row?.value) ? row.value : null;
+    if (!hasLicenceText(settings)) return false;
+    return (await verifyLicence(settings.licence.trim(), appLicenceKeys())).ok;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The settings object a restore must leave on the device, or null when the
+ * file's own settings row is already exactly right (nothing to keep, nothing to
+ * stamp). Pure: no I/O, so restoreInner's transaction body stays trivial.
+ * `deviceSettingsValue` is the `value` of the device's settings row as it was
+ * BEFORE the restore's clear.
+ */
+function mergeRestoredSettings(
+  source: RestoreSource,
+  deviceSettingsValue: unknown,
+  now: number,
+  fileLicenceVerified: boolean,
+): Record<string, unknown> | null {
+  const fileRow = (source.stores.meta ?? []).find(
+    (r) => isPlainRecord(r) && r.key === 'settings',
+  ) as { value?: unknown } | undefined;
+  const fileSettings = isPlainRecord(fileRow?.value) ? fileRow.value : null;
+  const deviceSettings = isPlainRecord(deviceSettingsValue) ? deviceSettingsValue : null;
+
+  // The file's licence replaces the device's ONLY when it verified (checked
+  // before the transaction opened; see fileLicenceVerdict). A file with no
+  // licence, or with text that does not verify, never displaces a licence the
+  // device holds. When the device holds none, a file's unverified text simply
+  // stays as the file wrote it: it is the shooter's own file, nothing is lost,
+  // and the Settings card will say it is not valid and offer to remove it.
+  const fileWins = hasLicenceText(fileSettings) && fileLicenceVerified;
+  const keepDeviceLicence = !fileWins && hasLicenceText(deviceSettings);
+  const madeAt = source.exportedAt;
+  const stamp = typeof madeAt === 'number' && Number.isFinite(madeAt) && madeAt > 0;
+  if (!keepDeviceLicence && !stamp) return null;
+
+  const merged: Record<string, unknown> = { ...(fileSettings ?? {}) };
+  if (keepDeviceLicence) merged.licence = (deviceSettings as { licence: string }).licence;
+  if (stamp) {
+    merged.lastBackupAt = madeAt;
+    merged.lastRestoreAt = now;
+    merged.lastRestoreFileMadeAt = madeAt;
+  }
+  return merged;
 }
 
 /**
@@ -1107,13 +1184,58 @@ async function restoreInner(
 
   // PHASE 2 — replace the records, atomically. The first destructive step, and
   // by now every photo the file names is already safely on disk.
+  //
+  // TWO RULES RIDE INSIDE THIS SAME TRANSACTION (entitlement spec §5.6 and the
+  // backup-line spec §2). Neither opens a transaction of its own and neither
+  // awaits anything: an await that is not an IndexedDB request would let this
+  // transaction auto-commit half-way, which is the one way this edit could
+  // hurt a shooter.
+  //   1. KEEP THE LICENCE. The device's licence is read BEFORE the clears (the
+  //      read is queued first, and a transaction runs its requests in the
+  //      order they were queued). A backup made before licences existed, or on
+  //      a device that never had one, carries none, and without this rule
+  //      loading it would silently erase a licence the shooter paid for. If
+  //      the file carries a licence that VERIFIED (checked just above, outside
+  //      the transaction), the file's wins; text that does not verify never
+  //      displaces the device's.
+  //   2. STAMP THE BACKUP LINE. When the source knows when the file was made,
+  //      lastBackupAt becomes that moment, lastRestoreAt becomes now, and
+  //      lastRestoreFileMadeAt becomes that moment.
+  // Both are applied as ONE extra put of the merged settings object, queued
+  // from the read's callback so it lands AFTER every one of the file's own
+  // puts (the last put to a key wins). If the file has no settings row at
+  // all, the extra put still writes a settings object carrying just the kept
+  // licence and the stamps; that is the same shape putSettings creates on a
+  // fresh device, so nothing reading settings can tell the difference. If
+  // there is nothing to keep and nothing to stamp, no extra put happens and
+  // the restore is byte-for-byte what it was before.
+  // Any failure inside the callback aborts the transaction, which fails the
+  // restore closed with the device's old data intact (queueOrAbort's contract).
+  // The file's licence is checked HERE, outside the transaction (a signature
+  // check is async), and only the yes/no answer goes in.
+  const fileLicenceVerified = await fileLicenceVerdict(source);
   const tx = db.transaction([...SNAPSHOT_STORES], 'readwrite');
   queueOrAbort(tx, () => {
+    const meta = tx.objectStore('meta');
+    const deviceRead = meta.get('settings');
     for (const name of SNAPSHOT_STORES) {
       const os = tx.objectStore(name);
       os.clear();
       for (const r of source.stores[name] ?? []) os.put(r as object);
     }
+    deviceRead.onsuccess = () => {
+      try {
+        const merged = mergeRestoredSettings(
+          source,
+          (deviceRead.result as { value?: unknown } | undefined)?.value,
+          Date.now(),
+          fileLicenceVerified,
+        );
+        if (merged !== null) meta.put({ key: 'settings', value: merged });
+      } catch {
+        try { tx.abort(); } catch { /* already aborting */ }
+      }
+    };
   });
   await txDone(tx);
 
@@ -1139,12 +1261,18 @@ async function restoreInner(
  * IndexedDB and are NOT touched. Guarded in the UI by a typed confirmation.
  * (Hard-gate spec, session 35.)
  *
+ * The licence is deliberately NOT carried across (entitlement spec §5.6: "start
+ * over" means start over; it can be pasted again from the email or receipt, and
+ * ClearAllSheet says so). The one caller that passes `keepLicence: true` is the
+ * sample banner's "Start my own log": that leaves a sample log and erases none
+ * of the shooter's own data, so it must not cost him a license he paid for.
+ *
  * ONE exception survives the wipe (decision 2a / R-4): an analytics OPT-OUT.
  * An opt-out is a refusal, and a refusal must outlast a factory reset — silently
  * re-enrolling a user who turned analytics off after "Start fresh" is a consent
  * inversion. Only that single flag is carried over, inside the same transaction.
  */
-export async function clearAllData(): Promise<void> {
+export async function clearAllData(opts: { keepLicence?: boolean } = {}): Promise<void> {
   return withIoGuard('the erase', async () => {
     const db = await openDb();
     const tx = db.transaction([...STORE_NAMES], 'readwrite');
@@ -1153,11 +1281,19 @@ export async function clearAllData(): Promise<void> {
       const req = meta.get('settings');
       req.onsuccess = () => {
         try {
-          const optOut =
-            ((req.result as { value?: { analyticsOptOut?: boolean } } | undefined)?.value)
-              ?.analyticsOptOut === true;
+          const before = (req.result as { value?: { analyticsOptOut?: boolean; licence?: unknown } } | undefined)?.value;
+          const optOut = before?.analyticsOptOut === true;
+          // Only the sample banner's "Start my own log" asks for this (it is
+          // leaving a sample, not erasing a shooter's data); Clear All never does.
+          const licence = opts.keepLicence === true && typeof before?.licence === 'string' && before.licence.trim() !== ''
+            ? before.licence : undefined;
           for (const name of STORE_NAMES) tx.objectStore(name).clear();
-          if (optOut) meta.put({ key: 'settings', value: { analyticsOptOut: true } });
+          if (optOut || licence !== undefined) {
+            meta.put({
+              key: 'settings',
+              value: { ...(optOut ? { analyticsOptOut: true } : {}), ...(licence !== undefined ? { licence } : {}) },
+            });
+          }
           resolve();
         } catch (e) {
           try { tx.abort(); } catch { /* already aborting */ }

@@ -18,6 +18,7 @@ import {
 import type { LicencePayload } from '../src/lib/licence.ts';
 import {
   countLiveFireSessions,
+  isSampleSession,
   wallBlocksNewLiveSession,
   FREE_LIVE_FIRE_SESSIONS,
 } from '../src/lib/trialGate.ts';
@@ -335,9 +336,20 @@ test('a planned session is not counted', () => {
   assert.equal(countLiveFireSessions(sessions, undefined), 0);
 });
 
-test('a deleted session is not counted', () => {
+test('decision 84: a session in Recently Deleted still counts', () => {
   const sessions = [ses({ id: 's1', deletedAt: Date.now() })];
-  assert.equal(countLiveFireSessions(sessions, undefined), 0);
+  assert.equal(countLiveFireSessions(sessions, undefined), 1);
+});
+
+test('decision 84: the trash round trip cannot lower the count', () => {
+  // Ten of his own, one of them moved to Recently Deleted: still ten, so the
+  // wall stands; restoring it later changes nothing either.
+  const ten = Array.from({ length: 10 }, (_, i) => ses({ id: `s${i}` }));
+  const trashed = ten.map((s, i) => (i === 0 ? { ...s, deletedAt: Date.now() } : s));
+  assert.equal(countLiveFireSessions(trashed, undefined), 10);
+  assert.equal(wallBlocksNewLiveSession(countLiveFireSessions(trashed, undefined), false), true);
+  // Gone for good (purged): the record no longer exists, so it no longer counts.
+  assert.equal(countLiveFireSessions(ten.slice(1), undefined), 9);
 });
 
 test('a session carrying `legacy` (imported) is not counted', () => {
@@ -355,10 +367,40 @@ test('a plain live-fire session is counted', () => {
   assert.equal(countLiveFireSessions(sessions, undefined), 1);
 });
 
-test('the sample log makes the count zero regardless of the records', () => {
-  const sessions = [ses({ id: 's1' }), ses({ id: 's2' }), ses({ id: 's3' })];
-  const settings: Pick<AppSettings, 'sampleLogLoaded'> = { sampleLogLoaded: true };
-  assert.equal(countLiveFireSessions(sessions, settings), 0);
+// Decision 83 (28 Sep 2026): "the sample log never counts; his own sessions
+// always do". The sample's sessions are the ones with ids of the exact form
+// `se-` and three digits, and only while `sampleLogLoaded` is true.
+const SAMPLE_ON: Pick<AppSettings, 'sampleLogLoaded'> = { sampleLogLoaded: true };
+
+test('decision 83: sample loaded with only the sample sessions counts zero', () => {
+  const sessions = [ses({ id: 'se-001' }), ses({ id: 'se-042' }), ses({ id: 'se-999' })];
+  assert.equal(countLiveFireSessions(sessions, SAMPLE_ON), 0);
+});
+
+test('decision 83: sample loaded plus ten of his own live sessions counts exactly ten', () => {
+  const sample = Array.from({ length: 40 }, (_, i) => ses({ id: `se-${String(i + 1).padStart(3, '0')}` }));
+  const own = Array.from({ length: 10 }, (_, i) => ses({ id: `se-mfg1a2b3-x${i}` }));
+  assert.equal(countLiveFireSessions([...sample, ...own], SAMPLE_ON), 10);
+});
+
+test('decision 83: his first own session counts even while the sample is loaded', () => {
+  const sessions = [ses({ id: 'se-001' }), ses({ id: 'se-mfg1a2b3-abc1' })];
+  assert.equal(countLiveFireSessions(sessions, SAMPLE_ON), 1);
+});
+
+test('decision 83: sample NOT loaded, a session with a three-digit id is his and counts', () => {
+  const sessions = [ses({ id: 'se-042' })];
+  assert.equal(countLiveFireSessions(sessions, undefined), 1);
+  assert.equal(countLiveFireSessions(sessions, { sampleLogLoaded: false }), 1);
+});
+
+test('decision 83: isSampleSession needs the flag AND the id form', () => {
+  assert.equal(isSampleSession({ id: 'se-042' }, SAMPLE_ON), true);
+  assert.equal(isSampleSession({ id: 'se-042' }, undefined), false);
+  assert.equal(isSampleSession({ id: 'se-42' }, SAMPLE_ON), false);
+  assert.equal(isSampleSession({ id: 'se-0420' }, SAMPLE_ON), false);
+  assert.equal(isSampleSession({ id: 'xse-042' }, SAMPLE_ON), false);
+  assert.equal(isSampleSession({ id: 'se-mfg1a2b3-abc1' }, SAMPLE_ON), false);
 });
 
 test('mixed sessions: only the eligible ones count', () => {
@@ -366,11 +408,11 @@ test('mixed sessions: only the eligible ones count', () => {
     ses({ id: 's1', type: 'practice' }), // counts
     ses({ id: 's2', type: 'dry_fire' }), // dry
     ses({ id: 's3', planned: true }), // planned
-    ses({ id: 's4', deletedAt: 12345 }), // deleted
+    ses({ id: 's4', deletedAt: 12345 }), // in Recently Deleted: counts (decision 84)
     ses({ id: 's5', legacy: { foo: 1 } }), // imported
     ses({ id: 's6', type: 'class' }), // counts
   ];
-  assert.equal(countLiveFireSessions(sessions, undefined), 2);
+  assert.equal(countLiveFireSessions(sessions, undefined), 3);
 });
 
 // --- trialGate.ts: wallBlocksNewLiveSession (spec §5.2) ----------------------

@@ -26,7 +26,9 @@ export function SampleLogBanner() {
     if (busy) return;
     setBusy(true); setErr(false); setConfirming(false);
     try {
-      await clearAllData();
+      // keepLicence: leaving the sample must not remove a license (spec §5.6
+      // is about Clear All; this exit erases none of the shooter's own data).
+      await clearAllData({ keepLicence: true });
       // Same as ClearAllSheet: a full reload guarantees no stale in-memory
       // state survives the wipe; an empty log lands on first-run on its own.
       window.location.reload();

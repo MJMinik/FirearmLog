@@ -1,4 +1,25 @@
 import { defineConfig, devices } from '@playwright/test';
+import { generateKeyPairSync } from 'node:crypto';
+
+// LICENCE KEYS FOR THE BROWSER TESTS (entitlement build, 28 Sep 2026). The
+// specs need valid licences, and no licence key may be committed (LICENCE_KEYS
+// in src/lib/licence.ts stays empty). So a fresh ECDSA P-256 pair is generated
+// HERE, at config load, in memory:
+//   FL_E2E_LICENCE_PUBKEY   the public half (with its kid): read by
+//                           vite.config.ts and compiled into THIS test build
+//                           only, as the one extra key the app trusts.
+//   FL_E2E_LICENCE_PRIVKEY  the private half: read by e2e/licenceSigner.ts,
+//                           which signs licences at run time. Never written
+//                           to any file.
+// Playwright loads this config in the runner and again in each worker; the
+// workers inherit the runner's environment, so `??=` reuses the same pair and
+// the app under test and the specs always agree. The webServer command below
+// inherits it too, so its build sees the public half.
+if (!process.env.FL_E2E_LICENCE_PUBKEY || !process.env.FL_E2E_LICENCE_PRIVKEY) {
+  const { publicKey, privateKey } = generateKeyPairSync('ec', { namedCurve: 'P-256' });
+  process.env.FL_E2E_LICENCE_PUBKEY = JSON.stringify({ kid: 'e2e-test', jwk: publicKey.export({ format: 'jwk' }) });
+  process.env.FL_E2E_LICENCE_PRIVKEY = JSON.stringify(privateKey.export({ format: 'jwk' }));
+}
 
 // End-to-end tests for FirearmLog.
 //

@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { clearAllData } from '../lib/db.ts';
 import { Sheet } from './Sheet.tsx';
 import { FormProblem } from './FormProblem.tsx';
+import { refreshLicenceStatus } from '../lib/licenceState.ts';
+import { useLicenceStatus } from './useTrialStatus.ts';
 
 /** The guarded "Clear all data" wipe: a typed "erase" confirmation gates the
  *  destructive button. On confirm, clearAllData() wipes every store, then we
@@ -12,6 +14,10 @@ export function ClearAllSheet({ onClose }: { onClose: () => void }) {
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState('');
+  // The sentence about the license shows only when a VALID one is stored (a
+  // shooter with none, or a saved one that does not verify, has nothing to lose).
+  const licensed = useLicenceStatus().state === 'valid';
+  useEffect(() => { void refreshLicenceStatus(); }, []);
   const ready = typed.trim().toLowerCase() === 'erase';
   async function erase() {
     if (!ready || busy) return;
@@ -32,6 +38,11 @@ export function ClearAllSheet({ onClose }: { onClose: () => void }) {
         This permanently deletes everything on this device — every gun, session, match, classifier,
         photo, and setting. There's no undo.
       </p>
+      {licensed && (
+        <p className="report-note" style={{ marginBottom: 12 }}>
+          This also removes your license from this device. You can paste it again afterward.
+        </p>
+      )}
       <p className="report-note" style={{ marginBottom: 12 }}>
         Your saved backup files are not affected. If you're not sure, use Save to File to keep a
         backup first — then you can always get this back.

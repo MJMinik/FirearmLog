@@ -96,3 +96,28 @@ test('lastBackupLine: derives the date from LOCAL components (23:30 local, near 
   const expectedDate = `${at.getDate()} ${MONTHS_LOCAL[at.getMonth()]}`;
   assert.equal(lastBackupLine(40 * MB, 0, at.getTime()), `Last backup: 40 MB, ${expectedDate}.`);
 });
+
+// Backup-line spec §3 ("Loaded 18 Sep from a backup made 8 Sep"). Dates are
+// built from local components, like lastBackupLine's.
+import { loadedBackupLine } from '../src/lib/backupSize.ts';
+
+test('loadedBackupLine: names both dates and says how to make a newer backup', () => {
+  const loaded = new Date(2026, 8, 18, 10, 0).getTime();
+  const made = new Date(2026, 8, 8, 21, 30).getTime();
+  assert.equal(
+    loadedBackupLine(loaded, made, false),
+    'Loaded 18 Sep from a backup made 8 Sep. Save to File from this device to make a newer one.',
+  );
+});
+
+test('loadedBackupLine: after a save the same two dates are said without the instruction', () => {
+  const loaded = new Date(2026, 8, 18, 10, 0).getTime();
+  const made = new Date(2026, 8, 8, 21, 30).getTime();
+  assert.equal(loadedBackupLine(loaded, made, true), 'Loaded 18 Sep from a backup made 8 Sep.');
+});
+
+test('loadedBackupLine quotes no file size and no em dash', () => {
+  const line = loadedBackupLine(Date.now(), Date.now() - 86_400_000, false);
+  assert.ok(!/MB|GB|KB/.test(line));
+  assert.ok(!line.includes('—'));
+});

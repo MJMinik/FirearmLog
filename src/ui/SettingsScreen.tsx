@@ -8,6 +8,7 @@ import { getSettings, putSettings } from '../lib/db.ts';
 import { normaliseName, normaliseStoredNames, scsaNumberPatch } from '../lib/shooterMatch.ts';
 import type { AppSettings } from '../lib/types.ts';
 import { ClearAllSheet } from './ClearAllSheet.tsx';
+import { LicenceCard } from './LicenceCard.tsx';
 import type { View } from './nav.ts';
 
 export function SettingsScreen({ onBack, open }: { onBack: () => void; open?: (v: View) => void }) {
@@ -216,6 +217,8 @@ export function SettingsScreen({ onBack, open }: { onBack: () => void; open?: (v
         </p>
         {numberProblem && <p className="report-note" role="alert" style={{ marginTop: 8 }}>{numberProblem}</p>}
       </div>
+
+      <LicenceCard />
 
       <div className="card">
         <h2>Lists</h2>

@@ -2,6 +2,34 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
+// __FL_E2E_LICENCE_KEY__ (entitlement build, 28 Sep 2026): the ONE public key
+// the browser tests use to check licences they sign at run time. null in every
+// real build. It is filled only from the FL_E2E_LICENCE_PUBKEY environment
+// variable ({"kid": "...", "jwk": {public P-256 key}}), which only
+// playwright.config.ts ever sets, with a key pair it generates on the spot;
+// no key of any kind is committed, and the deploy workflow never sets the
+// variable. A value that carries private key material (a `d` member) is
+// refused here so a private key can never be compiled into a bundle by
+// mistake. Proof for the shipped build: `npx vite build` with the variable
+// unset, then grep dist/assets for the kid and for "e2e": nothing, and the
+// constant compiles to null.
+function e2eLicenceKey(): { kid: string; jwk: JsonWebKey } | null {
+  const raw = process.env.FL_E2E_LICENCE_PUBKEY;
+  if (!raw) return null;
+  const parsed = JSON.parse(raw) as { kid?: unknown; jwk?: Record<string, unknown> };
+  const jwk = parsed.jwk;
+  if (typeof parsed.kid !== 'string' || parsed.kid === '' || !jwk || typeof jwk !== 'object') {
+    throw new Error('FL_E2E_LICENCE_PUBKEY must be JSON like {"kid":"...","jwk":{...}}');
+  }
+  if ('d' in jwk) {
+    throw new Error('FL_E2E_LICENCE_PUBKEY carries private key material (a "d" member); refusing to build.');
+  }
+  if (jwk.kty !== 'EC' || jwk.crv !== 'P-256') {
+    throw new Error('FL_E2E_LICENCE_PUBKEY must be an EC P-256 public key.');
+  }
+  return { kid: parsed.kid, jwk: jwk as JsonWebKey };
+}
+
 // base './' makes the build work from any URL path, including
 // GitHub Pages project sites like https://<user>.github.io/<repo>/
 export default defineConfig(({ mode }) => ({
@@ -25,7 +53,10 @@ export default defineConfig(({ mode }) => ({
   // fix pass 2 — the prior wording here claimed the opposite and was untrue:
   // asset filenames are content-hashed and emptyOutDir already clears the
   // directory on every build).
-  define: { __FL_E2E__: JSON.stringify(mode !== 'production' || process.env.FL_E2E === '1') },
+  define: {
+    __FL_E2E__: JSON.stringify(mode !== 'production' || process.env.FL_E2E === '1'),
+    __FL_E2E_LICENCE_KEY__: JSON.stringify(e2eLicenceKey()),
+  },
   plugins: [
     react(),
     // ---------------------------------------------------------------------------

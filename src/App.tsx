@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { TabBar } from './ui/TabBar.tsx';
 import { MenuBar } from './ui/MenuBar.tsx';
-import { DiscardChangesSheet } from './ui/Sheet.tsx';
+import { DiscardChangesSheet, Sheet } from './ui/Sheet.tsx';
 import type { TabId } from './ui/TabBar.tsx';
 import type { View } from './ui/nav.ts';
 import {
@@ -44,6 +44,9 @@ import { syncTelemetryEnabled } from './lib/telemetry.ts';
 import { detectRegion } from './lib/region.ts';
 import type { AppSettings } from './lib/types.ts';
 import { ErrorBoundary } from './ui/ErrorBoundary.tsx';
+import { applyLicenceFragment, refreshLicenceStatus } from './lib/licenceState.ts';
+import type { FragmentOutcome } from './lib/licenceState.ts';
+import { licenceCardLine } from './ui/LicenceCard.tsx';
 
 export function App() {
   const [tab, setTabState] = useState<TabId>('home');
@@ -114,6 +117,25 @@ export function App() {
     let alive = true;
     void probeDb().catch(() => { if (alive) setBootFailed(true); });
     return () => { alive = false; };
+  }, []);
+
+  // The license (ENTITLEMENT_SPEC_2026-09-18.md §5.5, §6). At start: if the
+  // address carries `#licence=<text>` (the "Open in FirearmLog" link on the
+  // website), check it, keep it when it verifies and take the fragment out of
+  // the address bar; then read and check whatever license this device holds
+  // so the free-limit gate and the Settings card can use the answer. Nothing
+  // here touches the network. No `alive` guard on the notice on purpose: App
+  // never unmounts, and React's dev double-run would otherwise drop the
+  // message (the first run removes the fragment, the second finds none).
+  const [licenceNotice, setLicenceNotice] = useState<FragmentOutcome | null>(null);
+  useEffect(() => {
+    void (async () => {
+      try {
+        const outcome = await applyLicenceFragment();
+        if (outcome) setLicenceNotice(outcome);
+      } catch { /* a license check must never stop the app from opening */ }
+      await refreshLicenceStatus();
+    })();
   }, []);
 
   // Opening a screen or switching tabs should land at the top, not wherever the
@@ -560,6 +582,18 @@ export function App() {
           (validation raced false): close the sheet — the problem message is
           visible in the form. On write error: close the sheet so the user isn't
           stuck on disabled buttons; the form's own handler shows the error. */}
+      {licenceNotice && (
+        <Sheet title="Your license" onClose={() => setLicenceNotice(null)}>
+          <p className="report-note" style={{ marginBottom: 14 }}>
+            {licenceNotice.kind === 'added'
+              ? `License added. ${licenceCardLine(licenceNotice.payload)}`
+              : licenceNotice.kind === 'not-saved'
+                ? 'That license is valid, but it could not be saved on this device. Open Settings, Your license, and paste it there.'
+                : 'That link did not hold a valid FirearmLog license. Nothing was changed.'}
+          </p>
+          <button className="button" onClick={() => setLicenceNotice(null)}>OK</button>
+        </Sheet>
+      )}
       {pendingNav && (
         <DiscardChangesSheet
           onConfirm={() => { formDirty.current = false; const { go } = pendingNav; setPendingNav(null); go(); }}

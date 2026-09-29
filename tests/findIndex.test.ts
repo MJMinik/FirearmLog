@@ -36,8 +36,8 @@ test('every kind: "screen" entry is a main tab or has a view target, and has an 
 // fewer thing. Pinning the raw count catches that class of change directly.
 // Adding, removing, or renaming a FIND_INDEX row is expected to change this
 // number — update it right alongside the row change, deliberately.
-test('FIND_INDEX has exactly 45 entries (a deliberate change to the table changes this number)', () => {
-  assert.equal(FIND_INDEX.length, 45);
+test('FIND_INDEX has exactly 46 entries (a deliberate change to the table changes this number)', () => {
+  assert.equal(FIND_INDEX.length, 46);
 });
 
 test('every entry lists at least 2 words', () => {
@@ -184,4 +184,24 @@ test('sidebarPathFor: the three examples from decision 76', () => {
   assert.equal(sidebarPathFor(byId('compete-log-classifier')), 'Compete → + Log Classifier');
   assert.equal(sidebarPathFor(byId('log-search')), 'Log → Search & Filter');
   assert.equal(sidebarPathFor(byId('costs-purchase')), 'Costs & Purchases → + Purchase');
+});
+
+// Entitlement build (28 Sep 2026): the Settings "Your license" card is found by
+// the words a shooter would type, in either spelling.
+test('"license", "licence", "unlock", "purchase" and "buy" each find the license card', () => {
+  const entries = findEntries();
+  const hit = entries.find((e) => e.id === 'settings-license');
+  assert.ok(hit, 'settings-license missing from findEntries()');
+  for (const q of ['license', 'licence', 'unlock', 'purchase', 'buy']) {
+    assert.ok(matchesQuery(q, hit!.name, hit!.words.join(' '), hit!.group), `"${q}" does not find the license card`);
+    const ranked = searchFindEntries(q, entries);
+    assert.ok(ranked.some((e) => e.id === 'settings-license'), `"${q}" does not rank the license card`);
+  }
+});
+
+test('the license card sits under Settings and lands on Settings', () => {
+  const hit = FIND_INDEX.find((e) => e.id === 'settings-license')!;
+  assert.equal(hit.kind, 'inside');
+  assert.equal(hit.parent, 'settings');
+  assert.equal(hit.landing, 'Settings');
 });
