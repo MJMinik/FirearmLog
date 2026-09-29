@@ -57,7 +57,7 @@ export function LicenceCard() {
           <p className="report-note" style={{ marginBottom: 10 }}>
             {over
               ? `You have used all ${FREE_LIVE_FIRE_SESSIONS} free live-fire sessions. `
-              : `Live practice and Class sessions count. `}
+              : `Live practice and Class sessions count, including any in Recently Deleted until you delete them forever. `}
             Dry fire, matches, viewing and exporting your log, and backups are free with or without a
             license.
           </p>

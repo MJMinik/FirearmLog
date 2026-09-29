@@ -56,7 +56,12 @@ export function isSampleSession(
  *  - it passes `isLiveSession` (dashboard.ts): not planned, not `dry_fire`.
  *    `class` sessions pass this and are counted (decision 12.5). Matches are
  *    not sessions and never reach this function.
- *  - it is not in the trash: `deletedAt` is null or absent.
+ *  - a session in Recently Deleted STILL COUNTS (decision 84, 29 Sep 2026).
+ *    Trash is recoverable, so a trashed session is still one of his records:
+ *    without this, trash one, log a new one, restore the old one would put an
+ *    unlimited number of live sessions past the wall. It stops counting only
+ *    when it is gone for good ("Delete Forever", or the 30-day purge), which
+ *    is also how an honest mistake leaves the count.
  *  - it was not imported: it carries no `legacy` object at all (decision
  *    12.6). The CSV engine stamps `legacy.importBatch` on every session, and
  *    the migration reader (src/lib/import/pistolTracker.ts) now always stamps
@@ -92,7 +97,6 @@ export function countedLiveFireSessions(
     // this should never see a malformed entry, but a defensive skip is
     // cheaper than a crash if one ever does.
     if (s == null || typeof s !== 'object') continue;
-    if (s.deletedAt != null) continue;
     if (s.legacy) continue;
     if (!isLiveSession(s)) continue;
     if (isSampleSession(s, settings)) continue;

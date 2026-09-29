@@ -336,9 +336,20 @@ test('a planned session is not counted', () => {
   assert.equal(countLiveFireSessions(sessions, undefined), 0);
 });
 
-test('a deleted session is not counted', () => {
+test('decision 84: a session in Recently Deleted still counts', () => {
   const sessions = [ses({ id: 's1', deletedAt: Date.now() })];
-  assert.equal(countLiveFireSessions(sessions, undefined), 0);
+  assert.equal(countLiveFireSessions(sessions, undefined), 1);
+});
+
+test('decision 84: the trash round trip cannot lower the count', () => {
+  // Ten of his own, one of them moved to Recently Deleted: still ten, so the
+  // wall stands; restoring it later changes nothing either.
+  const ten = Array.from({ length: 10 }, (_, i) => ses({ id: `s${i}` }));
+  const trashed = ten.map((s, i) => (i === 0 ? { ...s, deletedAt: Date.now() } : s));
+  assert.equal(countLiveFireSessions(trashed, undefined), 10);
+  assert.equal(wallBlocksNewLiveSession(countLiveFireSessions(trashed, undefined), false), true);
+  // Gone for good (purged): the record no longer exists, so it no longer counts.
+  assert.equal(countLiveFireSessions(ten.slice(1), undefined), 9);
 });
 
 test('a session carrying `legacy` (imported) is not counted', () => {
@@ -397,11 +408,11 @@ test('mixed sessions: only the eligible ones count', () => {
     ses({ id: 's1', type: 'practice' }), // counts
     ses({ id: 's2', type: 'dry_fire' }), // dry
     ses({ id: 's3', planned: true }), // planned
-    ses({ id: 's4', deletedAt: 12345 }), // deleted
+    ses({ id: 's4', deletedAt: 12345 }), // in Recently Deleted: counts (decision 84)
     ses({ id: 's5', legacy: { foo: 1 } }), // imported
     ses({ id: 's6', type: 'class' }), // counts
   ];
-  assert.equal(countLiveFireSessions(sessions, undefined), 2);
+  assert.equal(countLiveFireSessions(sessions, undefined), 3);
 });
 
 // --- trialGate.ts: wallBlocksNewLiveSession (spec §5.2) ----------------------
