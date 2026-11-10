@@ -241,10 +241,45 @@ test('parseLicence accepts a well-formed payload without checking the signature'
   assert.ok(r.ok && r.payload.to === 'Jane Shooter');
 });
 
-// --- licence.ts: LICENCE_KEYS ships empty until the key ceremony ------------
+// --- licence.ts: the shipped key list (spec §3.3, the key ceremony) ---------
+//
+// The list is no longer empty: `2026a` landed at the key ceremony (2 Oct 2026,
+// session 153). These checks guard what a bad paste at a future ceremony could
+// do silently: ship a key the platform cannot import (every honest licence
+// under it would fail as 'bad-signature'), or ship a PRIVATE half by mistake
+// (which would let anyone forge licences). Keys are only ever added, so the
+// first assertion is a floor, never an exact count.
 
-test('LICENCE_KEYS ships empty until the key ceremony', () => {
-  assert.deepEqual(LICENCE_KEYS, {});
+test('LICENCE_KEYS carries the ceremony key 2026a, and only real kids', () => {
+  const kids = Object.keys(LICENCE_KEYS);
+  assert.ok(kids.includes('2026a'), 'the 2026a key from the key ceremony must be present');
+  for (const kid of kids) {
+    assert.match(kid, /^[0-9]{4}[a-z]$/, `kid "${kid}" does not follow the YYYYx pattern from spec §3.1`);
+  }
+});
+
+test('every shipped key is a PUBLIC P-256 key with no private component', async () => {
+  for (const [kid, jwk] of Object.entries(LICENCE_KEYS)) {
+    assert.equal(jwk.kty, 'EC', `${kid}: kty`);
+    assert.equal(jwk.crv, 'P-256', `${kid}: crv`);
+    assert.equal(typeof jwk.x, 'string', `${kid}: x`);
+    assert.equal(typeof jwk.y, 'string', `${kid}: y`);
+    assert.equal((jwk as Record<string, unknown>).d, undefined, `${kid}: a PRIVATE component is committed`);
+    // The platform must accept it for verification, exactly as verifyLicence imports it.
+    const key = await crypto.subtle.importKey('jwk', jwk, { name: 'ECDSA', namedCurve: 'P-256' }, false, ['verify']);
+    assert.equal(key.type, 'public', `${kid}: imported as ${key.type}`);
+  }
+});
+
+test('a licence signed by a different key does not verify against the shipped list', async () => {
+  // The shipped public keys cannot be used to sign anything here (no private
+  // half exists in this repository), so the only honest check is negative: a
+  // licence under the real kid but a stranger's key must fail on signature.
+  const stranger = await generateKeyPair();
+  const text = await signRaw(payload({ kid: '2026a' }), stranger.privateKey);
+  const r = await verifyLicence(text);
+  assert.equal(r.ok, false);
+  assert.ok(!r.ok && r.reason === 'bad-signature', `expected bad-signature, got ${JSON.stringify(r)}`);
 });
 
 // --- licence.ts: trimming and the base64url alphabet (spec §3.2, finding 4) -

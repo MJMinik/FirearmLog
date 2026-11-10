@@ -39,7 +39,7 @@ compatibility_date = "2026-07-08"
 #    time.
 
 [vars]
-KEY_ID = "unset-placeholder"
+KEY_ID = "2026a"
 
 # 3a. Optional overrides for the webhook's event-type gate (defaults live in
 #     index.ts; both are section 9 placeholders, confirmed against Paddle's
