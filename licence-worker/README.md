@@ -40,7 +40,7 @@ and the signing are real, tested code now.
 
 The private signing key is generated once, by Michael, and stored as a
 Cloudflare Worker secret (`SIGNING_KEY_JWK`) and nowhere else in any file. A
-copy also goes into Apple Passwords under Michael's control, because it is a
+copy (as of decision 85, 10 Nov 2026, the ONLY copy until this Worker is deployed) also goes into Apple Passwords under Michael's control, because it is a
 string that can open something. **It never appears in this repository, in a
 screenshot, or in a chat.** The public half is added to `src/lib/licence.ts`'s
 `LICENCE_KEYS` under its own `kid`, and that list only ever grows (spec §3.3):
@@ -57,7 +57,7 @@ Two small scripts under `scripts/` carry out the mechanical parts:
 - `scripts/generate-key.mjs` prints a fresh ECDSA P-256 key pair, PUBLIC and
   PRIVATE clearly labelled, and writes nothing to disk. Run it once, paste
   the public half into `LICENCE_KEYS`, paste the private half into
-  Cloudflare secrets and Apple Passwords, and close the terminal.
+  Cloudflare secrets and Apple Passwords, and close the terminal. (Done 2 Oct 2026 for key 2026a, Apple Passwords half only; the Cloudflare secret is set on deploy day.)
 - `scripts/sign-tester-licence.mjs` signs one licence for a pre-launch
   tester or for Michael himself (decision 12.11), from the same
   `signLicence` code path the Worker itself uses. It reads the private key
