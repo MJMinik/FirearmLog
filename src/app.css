@@ -1564,3 +1564,69 @@ svg text { -webkit-user-select: none; user-select: none; }
   color: var(--text-dim);
   margin: 2px 0;
 }
+
+/* ---------- Tempo trainer (Steel Challenge, decision 80) ----------
+   Colour tokens only. Nothing here animates: the dot and the countdown change
+   state in one step, which is also what prefers-reduced-motion asks for. */
+.tempo-peak { font-size: var(--fs-subhead); line-height: 1.45; margin: 0; }
+/* The link sits on its own line: inline, its 44 px tap height pushed the
+   sentence's second line down and left a hole in the paragraph. */
+.tempo-peak .link-btn { display: block; padding-left: 0; text-align: left; }
+.tempo-peak-edited { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.tempo-peak-edited .tempo-peak { flex: 1 1 200px; }
+/* The mark that a typed peak is in use. Warning-text amber: readable as text
+   in both schemes (about 6:1 on the light card, higher on the dark one), and
+   a different colour and weight from everything around it. */
+.tempo-own { display: inline-block; color: var(--warn-text); font-weight: 700; }
+.tempo-reset { width: auto; flex: 0 0 auto; }
+.tempo-peak .link-btn:disabled, .tempo-console .gun-toggle:disabled { opacity: 0.5; cursor: default; }
+
+.tempo-table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+.tempo-table caption {
+  text-align: left; font-size: var(--fs-footnote); font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.5px; color: var(--text-dim); padding-bottom: 8px;
+}
+.tempo-table th, .tempo-table td {
+  text-align: right; padding: 0 4px; height: var(--touch-min);
+  border-bottom: 0.5px solid var(--separator); font-size: var(--fs-subhead); font-weight: 400;
+}
+.tempo-table thead th { font-size: var(--fs-footnote); color: var(--text-dim); font-weight: 600; height: auto; padding-bottom: 6px; vertical-align: bottom; }
+.tempo-table th:first-child { text-align: left; padding-left: 0; }
+/* A time never breaks between its number and its unit, even at 320px. */
+.tempo-row td { white-space: nowrap; }
+.tempo-table tbody tr:last-child th, .tempo-table tbody tr:last-child td { border-bottom: none; }
+.tempo-row { cursor: pointer; }
+.tempo-row.locked { cursor: default; opacity: 0.6; }
+.tempo-row.on th, .tempo-row.on td { font-weight: 700; background: color-mix(in srgb, var(--accent) 16%, transparent); }
+/* The label fills its cell so the radio's own target is a full 44px square
+   or better, whatever the row's tap handler does. */
+.tempo-pick { display: flex; align-items: center; gap: 8px; min-height: var(--touch-min); min-width: var(--touch-min); cursor: inherit; }
+.tempo-pick input { width: 22px; height: 22px; margin: 0 0 0 6px; flex: 0 0 auto; accent-color: var(--accent-ink); }
+/* D cannot be picked, so it carries no control, no highlight and no pointer. */
+.tempo-d th, .tempo-d td { color: var(--text-dim); }
+.tempo-d th { padding-left: 36px; }
+.tempo-d td[colspan] { text-align: right; }
+
+.tempo-draw-note { margin-top: -4px; }
+.tempo-summary { font-size: var(--fs-body); line-height: 1.4; margin-top: 12px; font-weight: 600; }
+.tempo-summary.blocked { color: var(--warn-text); }
+
+/* The console is read from across a room with the phone on a shelf, so its
+   type is sized from the viewport and capped for a desktop window. */
+.tempo-console { text-align: center; }
+.tempo-readout { display: flex; flex-direction: column; align-items: center; line-height: 1; font-variant-numeric: tabular-nums; }
+.tempo-readout-class { font-size: clamp(2.5rem, 13vw, 4rem); font-weight: 700; color: var(--accent-ink); }
+.tempo-readout-time { font-size: clamp(3.25rem, 18vw, 6rem); font-weight: 800; margin-top: 4px; white-space: nowrap; }
+.tempo-readout-unit { font-size: var(--fs-subhead); color: var(--text-dim); margin-top: 8px; line-height: 1.3; }
+.tempo-stage { height: 168px; display: flex; align-items: center; justify-content: center; margin: 12px 0; }
+.tempo-count { font-size: 9rem; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+/* Three states told apart by shape as well as colour: an empty ring at rest,
+   a filled disc on a beat, a filled square on the start signal. */
+.tempo-dot { width: 136px; height: 136px; border-radius: 50%; border: 6px solid var(--field-border); background: transparent; }
+.tempo-dot.beat { background: var(--accent-ink); border-color: var(--accent-ink); }
+.tempo-dot.start { background: var(--text); border-color: var(--text); border-radius: 14px; }
+.tempo-go { min-height: 72px; font-size: var(--fs-title3); font-weight: 700; }
+.tempo-go.stop { background: var(--text); color: var(--bg-card); }
+.tempo-console .row { justify-content: flex-start; margin-top: 8px; }
+.tempo-repeat-note { margin-top: 0; text-align: left; }
+.tempo-status { min-height: 1.5em; margin-top: 10px; font-size: var(--fs-body); font-weight: 600; color: var(--text-dim); }

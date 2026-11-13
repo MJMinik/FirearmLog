@@ -286,6 +286,18 @@ export function NumbersGuide({ onBack, section }: { onBack: () => void; section?
           When you enter your string times, your stage and match totals are derived from them, so they
           always match what you shot.
         </p>
+        <p className="note-text" style={{ marginTop: 12 }}>
+          <strong>Tempo times.</strong> Under Drills, each Steel Challenge stage has a Tempo button that
+          plays the pace for a class. The times come from the peak time for your division on that stage.
+        </p>
+        <TheMath>
+          stage time = peak time &divide; the class percentage (GM 95, M 85, A 75, B 60, C 40); per
+          string = stage time &divide; the strings that count (4, or 3 on Outer Limits). Both are cut to
+          hundredths, never rounded up.
+        </TheMath>
+        <p className="report-note">
+          You set the draw. The time left in the string is spread evenly over the other four beats.
+        </p>
       </div>
 
       <div className="card" id="idpa">

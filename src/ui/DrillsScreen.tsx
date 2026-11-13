@@ -7,6 +7,7 @@ import { deleteOne, getAll, getOne, putOne } from '../lib/db.ts';
 import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { groupDrills, SKILL_ORDER, SKILL_GROUPS } from '../lib/drillGroups.ts';
+import { steelStageIndexForDrill } from '../lib/tempoDefaults.ts';
 import { InfoTip } from './InfoTip.tsx';
 import { FieldProblem, type SaveProblem } from './FieldProblem.tsx';
 import { ConfirmSheet, DiscardChangesSheet } from './Sheet.tsx';
@@ -19,9 +20,11 @@ const FIRE_LABEL: Record<DrillDef['fire'], string> = {
   live: 'Live fire', dry: 'Dry fire', both: 'Live & dry'
 };
 
-export function DrillsScreen({ refreshKey, onBack, openForm, openHistory }: {
+export function DrillsScreen({ refreshKey, onBack, openForm, openHistory, openTempo }: {
   refreshKey: number; onBack: () => void; openForm: (id?: string) => void;
   openHistory: (name: string) => void;
+  /** Opens the tempo trainer on one Steel Challenge stage (index into SCSA_STAGES). */
+  openTempo: (stage: number) => void;
 }) {
   const [drills, setDrills] = useState<DrillDef[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -51,7 +54,7 @@ export function DrillsScreen({ refreshKey, onBack, openForm, openHistory }: {
         <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Drills <InfoTip title="Drills">Your drill library, grouped by the skill each drill trains — draw, reloads, transitions, and so on, with the eight Steel Challenge stages kept together. Each drill is also tagged by gun type and dry/live, so the session picker shows the right ones. Tap a drill to read how to run it and see your history on it, or "+ Add Drill" to create your own.</InfoTip></h1>
+      <h1 className="large-title">Drills <InfoTip title="Drills">Your drill library, grouped by the skill each drill trains — draw, reloads, transitions, and so on, with the eight Steel Challenge stages kept together. Each drill is also tagged by gun type and dry/live, so the session picker shows the right ones. Tap a drill to read how to run it and see your history on it, or "+ Add Drill" to create your own. Each Steel Challenge stage has a Tempo button that plays the pace for a class.</InfoTip></h1>
       <button className="button" onClick={() => openForm()}>+ Add Drill</button>
       {drills.length > 8 && <ListSearch value={q} onChange={setQ} placeholder="Search drills" />}
       {/* F5: a real empty state. The stock library (F4) makes this rare, not
@@ -85,6 +88,12 @@ export function DrillsScreen({ refreshKey, onBack, openForm, openHistory }: {
                   inside the expansion. */}
               {section.drills.map((d) => {
                 const open = expanded === d.id;
+                // The Tempo button belongs to the eight built-in Steel
+                // Challenge stage drills only. They are recognised by their
+                // fixed built-in id, not by name text: a shooter's own drill
+                // with a lookalike name gets no button, and a built-in stage
+                // he has renamed keeps it (see steelStageIndexForDrill).
+                const steelStage = steelStageIndexForDrill(d.id);
                 return (
                   <div key={d.id}>
                     <button className="row-tap" aria-expanded={open}
@@ -104,6 +113,10 @@ export function DrillsScreen({ refreshKey, onBack, openForm, openHistory }: {
                         <div style={{ marginBottom: 8 }}>
                           <button className="link-btn" onClick={() => openHistory(d.name)}>View your history ›</button>
                         </div>
+                        {steelStage >= 0 && (
+                          <button className="button secondary" style={{ marginBottom: 8 }}
+                            onClick={() => openTempo(steelStage)}>Tempo</button>
+                        )}
                         <button className="button secondary" onClick={() => openForm(d.id)}>Edit Drill</button>
                       </div>
                     )}

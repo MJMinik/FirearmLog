@@ -40,5 +40,8 @@ export type View =
   | { kind: 'import-csv' }
   | { kind: 'your-data' }
   | { kind: 'drill-history'; name: string }
+  // The Steel Challenge tempo trainer. `stage` is an index into SCSA_STAGES
+  // (lib/scsaPeaks.ts); absent means the first stage.
+  | { kind: 'tempo'; stage?: number }
   | { kind: 'manage-lists' }
   | { kind: 'list-detail'; listId: string };

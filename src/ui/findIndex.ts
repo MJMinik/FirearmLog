@@ -166,9 +166,12 @@ export const FIND_INDEX: FindEntry[] = [
     phone: 'More → Care Guides', desktop: 'sidebar → Your Gear → Care Guides', landing: 'Care Guides' },
 
   // ── Training ──────────────────────────────────────────────────────────────
-  { id: 'drills', kind: 'screen', name: 'Drills', group: G.training, go: { view: { kind: 'drills' } }, icon: 'drills', also: ['drill-form'],
+  { id: 'drills', kind: 'screen', name: 'Drills', group: G.training, go: { view: { kind: 'drills' } }, icon: 'drills', also: ['drill-form', 'tempo'],
     words: ['drills', 'drill', 'drill library', 'bill drill', 'el presidente', 'dot torture', 'steel challenge stages', 'smoke and hope', 'add a drill', 'my drills', 'drills by skill', 'movement drills', 'what to practice'],
     phone: 'More → Drills', desktop: 'sidebar → Training → Drills', landing: 'Drills' },
+  { id: 'drills-tempo', kind: 'inside', parent: 'drills', name: 'Tempo trainer', group: G.training, go: { view: { kind: 'tempo' } },
+    words: ['tempo', 'cadence', 'metronome', 'steel pace', 'steel challenge pace', 'pace for a class', 'beat', 'par beat', 'string time', 'class times'],
+    phone: 'More → Drills → a Steel Challenge stage → Tempo', desktop: 'sidebar → Training → Drills → a Steel Challenge stage → Tempo', landing: 'Tempo' },
   { id: 'numbers', kind: 'screen', name: 'How the numbers work', short: 'The numbers', group: G.training, go: { view: { kind: 'numbers' } }, icon: 'info', also: [],
     words: ['the numbers', 'how the numbers work', 'how is this calculated', 'hit factor explained', 'what does this mean', 'formulas', 'wiki', 'explain', 'definitions', 'how classification works'],
     phone: 'More → The numbers', desktop: 'sidebar → Training → The numbers, or the Help menu', landing: 'How the numbers work' },
