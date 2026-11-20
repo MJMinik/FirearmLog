@@ -292,8 +292,8 @@ export function NumbersGuide({ onBack, section }: { onBack: () => void; section?
           3 seconds stay in.
         </p>
         <p className="note-text" style={{ marginTop: 12 }}>
-          <strong>Tempo times.</strong> Under Drills, each Steel Challenge stage has a Tempo button that
-          plays the pace for a class. The times come from the peak time for your division on that stage.
+          <strong>Tempo times.</strong> The Steel Challenge tempo trainer, at the top of Drills and on each
+          Steel Challenge stage, plays the pace for a class. The times come from the peak time for your division on that stage.
         </p>
         <TheMath>
           stage time = peak time &divide; the class percentage (GM 95, M 85, A 75, B 60, C 40); per

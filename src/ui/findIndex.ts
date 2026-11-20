@@ -171,7 +171,7 @@ export const FIND_INDEX: FindEntry[] = [
     phone: 'More → Drills', desktop: 'sidebar → Training → Drills', landing: 'Drills' },
   { id: 'drills-tempo', kind: 'inside', parent: 'drills', name: 'Tempo trainer', group: G.training, go: { view: { kind: 'tempo' } },
     words: ['tempo', 'cadence', 'metronome', 'steel pace', 'steel challenge pace', 'pace for a class', 'beat', 'par beat', 'string time', 'class times'],
-    phone: 'More → Drills → a Steel Challenge stage → Tempo', desktop: 'sidebar → Training → Drills → a Steel Challenge stage → Tempo', landing: 'Tempo' },
+    phone: 'More → Drills → Steel Challenge tempo trainer', desktop: 'sidebar → Training → Drills → Steel Challenge tempo trainer', landing: 'Tempo' },
   { id: 'numbers', kind: 'screen', name: 'How the numbers work', short: 'The numbers', group: G.training, go: { view: { kind: 'numbers' } }, icon: 'info', also: [],
     words: ['the numbers', 'how the numbers work', 'how is this calculated', 'hit factor explained', 'what does this mean', 'formulas', 'wiki', 'explain', 'definitions', 'how classification works'],
     phone: 'More → The numbers', desktop: 'sidebar → Training → The numbers, or the Help menu', landing: 'How the numbers work' },

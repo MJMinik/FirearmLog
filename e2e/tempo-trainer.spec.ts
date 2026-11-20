@@ -148,6 +148,28 @@ function tonesByKind(rec: OscRecord) {
 }
 
 test.describe('Tempo trainer: getting there', () => {
+  test('(a0) the button at the top of Drills opens the screen without opening a stage row', async ({ page }) => {
+    await seedDemo(page);
+    await gotoSection(page, 'Drills');
+    await expect(page.getByRole('heading', { name: 'Drills' }).first()).toBeVisible();
+    await expect(main(page).locator('button.row-tap').first()).toBeVisible({ timeout: 15_000 });
+    const top = main(page).getByRole('button', { name: 'Steel Challenge tempo trainer', exact: true });
+    await expect(top).toHaveClass(/button secondary/);
+    // On the first screenful: above every drill row, straight after + Add Drill.
+    const topBox = await top.boundingBox();
+    const firstRow = await main(page).locator('button.row-tap').first().boundingBox();
+    const add = await main(page).getByRole('button', { name: '+ Add Drill' }).boundingBox();
+    expect(topBox!.y).toBeGreaterThan(add!.y);
+    expect(topBox!.y + topBox!.height).toBeLessThanOrEqual(firstRow!.y);
+    expect(topBox!.height).toBeGreaterThanOrEqual(44);
+    await top.click();
+    await expect(tempoTitle(page)).toBeVisible();
+    // No stage was named, so it opens on the first one; the picker is there to change it.
+    await expect(stageSelect(page)).toHaveValue('0');
+    await stageSelect(page).selectOption('2');
+    await expect(stageSelect(page)).toHaveValue('2');
+  });
+
   test('(a) the Tempo button on a Steel stage drill opens the screen on that stage; other drills have none', async ({ page }) => {
     await seedDemo(page);
     await expandDrill(page, 'Bill Drill');
@@ -163,8 +185,18 @@ test.describe('Tempo trainer: getting there', () => {
     const smoke = main(page).locator('button.row-tap').filter({ hasText: 'Steel Challenge: Smoke & Hope' }).first();
     await smoke.click();
     const panel = smoke.locator('xpath=following-sibling::div[1]');
-    // Tempo sits above Edit Drill.
+    // Tempo sits beside Edit Drill, and the actions come BEFORE the long
+    // description (20 Nov 2026: under it they were pushed out of sight).
     await expect(panel.locator('button.button')).toHaveText(['Tempo', 'Edit Drill']);
+    const editBox = await panel.getByRole('button', { name: 'Edit Drill' }).boundingBox();
+    const tempoBox = await panel.getByRole('button', { name: 'Tempo', exact: true }).boundingBox();
+    const histBox = await panel.getByRole('button', { name: /View your history/ }).boundingBox();
+    const textBox = await panel.locator('p.note-text').first().boundingBox();
+    expect(histBox!.y + histBox!.height).toBeLessThanOrEqual(tempoBox!.y);
+    expect(Math.abs(tempoBox!.y - editBox!.y)).toBeLessThan(1);
+    expect(editBox!.y + editBox!.height).toBeLessThanOrEqual(textBox!.y);
+    expect(tempoBox!.height).toBeGreaterThanOrEqual(44);
+    expect(tempoBox!.width).toBeGreaterThanOrEqual(100);
     await expect(panel.getByRole('button', { name: 'Tempo', exact: true })).toHaveClass(/button secondary/);
     await panel.getByRole('button', { name: 'Tempo', exact: true }).click();
 

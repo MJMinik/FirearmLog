@@ -23,8 +23,9 @@ const FIRE_LABEL: Record<DrillDef['fire'], string> = {
 export function DrillsScreen({ refreshKey, onBack, openForm, openHistory, openTempo }: {
   refreshKey: number; onBack: () => void; openForm: (id?: string) => void;
   openHistory: (name: string) => void;
-  /** Opens the tempo trainer on one Steel Challenge stage (index into SCSA_STAGES). */
-  openTempo: (stage: number) => void;
+  /** Opens the tempo trainer: on one Steel Challenge stage (index into SCSA_STAGES)
+   *  from that stage's own button, or on the first stage from the button at the top. */
+  openTempo: (stage?: number) => void;
 }) {
   const [drills, setDrills] = useState<DrillDef[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -54,8 +55,14 @@ export function DrillsScreen({ refreshKey, onBack, openForm, openHistory, openTe
         <button className="back-btn section-back" onClick={onBack}>‹ Back</button>
         <span />
       </div>
-      <h1 className="large-title">Drills <InfoTip title="Drills">Your drill library, grouped by the skill each drill trains — draw, reloads, transitions, and so on, with the eight Steel Challenge stages kept together. Each drill is also tagged by gun type and dry/live, so the session picker shows the right ones. Tap a drill to read how to run it and see your history on it, or "+ Add Drill" to create your own. Each Steel Challenge stage has a Tempo button that plays the pace for a class.</InfoTip></h1>
+      <h1 className="large-title">Drills <InfoTip title="Drills">Your drill library, grouped by the skill each drill trains — draw, reloads, transitions, and so on, with the eight Steel Challenge stages kept together. Each drill is also tagged by gun type and dry/live, so the session picker shows the right ones. Tap a drill to read how to run it and see your history on it, or "+ Add Drill" to create your own. The Steel Challenge tempo trainer plays the pace for a class: open it from the button at the top of this screen, or from the Tempo button on any Steel Challenge stage.</InfoTip></h1>
       <button className="button" onClick={() => openForm()}>+ Add Drill</button>
+      {/* 20 Nov 2026, Michael after the tempo tap test: "All components work
+          really well but access is difficult." The eight stage buttons sit in
+          the LAST section of this screen, each behind a tap on its row; this
+          one is on the first screenful. The stage is chosen on the Tempo
+          screen itself. */}
+      <button className="button secondary" style={{ marginTop: 8 }} onClick={() => openTempo()}>Steel Challenge tempo trainer</button>
       {drills.length > 8 && <ListSearch value={q} onChange={setQ} placeholder="Search drills" />}
       {/* F5: a real empty state. The stock library (F4) makes this rare, not
           impossible — a user can delete every drill. */}
@@ -107,17 +114,24 @@ export function DrillsScreen({ refreshKey, onBack, openForm, openHistory, openTe
                     </button>
                     {open && (
                       <div style={{ padding: '2px 2px 10px' }}>
-                        {d.fullDescription && <p className="note-text">{d.fullDescription}</p>}
-                        {d.scoring && <p className="report-note">Scoring: {d.scoring}</p>}
-                        {d.requiresHolster && <p className="report-note">Needs a holster.</p>}
+                        {/* 20 Nov 2026, Michael: on the Steel Challenge stages the
+                            history link and the buttons sat under a long
+                            description and were "obscured" by it. The actions now
+                            come FIRST on every drill, the reading after them, so
+                            they are in the same place whatever the length. */}
                         <div style={{ marginBottom: 8 }}>
                           <button className="link-btn" onClick={() => openHistory(d.name)}>View your history ›</button>
                         </div>
-                        {steelStage >= 0 && (
-                          <button className="button secondary" style={{ marginBottom: 8 }}
-                            onClick={() => openTempo(steelStage)}>Tempo</button>
-                        )}
-                        <button className="button secondary" onClick={() => openForm(d.id)}>Edit Drill</button>
+                        <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+                          {steelStage >= 0 && (
+                            <button className="button secondary" style={{ flex: 1 }}
+                              onClick={() => openTempo(steelStage)}>Tempo</button>
+                          )}
+                          <button className="button secondary" style={{ flex: 1 }} onClick={() => openForm(d.id)}>Edit Drill</button>
+                        </div>
+                        {d.fullDescription && <p className="note-text">{d.fullDescription}</p>}
+                        {d.scoring && <p className="report-note">Scoring: {d.scoring}</p>}
+                        {d.requiresHolster && <p className="report-note">Needs a holster.</p>}
                       </div>
                     )}
                   </div>
