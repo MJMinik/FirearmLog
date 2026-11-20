@@ -287,6 +287,11 @@ export function NumbersGuide({ onBack, section }: { onBack: () => void; section?
           always match what you shot.
         </p>
         <p className="note-text" style={{ marginTop: 12 }}>
+          <strong>Average string.</strong> A match shows an average under each stage: the stage time
+          divided by the strings that counted. The dropped string is left out, and a missed plate&rsquo;s
+          3 seconds stay in.
+        </p>
+        <p className="note-text" style={{ marginTop: 12 }}>
           <strong>Tempo times.</strong> Under Drills, each Steel Challenge stage has a Tempo button that
           plays the pace for a class. The times come from the peak time for your division on that stage.
         </p>

@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   scoreSteelStage,
+  steelAverageString,
   steelMatchTotal,
   steelStringsExpected,
   scoringTypeFor,
@@ -175,4 +176,43 @@ test('no source file renders a stored division without canonicalising it', () =>
     const src = readFileSync(join(process.cwd(), f), 'utf8');
     assert.ok(src.includes('canonicalDivision'), f + ' shows or compares a division but never canonicalises one');
   }
+});
+
+// ---- Average of the strings that counted (display only) ----
+
+test('average string: stage time over the strings that counted, dropped string left out', () => {
+  // His 20 Nov 2026 screenshot, Stage 1: 6.44, 7.40, 9.55 (dropped), 5.59, 4.89 = 24.32 over 4.
+  const s = scoreSteelStage({ strings: [6.44, 4.40, 6.55, 5.59, 4.89], stringMisses: [0, 1, 1, 0, 0] });
+  assert.equal(s.stageTime, 24.32);
+  assert.equal(s.droppedIndex, 2);
+  assert.deepEqual(steelAverageString(s), { average: 6.08, counted: 4 });
+});
+
+test('average string: Outer Limits divides by three', () => {
+  const s = scoreSteelStage({ strings: [5, 6, 7, 9], steelStage: 'Outer Limits' });
+  assert.equal(s.stageTime, 18);
+  assert.deepEqual(steelAverageString(s), { average: 6, counted: 3 });
+});
+
+test('average string: a partly entered stage averages what is entered; nothing dropped yet', () => {
+  const s = scoreSteelStage({ strings: [3, 4, null, null, null] });
+  assert.equal(s.droppedIndex, null);
+  assert.deepEqual(steelAverageString(s), { average: 3.5, counted: 2 });
+});
+
+test('average string: none for a single string or an empty stage', () => {
+  assert.equal(steelAverageString(scoreSteelStage({ strings: [3.2] })), null);
+  assert.equal(steelAverageString(scoreSteelStage({ strings: [] })), null);
+  assert.equal(steelAverageString(scoreSteelStage({})), null);
+});
+
+test('average string: rounds to the hundredth and keeps the 30s cap in', () => {
+  // A stop-plate-missed string scores 30.00, is the slowest, and drops.
+  const a = scoreSteelStage({ strings: [3, 3.01, 3.01, 3.02, 9], stringStopMissed: [false, false, false, false, true] });
+  assert.equal(a.droppedIndex, 4);
+  assert.deepEqual(steelAverageString(a), { average: 3.01, counted: 4 });
+  // Two capped strings: one drops, the other stays in the average.
+  const b = scoreSteelStage({ strings: [4, 4, 4, 1, 1], stringStopMissed: [false, false, false, true, true] });
+  assert.equal(b.stageTime, 42);
+  assert.deepEqual(steelAverageString(b), { average: 10.5, counted: 4 });
 });

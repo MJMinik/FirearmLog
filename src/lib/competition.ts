@@ -968,6 +968,20 @@ export function scoreSteelStage(stage: SteelStageInput): SteelStageScore {
   return { strings: scored, stringsExpected: expected, droppedIndex, stageTime };
 }
 
+/**
+ * The average of the strings that counted on a Steel Challenge stage: the stage time
+ * divided by the number of strings in it, so the dropped string is left out. Display
+ * only; nothing is stored. Null when fewer than two strings counted (an average of one
+ * string is just that string) or nothing is entered. Rounds to 0.01s.
+ */
+export function steelAverageString(score: SteelStageScore): { average: number; counted: number } | null {
+  if (score.stageTime == null) return null;
+  const entered = score.strings.filter((s) => s.capped !== null).length;
+  const counted = Math.min(score.stringsExpected - 1, entered);
+  if (counted < 2) return null;
+  return { average: round2(score.stageTime / counted), counted };
+}
+
 /** Steel match total = sum of stage times; lowest wins. Null if no stage is scored. */
 export function steelMatchTotal(stages: SteelStageInput[]): number | null {
   let total = 0;

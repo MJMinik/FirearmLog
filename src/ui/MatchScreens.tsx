@@ -8,7 +8,7 @@ import { newId } from '../lib/id.ts';
 import { stampNew, stampUpdate } from '../lib/stamps.ts';
 import { DIVISIONS, IDPA_DIVISIONS, STEEL_DIVISIONS, MATCH_TYPES, POWER_FACTORS, canonicalDivision, hitFactor, analyzeMatch, scoreStageHits, hasHitBreakdown,
   scoringTypeFor, scoreSteelStage, steelMatchTotal, steelStringsExpected, STEEL_STAGES,
-  scoreIdpaStage, idpaMatchTotal, reconcileTime, matchSpeedAccuracy, matchWhatItCost, coachingRead,
+  scoreIdpaStage, idpaMatchTotal, steelAverageString, reconcileTime, matchSpeedAccuracy, matchWhatItCost, coachingRead,
   isMinorOnly, optionsWithStored, suggestDivision, suggestPowerFactor, divisionMismatchKind, fmtHitFactor } from '../lib/competition.ts';
 import type { SpeedAccuracy, WhatItCost } from '../lib/competition.ts';
 import { MarkThumb } from './MarkThumb.tsx';
@@ -445,7 +445,7 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
 
       {match.stages.length > 0 && isSteel && (
         <div className="card">
-          <h2>Stage times <InfoTip title="Steel Challenge scoring">Steel is scored on time -- lowest wins. Each string is your raw time plus 3 seconds for every missed plate, capped at 30 seconds (a string whose stop plate you never hit scores the full 30). A stage keeps your best 4 of 5 strings -- the single slowest is dropped -- and Outer Limits keeps your best 3 of 4 (the slowest is still dropped). Your match total is the sum of your stage times. Full details in "How the numbers work."</InfoTip></h2>
+          <h2>Stage times <InfoTip title="Steel Challenge scoring">Steel is scored on time -- lowest wins. Each string is your raw time plus 3 seconds for every missed plate, capped at 30 seconds (a string whose stop plate you never hit scores the full 30). A stage keeps your best 4 of 5 strings -- the single slowest is dropped -- and Outer Limits keeps your best 3 of 4 (the slowest is still dropped). Your match total is the sum of your stage times. The average under each stage is that stage's time divided by the strings that counted, so the dropped string is left out. Full details in "How the numbers work."</InfoTip></h2>
           <button className="link-btn" style={{ marginTop: -2, marginBottom: 8 }} onClick={() => open({ kind: 'numbers', section: wikiSection })}>How the numbers work ›</button>
           {steelTotal != null && (
             <div className="row">
@@ -453,13 +453,18 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
               <span className="value" style={{ color: 'var(--accent-ink)' }}><strong>{steelTotal}s</strong></span>
             </div>
           )}
-          {steelRows.map(({ st, score }, i) => (
+          {steelRows.map(({ st, score }, i) => {
+            const avg = steelAverageString(score);
+            return (
             <div className="row" key={i}>
               <span className="label">
                 Stage {st.number}{st.steelStage ? ` -- ${st.steelStage}` : st.steelStageName ? ` -- ${st.steelStageName}` : ''}
                 {st.notes && <div className="row-sub">{st.notes}</div>}
                 {score.stageTime != null && score.droppedIndex != null && (
                   <div className="row-sub">Dropped the slowest string (String {score.droppedIndex + 1})</div>
+                )}
+                {avg && (
+                  <div className="row-sub">Average counted string: {avg.average.toFixed(2)}s</div>
                 )}
                 {score.strings.some((s) => s.capped !== null) && (
                   <div className="row-sub">
@@ -471,7 +476,8 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
               </span>
               <span className="value">{score.stageTime != null ? `${score.stageTime}s` : '--'}</span>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -507,13 +513,12 @@ export function MatchDetail({ id, onEdit, onBack, onDeleted, refreshKey, open }:
       {(isSteel || isIdpa) && match.stages.length > 0 && (
         <div className="card">
           <h2>Reconcile with the official score</h2>
-          {!showReconcile ? (
-            <button className="link-btn" onClick={() => setShowReconcile(true)}>
-              My official score didn&rsquo;t match? Reconcile it ›
-            </button>
-          ) : (
+          <button className="link-btn" aria-expanded={showReconcile} onClick={() => setShowReconcile((o) => !o)}>
+            {showReconcile ? 'Close reconcile' : <>My official score didn&rsquo;t match? Reconcile it ›</>}
+          </button>
+          {showReconcile && (
             <>
-              <p className="report-note" style={{ marginTop: 0 }}>
+              <p className="report-note" style={{ marginTop: 8 }}>
                 Enter your official time for each stage. A gap almost always means a number was entered
                 differently than the official card -- we&rsquo;ll flag which stage and where to look.
               </p>
